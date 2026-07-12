@@ -85,7 +85,7 @@
 **Out of Scope:** Political regions
 
 ## TODO-GEO-001: Terrain Generation Contracts
-**Status:** Pending
+**Status:** Completed
 **Phase:** 4
 **Priority:** High
 **Dependencies:** TODO-WORLD-001

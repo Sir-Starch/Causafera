@@ -75,7 +75,7 @@ The authoritative containment skeleton is implemented in `ontopolis-world` as an
 - hierarchy construction retains the explicit world seed as minimal generation provenance.
 - chunk nodes convert to and from `ChunkId` only after their structural level is validated.
 
-The hierarchy does not yet generate geography. Terrain, geological state, hydrology, climate, ecology, parcels, structures, and interiors remain empty attachment points for later phases. Political claims and causal resolution remain separate overlays.
+The hierarchy does not itself generate geography. Phase 4 terrain chunks can now attach deterministic surface fields and generation provenance to chunk coordinates through the separate `ontopolis-geography` contract. Geological state, hydrology, climate, ecology, parcels, structures, and interiors remain empty attachment points for later work. Political claims and causal resolution remain separate overlays.
 
 ## Ownership and Jurisdiction
 

@@ -141,6 +141,23 @@ This project follows a structured changelog format. Each entry includes:
 - Added 8 unit tests covering the complete hierarchy, parent/child traversal, interleaved construction order, transition validation, unknown parents, deterministic replay, chunk identity conversion, and world wrapping;
 - All 47 workspace tests pass.
 
+### Phase 4: Minimal Causal Geography
+
+#### GEO
+
+- Completed deterministic terrain generation contracts (`TODO-GEO-001`);
+- Added fixed-point `ElevationMm` and `RoughnessMm` physical values plus property-linked `MaterialId` surface identity;
+- Added dense `TerrainChunk` structure-of-arrays storage with exact surface-cell count validation and row-major access;
+- Added compact per-chunk `TerrainGenerationProvenance` containing the world seed, generation trace, generator and parameter fingerprints, and ordered causal input traces;
+- Added a batch-first `TerrainGenerator` trait and validated generation boundary that rejects output count, order, chunk identity, and provenance mismatches;
+- Accepted `RFC-GEO-001` with the minimal terrain, determinism, provenance, and primitive/emergent boundaries;
+- Did not add a terrain synthesis algorithm, geology, hydrology, climate, ecology, semantic material categories, or fictional geography.
+
+#### Testing
+
+- Added 7 unit tests covering dense field validation, row-major indexing, provenance, batch order and identity, deterministic replay, reordered output, and changed provenance.
+- All 54 workspace tests pass.
+
 ## Categories
 
 - **ARCH** - Architecture

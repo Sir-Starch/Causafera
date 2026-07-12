@@ -28,11 +28,11 @@ A foundational domain cannot enter implementation without coverage analysis.
 | Matter | Completed | Phase 2 |
 | Energy | Completed | Phase 2 |
 | Pattern / Feature | Completed | Phase 2 |
-| Geography | Pending | Phase 3-4 |
-| Geology | Pending | Phase 4 |
-| Hydrology | Pending | Phase 4 |
-| Climate | Pending | Phase 4 |
-| Ecology | Pending | Phase 4 |
+| Geography | Partial — hierarchy and terrain contracts | Phases 3-4 |
+| Geology | Pending | Future geographic work |
+| Hydrology | Pending | Future geographic work |
+| Climate | Pending | Future geographic work |
+| Ecology | Pending | Future geographic work |
 | Biology | Pending | Phase 5 |
 | Cognition | Pending | Phase 7-9 |
 | Language | Pending | Phase 10-11 |

@@ -4,15 +4,21 @@ Terrain is the physical surface of the world. It determines movement, visibility
 
 ## Terrain Representation
 
-Terrain is represented as a height field with additional surface properties:
+The Phase 4 authoritative terrain boundary is a height field with three causal properties:
 
 ```text
-TerrainPoint:
-    elevation: float
-    slope: float
-    aspect: direction
-    roughness: float
+TerrainCell:
+    elevation: signed integer millimetres
+    roughness: unsigned integer millimetres
     surface_material: MaterialId
+```
+
+Later geographic work may add derived or generated fields:
+
+```text
+DerivedOrFutureTerrainState:
+    slope: fixed-point gradient
+    aspect: physical direction
     soil_depth: float
     bedrock_depth: float
     vegetation_cover: float
@@ -68,7 +74,7 @@ Local elevation variation. Roughness determines:
 - tactical cover
 
 ### Surface Material
-The material at the surface (soil, rock, sand, etc.). Surface material determines:
+The property-defined material identity at the surface. Human categories such as soil, rock, and sand are not authoritative terrain enums. Material properties determine:
 - agricultural productivity
 - construction properties
 - water permeability
@@ -101,6 +107,8 @@ Terrain generation must be fully deterministic given:
 - generation parameters
 - chunk coordinates
 
+Generator implementations receive these values explicitly through ordered batch requests. Accepted output must preserve request order, chunk identity, and generation provenance. System time, global RNG state, locale, and thread scheduling must not affect output.
+
 ## Performance
 
 Terrain data may be large. Strategies:
@@ -109,6 +117,18 @@ Terrain data may be large. Strategies:
 - Use GPU for terrain field operations
 - Cache frequently accessed chunks
 - Compress distant or inactive terrain
+
+## Phase 4 Implementation
+
+`ontopolis-geography` now defines the terrain generation contract:
+
+- `ElevationMm`, `RoughnessMm`, and `TerrainCell` provide fixed-point physical values without semantic terrain categories.
+- `TerrainChunk` stores elevation, `MaterialId`, and roughness in three contiguous vectors using deterministic row-major indexing.
+- construction requires exactly `CHUNK_SIZE × CHUNK_SIZE` values in every field.
+- `TerrainGenerationProvenance` retains world seed, generation trace, generator and parameter fingerprints, and ordered causal input traces once per chunk.
+- `TerrainGenerator` is batch-first, and `generate_validated_batch` rejects output count, order, chunk identity, or provenance mismatches.
+
+No production terrain synthesis algorithm exists yet. Tectonics, erosion, geological layers, hydrology, climate, ecology, movement costs, visibility, persistence, and observer schemas remain outside this phase.
 
 ## Related Documents
 

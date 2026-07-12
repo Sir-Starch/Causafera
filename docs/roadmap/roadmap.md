@@ -30,11 +30,13 @@ Completed.
 
 Minimal causal geography.
 
-Next phase.
+Completed.
 
 ## Phase 5
 
 Biological structural model.
+
+Next phase.
 
 ## Phase 6
 

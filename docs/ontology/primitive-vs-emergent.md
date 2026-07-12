@@ -69,6 +69,18 @@ Generic perceptual features that extract structural patterns from raw state. The
 
 These structural levels describe objective containment only. They do not encode political regions, ownership, place names, land use, observer classifications, or causal resolution.
 
+### Terrain Primitives (Phase 4)
+
+| Primitive | Representation | Crate |
+|-----------|----------------|-------|
+| Elevation | `ElevationMm` | `ontopolis-geography` |
+| Surface roughness | `RoughnessMm` | `ontopolis-geography` |
+| Surface material identity | `MaterialId` linked to physical `Material` properties | `ontopolis-geography` / `ontopolis-types` |
+| Dense terrain surface | `TerrainChunk` structure-of-arrays fields | `ontopolis-geography` |
+| Generation provenance | `TerrainGenerationProvenance` with causal trace references | `ontopolis-geography` |
+
+These are physical quantities and identities, not landscape or material classifications. Biomes, terrain names, settlement suitability, political geography, and resource categories remain derived, observer, or agent concepts.
+
 ## Emergent Human Concepts
 
 Emergent concepts are categories created by agents or societies through perception, learning, and social transmission. They may or may not correspond to Ground Truth structure.
@@ -178,3 +190,7 @@ No semantic shortcuts were introduced. All types are property-based, not taxonom
 ## Phase 3 Spatial Skeleton Status
 
 The documented world-to-interior containment chain is implemented as validated, label-free structural state in `ontopolis-world`. The implementation retains explicit seed provenance but performs no random geographic generation.
+
+## Phase 4 Terrain Contract Status
+
+The causal terrain boundary is implemented in `ontopolis-geography` with fixed-point elevation and roughness, property-linked surface material identity, dense deterministic storage, batch generation, and per-chunk causal provenance. No terrain synthesis algorithm or semantic geographic taxonomy was introduced.
