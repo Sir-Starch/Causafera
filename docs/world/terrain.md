@@ -4,7 +4,7 @@ Terrain is the physical surface of the world. It determines movement, visibility
 
 ## Terrain Representation
 
-The Phase 4 authoritative terrain boundary is a height field with three causal properties:
+The Phase 4 authoritative terrain boundary is a chart-local 2.5D height field with three causal properties:
 
 ```text
 TerrainCell:
@@ -130,11 +130,14 @@ Terrain data may be large. Strategies:
 
 No production terrain synthesis algorithm exists yet. Tectonics, erosion, geological layers, hydrology, climate, ecology, movement costs, visibility, persistence, and observer schemas remain outside this phase.
 
+Existing `TerrainChunk` uses a bare chart-local `ChunkCoord`. Global terrain synthesis must migrate to `ChartChunkCoord` under RFC-GEO-002 before spanning chart seams. Elevation follows the local chart normal; it is not a universal Cartesian `z` coordinate.
+
 ## Related Documents
 
 - `geography-philosophy.md` — geographic causality
 - `spatial-hierarchy.md` — spatial hierarchy
 - `coordinates.md` — coordinate systems
+- `docs/rfc/RFC-GEO-002.md` — multiscale geometry and chart boundary
 - `geology.md` — geological base for terrain
 - `hydrology.md` — water drainage on terrain
 - `climate.md` — climate effects on terrain

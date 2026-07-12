@@ -1,6 +1,6 @@
 # Architecture Rebaseline Final Report
 
-> Historical audit note: this report captured readiness immediately after the cognition rebaseline. Phases 6–22 were subsequently completed on 2026-07-12; the roadmap and TODO backlog are authoritative for current status.
+> Historical audit note: this report captured readiness immediately after the cognition rebaseline. Phases 6–24 were subsequently completed on 2026-07-12; the roadmap and TODO backlog are authoritative for current status. RFC-GEO-002 later corrected a pre-existing ambiguity by separating finite charted global geography, bounded local 3D geometry, containment, and causal resolution without invalidating the completed subjective-scene boundary.
 
 ## 1. Which completed phases were audited?
 

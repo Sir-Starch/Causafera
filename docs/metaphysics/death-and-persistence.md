@@ -2,6 +2,8 @@
 
 Death is the end of biological continuity. What happens after death is a metaphysical research question, not a primitive engine feature. The project must investigate whether and how patterns associated with a living agent might persist after biological death.
 
+Phase 23 supplies only a neutral continuity-evidence framework. It does not implement post-biological survival, ghosts, reincarnation, or a death-to-pattern adapter.
+
 ## Biological Death
 
 Biological death is a physical process:

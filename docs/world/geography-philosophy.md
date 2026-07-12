@@ -47,6 +47,12 @@ World
 
 Political regions are separate from geographic regions. A kingdom may span multiple landscape regions. A single territory may contain multiple political jurisdictions.
 
+## Spatial Geometry
+
+RFC-GEO-002 separates the containment hierarchy above from physical geometry. The default world is a finite closed charted planetary surface. World-scale geography is 2.5D surface state with elevation; local causally relevant regions use bounded full 3D Euclidean frames; coarse subsurface uses layered depth and may promote to volumetric 3D.
+
+Bare Cartesian chunk coordinates are chart-local. Long-distance distance, adjacency, curvature, and chart transitions must come from the registered world-geometry schema, not integer subtraction or UI map edges.
+
 ## Deterministic Requirements
 
 Geographic generation must be deterministic given a world seed. Identical seeds must produce identical terrain, geology, and hydrology. This supports:
@@ -79,6 +85,7 @@ Geographic data may be large. The architecture must support:
 ## RFCs
 
 - `RFC-GEO-001: Minimal Causal Geological World Model`
+- `RFC-GEO-002: Multiscale World Spatial Geometry and Coordinate Model`
 - `RFC-HYDRO-001: Multi-Resolution Hydrology`
 
 ## TODO Categories

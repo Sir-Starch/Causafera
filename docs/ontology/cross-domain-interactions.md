@@ -25,6 +25,9 @@ Maintain a matrix of plausible interactions between fundamental domains.
 | Migration | Language | contact and borrowing |
 | Trade | Economy | price formation |
 | War | Technology | selective pressure |
+| Spatial geometry | Perception | physically accessible relative 3D relations |
+| Spatial geometry | Mana | local 3D pattern placement and curvature-aware propagation |
+| Spatial geometry | Causal resolution | representation promotion without topology mutation |
 
 Not every possible pair requires implementation.
 

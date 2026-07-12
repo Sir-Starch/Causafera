@@ -63,6 +63,10 @@ Benchmark results must be:
 - flagged on regression;
 - reproducible on reference hardware.
 
+## Phase 24 Executable Baseline
+
+The headless runtime and lab report wall-clock duration for bounded runs and numeric activity counts. Duration is excluded from canonical replay equality and is not a throughput or scale claim. The full benchmark matrix, RSS measurement, statistical repetition, and reference-hardware reports remain `TODO-PERF-001`.
+
 ## Reference Hardware
 
 - Linux;

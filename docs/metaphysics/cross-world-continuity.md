@@ -55,7 +55,7 @@ Problems:
 
 ## Research Status
 
-Do not select a final metaphysical model during Phase 0. These are research hypotheses to be investigated through simulation, not decided architecture.
+Phase 23 accepts a research architecture in which opaque evidence channels feed multiple explicit weighted criteria. The result remains a set of numeric criterion scores with causal traces. Transfer payload correspondence is possible evidence, not proof that one person continued. No final metaphysical model is selected.
 
 ## Related Documents
 

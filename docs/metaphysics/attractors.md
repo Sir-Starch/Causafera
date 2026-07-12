@@ -47,13 +47,19 @@ Candidate properties of attractors:
 - **Reproduction** - The pattern creates conditions for its own continuation
 - **Competition** - Multiple attractors may compete for the same resources or attention
 
+## Implemented Research Boundary
+
+Phase 23 adds bounded read-only `FieldTrajectoryObservation` and `AttractorProbe` contracts. A probe measures numeric stability and post-perturbation recovery over canonical field fingerprints and committed traces. It does not instantiate an attractor or assign agency, intention, identity, reproduction, or semantic meaning.
+
+Phase 24 runs the first replay-verified control/intervention trajectory through physical recurrence, mana evolution, and causal resolution. Trajectory divergence demonstrates causal sensitivity only; it is not proof that an attractor or being emerged.
+
 ## Attractors as Research Target
 
 Attractors are not primitive engine features. They are a research hypothesis:
 
 > Persistent distributed information and mana structures may form stable stateful attractors that exhibit properties agents interpret as divine or spiritual.
 
-This hypothesis requires investigation through simulation. Do not implement it as decided architecture.
+This hypothesis now has an executable investigation path, but remains unresolved. Do not implement it as decided ontology.
 
 ## Related Documents
 

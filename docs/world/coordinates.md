@@ -1,98 +1,70 @@
 # Coordinates
 
-Ontopolis uses a unified coordinate system that supports multiple spatial scales and reference frames.
+Ontopolis uses multiple explicit coordinate spaces. There is no single infinite Cartesian coordinate system that losslessly embeds the entire planetary world.
 
-## Coordinate System
+## Global Geometry
 
-### Global Coordinates
+The default world is a finite closed planetary surface represented by a versioned atlas of overlapping two-dimensional charts. `WorldGeometrySchemaId` identifies the registered topology, metric, curvature, chart seams, and transforms. `SpatialChartId` identifies one chart.
 
-The world uses a three-dimensional Cartesian coordinate system:
+Exact planetary shape and cross-chart transforms remain future implementation. A chart edge is not a world edge.
 
-- **Origin**: Arbitrary but deterministic point (e.g., planetary center or reference landmass corner)
-- **X axis**: Eastward
-- **Y axis**: Northward
-- **Z axis**: Upward (elevation)
+## Geographic Surface
 
-All global coordinates are deterministic given the world seed.
-
-### Chunk Coordinates
-
-Spatial chunks use integer grid coordinates:
+World-scale geography is a fixed-point 2.5D representation:
 
 ```text
-chunk_x = floor(world_x / chunk_size)
-chunk_y = floor(world_y / chunk_size)
+SurfacePositionMm {
+    chart,
+    u_mm,
+    v_mm,
+    elevation_mm,
+}
 ```
 
-Chunk coordinates support efficient spatial indexing and neighbor lookup.
+`u/v` are chart coordinates; elevation follows the chart's local outward normal. Terrain is a chart-local two-dimensional height field. `ChartChunkCoord` qualifies a chunk so bare chunk coordinates are never compared across charts.
 
-### Local Coordinates
+## Local Physical Space
 
-Within a chunk, local coordinates range from [0, chunk_size) in X and Y. Local coordinates support fine-grained positioning without large integer values.
-
-### Elevation
-
-Elevation (Z) is stored as a continuous value relative to a local reference surface (e.g., mean sea level or local terrain baseline). Elevation supports:
-
-- terrain height
-- underground depth
-- structure height
-- water table depth
-
-## Coordinate Types
+Local physics is fully three-dimensional and Euclidean:
 
 ```text
-WorldCoord    — global 3D position
-ChunkCoord    — integer chunk grid position
-LocalCoord    — position within a chunk
-ParcelCoord   — position within a parcel boundary
-StructureCoord — position within a structure
-InteriorCoord  — position within an interior space
+LocalPointMm {
+    frame,
+    x_mm,
+    y_mm,
+    z_mm,
+}
 ```
 
-## Conversion
+Within `LocalMetricFrame`, `x/y` follow surface tangents and `z` follows the local normal. Positive `z` is locally upward; negative `z` may describe subsurface depth. A frame is bounded so planetary curvature cannot be ignored over arbitrary distance.
 
-Coordinate conversion must be deterministic and lossless where possible:
+Phase 23 implements exact integer translation between a local point and its anchoring surface chart within that bound. Cross-chart and curvature-aware transforms require the geometry-schema implementation.
+
+## Legacy Lattice Types
+
+`WorldCoord`, `ChunkCoord`, and `LocalCoord` predate the geometry RFC. They are now explicitly chart-local Cartesian lattice types:
 
 ```text
-WorldCoord → ChunkCoord + LocalCoord
-WorldCoord → ParcelCoord (via parcel boundary lookup)
-WorldCoord → StructureCoord (via structure occupancy)
+WorldCoord ↔ ChunkCoord + LocalCoord
 ```
 
-## Spatial Indexing
+The conversion is deterministic and lossless within one chart lattice. Despite its historical name, `WorldCoord` is not a global planetary embedding. New global geographic state must carry `SpatialChartId` or `ChartChunkCoord`.
 
-The coordinate system supports spatial indexing structures:
+## Structures, Interiors, and Bodies
 
-- Chunk hash maps for O(1) chunk lookup
-- Spatial trees for range queries
-- Neighbor iteration for local operations
+Parcel, structure, interior, body, and object coordinates use their own local frames and explicit transforms. Containment alone does not define shape, pose, or metric geometry. Rendering coordinates are derived observer state and never authoritative.
 
-## Determinism
+## Precision and Determinism
 
-Coordinate operations must be deterministic:
+Surface/local metric boundaries use signed integer millimetres. Dense domain grids may use coarser cells only with an explicit metric scale. No hidden floating-point rounding, modulo wrapping, clamping, locale, or rendering transform may affect authoritative state.
 
-- Conversion between coordinate types must yield identical results across platforms
-- Floating-point operations must use defined rounding behavior
-- Spatial hashing must use deterministic hash functions
+## Resolution
 
-## Performance
-
-Coordinate representation must be compact:
-
-- Chunk coordinates: 32-bit integers
-- Local coordinates: 16-bit or 32-bit fixed point
-- Elevation: 32-bit floating point
-
-Hot paths should avoid coordinate conversion where possible.
+Causal resolution may promote a surface region, underground feature, structure, or interior to explicit local volumetric 3D. Demotion must preserve conserved state and provenance. Resolution changes representation detail, not topology or physical distance.
 
 ## Related Documents
 
-- `spatial-hierarchy.md` — spatial unit hierarchy
-- `terrain.md` — terrain elevation representation
-- `world-generation-provenance.md` — coordinate provenance
-
-## TODO Categories
-
-- `COORD` — coordinate systems
-- `WORLD` — general world systems
+- `docs/rfc/RFC-GEO-002.md` — accepted spatial geometry model
+- `spatial-hierarchy.md` — containment, not geometry
+- `terrain.md` — 2.5D surface state
+- `geology.md` — layered subsurface state

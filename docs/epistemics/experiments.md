@@ -51,6 +51,10 @@ In a mana-sensitive world, experiments may have unintended magical consequences:
 - Laboratory spaces accumulate mana from repeated similar practices
 - Measurement rituals become magically relevant
 
+## Phase 24 Developer Experiments
+
+The first developer-facing laboratory is intentionally distinct from simulated social science. It executes strict deterministic control and physical-intervention trajectories over the causal runtime, records bounded checkpoints, verifies exact replay, and retains Ground Truth provenance. These developer experiments do not grant simulated agents experimental knowledge or institutions.
+
 ## Related Documents
 
 - `docs/epistemics/replication.md` - Verifying experimental results

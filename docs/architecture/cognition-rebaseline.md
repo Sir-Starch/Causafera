@@ -254,6 +254,8 @@ The kernel supports transient per-agent active state through the existing `Syste
 
 `SpatialHierarchy` uses authoritative `PlaceId` and `ChunkId`. This is correct for Ground Truth. Future cognition must not consume these IDs directly as subjective location knowledge. The architecture permits this separation because the spatial types are clearly authoritative and the cognition crate does not currently import them.
 
+RFC-GEO-002 later clarifies that the hierarchy is containment, not geometry, and that bare chunks are local-chart addresses. Future spatial cues must derive through physical access from bounded local 3D relations and then be mapped into agent-relative subjective signatures. `SpatialChartId`, `LocalFrameId`, global coordinates, exact distances, and authoritative poses must not enter a subjective scene as hidden knowledge.
+
 ### Phase 4: Causal Geography
 
 Geography exposes physical state through property-based contracts (`ElevationMm`, `MaterialId`, `RoughnessMm`). No subjective geographic knowledge is embedded in authoritative geography. No changes required.
@@ -315,7 +317,8 @@ Later documents supersede conflicting initialization-spec sections **only when t
 
 ## Related Documents
 
-- `docs/architecture/invariants.md` — hard invariants including INV-027 through INV-035
+- `docs/architecture/invariants.md` — hard invariants including INV-027 through INV-037
+- `docs/rfc/RFC-GEO-002.md` — multiscale Ground Truth geometry feeding future subjective spatial cues
 - `docs/rfc/RFC-COG-001.md` — accepted architecture for the subjective scene and cognitive continuity model
 - `docs/rfc/RFC-SCENE-001.md` — accepted concrete Phase 9–10 layout
 - `docs/roadmap/roadmap.md` — updated phase sequence

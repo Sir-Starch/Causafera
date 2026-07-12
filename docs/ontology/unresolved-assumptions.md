@@ -6,7 +6,7 @@ Ontopolis contains deliberate research hypotheses and explicitly unresolved ques
 
 ### Identity and persistence
 
-The physical basis of identity persistence, death, reincarnation, ghosts, and cross-world memory remains unresolved. Do not use a primitive `Soul` object without an accepted RFC.
+RFC-META-001 now settles the neutral research boundary: bounded trace-backed observations are evaluated independently under explicit opaque weighted criteria and never produce an authoritative same-person verdict. The physical basis of identity persistence, death, reincarnation, ghosts, and cross-world memory remains unresolved. Do not use a primitive `Soul` object.
 
 See `RFC-META-001: Identity and Post-Biological Pattern Persistence`.
 
@@ -14,7 +14,7 @@ See `RFC-META-001: Identity and Post-Biological Pattern Persistence`.
 
 Gods and spirits are target emergent phenomena. The hypothesis is that persistent distributed information and mana structures may form stable stateful attractors. A religious system produces repeated names, symbols, synchronized practices, architecture, calendars, and recurring behavioural structures. These patterns may create a stable mana attractor which eventually exhibits state persistence and responsive behaviour.
 
-This is a research hypothesis. Do not implement it as decided architecture.
+RFC-META-002 now supplies bounded read-only field-trajectory stability and perturbation-recovery probes. This remains a research hypothesis: numeric trajectory evidence does not instantiate or prove a god, spirit, artifact, agency, or attractor entity.
 
 See `RFC-META-002: Stateful Mana Attractors`.
 
@@ -23,6 +23,12 @@ See `RFC-META-002: Stateful Mana Attractors`.
 Artifact formation is a research target. The candidate process involves material objects, persistent repeated use, stable physical patterns, local mana coupling, and historical persistence. A bell used at the same time for centuries may develop persistent coupling. A currency token repeatedly exchanged through millions of social transactions may develop unusual effects.
 
 No `EnchantItem` action exists in the engine.
+
+## Spatial Geometry
+
+RFC-GEO-002 settles the dimensional boundary: the default world is a finite closed charted planetary surface; global geography is fixed-point 2.5D; coarse subsurface is layered; local physical frames are full bounded Euclidean 3D; causally relevant subsurface/structures may promote to volumetric 3D. Geometry, containment, jurisdiction, rendering, and causal resolution are separate.
+
+The concrete planetary metric and shape, atlas generation, curvature-aware cross-chart transforms, geodesics, horizon, chart-qualified migration of existing terrain/mana/resolution state, and conservation-safe volumetric promotion/demotion remain unresolved. Bare `WorldCoord`/`ChunkCoord` values are local-chart lattice addresses and must not be treated as a global planetary embedding.
 
 ## Isekai Transfer
 

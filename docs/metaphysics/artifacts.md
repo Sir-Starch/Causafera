@@ -70,7 +70,7 @@ Candidate artifact properties:
 
 ## Research Status
 
-Artifact formation is a research target. Do not implement it as decided architecture.
+Artifact formation remains a research target. Phase 23 probes can inspect field persistence but do not classify objects as artifacts or implement enchantment, field-to-matter effects, or object-use adapters.
 
 ## Related Documents
 

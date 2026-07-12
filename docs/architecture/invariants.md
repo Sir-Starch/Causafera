@@ -143,3 +143,11 @@ Biological Ground Truth contains structural and physiological state. Cognition r
 ## INV-035: Prediction error is a first-class cognitive driver
 
 Prediction error may affect attention, salience, memory encoding, concept revision, and causal inference. The architecture must treat prediction-surprise as a signal that propagates through cognitive systems, not as a cosmetic annotation.
+
+## INV-036: Spatial coordinate scope is explicit
+
+Local physical space is three-dimensional. Global geography is a charted planetary surface with elevation and selective local volumetric detail. Bare local Cartesian or chunk coordinates must never be treated as a unique global planetary embedding. Chart seams, frame bounds, curvature, and coordinate transforms are explicit physical contracts.
+
+## INV-037: Geometry is not containment or resolution
+
+Containment, physical geometry, ownership/jurisdiction, rendering, and causal resolution are structurally separate. A hierarchy edge does not define shape or distance. A resolution transition may change representation detail but cannot alter topology, metric distance, geometric adjacency, or physical extent without a committed physical process.

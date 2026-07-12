@@ -54,6 +54,8 @@ Phenomenon evaluation should be applied to:
 
 Create a future `phenomenon miner` research task that automatically searches simulation history for high-scoring emergent phenomena.
 
+Phase 24 records canonical checkpoints, activity counts, causal trace counts, and read-only field stability/recovery evidence. This is an experimental substrate, not completion of `TODO-ANALYTICS-001`: causal depth, domain coupling, path dependence, counterfactual sensitivity, and subjective divergence still require Explanation IR and dedicated analytics.
+
 ## Related Documents
 
 - `docs/vision/isekai-targets.md` - Target emergent phenomena

@@ -24,6 +24,8 @@ Evolution produces replacement-state proposals and changed-cell records. It does
 
 Fields are chunk-local causal state, so terrain, geology, hydrology, climate, ecology, and construction can later alter sample production or field parameters. Phase 17 does not invent those couplings. Cross-chunk boundary exchange is also deferred.
 
+RFC-GEO-002 classifies the current cubic field as bounded local Euclidean 3D inside one surface chart. Bare `ChunkCoord` is not a global planetary position. Cross-chart diffusion requires curvature-aware registered transforms. Future density, phase, spectral, or persistence components would add field-state dimensions, not extra spatial dimensions.
+
 ## Determinism and performance
 
 All hot arithmetic is fixed-point integer arithmetic; sample and cell traversal is canonical. Field volume and input batches have public hard bounds. The dense CPU implementation makes no scale claim. Sparse and accelerated alternatives require benchmarks and bit-identical validation.
@@ -38,3 +40,4 @@ Field-to-matter effects, interference phase state, hysteresis, long-lived attrac
 - `docs/vision/project-thesis.md`
 - `docs/architecture/provenance.md`
 - `docs/ontology/causal-carriers.md`
+- `docs/rfc/RFC-GEO-002.md`

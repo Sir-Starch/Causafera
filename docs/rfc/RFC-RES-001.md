@@ -30,6 +30,8 @@ Evaluation is pure and proposal-only. Commit requires exactly one new trace for 
 
 The field says how much causal detail a chunk should receive; it does not define how terrain, biology, populations, language, mana, or future organizations aggregate. Each domain needs conservation, provenance, promotion, and demotion contracts before consuming levels. Phase 18 does not destroy detailed state or synthesize individuals from aggregates.
 
+RFC-GEO-002 further separates resolution from geometry: a level may trigger future promotion from a 2.5D surface/layer representation to bounded local volumetric 3D, but it cannot change topology, curvature, physical distance, or chart adjacency. Existing bare chunk keys are local-chart identities pending a chart-qualified migration.
+
 ## Determinism and performance
 
 The reducer uses no randomness, floats, strings, locale, system time, hash iteration, or pointer ordering. Entries and policies are canonically sorted; arithmetic is integer, saturating, and bounded. Entries, channels, and signal batches have hard caps. This is a CPU reference baseline with no scale claim.

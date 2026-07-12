@@ -463,32 +463,46 @@
 **Out of Scope:** Final metaphysical model
 
 ## TODO-META-001: Identity Persistence Research
-**Status:** Pending
+**Status:** Completed
 **Phase:** 23
 **Priority:** Low
 **Dependencies:** TODO-ISEKAI-001
-**Goal:** RFC acceptance
-**Acceptance Criteria:** RFC approved, research architecture defined
-**Performance Requirements:** N/A
-**Determinism Requirements:** N/A
+**Goal:** RFC acceptance and neutral research contracts
+**Acceptance Criteria:** RFC approved; bounded trace-backed observations; multiple opaque weighted criteria; no authoritative identity verdict
+**Performance Requirements:** Bounded observation, channel, and criterion counts
+**Determinism Requirements:** Canonical fixed-point evaluation
 **Ontology Implications:** No primitive Soul object
 **Observer Implications:** N/A
 **Explanation Implications:** Explains identity concepts
-**Out of Scope:** Full implementation
+**Out of Scope:** Final identity metaphysics, Soul objects, concrete death/transfer evidence adapters
 
 ## TODO-META-002: Stateful Mana Attractors
-**Status:** Pending
+**Status:** Completed
 **Phase:** 23
 **Priority:** Low
 **Dependencies:** TODO-META-001
-**Goal:** RFC acceptance
-**Acceptance Criteria:** RFC approved, attractor hypothesis documented
-**Performance Requirements:** N/A
-**Determinism Requirements:** N/A
+**Goal:** RFC acceptance and read-only trajectory research contracts
+**Acceptance Criteria:** RFC approved; bounded field observations; numeric stability and recovery evidence; no semantic attractor entity
+**Performance Requirements:** Bounded checkpoint and observation counts
+**Determinism Requirements:** Canonical integer probe evaluation; wall time excluded
 **Ontology Implications:** Gods are emergent, not primitive
 **Observer Implications:** N/A
 **Explanation Implications:** Explains religious phenomena causally
-**Out of Scope:** Full implementation
+**Out of Scope:** Gods, spirits, artifacts, agency, field-to-matter effects, final attractor criteria
+
+## TODO-LAB-001: Executable Long-Run Causal Experiment
+**Status:** Completed
+**Phase:** 24
+**Priority:** High
+**Dependencies:** TODO-MANA-001, TODO-RES-001, TODO-TRACE-001, TODO-META-002
+**Goal:** Run a real bounded headless simulation and strict control/intervention experiment
+**Acceptance Criteria:** Runtime commits physical → mana → resolution transitions; errors return from tick; canonical state digest replays exactly; CLI run/lab commands execute; intervention changes trajectory
+**Performance Requirements:** Bounded field and checkpoints; report measurement without scale claim
+**Determinism Requirements:** Same seed and plan produce identical checkpoints and final state digest
+**Ontology Implications:** Experiment labels are non-authoritative; trajectory evidence is not an emergence verdict
+**Observer Implications:** CLI diagnostic only; observer protocol unchanged
+**Explanation Implications:** Numeric evidence and causal traces available; Phase 25 still required
+**Out of Scope:** Fake populations/history, full phenomenon miner, persistence, observer streaming, scale claims
 
 ## TODO-EXPLAIN-001: Explanation IR
 **Status:** Pending
@@ -671,6 +685,20 @@
 **Observer Implications:** Exposes material origins
 **Explanation Implications:** Explains artifact composition
 **Out of Scope:** Full trade chain simulation
+
+## TODO-GEO-003: Multiscale World Spatial Geometry
+**Status:** Completed
+**Phase:** Foundational correction completed with Phase 24
+**Priority:** High
+**Dependencies:** TODO-COORD-001, TODO-WORLD-001, TODO-GEO-001
+**Goal:** Separate global topology, local geometry, geographic surface, containment, and causal resolution
+**Acceptance Criteria:** RFC-GEO-002 accepted; finite closed charted default surface; fixed-point 2.5D geography; bounded full local 3D; explicit chart/frame types and tested transforms
+**Performance Requirements:** No planet-wide millimetre voxel grid; local volume allocated selectively
+**Determinism Requirements:** Integer coordinates, explicit chart/frame identities, bounded exact local transforms
+**Ontology Implications:** Geometry is physical state; containment and jurisdiction remain separate
+**Observer Implications:** Rendering coordinates remain derived and non-authoritative
+**Explanation Implications:** Future spatial explanations must cite geometry and containment separately
+**Out of Scope:** Concrete planet metric, atlas generation, cross-chart geodesics, migration of every bare chunk, volumetric promotion/demotion
 
 ## TODO-BIO-002: Pathogen Model
 **Status:** Completed

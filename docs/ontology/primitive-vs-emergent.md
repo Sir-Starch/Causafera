@@ -253,3 +253,15 @@ Spells, rituals, mana schools or types, sacredness, enchantment, skills, levels,
 `ontopolis-isekai` stores bounded transfer plans and receipts, opaque mechanism schemas, objective payload/property fingerprints, target places, imported subjective patterns, prerequisite IDs, and causal traces. Physical transport, copying, reincarnation, souls, personal continuity, truth, technology, capability, hero status, and social meaning are not primitive variants. Capability is established only from separate local evidence, never inferred from imported knowledge.
 
 Receipts demonstrate orchestration-level causal continuity but do not authorize mutation or make endpoint plausibility primitive. Concrete domain adapters and their committed event traces remain responsible for objective history.
+
+## Phases 23–24 Research and Runtime Status
+
+`ontopolis-metaphysics` stores opaque identity evidence channels, explicit weighted criteria, numeric field trajectory observations, and stability/recovery evidence. These are research bookkeeping. Personal sameness, souls, ghosts, reincarnation, attractors as entities, gods, spirits, artifacts, agency, intention, and sacredness remain unresolved or emergent interpretations.
+
+`ontopolis-runtime` executes a bounded physical recurrence → mana → resolution chain with proposal/commit provenance. `ontopolis-lab` records canonical checkpoints and compares control/intervention trajectories. A different state digest is a primitive fact about two runs; “emergence occurred” is not.
+
+## Multiscale Spatial Geometry Status
+
+RFC-GEO-002 makes a finite closed charted surface, fixed-point elevation/depth, local Euclidean 3D frames, explicit bounds, and chart/frame identity physical primitives. Exact planet shape is a registered geometry-schema implementation. Containment levels, ownership, jurisdiction, named places, rooms by purpose, map projection, and observer rendering remain separate or emergent.
+
+Mana field components are physical state dimensions. They are not additional spatial dimensions.

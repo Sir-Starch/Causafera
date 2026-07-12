@@ -1,6 +1,6 @@
 # Identity
 
-Identity is the property by which an entity remains the same entity over time despite change. In Ontopolis, identity is a research question, not a primitive engine feature. The project must explicitly investigate what identity persistence means in a world with cross-world transfer, reincarnation-like phenomena, and mana-sensitive substrates.
+Identity is the property by which an entity remains the same entity over time despite change. In Ontopolis, identity is a research question, not a primitive engine feature. Phase 23 implements a criterion-comparison research boundary without selecting a final answer.
 
 ## No Primitive Soul Object
 
@@ -27,6 +27,12 @@ Candidate approaches for investigation:
 - **Causal chain** - Identity is a particular causal thread through the history of the world
 
 These are research hypotheses, not decided architecture.
+
+## Implemented Research Boundary
+
+`ontopolis-metaphysics::IdentityContinuityExperiment` stores bounded trace-backed observations over opaque evidence channels. Explicit `ContinuityCriterion` values may weight the same observations differently. Evaluation returns separate fixed-point scores and supporting traces, never an authoritative same-person boolean.
+
+The records contain no `AgentId`, `SoulId`, English continuity category, or agent belief. Concrete evidence adapters remain future research.
 
 ## Identity and Change
 

@@ -10,5 +10,7 @@ rust-version.workspace = true
 ontopolis-types = { workspace = true }
 ontopolis-core = { workspace = true }
 ontopolis-runtime = { workspace = true }
+ontopolis-metaphysics = { workspace = true }
+thiserror = { workspace = true }
 
 [dev-dependencies]

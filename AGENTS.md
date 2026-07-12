@@ -41,6 +41,13 @@ When working on cognition-related code (attention, memory, concepts, beliefs, la
 - Persistent autobiographical memory and active working context are distinct. Do not equate stored memory with currently active cognition. See `docs/architecture/invariants.md` INV-032.
 - Semantic situation enums (e.g., `AnxietySituation`, `CombatSituation`) must not replace subjective scene construction. Situations emerge from lower-level cognitive processes. See `docs/rfc/RFC-COG-001.md`.
 
+## Spatial Architecture Constraints
+
+- Local physical space is full bounded 3D; global geography is a finite charted 2.5D planetary surface with selective volumetric 3D. See `docs/rfc/RFC-GEO-002.md` and INV-036.
+- `WorldCoord` and bare `ChunkCoord` are local-chart lattice addresses, not unique global planetary coordinates. Global geography must carry chart identity or use registered transforms.
+- Spatial containment does not define geometry, adjacency, metric distance, ownership, or jurisdiction. Causal resolution may change detail but not topology or geometry. See INV-037.
+- Future subjective spatial relations must be derived from physically accessible local geometry and mapped to relative agent-local cues; do not place chart/frame/place IDs or exact authoritative poses in cognition.
+
 ## What Not To Do
 
 - Do not implement hunger systems, random jobs, fake cities, fake languages, or placeholder magical schools.

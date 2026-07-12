@@ -3,11 +3,11 @@ use serde::{Deserialize, Serialize};
 /// Size of a chunk in each dimension.
 pub const CHUNK_SIZE: u8 = 32;
 
-/// Global world coordinates.
+/// Legacy local Cartesian lattice coordinates within one spatial chart.
 ///
-/// These are absolute integer coordinates with no chunk boundaries.
-/// The origin `(0, 0, 0)` is an arbitrary reference point chosen at
-/// world generation time.
+/// Despite the historical name, this is not a unique embedding of an entire
+/// planetary surface. Global geography must pair chart-local coordinates with
+/// a [`crate::SpatialChartId`] or use the geometry contracts in `geometry`.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct WorldCoord {
     pub x: i64,
@@ -70,10 +70,11 @@ impl std::fmt::Display for WorldCoord {
     }
 }
 
-/// Chunk coordinates.
+/// Chart-local three-dimensional chunk coordinates.
 ///
 /// Each chunk is a `CHUNK_SIZE`³ cube of world space. Chunk coordinates
-/// identify which cube a position falls into.
+/// identify which cube a position falls into. They cannot be compared across
+/// global surface charts without an explicit chart transform.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct ChunkCoord {
     pub x: i32,

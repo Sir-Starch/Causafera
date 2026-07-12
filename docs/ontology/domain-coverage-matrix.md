@@ -28,6 +28,7 @@ A foundational domain cannot enter implementation without coverage analysis.
 | Matter | Completed | Phase 2 |
 | Energy | Completed | Phase 2 |
 | Pattern / Feature | Completed | Phase 2 |
+| Spatial geometry | Partial — finite closed charted surface contract, fixed-point surface/local coordinates, bounded local 3D transforms | Foundational correction with Phase 24; concrete planet metric, atlas transforms, and domain migration remain future work |
 | Geography | Partial — hierarchy and terrain contracts | Phases 3-4 |
 | Geology | Pending | Future geographic work |
 | Hydrology | Pending | Future geographic work |
@@ -46,4 +47,5 @@ A foundational domain cannot enter implementation without coverage analysis.
 | Epistemics | Partial — socially constructed fixed-point units, bounded calibration ancestry, accessible-observation measurement, and physical document copying | Phase 16; instruments, experiments, replication, and institutions remain future work |
 | Practice | Partial — bounded programs, proposal-only execution, structural mutation, and lineage | Phase 15; embodied execution, diffusion, roles, resources, and institutions remain future work |
 | Isekai | Partial — bounded opaque transfer plans/receipts, objective payload correspondence, imported subjective priors, and independent capability evidence | Phase 22; concrete transfer physics, cognition integration, translation, persistence, and observer projection remain future work |
-| Metaphysics | Pending | Phase 23 |
+| Metaphysics | Partial — neutral identity-criterion evaluation and read-only field trajectory stability/recovery probes | Phase 23; final identity and attractor hypotheses remain unresolved |
+| Simulation runtime | Partial — executable physical recurrence → mana → resolution loop, provenance, canonical digest, strict replay, and control/intervention laboratory | Phase 24; full populated cross-domain world, persistence, analytics, and observer integration remain future work |

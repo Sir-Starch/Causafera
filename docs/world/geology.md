@@ -4,7 +4,7 @@ Geology is the foundation of the physical world. It determines terrain, material
 
 ## Geological Representation
 
-Geology is represented as a three-dimensional structure:
+Coarse world-scale geology is represented as surface-indexed depth layers, not a planet-wide dense voxel grid:
 
 ```text
 GeologicalColumn:
@@ -14,6 +14,8 @@ GeologicalColumn:
     fault_lines: [FaultLine]
     aquifer_properties: AquiferProperties
 ```
+
+Causally relevant caves, mines, faults, aquifers, and excavations may promote to bounded local volumetric 3D frames. Promotion/demotion must preserve material quantities, formation ancestry, and causal traces. The adapters are not implemented yet.
 
 ### Rock Layer
 

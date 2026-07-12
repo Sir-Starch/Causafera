@@ -168,6 +168,22 @@ This project follows a structured changelog format. Each entry includes:
 - **EPI** — Added independent practice/material/resource/measurement evidence and explicit gap assessment so imported knowledge never unlocks capability.
 - **ARCH** — Completed Phase 22; Phase 23 identity-persistence and attractor research remains separate.
 
+### Foundational Spatial Geometry Correction
+
+- **GEO** — Accepted RFC-GEO-002 and completed TODO-GEO-003, replacing the implicit infinite-global-Cartesian assumption with a finite closed charted planetary surface, fixed-point 2.5D geography, layered subsurface, and bounded full local 3D.
+- **CORE** — Added opaque world-geometry/chart/frame IDs, chart-qualified surface/chunk addresses, and exact bounded fixed-point local-frame transforms including negative depth.
+- **ONTO** — Explicitly separated geometry from containment, jurisdiction, rendering, and causal resolution; reclassified legacy `WorldCoord`/`ChunkCoord` as chart-local lattice addresses.
+- **MANA** — Clarified that the Phase 24 mana cube occupies local physical 3D and that future multi-component mana state does not imply extra spatial dimensions.
+
+### Phases 23–24: Metaphysical Research and Executable Long-Run Experiments
+
+- **META** — Accepted RFC-META-001/002 and completed TODO-META-001/002 with bounded trace-backed identity evidence, competing opaque criteria, and read-only numeric field stability/recovery probes.
+- **CORE** — Implemented a fallible deterministic headless runtime integrating physical recurrence, Ground Truth provenance, fixed-point mana proposals/commits, and trace-backed causal resolution.
+- **LAB** — Completed TODO-LAB-001 with bounded checkpoints, canonical state fingerprints, exact same-seed replay, control/intervention trajectory comparison, and measured wall time excluded from authoritative equality.
+- **CLI** — Replaced placeholder `doctor`, `run`, and `lab` output with actual replay validation and executable simulation/experiment commands.
+- **ONTO** — Added no soul, same-person truth flag, attractor being, god, spirit, artifact, fake resident, city, history, or semantic physical-event enum; trajectory divergence remains evidence, not an emergence claim.
+- **ARCH** — Completed Phases 23–24; Phase 25 Explanation Engine expansion is next.
+
 ## Categories
 
 - **ARCH** - Architecture

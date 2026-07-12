@@ -144,17 +144,23 @@ Completed.
 
 Metaphysical experiments and attractors.
 
-Next phase.
+Completed.
 
 ## Phase 24
 
 Long-run emergence experiments.
+
+Completed. The delivered scope is a replay-verified bounded causal field experiment and does not claim that semantic phenomena emerged.
+
+RFC-GEO-002 and `TODO-GEO-003` were completed as a foundational correction discovered before final Phase 24 verification: local physics is full 3D, global geography is a finite charted 2.5D planetary surface with selective volumetric 3D, and containment remains separate from geometry.
 
 ## Phase 25
 
 Explanation Engine expansion.
 
 A minimal Explanation IR may exist earlier for developer inspection.
+
+Next phase.
 
 ## Phase 26
 

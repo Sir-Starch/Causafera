@@ -24,5 +24,6 @@ ontopolis-analytics = { workspace = true }
 ontopolis-explanation = { workspace = true }
 ontopolis-observer-api = { workspace = true }
 ontopolis-observer-wire = { workspace = true }
+thiserror = { workspace = true }
 
 [dev-dependencies]

@@ -14,6 +14,8 @@ Terrain must affect later simulation through physical quantities rather than nar
 
 ### Authoritative Terrain State
 
+RFC-GEO-002 subsequently clarifies that each terrain grid is chart-local surface state. Bare `ChunkCoord` is not a unique global planetary address; future global terrain uses `ChartChunkCoord` and registered chart transforms.
+
 Each chunk surface contains a dense `CHUNK_SIZE × CHUNK_SIZE` grid with three Phase 4 fields:
 
 - absolute elevation in signed integer millimetres;

@@ -46,9 +46,7 @@ A ritual may work not because the god exists as described but because the ritual
 
 ## Research Status
 
-This is a research hypothesis. Do not implement it as decided architecture.
-
-Create `RFC-META-002: Stateful Mana Attractors` for investigation.
+RFC-META-002 is accepted as a read-only numeric research architecture. It deliberately creates no god or spirit entity and makes no emergence claim. Gods and spirits remain possible agent/observer interpretations of future evidence, not Ground Truth categories.
 
 ## Related Documents
 

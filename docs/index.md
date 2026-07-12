@@ -143,6 +143,7 @@ Later documents supersede conflicting initialization-spec sections **only when t
 - `docs/simulation/emergent-concepts.md` - Emergent concepts
 - `docs/simulation/technology-and-invention.md` - Technology and invention
 - `docs/simulation/maintenance.md` - Maintenance
+- `docs/simulation/long-run-experiments.md` - Executable deterministic long-run experiments
 
 ## City
 
@@ -222,6 +223,9 @@ Later documents supersede conflicting initialization-spec sections **only when t
 - `docs/rfc/RFC-CITY-001.md` - Physical Urban Infrastructure Foundation
 - `docs/rfc/RFC-HIST-001.md` - Causal Historical Bootstrap Orchestration
 - `docs/rfc/RFC-ISEKAI-001.md` - Cross-World Transfer and Imported Priors
+- `docs/rfc/RFC-META-001.md` - Identity and Post-Biological Pattern Persistence Research
+- `docs/rfc/RFC-META-002.md` - Stateful Mana Attractor Research
+- `docs/rfc/RFC-GEO-002.md` - Multiscale World Spatial Geometry and Coordinate Model
 
 ## ADRs
 

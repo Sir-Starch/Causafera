@@ -71,6 +71,8 @@ Subjective concept formation may later group similar features into agent-specifi
 
 Generic features are not a complete world model. The Phase 9 bridge must strip extractor bookkeeping and construct identity-free `PerceptualCue` records. Agent cognition then builds a transient, agent-specific `SubjectiveScene` before concept formation or belief construction. The cue must not copy `Feature.target_id`, `FeatureId`, or causal `TraceId` into cognition. See `docs/architecture/cognition-rebaseline.md` and `docs/rfc/RFC-SCENE-001.md`.
 
+Future spatial relations are extracted from physically accessible bounded local 3D geometry under RFC-GEO-002. They must become relative/quantized subjective cues; cognition may not receive `SpatialChartId`, `LocalFrameId`, `PlaceId`, exact authoritative pose, or a global map coordinate as perceived knowledge.
+
 ## Related Documents
 
 - `docs/simulation/emergent-concepts.md` - How agents form concepts from perceived features

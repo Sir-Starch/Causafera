@@ -1,6 +1,6 @@
 # Spatial Hierarchy
 
-Ontopolis organizes space into a nested hierarchy that separates geographic, political, and administrative regions.
+Ontopolis organizes places into a nested containment hierarchy. This hierarchy is not a geometric embedding, metric, boundary model, or ownership system.
 
 ## Geographic Hierarchy
 
@@ -17,7 +17,7 @@ World
 ```
 
 ### World
-The entire simulated planet or plane. Contains global parameters such as orbital characteristics, axial tilt, and global mana field properties.
+The entire simulated world container. The default physical topology is a finite closed charted planetary surface under RFC-GEO-002; its geometry is stored separately from containment.
 
 ### Landmass
 A continent, island, or other major division of exposed crust. Landmasses have distinct geological histories and may be separated by ocean.
@@ -65,7 +65,9 @@ The field establishes the decision contract but does not yet aggregate domain st
 
 ## Coordinate Addressing
 
-Every spatial unit has a canonical coordinate address. See `coordinates.md` for the coordinate system specification.
+Containment identity does not itself provide a coordinate address. A domain adapter may associate a `PlaceId` with chart-qualified surface extent, a bounded local 3D frame, connectivity, or other geometry. See `coordinates.md` and RFC-GEO-002.
+
+Two contained places need not be geometrically adjacent. Two geometrically overlapping extents need not share a parent, owner, or jurisdiction. Geometry and containment must never be inferred from one another without an explicit validated relation.
 
 ## Phase 3 Implementation
 
@@ -94,6 +96,7 @@ These claims may conflict. The simulation must represent conflict, not resolve i
 
 - `geography-philosophy.md` — geographic causality principles
 - `coordinates.md` — coordinate systems
+- `docs/rfc/RFC-GEO-002.md` — global topology and multiscale geometry
 - `terrain.md` — terrain representation
 - `world-generation-provenance.md` — generation provenance
 
