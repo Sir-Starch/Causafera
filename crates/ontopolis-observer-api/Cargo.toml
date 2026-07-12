@@ -1,0 +1,13 @@
+[package]
+name = "ontopolis-observer-api"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+ontopolis-types = { workspace = true }
+serde = { workspace = true }
+
+[dev-dependencies]

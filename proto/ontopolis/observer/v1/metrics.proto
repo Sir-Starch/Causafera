@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+package ontopolis.observer.v1;
+
+import "ontopolis/observer/v1/common.proto";
+
+// Performance metrics.
+message PerformanceMetrics {
+    double ticks_per_second = 1;
+    uint64 active_updates = 2;
+    uint64 peak_rss_mb = 3;
+}

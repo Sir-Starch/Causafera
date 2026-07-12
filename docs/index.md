@@ -1,0 +1,203 @@
+# Ontopolis Documentation Index
+
+## Vision
+
+- `docs/vision/project-thesis.md` - Central project thesis and mana semantics
+- `docs/vision/core-loop.md` - Fundamental causal loop
+- `docs/vision/isekai-targets.md` - Target emergent phenomena
+- `docs/vision/uniqueness.md` - What distinguishes Ontopolis
+
+## Ontology
+
+- `docs/ontology/world-ontology.md` - World ontology overview
+- `docs/ontology/domain-coverage-matrix.md` - Domain coverage analysis
+- `docs/ontology/causal-carriers.md` - Causal carrier documentation
+- `docs/ontology/lifecycle-audit.md` - Entity lifecycle audit framework
+- `docs/ontology/cross-domain-interactions.md` - Cross-domain interaction matrix
+- `docs/ontology/primitive-vs-emergent.md` - Primitive vs emergent distinction
+- `docs/ontology/unresolved-assumptions.md` - Unresolved assumptions
+
+## Architecture
+
+- `docs/architecture/invariants.md` - Hard invariants
+- `docs/architecture/performance.md` - Performance philosophy
+- `docs/architecture/determinism.md` - Determinism requirements
+- `docs/architecture/data-oriented.md` - Data-oriented storage
+- `docs/architecture/observer.md` - Observer architecture
+- `docs/architecture/protocol.md` - Observer protocol
+
+## World
+
+- `docs/world/geography-philosophy.md` - Geography philosophy
+- `docs/world/spatial-hierarchy.md` - Spatial hierarchy
+- `docs/world/coordinates.md` - Coordinate systems
+- `docs/world/terrain.md` - Terrain
+- `docs/world/geology.md` - Geology
+- `docs/world/hydrology.md` - Hydrology
+- `docs/world/climate.md` - Climate
+- `docs/world/ecology.md` - Ecology
+- `docs/world/settlements.md` - Settlements
+- `docs/world/mana-topology.md` - Mana topology
+- `docs/world/world-generation-provenance.md` - World generation provenance
+- `docs/world/historical-bootstrap.md` - Historical bootstrap
+
+## Biology
+
+- `docs/biology/architecture.md` - Biological architecture
+- `docs/biology/morphology.md` - Morphology
+- `docs/biology/physiology.md` - Physiology
+- `docs/biology/development.md` - Development
+- `docs/biology/heredity.md` - Heredity
+- `docs/biology/reproduction.md` - Reproduction
+- `docs/biology/aging.md` - Aging
+- `docs/biology/death.md` - Death
+- `docs/biology/pathogens.md` - Pathogens
+- `docs/biology/populations.md` - Populations
+- `docs/biology/demography.md` - Demography
+
+## Cognition
+
+- `docs/cognition/attention.md` - Attention
+- `docs/cognition/memory.md` - Memory
+- `docs/cognition/salience.md` - Salience
+- `docs/cognition/prediction.md` - Prediction
+- `docs/cognition/belief-inertia.md` - Belief inertia
+- `docs/cognition/goals.md` - Goals
+- `docs/cognition/habits.md` - Habits
+- `docs/cognition/trust.md` - Trust
+- `docs/cognition/strategic-communication.md` - Strategic communication
+
+## Language
+
+- `docs/language/architecture.md` - Language architecture
+- `docs/language/semantic-layer.md` - Semantic layer
+- `docs/language/lexicon.md` - Lexicon
+- `docs/language/phonology.md` - Phonology
+- `docs/language/morphology.md` - Morphology
+- `docs/language/grammar.md` - Grammar
+- `docs/language/communication.md` - Communication
+- `docs/language/lexical-innovation.md` - Lexical innovation
+- `docs/language/semantic-drift.md` - Semantic drift
+- `docs/language/language-change.md` - Language change
+- `docs/language/translation.md` - Translation
+- `docs/language/writing-systems.md` - Writing systems
+- `docs/language/language-bootstrap.md` - Language bootstrap
+
+## Epistemics
+
+- `docs/epistemics/architecture.md` - Epistemic architecture
+- `docs/epistemics/knowledge-types.md` - Knowledge types
+- `docs/epistemics/measurement.md` - Measurement
+- `docs/epistemics/metrology.md` - Metrology
+- `docs/epistemics/instruments.md` - Instruments
+- `docs/epistemics/experiments.md` - Experiments
+- `docs/epistemics/replication.md` - Replication
+- `docs/epistemics/science.md` - Science
+- `docs/epistemics/writing.md` - Writing
+- `docs/epistemics/documents.md` - Documents
+- `docs/epistemics/document-lineage.md` - Document lineage
+
+## Isekai
+
+- `docs/isekai/architecture.md` - Isekai architecture
+- `docs/isekai/transfer-types.md` - Transfer types
+- `docs/isekai/foreign-memory.md` - Foreign memory
+- `docs/isekai/imported-priors.md` - Imported priors
+- `docs/isekai/translation-impact.md` - Translation impact
+- `docs/isekai/historical-arrivals.md` - Historical arrivals
+- `docs/isekai/causal-contamination.md` - Causal contamination
+
+## Metaphysics
+
+- `docs/metaphysics/identity.md` - Identity
+- `docs/metaphysics/death-and-persistence.md` - Death and persistence
+- `docs/metaphysics/cross-world-continuity.md` - Cross-world continuity
+- `docs/metaphysics/attractors.md` - Attractors
+- `docs/metaphysics/gods-and-spirits.md` - Gods and spirits
+- `docs/metaphysics/artifacts.md` - Artifacts
+
+## Simulation
+
+- `docs/simulation/perceptual-features.md` - Perceptual features
+- `docs/simulation/emergent-concepts.md` - Emergent concepts
+- `docs/simulation/technology-and-invention.md` - Technology and invention
+- `docs/simulation/maintenance.md` - Maintenance
+
+## City
+
+- `docs/city/parcels.md` - Parcels
+- `docs/city/buildings.md` - Buildings
+- `docs/city/streets.md` - Streets
+- `docs/city/infrastructure-networks.md` - Infrastructure networks
+- `docs/city/maintenance.md` - Maintenance
+- `docs/city/urban-growth.md` - Urban growth
+- `docs/city/fire.md` - Fire
+
+## Society
+
+- `docs/society/law.md` - Law
+- `docs/society/contracts.md` - Contracts
+- `docs/society/bureaucracy.md` - Bureaucracy
+- `docs/society/records.md` - Records
+
+## Explanation
+
+- `docs/explanation/architecture.md` - Explanation architecture
+- `docs/explanation/analytical-ontology.md` - Analytical ontology
+- `docs/explanation/classification.md` - Classification
+- `docs/explanation/explanation-ir.md` - Explanation IR
+- `docs/explanation/confidence.md` - Confidence
+- `docs/explanation/causal-summaries.md` - Causal summaries
+- `docs/explanation/glossing.md` - Glossing
+- `docs/explanation/deterministic-rendering.md` - Deterministic rendering
+- `docs/explanation/localization.md` - Localization
+- `docs/explanation/optional-llm-surface.md` - Optional LLM surface
+
+## Observer
+
+- `docs/observer/architecture.md` - Observer architecture
+- `docs/observer/protocol.md` - Protocol
+- `docs/observer/snapshots.md` - Snapshots and deltas
+- `docs/observer/backpressure.md` - Backpressure
+
+## UI
+
+- `docs/ui/views.md` - User views
+- `docs/ui/map-perspectives.md` - Map perspectives
+- `docs/ui/language-inspection.md` - Language inspection
+
+## Analytics
+
+- `docs/analytics/phenomenon-evaluation.md` - Phenomenon evaluation
+
+## Performance
+
+- `docs/performance/philosophy.md` - Performance philosophy
+- `docs/performance/metrics.md` - Metrics
+- `docs/performance/benchmarks.md` - Benchmarks
+
+## Development
+
+- `docs/development/codebase-memory.md` - Codebase knowledge graph
+- `docs/development/contributing.md` - Contributing
+- `docs/development/changelog.md` - Changelog
+
+## Roadmap
+
+- `docs/roadmap/roadmap.md` - Project roadmap
+
+## RFCs
+
+- `docs/rfc/` - Request for Comments
+
+## ADRs
+
+- `docs/adr/` - Architecture Decision Records
+
+## Glossary
+
+- `docs/glossary.md` - Glossary
+
+## Bibliography
+
+- `docs/bibliography.md` - Bibliography

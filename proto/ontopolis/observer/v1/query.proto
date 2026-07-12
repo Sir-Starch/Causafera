@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package ontopolis.observer.v1;
+
+import "ontopolis/observer/v1/common.proto";
+
+// Query messages for observer data retrieval.
+message QueryRequest {
+    ChunkId scope = 1;
+    string query_type = 2;
+    uint64 query_id = 3;
+}
+
+message QueryResponse {
+    uint64 query_id = 1;
+    bytes payload = 2;
+}

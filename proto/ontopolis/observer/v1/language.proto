@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package ontopolis.observer.v1;
+
+import "ontopolis/observer/v1/common.proto";
+
+// Language data for observer.
+message LexemeInfo {
+    uint64 lexeme_id = 1;
+    string phonological_form = 2;
+    repeated ConceptAssociation associations = 3;
+}
+
+message ConceptAssociation {
+    uint64 concept_id = 1;
+    float weight = 2;
+}

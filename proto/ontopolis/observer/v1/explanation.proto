@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package ontopolis.observer.v1;
+
+import "ontopolis/observer/v1/common.proto";
+
+// Explanation data for observer.
+message Explanation {
+    string explanation_type = 1;
+    string content = 2;
+    double confidence = 3;
+    repeated string sources = 4;
+}

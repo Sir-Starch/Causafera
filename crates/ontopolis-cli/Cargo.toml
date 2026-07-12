@@ -1,0 +1,20 @@
+[package]
+name = "ontopolis-cli"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "ontopolis"
+path = "src/main.rs"
+
+[dependencies]
+ontopolis-types = { workspace = true }
+ontopolis-core = { workspace = true }
+ontopolis-runtime = { workspace = true }
+clap = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]

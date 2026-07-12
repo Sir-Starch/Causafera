@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+package ontopolis.observer.v1;
+
+import "ontopolis/observer/v1/common.proto";
+
+// Causal trace data.
+message CausalEvent {
+    uint64 event_id = 1;
+    SimulationTime time = 2;
+    repeated uint64 causes = 3;
+    repeated uint64 effects = 4;
+    string event_type = 5;
+}

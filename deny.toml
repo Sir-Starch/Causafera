@@ -1,0 +1,21 @@
+[graph]
+targets = []
+[advisories]
+vulnerability = "deny"
+unmaintained = "warn"
+yanked = "deny"
+notice = "warn"
+[licenses]
+unlicensed = "deny"
+allow = ["AGPL-3.0", "MIT", "Apache-2.0", "BSD-3-Clause", "ISC", "MPL-2.0", "CC0-1.0", "Unicode-DFS-2016"]
+deny = []
+copyleft = "warn"
+allow-osi-fsf-free = "either"
+default = "deny"
+[bans]
+multiple-versions = "warn"
+wildcards = "allow"
+highlight = "all"
+[sources]
+unknown-registry = "warn"
+unknown-git = "warn"

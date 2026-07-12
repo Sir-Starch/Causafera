@@ -1,0 +1,12 @@
+[package]
+name = "ontopolis-observer"
+version = "0.1.0"
+description = "Ontopolis Observer Desktop Shell"
+edition = "2021"
+license = "AGPL-3.0-only"
+
+[dependencies]
+tauri = { version = "1", features = [] }
+
+[build-dependencies]
+tauri-build = { version = "1", features = [] }

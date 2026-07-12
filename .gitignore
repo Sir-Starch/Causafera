@@ -1,0 +1,9 @@
+/target
+/.omo
+*.swp
+*.swo
+*~
+.DS_Store
+/node_modules
+/dist
+/.pnpm-store

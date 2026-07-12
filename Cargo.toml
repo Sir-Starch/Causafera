@@ -1,0 +1,75 @@
+[workspace]
+members = [
+    "crates/ontopolis-types",
+    "crates/ontopolis-core",
+    "crates/ontopolis-world",
+    "crates/ontopolis-geography",
+    "crates/ontopolis-biology",
+    "crates/ontopolis-cognition",
+    "crates/ontopolis-language",
+    "crates/ontopolis-epistemics",
+    "crates/ontopolis-isekai",
+    "crates/ontopolis-metaphysics",
+    "crates/ontopolis-resolution",
+    "crates/ontopolis-domains",
+    "crates/ontopolis-accelerate",
+    "crates/ontopolis-accelerate-cuda",
+    "crates/ontopolis-persistence",
+    "crates/ontopolis-analytics",
+    "crates/ontopolis-explanation",
+    "crates/ontopolis-observer-api",
+    "crates/ontopolis-observer-wire",
+    "crates/ontopolis-runtime",
+    "crates/ontopolis-lab",
+    "crates/ontopolis-cli",
+    "tools/xtask",
+]
+resolver = "3"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+authors = ["Ontopolis Contributors"]
+license = "AGPL-3.0-only"
+rust-version = "1.85"
+
+[workspace.dependencies]
+ontopolis-types = { path = "crates/ontopolis-types" }
+ontopolis-core = { path = "crates/ontopolis-core" }
+ontopolis-world = { path = "crates/ontopolis-world" }
+ontopolis-geography = { path = "crates/ontopolis-geography" }
+ontopolis-biology = { path = "crates/ontopolis-biology" }
+ontopolis-cognition = { path = "crates/ontopolis-cognition" }
+ontopolis-language = { path = "crates/ontopolis-language" }
+ontopolis-epistemics = { path = "crates/ontopolis-epistemics" }
+ontopolis-isekai = { path = "crates/ontopolis-isekai" }
+ontopolis-metaphysics = { path = "crates/ontopolis-metaphysics" }
+ontopolis-resolution = { path = "crates/ontopolis-resolution" }
+ontopolis-domains = { path = "crates/ontopolis-domains" }
+ontopolis-accelerate = { path = "crates/ontopolis-accelerate" }
+ontopolis-accelerate-cuda = { path = "crates/ontopolis-accelerate-cuda" }
+ontopolis-persistence = { path = "crates/ontopolis-persistence" }
+ontopolis-analytics = { path = "crates/ontopolis-analytics" }
+ontopolis-explanation = { path = "crates/ontopolis-explanation" }
+ontopolis-observer-api = { path = "crates/ontopolis-observer-api" }
+ontopolis-observer-wire = { path = "crates/ontopolis-observer-wire" }
+ontopolis-runtime = { path = "crates/ontopolis-runtime" }
+ontopolis-lab = { path = "crates/ontopolis-lab" }
+
+# External dependencies
+thiserror = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rayon = "1"
+chrono = { version = "0.4", default-features = false }
+protobuf = "3"
+clap = { version = "4", features = ["derive"] }
+tracing = "0.1"
+hashbrown = "0.15"
+
+[profile.dev]
+opt-level = 0
+
+[profile.release]
+opt-level = 3
+lto = "thin"

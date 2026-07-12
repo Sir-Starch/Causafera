@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package ontopolis.observer.v1;
+
+option java_package = "com.ontopolis.observer.v1";
+option go_package = "github.com/ontopolis/observer/v1";
+
+// Common types used across observer protocol.
+message SimulationTime {
+    uint64 ticks = 1;
+}
+
+message ChunkId {
+    uint64 id = 1;
+}
+
+message EntityId {
+    uint64 id = 1;
+}
