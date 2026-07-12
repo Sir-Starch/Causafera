@@ -158,6 +158,22 @@ This project follows a structured changelog format. Each entry includes:
 - Added 7 unit tests covering dense field validation, row-major indexing, provenance, batch order and identity, deterministic replay, reordered output, and changed provenance.
 - All 54 workspace tests pass.
 
+### Phase 5: Biological Structural Model
+
+#### BIO
+
+- Completed body-segment structural primitives (`TODO-BIO-001`);
+- Added fixed-point `SegmentLengthMm`, property-based `Joint` angular bounds, and complete `BodySegment` value views;
+- Added validated `BodyStructure` structure-of-arrays storage with canonical parent-before-child topology;
+- Enforced unique typed IDs, exactly one root, parent/joint consistency, positive length, finite orientation, ordered joint limits, and current orientation within limits;
+- Accepted `RFC-BIO-001` with the Phase 5 causal, deterministic, performance, observer, and primitive/emergent boundaries;
+- Did not add named anatomy, semantic segment or joint types, physiology, growth, injury, movement, species, social categories, or demo organisms.
+
+#### Testing
+
+- Added 10 unit tests covering canonical access, field validation, typed identity, topology, root/joint consistency, physical numeric constraints, joint ranges, and deterministic reconstruction.
+- All 64 workspace tests pass.
+
 ## Categories
 
 - **ARCH** - Architecture

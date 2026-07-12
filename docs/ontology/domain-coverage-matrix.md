@@ -33,7 +33,7 @@ A foundational domain cannot enter implementation without coverage analysis.
 | Hydrology | Pending | Future geographic work |
 | Climate | Pending | Future geographic work |
 | Ecology | Pending | Future geographic work |
-| Biology | Pending | Phase 5 |
+| Biology | Partial — body-segment topology and joint contracts | Phase 5 |
 | Cognition | Pending | Phase 7-9 |
 | Language | Pending | Phase 10-11 |
 | Mana | Pending | Phase 14 |

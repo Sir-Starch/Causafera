@@ -99,7 +99,7 @@
 **Out of Scope:** Full terrain implementation
 
 ## TODO-BIO-001: Body Segment Primitives
-**Status:** Pending
+**Status:** Completed
 **Phase:** 5
 **Priority:** High
 **Dependencies:** TODO-CORE-001

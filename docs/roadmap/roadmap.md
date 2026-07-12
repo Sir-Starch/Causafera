@@ -36,11 +36,13 @@ Completed.
 
 Biological structural model.
 
-Next phase.
+Completed.
 
 ## Phase 6
 
 Ground Truth events and causal provenance.
+
+Next phase.
 
 ## Phase 7
 

@@ -22,6 +22,10 @@ Biological entities are represented at multiple scales:
 
 Biological state is causal state. It must be capable of influencing and being influenced by other domains.
 
+### Phase 5 Boundary
+
+Phase 5 implements only the label-free structural substrate in `ontopolis-biology`: typed body-segment identity, rooted parent topology, physical joint angle limits, fixed-point length, and relative orientation. The broader organism, body-system, lineage, development, physiology, health, and reproduction sketches below remain future architecture, not implemented authoritative types.
+
 ## Biological Representation
 
 ```text
@@ -139,7 +143,7 @@ Biological data may be large. Strategies:
 
 ## RFCs
 
-- `RFC-BIO-001: Minimal Biological Structural Model`
+- `RFC-BIO-001: Minimal Biological Structural Model` — Accepted and implemented for Phase 5 structure
 
 ## TODO Categories
 

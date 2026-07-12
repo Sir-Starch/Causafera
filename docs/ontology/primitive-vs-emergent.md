@@ -26,7 +26,7 @@ Primitives are properties required to define the physical or computational unive
 | Motion | `Motion` (linear velocity, angular velocity) | `ontopolis-types` |
 | Energy-related state | Stored as temperature and material properties | `ontopolis-types` |
 | Material composition | `Material` with component proportions | `ontopolis-types` |
-| Structural connection | To be implemented in Phase 5 (biology) | — |
+| Structural connection | `BodyStructure` parent topology and `Joint` angular limits | `ontopolis-biology` |
 
 ### Pattern Primitives (Phase 2)
 
@@ -53,7 +53,6 @@ Generic perceptual features that extract structural patterns from raw state. The
 
 | Primitive | Phase | Notes |
 |-----------|-------|-------|
-| Biological structure | 5 | Body segments, joints, lengths |
 | Field state | 14 | Mana field properties |
 | Repetition / Frequency / Sequence | 2 | Generic feature relations |
 | Transformation | 2 | Change relation captures state transitions |
@@ -194,3 +193,7 @@ The documented world-to-interior containment chain is implemented as validated, 
 ## Phase 4 Terrain Contract Status
 
 The causal terrain boundary is implemented in `ontopolis-geography` with fixed-point elevation and roughness, property-linked surface material identity, dense deterministic storage, batch generation, and per-chunk causal provenance. No terrain synthesis algorithm or semantic geographic taxonomy was introduced.
+
+## Phase 5 Biological Structure Status
+
+The causal body-structure boundary is implemented in `ontopolis-biology` as a validated, canonically ordered structure-of-arrays model. Ground Truth stores only typed segment identity, rooted parent connections, property-based joint limits, fixed-point length, and physical orientation. Named anatomy, species, physiology, capability, and social taxonomy remain emergent or future concerns.

@@ -8,11 +8,14 @@ Organisms are represented as structured bodies:
 
 ```text
 MorphologyState:
-    segments: [BodySegment]
-    joints: [Joint]
-    attachment_graph: Graph
-    overall_proportions: ProportionSet
+    segment_ids: [BodySegmentId]
+    parent_segments: [Option<BodySegmentId>]
+    joints: [Option<Joint>]
+    lengths_mm: [SegmentLengthMm]
+    relative_orientations: [Orientation]
 ```
+
+Phase 5 implements this state as the validated `BodyStructure` structure-of-arrays container. It requires a single root and canonical parent-before-child order.
 
 ### Body Segment
 
@@ -20,12 +23,9 @@ MorphologyState:
 BodySegment:
     segment_id: BodySegmentId
     parent_segment: Option<BodySegmentId>
-    segment_type: SegmentType
-    dimensions: Dimensions
-    mass: float
-    tissue_composition: {TissueType → proportion}
-    surface_properties: SurfaceProperties
-    articulation_points: [JointId]
+    joint: Option<Joint>
+    length: SegmentLengthMm
+    orientation: Orientation
 ```
 
 Segment types (observer classifications):
@@ -46,13 +46,17 @@ Ground Truth stores:
 
 ```text
 Joint:
-    joint_id: JointId
-    connected_segments: (BodySegmentId, BodySegmentId)
-    joint_type: JointType
-    degrees_of_freedom: int
-    range_of_motion: Range
-    current_position: Position
+    lower_orientation: Orientation
+    upper_orientation: Orientation
 ```
+
+The bounds are inclusive physical yaw/pitch/roll constraints. Root segments have no parent joint; every connected segment has one. Named joint types, degrees-of-freedom categories, and anatomical functions are not authoritative state.
+
+## Phase 5 Validation
+
+Authoritative construction rejects mismatched field lengths, duplicate IDs, disconnected or cyclic topology, invalid root/joint relationships, zero lengths, non-finite values, inverted joint bounds, and orientations outside those bounds. Vectors remain private after validation.
+
+The Phase 5 model does not yet represent mass, material/tissue composition, surface geometry, attachment anchors, movement samples, growth, injury, or function.
 
 ## Morphological Variation
 
