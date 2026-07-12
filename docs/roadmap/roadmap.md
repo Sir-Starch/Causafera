@@ -96,15 +96,19 @@ Completed.
 
 Practice representation and evolution.
 
-Next phase.
+Completed.
 
 ## Phase 16
 
 Measurement, documents, and epistemic infrastructure.
 
+Completed.
+
 ## Phase 17
 
 Minimal information-sensitive mana.
+
+Next phase.
 
 ## Phase 18
 

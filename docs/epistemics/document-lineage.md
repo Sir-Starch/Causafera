@@ -76,3 +76,7 @@ In a mana-sensitive world, document lineage may have magical relevance:
 - `docs/epistemics/documents.md` - Document structure and lifecycle
 - `docs/epistemics/writing.md` - Writing technology
 - `docs/language/writing-systems.md` - How language is encoded
+
+## Implemented Foundation
+
+Phase 16 provides single-parent copying ancestry with explicit ordered glyph edits. Transformation records retain source, target, time, and every physical mark change. Translation and compilation edges require later subjective interpretation and are not yet primitive transformation labels.

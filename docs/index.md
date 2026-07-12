@@ -113,6 +113,11 @@ Later documents supersede conflicting initialization-spec sections **only when t
 - `docs/epistemics/documents.md` - Documents
 - `docs/epistemics/document-lineage.md` - Document lineage
 
+## Practices
+
+- `docs/practices/architecture.md` - Bounded practice programs and execution boundary
+- `docs/practices/lineages.md` - Practice ancestry, mutation, and future transmission
+
 ## Isekai
 
 - `docs/isekai/architecture.md` - Isekai architecture

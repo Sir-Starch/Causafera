@@ -58,7 +58,7 @@ See `RFC-CONCEPT-001: Sparse Subjective Concept Formation`.
 
 ## Practice Representation
 
-The evolvable practice representation format remains under design. A practice must support ordered operations, conditions, branches, timing, repetition, materials, objects, actor roles, locations, synchronization, and tolerances.
+RFC-PRACTICE-001 now settles the Phase 15 structural core: bounded ordered operations, subjective numeric conditions, branches, timing, repetition, tolerances, proposal-only execution, and lineage mutation. Physical material/object bindings, actor roles, locations, synchronization across agents, and transmission fidelity remain unresolved future extensions.
 
 See `RFC-PRACTICE-001: Evolvable Practice Representation`.
 

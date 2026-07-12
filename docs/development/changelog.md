@@ -109,6 +109,15 @@ This project follows a structured changelog format. Each entry includes:
 - **ARCH** — Completed TODO-LANG-001 through TODO-LANG-003 and Phases 13–14; Phase 15 practice representation is next.
 - **PERF** — Added hard capacities and canonical integer ordering without making unbenchmarked language-scale claims.
 
+### Phases 15–16: Practices and Epistemic Carriers
+
+- **ARCH** — Accepted RFC-PRACTICE-001 and RFC-EPI-001; completed TODO-PRACTICE-001, TODO-EPI-001, TODO-LANG-004, and Phases 15–16. Phase 17 mana is next.
+- **CORE** — Replaced string-based practice placeholders with bounded validated control flow, deterministic proposal-only execution, and structural child lineage mutation.
+- **EPI** — Replaced floating-point/string measurement placeholders with opaque fixed-point units, bounded calibration ancestry, uncertainty-preserving measurement, and explicit practice provenance.
+- **LANG** — Replaced string document media with bounded physical glyph sequences, opaque writing/medium identities, deterministic edit scripts, and document-copy ancestry.
+- **ONTO** — Kept named actions, quantity names, unit names, genres, textual meaning, authoritative identities, and hidden true values out of the new state.
+- **PERF** — Added hard program, execution, calibration, glyph, and edit budgets without making throughput claims.
+
 ## Categories
 
 - **ARCH** - Architecture

@@ -55,3 +55,7 @@ Real measurement systems have error. The architecture must model:
 - `docs/epistemics/measurement.md` - The process of quantification
 - `docs/epistemics/instruments.md` - Physical tools for measurement
 - `docs/epistemics/experiments.md` - Measurement in scientific practice
+
+## Implemented Foundation
+
+Calibration parents must already exist, use the same opaque unit, and remain within a fixed ancestry depth. Competing roots and descendants can therefore represent incompatible standards and drift without an engine-defined unit taxonomy.

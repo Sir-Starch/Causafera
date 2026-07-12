@@ -49,6 +49,10 @@ The architecture must support measurement of:
 
 Different societies may use different units and calibration practices for each type.
 
+## Implemented Foundation
+
+`ontopolis-epistemics::measurement` represents quantity and unit identity opaquely. Units have rational integer scale and resolution. Calibrations record parent ancestry, systematic bias, uncertainty, time, and the practice used. A result is derived from an accessible observation and retains combined uncertainty; the API has no hidden Ground Truth value parameter.
+
 ## Related Documents
 
 - `docs/epistemics/metrology.md` - Systems of units and standards

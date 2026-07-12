@@ -221,3 +221,9 @@ Working context, episodic reactivation, prediction error, agency attribution, an
 `ontopolis-language` represents abstract phonological units, ordered forms, language/lexeme ancestry, physical-form utterances, transmission records, and bounded numeric learning state. These are structural and historical carriers, not human vocabulary.
 
 A lexeme lineage never stores a meaning. `ConceptId` associations exist only in individual subjective lexicon entries and may disagree. Words, meanings, languages as communities, polysemy, synonymy, register, grammar, and dialect remain emergent distributions rather than authoritative semantic enums.
+
+## Phase 15–16 Practice and Epistemic Status
+
+`ontopolis-domains` stores only bounded control flow, opaque learned action and condition identities, integer timing/tolerance, proposal records, and parent lineage. Named rituals, techniques, jobs, skills, and procedural explanations are not primitive state.
+
+`ontopolis-epistemics` stores opaque quantity/unit/calibration identities, rational scale, fixed-point observations and uncertainty, physical glyph sequences, and explicit document-copy ancestry. Unit names, quantity categories such as “length”, document genres, textual meaning, correctness, and science remain social, subjective, or observer-level constructions.

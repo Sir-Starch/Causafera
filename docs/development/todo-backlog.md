@@ -337,32 +337,32 @@
 **Out of Scope:** Full semantic drift simulation
 
 ## TODO-PRACTICE-001: Evolvable Practice Representation
-**Status:** Pending
+**Status:** Completed
 **Phase:** 15
 **Priority:** High
 **Dependencies:** TODO-LANG-002
 **Goal:** RFC acceptance and implementation
-**Acceptance Criteria:** RFC approved, practice format supports operations, conditions, branches
+**Acceptance Criteria:** Accepted RFC; bounded validated operations, conditions, branches, repeats, proposal-only execution, and child lineage mutation
 **Performance Requirements:** Efficient execution
 **Determinism Requirements:** Practice execution deterministic
 **Ontology Implications:** Practices are programs, explanations are separate
 **Observer Implications:** Exposes practice lineages
 **Explanation Implications:** Explains ritual origins
-**Out of Scope:** Full practice evolution
+**Out of Scope:** Full practice diffusion, motor/resource validation, and institutional embedding
 
 ## TODO-EPI-001: Measurement and Metrology
-**Status:** Pending
+**Status:** Completed
 **Phase:** 16
 **Priority:** Medium
 **Dependencies:** TODO-PRACTICE-001
 **Goal:** RFC acceptance and implementation
-**Acceptance Criteria:** RFC approved, measurement types with precision and error
+**Acceptance Criteria:** Accepted RFC; opaque socially constructed units, fixed-point precision/uncertainty, bounded calibration ancestry, and accessible-observation measurement
 **Performance Requirements:** Minimal overhead
 **Determinism Requirements:** Measurements deterministic given same conditions
 **Ontology Implications:** Units are socially constructed
 **Observer Implications:** Exposes measurement systems
 **Explanation IR:** Explains standardization effects
-**Out of Scope:** Full instrument simulation
+**Out of Scope:** Full instrument, experiment, and science-institution simulation
 
 ## TODO-MANA-001: Information-Sensitive Field Model
 **Status:** Pending
@@ -673,12 +673,12 @@
 **Out of Scope:** Molecular biology, live infection mutation, pathogen evolution algorithms, semantic disease/type/route enums
 
 ## TODO-LANG-004: Writing System Model
-**Status:** Pending
+**Status:** Completed
 **Phase:** 16
 **Priority:** Low
 **Dependencies:** TODO-LANG-003
 **Goal:** Define writing system primitives
-**Acceptance Criteria:** Glyphs, documents, copying errors
+**Acceptance Criteria:** Opaque physical glyph sequences, bounded documents, explicit deterministic copying edits, and document ancestry
 **Performance Requirements:** Document storage efficient
 **Determinism Requirements:** Copying errors deterministic
 **Ontology Implications:** Documents are physical carriers

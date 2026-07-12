@@ -84,3 +84,7 @@ This provenance is essential for assessing reliability and for tracing the histo
 - `docs/epistemics/writing.md` - Writing as technology
 - `docs/epistemics/document-lineage.md` - Document ancestry in detail
 - `docs/language/writing-systems.md` - How language is encoded in documents
+
+## Implemented Foundation
+
+A document currently stores bounded opaque physical glyph IDs, medium and writing-system identities, creation time, optional parent, and transformation identity. Copying applies an explicit bounded insert/remove/replace script and returns both the child and its transformation record. Interpretation, authorship, physical degradation, and semantic document types remain future work.

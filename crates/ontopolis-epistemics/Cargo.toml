@@ -8,7 +8,5 @@ rust-version.workspace = true
 
 [dependencies]
 ontopolis-types = { workspace = true }
-ontopolis-core = { workspace = true }
-ontopolis-language = { workspace = true }
 
 [dev-dependencies]

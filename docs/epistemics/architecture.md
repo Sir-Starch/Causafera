@@ -82,3 +82,7 @@ The epistemic crate covers:
 - `docs/epistemics/writing.md` - Persistent information encoding
 - `docs/epistemics/documents.md` - Physical information carriers
 - `docs/epistemics/document-lineage.md` - Document ancestry and copying
+
+## Phase 16 Foundation Status
+
+The implemented foundation uses opaque quantity and unit identities, rational scale, fixed-point uncertainty, bounded calibration ancestry, and physically accessible observations. Documents are bounded physical glyph sequences with explicit deterministic copy edits and ancestry. Instruments, experiments, replication, semantic reading, and scientific institutions remain future work.

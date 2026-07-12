@@ -235,8 +235,6 @@ dependencies = [
 name = "ontopolis-epistemics"
 version = "0.1.0"
 dependencies = [
- "ontopolis-core",
- "ontopolis-language",
  "ontopolis-types",
 ]
 

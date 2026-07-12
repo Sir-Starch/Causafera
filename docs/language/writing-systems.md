@@ -59,3 +59,7 @@ Mass-distributed symbols may interact with mana. Repeated glyph patterns, especi
 - `docs/epistemics/writing.md` - Writing as epistemic practice
 - `docs/epistemics/documents.md` - Document structure and transmission
 - `docs/epistemics/document-lineage.md` - Document ancestry and copying history
+
+## Phase 16 Foundation Status
+
+Opaque `WritingSystemId` and `GlyphId` values now identify physical conventions and marks without assigning objective sound or meaning. Documents and deterministic copy edits live in `ontopolis-epistemics`. Glyph-to-language interpretation, inventories, orthographic learning, and reading remain future work.
