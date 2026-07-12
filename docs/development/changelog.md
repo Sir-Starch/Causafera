@@ -160,6 +160,14 @@ This project follows a structured changelog format. Each entry includes:
 - **PERF** — Added hard stage, target, dependency, and cause bounds without making synthesis speed, scale, or plausibility claims.
 - **ARCH** — Completed Phase 21; Phase 22 isekai transfer remains separate because its physical/metaphysical model requires its own RFC.
 
+### Phase 22: Cross-World Transfer and Imported Priors
+
+- **ISEKAI** — Accepted RFC-ISEKAI-001 and completed TODO-ISEKAI-001 with bounded canonical transfer plans, opaque mechanism schemas, objective payload/property correspondence, deterministic seed contributions, and exact committed receipt ancestry.
+- **COG** — Completed TODO-ISEKAI-002 with imported subjective prior bundles linked to transfer traces and no direct Ground Truth or ordinary cognition mutation.
+- **ONTO** — Removed the semantic transfer-type enum and kept souls, reincarnation, identity continuity, truth, technology, capability, hero status, and social meaning outside authoritative transfer semantics.
+- **EPI** — Added independent practice/material/resource/measurement evidence and explicit gap assessment so imported knowledge never unlocks capability.
+- **ARCH** — Completed Phase 22; Phase 23 identity-persistence and attractor research remains separate.
+
 ## Categories
 
 - **ARCH** - Architecture

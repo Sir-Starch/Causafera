@@ -221,6 +221,7 @@ Later documents supersede conflicting initialization-spec sections **only when t
 - `docs/rfc/RFC-ECON-001.md` - Traceable Material Economy Foundation
 - `docs/rfc/RFC-CITY-001.md` - Physical Urban Infrastructure Foundation
 - `docs/rfc/RFC-HIST-001.md` - Causal Historical Bootstrap Orchestration
+- `docs/rfc/RFC-ISEKAI-001.md` - Cross-World Transfer and Imported Priors
 
 ## ADRs
 

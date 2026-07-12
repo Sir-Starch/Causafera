@@ -68,9 +68,13 @@ Multiple identity patterns from different sources bind to the same target entity
 - The overlap may be stable or unstable
 - It may produce unusual cognitive or magical properties
 
+## Phase 22 Representation
+
+Candidate mechanisms are not encoded as `TransferType` variants. `TransferMechanismSchemaId` identifies an opaque versioned adapter contract, while objective payload fingerprints and explicit property correspondences record what an adapter claims persisted or transformed. A committed receipt must cover every payload and continue the exact declared causes.
+
 ## Metaphysical Openness
 
-Do not select a final metaphysical model during Phase 0. These transfer types are candidates for investigation, not decided architecture. The actual metaphysics of cross-world transfer is a research question.
+Phase 22 deliberately does not select a final metaphysical model. These transfer types remain candidate interpretations and research scenarios, not authoritative semantic variants.
 
 ## Related Documents
 

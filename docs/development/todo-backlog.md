@@ -449,7 +449,7 @@
 **Out of Scope:** Fake history, residents, cities, event tables, domain synthesis algorithms, aggregation, mutation, scheduler integration, persistence, observer protocol, acceleration, Phase 22 metaphysics
 
 ## TODO-ISEKAI-001: Cross-World Transfer Model
-**Status:** Pending
+**Status:** Completed
 **Phase:** 22
 **Priority:** Medium
 **Dependencies:** TODO-CITY-001
@@ -715,7 +715,7 @@
 **Out of Scope:** Full legal simulation, adjudication, universal validity, automatic enforcement, semantic legal taxonomy, and contract magic
 
 ## TODO-ISEKAI-002: Imported Knowledge Separation
-**Status:** Pending
+**Status:** Completed
 **Phase:** 22
 **Priority:** Medium
 **Dependencies:** TODO-ISEKAI-001

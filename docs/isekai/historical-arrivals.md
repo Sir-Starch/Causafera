@@ -4,6 +4,8 @@ Cross-world transfer is not a one-time event. It has a history within Ontopolis,
 
 ## Arrival as Historical Event
 
+Phase 22 provides a causal transfer record suitable for a future historical-bootstrap adapter: scheduled/completed times, target place, opaque mechanism identity, canonical payload results, and committed ancestry. It does not generate example arrivals or classify their long-term significance.
+
 Each arrival is a historical event with:
 
 - A time and place

@@ -6,17 +6,19 @@ The isekai subsystem lives in the `ontopolis-isekai` crate. It models cross-worl
 
 Cross-world transfer must be a physical or metaphysical process, not a narrative convenience. The subsystem must model what actually happens when something crosses between worlds, what properties persist, what is lost, and how the transferred entity interacts with Ontopolis causality.
 
-## Transfer as Causal Event
+## Phase 22 Transfer Boundary
 
-A transfer is a causal event with:
+A transfer is represented by `CrossWorldTransferPlan` and a committed receipt with:
 
 - A source world and location
 - A target world and location
-- A transfer type (what kind of crossing occurs)
+- An opaque mechanism schema rather than a semantic transfer enum
 - A transferred entity or pattern
 - Properties that persist across the transfer
 - Properties that are lost or transformed
-- Consequences for the target world
+- Canonical payload/property fingerprints and exact causal ancestry
+
+The plan cannot mutate state. Concrete adapters use the normal proposal/reduce/commit boundary. Mechanism schemas preserve metaphysical openness: the core contract does not decide whether a crossing is transport, copying, binding, reincarnation, or something else.
 
 ## What Isekai Is Not
 

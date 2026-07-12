@@ -248,4 +248,8 @@ Spells, rituals, mana schools or types, sacredness, enchantment, skills, levels,
 
 `ontopolis-world::historical` stores bounded synthesis stages with typed identity, time spans, numeric detail, target chunks, canonical fingerprints, explicit dependencies, deterministic seed inputs, and committed receipts. It contains no event names, historical eras, peoples, settlements, wars, plagues, discoveries, lore, or narrative.
 
+## Phase 22 Isekai Status
+
+`ontopolis-isekai` stores bounded transfer plans and receipts, opaque mechanism schemas, objective payload/property fingerprints, target places, imported subjective patterns, prerequisite IDs, and causal traces. Physical transport, copying, reincarnation, souls, personal continuity, truth, technology, capability, hero status, and social meaning are not primitive variants. Capability is established only from separate local evidence, never inferred from imported knowledge.
+
 Receipts demonstrate orchestration-level causal continuity but do not authorize mutation or make endpoint plausibility primitive. Concrete domain adapters and their committed event traces remain responsible for objective history.

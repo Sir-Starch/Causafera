@@ -26,7 +26,9 @@ No `EnchantItem` action exists in the engine.
 
 ## Isekai Transfer
 
-Cross-world transfer must be a physical or metaphysical process. Possible transfer types include full physical transfer, identity-pattern transfer, partial memory transfer, reincarnation-like binding, informational echo, artifact transfer, and overlapping identity patterns.
+Cross-world transfer must be a physical or metaphysical process. Possible interpretations include full physical transfer, identity-pattern transfer, partial memory transfer, reincarnation-like binding, informational echo, artifact transfer, and overlapping identity patterns.
+
+RFC-ISEKAI-001 settles only the Phase 22 neutral boundary: opaque mechanism schemas, objective payload/property correspondence, deterministic plans, exact committed receipts, subjective imported priors, and independently evidenced capability. Which mechanism exists and what constitutes identity continuity remain unresolved for Phase 23 research.
 
 Do not select a final metaphysical model during Phase 0.
 

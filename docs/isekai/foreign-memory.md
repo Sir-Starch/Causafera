@@ -4,6 +4,8 @@ Foreign memory is the information that a transferred agent retains from their or
 
 ## What Survives Transfer
 
+Phase 22 records any surviving cognitive influence as an `ImportedPriorBundle`: subjective pattern IDs, weights, subjective source identity, and the committed transfer trace. It does not assert that a memory is accurate, install Ground Truth identity, or directly mutate ordinary cognition stores.
+
 The following may survive cross-world transfer, depending on transfer type:
 
 - **Declarative knowledge** - Facts, propositions, theories

@@ -51,6 +51,7 @@ None.
 
 ## Completed Plans
 
+- `plans/phase-22-isekai-transfer.md` — implemented metaphysically neutral transfer provenance and imported-prior/capability separation (`TODO-ISEKAI-001`, `TODO-ISEKAI-002`) on 2026-07-12.
 - `plans/phase-21-historical-bootstrap.md` — implemented bounded causal historical synthesis orchestration and receipt provenance (`TODO-HIST-001`) on 2026-07-12.
 - `plans/phase-20-material-economy-city.md` — implemented traceable material economy and generic physical city infrastructure (`TODO-ECON-001`, `TODO-CITY-001`) on 2026-07-12.
 - `plans/phase-19-social-foundation.md` — implemented distributed social carriers and contestable institutional records (`TODO-SOCIAL-001`, `TODO-SOCIAL-002`) on 2026-07-12.

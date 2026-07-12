@@ -45,5 +45,5 @@ A foundational domain cannot enter implementation without coverage analysis.
 | Historical bootstrap | Partial — bounded canonical stage DAG, deterministic seed contributions, and exact committed receipt ancestry | Phase 21; concrete domain synthesis, aggregation, caching, and scheduler integration remain future work |
 | Epistemics | Partial — socially constructed fixed-point units, bounded calibration ancestry, accessible-observation measurement, and physical document copying | Phase 16; instruments, experiments, replication, and institutions remain future work |
 | Practice | Partial — bounded programs, proposal-only execution, structural mutation, and lineage | Phase 15; embodied execution, diffusion, roles, resources, and institutions remain future work |
-| Isekai | Pending | Phase 22 |
+| Isekai | Partial — bounded opaque transfer plans/receipts, objective payload correspondence, imported subjective priors, and independent capability evidence | Phase 22; concrete transfer physics, cognition integration, translation, persistence, and observer projection remain future work |
 | Metaphysics | Pending | Phase 23 |

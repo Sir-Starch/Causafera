@@ -4,6 +4,8 @@ Imported priors are the conceptual frameworks, beliefs, and expectations that tr
 
 ## Knowledge Is Not Technology
 
+The Phase 22 contract enforces this structurally. Imported priors are subjective patterns. Reproduction requirements separately name practices, materials, resource schemas, and measurement schemas; only independently supplied `CapabilityEvidence` can close those gaps. A transfer trace alone grants no capability.
+
 Earth knowledge must not behave as a technology unlock. An isekai arrival may know:
 
 > Microorganisms can cause disease.

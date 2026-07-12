@@ -138,11 +138,13 @@ Completed.
 
 Isekai transfer and imported priors.
 
-Next phase.
+Completed.
 
 ## Phase 23
 
 Metaphysical experiments and attractors.
+
+Next phase.
 
 ## Phase 24
 
