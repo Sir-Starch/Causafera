@@ -56,6 +56,8 @@ Generic perceptual features that extract structural patterns from raw state. The
 | Field state | 17 | Implemented fixed-point local mana intensity and physical pattern coupling |
 | Causal relevance / detail ordinal | 18 | Implemented fixed-point relevance and numeric resolution levels over opaque traced carrier channels |
 | Social carrier record | 19 | Implemented traced directed links, assignments, claims, and document/practice associations with opaque schemas; their social meaning remains emergent |
+| Material lot / physical transfer ancestry | 20 | Implemented typed integer quantity, custody/location, transformation inputs/outputs, performed labour, and traces; commodity and ownership meaning remain emergent |
+| Urban physical topology | 20 | Implemented parcel/building references and opaque-schema infrastructure connectivity; city and network-purpose categories remain emergent |
 | Repetition / Frequency / Sequence | 2 | Generic feature relations |
 | Transformation | 2 | Change relation captures state transitions |
 
@@ -235,3 +237,9 @@ A lexeme lineage never stores a meaning. `ConceptId` associations exist only in 
 `ontopolis-domains::mana` stores bounded chunk-local fixed-point intensity, opaque fingerprints of canonical physical structure, numeric space/time samples, deterministic structural response, diffusion, decay, saturation, and traced replacement proposals. These are Ground Truth field mechanisms.
 
 Spells, rituals, mana schools or types, sacredness, enchantment, skills, levels, attractors, artifacts, gods, spirits, and interpretations of a pattern are not primitive state. `PhysicalPatternId` identifies carrier structure only and must never be assigned from a semantic label or subjective category.
+
+## Phase 19–20 Social, Economy, and City Status
+
+`ontopolis-domains::social` keeps ownership as trace-backed contestable claims. `ontopolis-domains::economy` separately stores physical custody, positive integer quantity, material-lot ancestry, transformations, and performed agent labour. Possession does not establish ownership, and labour does not establish a job or profession.
+
+`ontopolis-domains::city` stores physical parcel references, building entities, and generic directed infrastructure topology tied to material lots. Roads, water systems, sewers, utilities, buildings by use, districts, settlements, and cities remain agent/social/observer concepts rather than authoritative enums.

@@ -16,6 +16,8 @@ A street may have:
 - social associations;
 - maintenance state.
 
+Phase 20 can carry the physical topology through opaque-schema infrastructure nodes and links, but does not declare a link to be a street in authoritative state. Street identity, naming, commercial association, and social meaning remain constructed interpretations.
+
 ## Network Effects
 
 Street networks create emergent properties:

@@ -126,11 +126,13 @@ Completed.
 
 Material economy and city infrastructure.
 
-Next phase.
+Completed.
 
 ## Phase 21
 
 Historical bootstrap.
+
+Next phase.
 
 ## Phase 22
 

@@ -51,6 +51,7 @@ None.
 
 ## Completed Plans
 
+- `plans/phase-20-material-economy-city.md` — implemented traceable material economy and generic physical city infrastructure (`TODO-ECON-001`, `TODO-CITY-001`) on 2026-07-12.
 - `plans/phase-19-social-foundation.md` — implemented distributed social carriers and contestable institutional records (`TODO-SOCIAL-001`, `TODO-SOCIAL-002`) on 2026-07-12.
 - `plans/phase-18-causal-resolution.md` — implemented the bounded deterministic Causal Resolution Field (`TODO-RES-001`) on 2026-07-12.
 - `plans/phase-17-minimal-mana.md` — implemented the bounded deterministic information-sensitive mana field (`TODO-MANA-001`) on 2026-07-12.

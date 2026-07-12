@@ -16,6 +16,8 @@ A building must not merely exist. The architecture must account for:
 - collapse - structural failure and debris;
 - reuse - salvage, archaeological residue.
 
+Phase 20 establishes the storage boundary, not this lifecycle: a building is a physical entity on a parcel with condition, time, trace, and bounded references to material lots. Construction proposals, use, repair, damage, abandonment, collapse, and reuse remain deferred.
+
 ## Material Provenance
 
 Materials maintain geographic provenance through the chain:

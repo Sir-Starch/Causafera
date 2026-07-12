@@ -14,6 +14,10 @@ Plan support for:
 - energy - if applicable to the technological level;
 - communication - if applicable (signal towers, couriers, etc.).
 
+## Implemented foundation
+
+Phase 20 implements bounded directed `InfrastructureNetwork`, `InfrastructureNode`, and `InfrastructureLink` records. Network purpose is an opaque historically assigned schema, not a `Road`/`Water`/`Sewage` enum. Nodes retain place, capacity, condition, and trace; links retain endpoints, capacity, length, condition, material-lot provenance, and trace. Flow physics, failures, maintenance, and social administration remain deferred.
+
 ## Network Properties
 
 Infrastructure networks have:

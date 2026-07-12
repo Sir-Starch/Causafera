@@ -407,32 +407,32 @@
 **Out of Scope:** Full governance, organization cognition, lifecycle mutation, enforcement, observer projection, persistence, and economy
 
 ## TODO-ECON-001: Material Flow Contracts
-**Status:** Pending
+**Status:** Completed
 **Phase:** 20
 **Priority:** Medium
 **Dependencies:** TODO-SOCIAL-001
-**Goal:** Define economy interfaces
-**Acceptance Criteria:** Inventory, production, transformation, labour, ownership
-**Performance Requirements:** Efficient batch updates
-**Determinism Requirements:** Flows deterministic
+**Goal:** Define physical economy carrier interfaces without a market shortcut
+**Acceptance Criteria:** Bounded typed inventory lots, same-material transfers, input/output transformation ancestry, performed labour contributions, and optional references to contestable ownership claims
+**Performance Requirements:** Canonical sorted vectors, bounded nested references, and binary-search validation; benchmark before scale claims
+**Determinism Requirements:** Input-order-independent integer records with no RNG, floats, or unordered traversal
 **Ontology Implications:** Material substitution preserves differences
 **Observer Implications:** Exposes supply chains
 **Explanation Implications:** Explains shortages and surpluses
-**Out of Scope:** Full market simulation
+**Out of Scope:** Markets, prices, currency, recipes, scheduling, automatic ownership, committed conservation batches, lifecycle mutation, observer projection, persistence, and benchmarks
 
 ## TODO-CITY-001: Infrastructure Networks
-**Status:** Pending
+**Status:** Completed
 **Phase:** 20
 **Priority:** Medium
 **Dependencies:** TODO-ECON-001
 **Goal:** Define city infrastructure
-**Acceptance Criteria:** Parcels, roads, water, sewage, buildings
-**Performance Requirements:** Network traversal efficient
-**Determinism Requirements:** Layout deterministic from history
+**Acceptance Criteria:** Spatial parcel references, physical buildings with material provenance, and opaque-schema infrastructure nodes/links capable of representing roads, water, sewage, and other networks without semantic enums
+**Performance Requirements:** Bounded canonical topology and deterministic outgoing-link traversal; benchmark before scale claims
+**Determinism Requirements:** Input-order-independent topology validation; no layout generation or RNG
 **Ontology Implications:** Infrastructure creates spatial patterns
 **Observer Implications:** Exposes networks
 **Explanation Implications:** Explains urban development
-**Out of Scope:** Full city growth simulation
+**Out of Scope:** Generated settlements, full urban growth, flow physics, traffic, interiors, lifecycle mutation, degradation, maintenance, fire, observer projection, persistence, and benchmarks
 
 ## TODO-ISEKAI-001: Cross-World Transfer Model
 **Status:** Pending

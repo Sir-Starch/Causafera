@@ -46,6 +46,8 @@ RFC-RES-001 now settles the Phase 18 decision-field minimum: bounded fixed-point
 
 RFC-SOCIAL-001 settles the Phase 19 storage minimum: objective social carriers are bounded, trace-backed distributed records rather than an organization brain. Role, relation, authority, rule, property, and agreement meanings remain contestable and opaque. Lifecycle proposals, governance, enforcement, shared organizational knowledge, and multi-resolution aggregation remain unresolved.
 
+RFC-ECON-001 and RFC-CITY-001 settle the Phase 20 storage minimum: physical lots, transfers, transformations, performed labour, parcels, buildings, and generic infrastructure topology are bounded and trace-backed. Custody does not prove ownership, and infrastructure schemas do not encode universal road/water/sewage meaning. Committed conservation, lifecycle mutation, markets, allocation, flow physics, maintenance, hazards, growth, and multi-resolution aggregation remain unresolved.
+
 Domain-specific aggregation remains under research. Terrain, biology, populations, language, mana, society, and economy still need explicit conservation, promotion, demotion, and provenance rules. Adapter formulas, evaluation cadence, hierarchical propagation, persistence, and carefully isolated observer-focus inputs are also deferred.
 
 See `RFC-RES-001: Causal Resolution and Aggregation`.

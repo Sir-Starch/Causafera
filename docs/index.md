@@ -218,6 +218,8 @@ Later documents supersede conflicting initialization-spec sections **only when t
 - `docs/rfc/RFC-MANA-001.md` - Minimal Information-Sensitive Field Model
 - `docs/rfc/RFC-RES-001.md` - Causal Resolution and State Aggregation
 - `docs/rfc/RFC-SOCIAL-001.md` - Distributed Social and Institutional Records
+- `docs/rfc/RFC-ECON-001.md` - Traceable Material Economy Foundation
+- `docs/rfc/RFC-CITY-001.md` - Physical Urban Infrastructure Foundation
 
 ## ADRs
 

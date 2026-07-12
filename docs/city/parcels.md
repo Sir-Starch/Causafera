@@ -16,6 +16,8 @@ A parcel may have:
 - access routes;
 - utility connections.
 
+Phase 20 implements only a trace-backed parcel record referencing an objective spatial `PlaceId`. Boundaries remain in the spatial hierarchy; rights and ownership remain separate social claims.
+
 ## Ownership and Transfer
 
 Ownership is not a simple boolean. It may involve:

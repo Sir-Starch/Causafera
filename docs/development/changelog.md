@@ -144,6 +144,14 @@ This project follows a structured changelog format. Each entry includes:
 - **PERF** — Added hard capacities, canonical ordering, and binary-search reference validation without making scale claims.
 - **ARCH** — Completed Phase 19; Phase 20 material economy and city infrastructure is next.
 
+### Phase 20: Material Economy and City Infrastructure
+
+- **ECON** — Accepted RFC-ECON-001 and completed TODO-ECON-001 with bounded material lots, same-material transfers, transformation ancestry, performed labour, and optional contestable ownership-claim support.
+- **CITY** — Accepted RFC-CITY-001 and completed TODO-CITY-001 with spatial parcel references, physical buildings, and generic directed infrastructure networks tied to material provenance.
+- **ONTO** — Kept prices, markets, jobs, ownership validity, roads, water/sewage categories, districts, settlements, and cities out of authoritative semantic enums.
+- **PERF** — Added hard capacities, canonical typed-ID ordering, binary-search validation, and deterministic topology traversal without making scale claims.
+- **ARCH** — Completed Phase 20; Phase 21 historical bootstrap is next.
+
 ## Categories
 
 - **ARCH** - Architecture
@@ -157,6 +165,8 @@ This project follows a structured changelog format. Each entry includes:
 - **MANA** - Mana
 - **RES** - Causal resolution
 - **SOCIAL** - Social carriers and institutions
+- **ECON** - Material economy carriers
+- **CITY** - Urban physical infrastructure
 - **ISEKAI** - Isekai
 - **META** - Metaphysics
 - **EXPLAIN** - Explanation Engine
