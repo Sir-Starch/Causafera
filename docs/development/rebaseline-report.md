@@ -1,6 +1,6 @@
 # Architecture Rebaseline Final Report
 
-> Historical audit note: this report captured readiness immediately after the cognition rebaseline. Phases 6–8 and `TODO-COG-001` were subsequently completed on 2026-07-12; the roadmap and TODO backlog are authoritative for current status.
+> Historical audit note: this report captured readiness immediately after the cognition rebaseline. Phases 6–12 were subsequently completed on 2026-07-12; the roadmap and TODO backlog are authoritative for current status.
 
 ## 1. Which completed phases were audited?
 
@@ -170,7 +170,7 @@ At the time of this audit, all Phase 6 work was unblocked: it depended only on `
 
 ## Subsequent implementation status (2026-07-12)
 
-RFC-COG-001 and the concrete RFC-SCENE-001 are now accepted. `TODO-SCENE-001` through `TODO-SCENE-009` were completed in the Phase 9–10 implementation batch. Phase 11 sparse concept formation is now the next roadmap phase; this historical report otherwise preserves the findings that motivated the rebaseline.
+RFC-COG-001, RFC-SCENE-001, and RFC-CONCEPT-001 are now accepted. `TODO-SCENE-001` through `TODO-SCENE-009` were completed in the Phase 9–10 batch; `TODO-CONCEPT-001` and `TODO-COG-002` were completed in the Phase 11–12 batch. Phase 13 language bootstrap is now next; this historical report otherwise preserves the findings that motivated the rebaseline.
 
 ## 15. What was deliberately not implemented?
 

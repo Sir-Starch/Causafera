@@ -72,15 +72,19 @@ Completed.
 
 Sparse subjective concept formation.
 
-Next phase.
+Completed.
 
 ## Phase 12
 
 Beliefs and subjective causal inference.
 
+Completed.
+
 ## Phase 13
 
 Language bootstrap and communication architecture.
+
+Next phase.
 
 ## Phase 14
 

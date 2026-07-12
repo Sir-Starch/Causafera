@@ -40,3 +40,5 @@ Phase 6 implements an append-only causal event graph in `ontopolis-core`. Object
 Phase 7 implements the first physical-access carrier boundary in `ontopolis-perception`. Property-based signals pass through channel, time, integer range, and magnitude-threshold constraints before becoming relative sensory samples. Samples retain supporting traces.
 
 Phase 8 generic extraction accepts only acquired samples and retains flattened causal input spans for every emitted magnitude/change feature. Authoritative source identity remains extractor bookkeeping. The Phase 9 bridge strips it and produces `PerceptualCue` with only agent-local subjective evidence and quantized properties; cognition never receives the causal trace correspondence.
+
+Phases 11–12 carry subjective learning ancestry through `PerceptId` and opaque agent-local identifiers. Concepts retain the percept that last activated or revised a prototype. Beliefs retain bounded `EvidenceId`, `SubjectiveSourceId`, and percept support; causal hypotheses relate only `SubjectivePatternId` values. None of these IDs reveal authoritative entities, places, bodies, feature IDs, or Ground Truth traces.

@@ -60,3 +60,9 @@ Concepts are not static. They may:
 ## RFC
 
 - `RFC-CONCEPT-001: Sparse Subjective Concept Formation`
+
+## Phase 11 Implementation Status
+
+`ConceptStore` retains at most 32 agent-local prototypes and accepts at most 32 explicitly attended `ConceptObservation` values per update. Inputs contain only a quantized appearance signature, numeric salience and predictive utility, and subjective `PerceptId` support. Matching, integer running-mean revision, activation decay, allocation, and active-concept ranking are deterministic.
+
+The minimal store does not continuously cluster world state, name categories, inspect authoritative identity, or claim objective correctness. Prototype split/merge, social transmission, consolidation, richer exemplars, and durable storage remain future work.

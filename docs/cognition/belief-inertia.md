@@ -99,3 +99,9 @@ Belief inertia computation may be frequent. Strategies:
 
 - `COG` — cognition
 - `BELIEF` — belief systems
+
+## Phase 12 Implementation Status
+
+`BeliefStore` holds at most 32 beliefs over opaque subjective `ConceptId` subjects. Confidence and inertia use the shared fixed-point cognitive weight; updates accept canonical batches of at most 32 evidence records. Evidence carries only an opaque belief reference, signed support direction, numeric strength/salience, a subjective source hypothesis, and percept support.
+
+Evidence is weighted by `TrustStore` before explicit inertia is applied, so weak contradiction can leave a high-inertia mistake stable. `CausalHypothesisStore` separately retains at most 32 directed associations between opaque subjective pattern IDs using proximity and prediction error. Neither store queries objective truth or authoritative entity identity.

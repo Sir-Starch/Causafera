@@ -97,6 +97,9 @@ This project follows a structured changelog format. Each entry includes:
 - **ARCH** — Completed TODO-SCENE-001 through TODO-SCENE-009 and marked Phases 9–10 complete; Phase 11 sparse concept formation is next.
 - **ONTO** — Kept authoritative IDs, traces, semantic object/situation kinds, emotions, traits, and English labels out of cognitive state.
 - **PERF** — Used fixed maxima and integer ranking throughout active cognition without making scale or throughput claims.
+- **COG** — Completed Phases 11–12 with bounded sparse concept prototypes, fixed-point belief inertia, subjective source trust, canonical evidence batches, and fallible directed causal hypotheses.
+- **RFC** — Accepted and expanded RFC-CONCEPT-001; concepts consume only attended identity-free observations and retain subjective percept support.
+- **ARCH** — Completed TODO-CONCEPT-001 and TODO-COG-002; Phase 13 language bootstrap is next.
 
 ## Categories
 

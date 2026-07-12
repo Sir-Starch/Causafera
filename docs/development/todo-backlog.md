@@ -281,12 +281,12 @@
 **Out of Scope:** Full autobiographical narrative generation
 
 ## TODO-CONCEPT-001: Sparse Concept Formation
-**Status:** Pending
+**Status:** Completed
 **Phase:** 11
 **Priority:** High
 **Dependencies:** TODO-COG-001, TODO-SCENE-001, TODO-SCENE-006
 **Goal:** RFC acceptance and implementation
-**Acceptance Criteria:** RFC approved, prototype implemented
+**Acceptance Criteria:** Accepted RFC; bounded attended prototype formation, deterministic revision, activation decay, and subjective evidence support implemented
 **Performance Requirements:** Attention-driven, not continuous clustering
 **Determinism Requirements:** Concept formation deterministic
 **Ontology Implications:** Concepts are subjective, not Ground Truth
@@ -295,12 +295,12 @@
 **Out of Scope:** Semantic concept enums
 
 ## TODO-COG-002: Bounded Cognition Model
-**Status:** Pending
+**Status:** Completed
 **Phase:** 12
 **Priority:** Medium
 **Dependencies:** TODO-COG-001, TODO-SCENE-006
 **Goal:** Implement cognitive limits
-**Acceptance Criteria:** Working memory limits, belief inertia, source trust
+**Acceptance Criteria:** Working-memory limits, fixed-point belief inertia, subjective source trust, bounded evidence batches, and fallible causal hypotheses implemented
 **Performance Requirements:** Sparse updates
 **Determinism Requirements:** Cognition deterministic given same state
 **Ontology Implications:** Stable mistakes are essential

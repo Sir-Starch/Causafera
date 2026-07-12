@@ -115,3 +115,7 @@ Trust computation may be frequent. Strategies:
 - `COG` — cognition
 - `BELIEF` — belief systems
 - `SOCIAL` — social systems
+
+## Phase 12 Implementation Status
+
+The minimal `TrustStore` uses at most 32 opaque `SubjectiveSourceId` hypotheses rather than authoritative `AgentId` values. Trust is a deterministic fixed-point running mean of observed correspondence and weights incoming belief evidence. Competence dimensions, reputation, indirect reports, categories, institutions, deception models, and social-network propagation remain future work.
