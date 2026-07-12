@@ -34,11 +34,11 @@ A foundational domain cannot enter implementation without coverage analysis.
 | Climate | Pending | Future geographic work |
 | Ecology | Pending | Future geographic work |
 | Biology | Partial — body-segment topology and joint contracts | Phase 5 |
-| Cognition | Pending | Phase 7-9 |
-| Language | Pending | Phase 10-11 |
-| Mana | Pending | Phase 14 |
-| Society | Pending | Phase 16-17 |
-| Economy | Pending | Phase 17 |
-| Epistemics | Pending | Phase 13 |
-| Isekai | Pending | Phase 19 |
-| Metaphysics | Pending | Phase 20 |
+| Cognition | Pending | Phases 7-12 |
+| Language | Pending | Phases 13-14 |
+| Mana | Pending | Phase 17 |
+| Society | Pending | Phases 19-20 |
+| Economy | Pending | Phase 20 |
+| Epistemics | Pending | Phase 16 |
+| Isekai | Pending | Phase 22 |
+| Metaphysics | Pending | Phase 23 |

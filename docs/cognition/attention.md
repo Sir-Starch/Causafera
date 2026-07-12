@@ -96,6 +96,8 @@ Attention simulation may be detailed for focus agents. Strategies:
 - `prediction.md` — attention determines what is predicted
 - `goals.md` — goals guide attention
 - `habits.md` — habits automate attention
+- `../architecture/cognition-rebaseline.md` — attention-driven subjective scene construction
+- `../rfc/RFC-COG-001.md` — proposed scene model and attention integration
 
 ## TODO Categories
 

@@ -12,7 +12,7 @@ Prevent "belief changes reality" simulation while supporting emergent magic.
 
 ## Details
 
-To be developed during Phase 14.
+To be developed during Phase 17.
 
 ## Unresolved Questions
 

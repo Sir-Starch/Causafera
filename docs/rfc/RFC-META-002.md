@@ -12,7 +12,7 @@ Support emergent gods and spirits as research hypothesis, not primitive engine s
 
 ## Details
 
-To be developed during Phase 20.
+To be developed during Phase 23.
 
 ## Unresolved Questions
 

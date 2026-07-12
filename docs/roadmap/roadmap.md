@@ -46,75 +46,87 @@ Next phase.
 
 ## Phase 7
 
-Physical access, sensory acquisition, generic feature extraction.
+Physical access and sensory acquisition.
 
 ## Phase 8
 
-Subjective percepts and sparse concept formation.
+Generic perceptual feature extraction.
 
 ## Phase 9
 
-Minimal cognition and belief hypotheses.
+Subjective Scene Construction.
 
 ## Phase 10
 
-Language bootstrap and communication architecture.
+Working context, prediction, and cognitive continuity.
 
 ## Phase 11
 
-Lexical innovation, semantic inference, and language change.
+Sparse subjective concept formation.
 
 ## Phase 12
 
-Practice representation and evolution.
+Beliefs and subjective causal inference.
 
 ## Phase 13
 
-Measurement, documents, and epistemic infrastructure.
+Language bootstrap and communication architecture.
 
 ## Phase 14
 
-Minimal information-sensitive mana.
+Lexical innovation, semantic inference, and language change.
 
 ## Phase 15
 
-Causal Resolution Field.
+Practice representation and evolution.
 
 ## Phase 16
 
-Social networks and organizations.
+Measurement, documents, and epistemic infrastructure.
 
 ## Phase 17
 
-Material economy and city infrastructure.
+Minimal information-sensitive mana.
 
 ## Phase 18
 
-Historical bootstrap.
+Causal Resolution Field.
 
 ## Phase 19
 
-Isekai transfer and imported priors.
+Social networks and organizations.
 
 ## Phase 20
 
-Metaphysical experiments and attractors.
+Material economy and city infrastructure.
 
 ## Phase 21
 
-Long-run emergence experiments.
+Historical bootstrap.
 
 ## Phase 22
+
+Isekai transfer and imported priors.
+
+## Phase 23
+
+Metaphysical experiments and attractors.
+
+## Phase 24
+
+Long-run emergence experiments.
+
+## Phase 25
 
 Explanation Engine expansion.
 
 A minimal Explanation IR may exist earlier for developer inspection.
 
-## Phase 23
+## Phase 26
 
 Rich observer UI.
 
-## Phase 24
+## Phase 27
 
 Optional narrative surface realization.
 

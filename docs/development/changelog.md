@@ -14,6 +14,15 @@ This project follows a structured changelog format. Each entry includes:
 
 ## Unreleased
 
+### Architecture
+
+- **COG** — Added architecture rebaseline `docs/architecture/cognition-rebaseline.md` clarifying the subjective scene construction layer between generic perceptual features and subjective concepts/beliefs.
+- **COG** — Added RFC-COG-001 proposing the minimum viable representation for the subjective scene and cognitive continuity model.
+- **ARCH** — Added invariants INV-027 through INV-035 enforcing the subjective scene boundary.
+- **ARCH** — Resequenced roadmap Phases 8–27 to insert Subjective Scene Construction (Phase 9), Working Context / Prediction / Cognitive Continuity (Phase 10), and shift subsequent cognitive phases accordingly.
+- **COG** — Added nine new implementation TODO items (TODO-SCENE-001 through TODO-SCENE-009) for subjective scene subsystems, with dependencies that block concept formation and belief implementation until scene dependencies are resolved. TODO-SCENE-001 depends on `RFC-COG-001: Accepted`; it is not itself an RFC.
+- **DOCS** — Added specification provenance note to `docs/index.md` documenting how post-initialization architectural discoveries are recorded.
+
 ### Phase 0: Project Foundation
 
 #### Documentation

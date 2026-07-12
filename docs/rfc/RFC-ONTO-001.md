@@ -75,8 +75,8 @@ Feature and physics types are compact and stack-allocated. No heap allocation in
 
 ## Unresolved Questions
 
-- Emergence detection criteria: how do we programmatically detect that an agent has formed a concept? (Deferred to Phase 8 concept formation.)
-- Feature extraction algorithms: how are generic features actually extracted from state? (Deferred to Phase 7-9 cognition.)
+- Emergence detection criteria: how do we programmatically detect that an agent has formed a concept? (Deferred to Phase 11 concept formation.)
+- Feature extraction algorithms: how are generic features actually extracted from state? (Deferred to Phase 7-12 cognition.)
 
 ## Decision Log
 

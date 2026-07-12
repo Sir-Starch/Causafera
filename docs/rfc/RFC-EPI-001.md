@@ -12,7 +12,7 @@ Support emergent effects of standardization and unit changes in magical contexts
 
 ## Details
 
-To be developed during Phase 13.
+To be developed during Phase 16.
 
 ## Unresolved Questions
 

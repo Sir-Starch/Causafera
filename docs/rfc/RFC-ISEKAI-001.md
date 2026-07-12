@@ -12,7 +12,7 @@ Support isekai arrivals without committing to a single metaphysical model.
 
 ## Details
 
-To be developed during Phase 19.
+To be developed during Phase 22.
 
 ## Unresolved Questions
 

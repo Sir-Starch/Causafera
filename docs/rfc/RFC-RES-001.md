@@ -12,7 +12,7 @@ Support detailed simulation of causally connected distant regions while aggregat
 
 ## Details
 
-To be developed during Phase 15.
+To be developed during Phase 18.
 
 ## Unresolved Questions
 

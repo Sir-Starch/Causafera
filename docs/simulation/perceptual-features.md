@@ -61,8 +61,14 @@ Subjective concept formation may later group similar features into agent-specifi
 - Extractors operate on physically accessible state only.
 - No agent has omniscient access to Ground Truth labels.
 
+## Subjective Scene Construction
+
+Generic features are not a complete world model. Future agent cognition must pass features through an explicit **subjective scene construction** layer that builds a transient, agent-specific model of the currently experienced situation before concept formation or belief construction. See `docs/architecture/cognition-rebaseline.md` and `docs/rfc/RFC-COG-001.md`.
+
 ## Related Documents
 
 - `docs/simulation/emergent-concepts.md` - How agents form concepts from perceived features
 - `docs/cognition/attention.md` - Attention mechanisms that drive feature extraction
 - `docs/ontology/primitive-vs-emergent.md` - Primitive vs emergent distinction
+- `docs/architecture/cognition-rebaseline.md` - The missing layer between features and concepts
+- `docs/rfc/RFC-COG-001.md` - Proposed design for the subjective scene model

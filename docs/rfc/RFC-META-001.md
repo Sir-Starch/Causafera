@@ -12,7 +12,7 @@ Avoid primitive `Soul` objects without an accepted model.
 
 ## Details
 
-To be developed during Phase 20.
+To be developed during Phase 23.
 
 ## Unresolved Questions
 

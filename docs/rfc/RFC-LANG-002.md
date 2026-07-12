@@ -12,7 +12,7 @@ Support polysemy, homonymy, synonym competition, semantic drift.
 
 ## Details
 
-To be developed during Phase 11.
+To be developed during Phase 14.
 
 ## Unresolved Questions
 

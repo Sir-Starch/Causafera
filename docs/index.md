@@ -1,5 +1,19 @@
 # Ontopolis Documentation Index
 
+## Specification Provenance
+
+This repository was initialized from a project initialization specification. That specification remains the historical baseline.
+
+Post-initialization architectural discoveries, refinements, and course corrections are recorded through:
+
+- **ADRs** — individual architecture decisions in `docs/adr/`;
+- **RFCs** — design investigations for complex subsystems in `docs/rfc/`;
+- **Architecture rebaseline documents** — mid-course corrections in `docs/architecture/`;
+- **Subsystem documentation** — detailed domain documentation throughout `docs/`;
+- **Roadmap revisions** — phase resequencing and scope updates in `docs/roadmap/`.
+
+Later documents supersede conflicting initialization-spec sections **only when they explicitly say so**.
+
 ## Vision
 
 - `docs/vision/project-thesis.md` - Central project thesis and mana semantics
@@ -25,6 +39,7 @@
 - `docs/architecture/data-oriented.md` - Data-oriented storage
 - `docs/architecture/observer.md` - Observer architecture
 - `docs/architecture/protocol.md` - Observer protocol
+- `docs/architecture/cognition-rebaseline.md` - Cognition rebaseline: subjective scene and cognitive continuity
 
 ## World
 
@@ -189,6 +204,7 @@
 ## RFCs
 
 - `docs/rfc/` - Request for Comments
+- `docs/rfc/RFC-COG-001.md` - Subjective Scene and Cognitive Continuity Model
 
 ## ADRs
 

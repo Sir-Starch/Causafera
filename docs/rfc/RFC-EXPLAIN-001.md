@@ -12,7 +12,7 @@ Support deterministic rendering, confidence representation, and optional LLM sur
 
 ## Details
 
-To be developed during Phase 22.
+To be developed during Phase 25.
 
 ## Unresolved Questions
 

@@ -105,3 +105,41 @@ An agent may know that microorganisms cause disease without having access to mic
 ## INV-026: An explanation must expose confidence and supporting provenance
 
 Every analytical classification and explanation claim must include confidence levels and references to supporting causal traces. Do not turn uncertain analytics into confident human statements.
+
+## INV-027: Agents do not directly perceive authoritative entity identity
+
+Authoritative identifiers such as `EntityId`, `BodySegmentId`, or `PlaceId` are Ground Truth bookkeeping. They are not subjective knowledge. Agent cognition must not consume these IDs directly as perceived object identities.
+
+Authoritative identity identifiers must not be stored as semantic or inferential content in agent cognitive state. Any Ground Truth to perceived-identity correspondence is external bookkeeping and is inaccessible to the agent. The agent may believe an object is the same one it saw yesterday, but that belief is expressed through continuity confidence, appearance signatures, and relationship associations — not through a hidden guess about an authoritative ID.
+
+## INV-028: Perceived object identity is a subjective hypothesis
+
+An agent may maintain a subjective hypothesis that two distinct authoritative entities are the same object, or that one object is multiple objects, or that an object has been replaced, stolen, or destroyed. Subjective identity tracking may be wrong. It must remain structurally distinct from authoritative identity.
+
+## INV-029: Agents act on a constructed subjective scene
+
+Agent cognition and decisions must not directly consume raw Ground Truth or an unstructured global list of features as a complete world model. There must be an explicit intermediate layer in which the agent constructs a transient, agent-specific model of the currently experienced situation.
+
+## INV-030: Subjective scene content must be causally grounded
+
+Every element of a subjective scene must derive from physically accessible input, memory, concepts, prediction, self-state, or explicit inference. Subjective construction may reorganize and interpret information, but it must not fabricate content without causal ancestry.
+
+## INV-031: Subjective detail cannot introduce inaccessible information
+
+The cognitive system cannot invent sensory or factual information absent from the agent's physically accessible state. If smell is not represented at any relevant level, an agent cannot subjectively smell bread. Emergence reorganizes available information; it does not create information from complete absence.
+
+## INV-032: Persistent autobiographical memory is not continuously active context
+
+Cold historical memory and active cognition are distinct. An agent may possess decades of stored experience while only a small active context affects the current cognitive step. The architecture must not equate stored memory with currently active working context.
+
+## INV-033: The self-model is subjective
+
+An agent's persistent model of itself may disagree with authoritative state and historical outcomes. Believed abilities, autobiographical continuity, social identity associations, and expected behavioural tendencies are constructed, not read from Ground Truth.
+
+## INV-034: Objective body state and subjective body schema are distinct
+
+Biological Ground Truth contains structural and physiological state. Cognition receives information through appropriate sensory and internal-access mechanisms and constructs a body schema from proprioception, pain, balance, and learned boundaries. Do not give cognition direct omniscient access to complete biological state as complete self-knowledge.
+
+## INV-035: Prediction error is a first-class cognitive driver
+
+Prediction error may affect attention, salience, memory encoding, concept revision, and causal inference. The architecture must treat prediction-surprise as a signal that propagates through cognitive systems, not as a cosmetic annotation.

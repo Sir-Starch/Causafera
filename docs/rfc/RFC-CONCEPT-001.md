@@ -12,7 +12,7 @@ Prevent continuous clustering of all world features for every agent.
 
 ## Details
 
-To be developed during Phase 8.
+To be developed during Phase 11.
 
 ## Unresolved Questions
 
