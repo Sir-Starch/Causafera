@@ -60,15 +60,19 @@ Completed.
 
 Subjective Scene Construction.
 
-Next phase.
+Completed.
 
 ## Phase 10
 
 Working context, prediction, and cognitive continuity.
 
+Completed.
+
 ## Phase 11
 
 Sparse subjective concept formation.
+
+Next phase.
 
 ## Phase 12
 

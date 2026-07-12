@@ -37,6 +37,8 @@ Selection filters by threshold, adds a numeric continuity bonus to current foci,
 
 This attention primitive does not yet consume extractor features. Phase 9 subjective scene mapping must create grounded subjective targets and maintain inaccessible external percept-to-trace bookkeeping before attention and later cognition use them.
 
+Phase 9 follow-up is now implemented by the identity-free `PerceptualCue` boundary accepted in RFC-SCENE-001. The inaccessible percept-to-trace correspondence remains outside cognition.
+
 ## Primitive and emergent boundary
 
 Physical magnitude, position, range, threshold, channel schema identity, generic relation/value, fixed-point attention weight, and subjective target identity are permitted. Object categories, modality names, threat/opportunity labels, symptoms, emotions, situations, and concepts are not authoritative values in this pipeline.

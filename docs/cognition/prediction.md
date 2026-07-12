@@ -125,3 +125,9 @@ Prediction computation may be frequent. Strategies:
 
 - `COG` — cognition
 - `BELIEF` — belief systems
+
+## Phase 10 Implementation Status
+
+`PredictiveState` stores at most eight generic signature expectations. Due predictions compare against accessible identity-free cues and emit explicit fixed-point `PredictionError` records with subjective percept support. It does not run physics, classify the event, or access Ground Truth.
+
+`AgencyModel` learns bounded associations between opaque action and outcome pattern IDs through deterministic proximity-weighted updates. These associations may be wrong. `TemporalEnvelope` retains at most eight recent subjective frames and aggregate prediction error, keeping immediate continuity separate from autobiographical memory.

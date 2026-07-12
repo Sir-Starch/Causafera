@@ -168,7 +168,9 @@ At the time of this audit, the first pending (READY-to-begin) task was **`TODO-T
 
 At the time of this audit, all Phase 6 work was unblocked: it depended only on `TODO-CORE-001` (completed). The next sequential task was `TODO-COG-001: Attention Primitives` (Phase 7), depending on `TODO-BIO-001` (completed).
 
-No Phase 9–10 subjective scene work is marked READY because its blocking implementation dependencies (`TODO-SCENE-001` through `TODO-SCENE-009`) require `RFC-COG-001` to be accepted first.
+## Subsequent implementation status (2026-07-12)
+
+RFC-COG-001 and the concrete RFC-SCENE-001 are now accepted. `TODO-SCENE-001` through `TODO-SCENE-009` were completed in the Phase 9–10 implementation batch. Phase 11 sparse concept formation is now the next roadmap phase; this historical report otherwise preserves the findings that motivated the rebaseline.
 
 ## 15. What was deliberately not implemented?
 

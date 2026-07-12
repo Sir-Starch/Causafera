@@ -13,7 +13,7 @@ Attention is the mechanism that selects which information an agent processes. Co
 - supporting subjective `PerceptId` references;
 - agent-local `AttentionTargetId`, structurally distinct from `EntityId`, `BodySegmentId`, `PlaceId`, and `FeatureId`.
 
-This primitive does not consume Ground Truth features or causal trace identities directly. Phase 9 subjective scene mapping must create grounded subjective targets and keep percept-to-trace correspondence in inaccessible external bookkeeping before attention participates in broader cognition. Goal relevance, learned salience, threat/opportunity interpretation, habituation, prediction error, and attention history remain future processes rather than semantic target enums.
+This primitive does not consume Ground Truth features or causal trace identities directly. Phase 9 scene mapping creates grounded subjective targets and keeps percept-to-trace correspondence in inaccessible external bookkeeping before attention participates in broader cognition. Goal relevance, learned salience, threat/opportunity interpretation, and habituation remain future processes rather than semantic target enums; Phase 10 prediction error is now available as a numeric downstream salience input.
 
 ## Attention Representation
 
@@ -108,9 +108,14 @@ Attention simulation may be detailed for focus agents. Strategies:
 - `goals.md` — goals guide attention
 - `habits.md` — habits automate attention
 - `../architecture/cognition-rebaseline.md` — attention-driven subjective scene construction
-- `../rfc/RFC-COG-001.md` — proposed scene model and attention integration
+- `../rfc/RFC-COG-001.md` — accepted scene model and attention integration
+- `../rfc/RFC-SCENE-001.md` — concrete bounded scene/continuity layout
 
 ## TODO Categories
 
 - `COG` — cognition
 - `MEM` — memory
+
+## Phase 9 Integration Status
+
+Attention foci now gate `SubjectiveScene` contents. Foci and cues meet only through agent-local `AttentionTargetId` and `PerceptId`; attention does not acquire authoritative identity or causal trace access. Numeric prediction error can later contribute salience through ordinary candidates without creating a semantic surprise kind.

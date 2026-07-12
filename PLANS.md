@@ -56,3 +56,4 @@ None.
 - `plans/phase-5-biological-structure.md` — implemented the minimal biological structural model (`TODO-BIO-001`) on 2026-07-12.
 - `plans/phase-5-pathogen-contracts.md` — implemented deterministic pathogen lineage, exposure, and host-interaction contracts (`TODO-BIO-002`) on 2026-07-12.
 - `plans/phases-6-8-causal-perception.md` — implemented deterministic causal provenance, physical access, generic extraction, and bounded attention (`TODO-TRACE-001`, `TODO-SENSE-001`, `TODO-PERCEPT-001`, `TODO-COG-001`) on 2026-07-12.
+- `plans/phases-9-10-subjective-continuity.md` — implemented bounded subjective scenes and cognitive continuity (`TODO-SCENE-001` through `TODO-SCENE-009`) on 2026-07-12.

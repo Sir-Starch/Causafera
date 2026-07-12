@@ -69,7 +69,7 @@ Subjective concept formation may later group similar features into agent-specifi
 
 ## Subjective Scene Construction
 
-Generic features are not a complete world model. Future agent cognition must pass features through an explicit **subjective scene construction** layer that builds a transient, agent-specific model of the currently experienced situation before concept formation or belief construction. See `docs/architecture/cognition-rebaseline.md` and `docs/rfc/RFC-COG-001.md`.
+Generic features are not a complete world model. The Phase 9 bridge must strip extractor bookkeeping and construct identity-free `PerceptualCue` records. Agent cognition then builds a transient, agent-specific `SubjectiveScene` before concept formation or belief construction. The cue must not copy `Feature.target_id`, `FeatureId`, or causal `TraceId` into cognition. See `docs/architecture/cognition-rebaseline.md` and `docs/rfc/RFC-SCENE-001.md`.
 
 ## Related Documents
 
@@ -77,4 +77,5 @@ Generic features are not a complete world model. Future agent cognition must pas
 - `docs/cognition/attention.md` - Attention mechanisms that drive feature extraction
 - `docs/ontology/primitive-vs-emergent.md` - Primitive vs emergent distinction
 - `docs/architecture/cognition-rebaseline.md` - The missing layer between features and concepts
-- `docs/rfc/RFC-COG-001.md` - Proposed design for the subjective scene model
+- `docs/rfc/RFC-COG-001.md` - Accepted architecture for the subjective scene model
+- `docs/rfc/RFC-SCENE-001.md` - Concrete bounded Phase 9–10 layout

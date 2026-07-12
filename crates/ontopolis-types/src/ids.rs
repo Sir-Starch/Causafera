@@ -3,7 +3,9 @@ use std::fmt;
 
 macro_rules! define_id {
     ($name:ident, $inner:ty) => {
-        #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+        #[derive(
+            Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+        )]
         #[serde(transparent)]
         pub struct $name($inner);
 
@@ -45,6 +47,15 @@ define_id!(SensorId, u64);
 define_id!(SignalChannelId, u64);
 define_id!(AcquisitionId, u64);
 define_id!(AttentionTargetId, u64);
+define_id!(PerceivedObjectId, u64);
+define_id!(SubjectiveBodyPartId, u64);
+define_id!(SelfAssociationId, u64);
+define_id!(WorkingItemId, u64);
+define_id!(WorkingItemKindId, u64);
+define_id!(EpisodeId, u64);
+define_id!(PredictionId, u64);
+define_id!(ActionPatternId, u64);
+define_id!(OutcomePatternId, u64);
 define_id!(ConceptId, u64);
 define_id!(LexemeId, u64);
 define_id!(LanguageId, u64);

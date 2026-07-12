@@ -316,7 +316,8 @@ Later documents supersede conflicting initialization-spec sections **only when t
 ## Related Documents
 
 - `docs/architecture/invariants.md` — hard invariants including INV-027 through INV-035
-- `docs/rfc/RFC-COG-001.md` — proposed design for the subjective scene and cognitive continuity model
+- `docs/rfc/RFC-COG-001.md` — accepted architecture for the subjective scene and cognitive continuity model
+- `docs/rfc/RFC-SCENE-001.md` — accepted concrete Phase 9–10 layout
 - `docs/roadmap/roadmap.md` — updated phase sequence
 - `docs/development/todo-backlog.md` — updated TODO dependencies
 - `docs/simulation/perceptual-features.md` — generic feature layer (predecessor to subjective scene)
@@ -332,5 +333,11 @@ Later documents supersede conflicting initialization-spec sections **only when t
 - **Accepted:** Phases 1–5 remain completed and unchanged.
 - **Accepted:** Phases 8–12 are resequenced to insert subjective scene construction and cognitive continuity before concept formation and belief.
 - **Accepted:** No existing Phase 1–5 code requires modification; the contracts are compatible but require the new layer to prevent future violations.
-- **Accepted:** The precise Rust representation of the subjective scene model remains an open RFC design problem (RFC-COG-001).
+- **Accepted:** RFC-SCENE-001 resolves the minimal Rust representation with fixed-capacity identity-free cognitive state.
 - **Accepted:** New invariants INV-027 through INV-035 are added to enforce the boundary.
+
+## Phase 9–10 Implementation Status
+
+`ontopolis-cognition` now implements the accepted boundary. `PerceptualCue` is the only generic scene input and cannot carry authoritative entity, feature, place, body-segment, sensor, or trace identity. `SceneContinuityState` maintains fallible agent-local object hypotheses and reconstructs an attention-gated transient scene.
+
+Active cognition is explicitly bounded: working context decays independently of capped episodic storage; sparse predictions emit numeric errors; agency is an opaque learned association; and a short temporal envelope retains only recent subjective frames. Concept formation and beliefs remain deferred to Phases 11–12.

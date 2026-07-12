@@ -1,6 +1,6 @@
 # RFC-COG-001: Subjective Scene and Cognitive Continuity Model
 
-**Status:** Proposed
+**Status:** Accepted
 
 ## Summary
 
@@ -305,12 +305,12 @@ TemporalEnvelope:
 
 ## Decision Log
 
-- **Proposed:** The subjective scene construction layer is required before concept formation and belief implementation.
-- **Proposed:** Subjective identity must be structurally distinct from authoritative identity.
-- **Proposed:** Prediction error is a first-class signal that may affect attention, salience, memory, and concept revision.
-- **Proposed:** Working memory is bounded and distinct from persistent autobiographical memory.
-- **Proposed:** The self-model and body schema are subjective and may disagree with authoritative state.
-- **Proposed:** All representations remain design candidates until implementation RFCs for individual subsystems are accepted.
+- **Accepted:** The subjective scene construction layer is required before concept formation and belief implementation.
+- **Accepted:** Subjective identity must be structurally distinct from authoritative identity.
+- **Accepted:** Prediction error is a first-class signal that may affect attention, salience, memory, and concept revision.
+- **Accepted:** Working memory is bounded and distinct from persistent autobiographical memory.
+- **Accepted:** The self-model and body schema are subjective and may disagree with authoritative state.
+- **Accepted:** Concrete Phase 9–10 layouts are specified by RFC-SCENE-001.
 
 ## Related Documents
 

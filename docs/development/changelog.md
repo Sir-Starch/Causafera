@@ -17,10 +17,10 @@ This project follows a structured changelog format. Each entry includes:
 ### Architecture
 
 - **COG** — Added architecture rebaseline `docs/architecture/cognition-rebaseline.md` clarifying the subjective scene construction layer between generic perceptual features and subjective concepts/beliefs.
-- **COG** — Added RFC-COG-001 proposing the minimum viable representation for the subjective scene and cognitive continuity model.
+- **COG** — Accepted RFC-COG-001 and RFC-SCENE-001, fixing the minimum architecture and concrete bounded layout for subjective scenes and cognitive continuity.
 - **ARCH** — Added invariants INV-027 through INV-035 enforcing the subjective scene boundary.
 - **ARCH** — Resequenced roadmap Phases 8–27 to insert Subjective Scene Construction (Phase 9), Working Context / Prediction / Cognitive Continuity (Phase 10), and shift subsequent cognitive phases accordingly.
-- **COG** — Added nine new implementation TODO items (TODO-SCENE-001 through TODO-SCENE-009) for subjective scene subsystems, with dependencies that block concept formation and belief implementation until scene dependencies are resolved. TODO-SCENE-001 depends on `RFC-COG-001: Accepted`; it is not itself an RFC.
+- **COG** — Added and completed nine implementation TODO items (TODO-SCENE-001 through TODO-SCENE-009); concept formation now has its required scene and active-context dependencies.
 - **DOCS** — Added specification provenance note to `docs/index.md` documenting how post-initialization architectural discoveries are recorded.
 
 ### Phase 0: Project Foundation
@@ -88,6 +88,15 @@ This project follows a structured changelog format. Each entry includes:
 - **COG** — Completed `TODO-COG-001` with fixed-capacity attention over agent-local `AttentionTargetId`; authoritative entity and feature identities cannot enter attention state.
 - **ARCH** — Marked Phases 6–8 complete and Phase 9 Subjective Scene Construction next. Feature-to-subjective identity mapping remains mandatory before broader cognition.
 - **PERF** — Used flat event/edge/feature batches and fixed attention arrays without making unbenchmarked throughput or scale claims.
+
+### Phases 9–10: Subjective Scene and Cognitive Continuity
+
+- **COG** — Added identity-free `PerceptualCue`, deterministic subjective object persistence, fixed-capacity scene reconstruction, subjective body schema, and revisable opaque self-associations.
+- **COG** — Replaced the unbounded semantic memory placeholder with a bounded decaying working context and capped similarity/relevance-driven episodic reactivation.
+- **COG** — Added sparse generic predictions, explicit numeric prediction errors, learned opaque agency associations, and an eight-frame subjective temporal envelope.
+- **ARCH** — Completed TODO-SCENE-001 through TODO-SCENE-009 and marked Phases 9–10 complete; Phase 11 sparse concept formation is next.
+- **ONTO** — Kept authoritative IDs, traces, semantic object/situation kinds, emotions, traits, and English labels out of cognitive state.
+- **PERF** — Used fixed maxima and integer ranking throughout active cognition without making scale or throughput claims.
 
 ## Categories
 

@@ -208,6 +208,7 @@ Later documents supersede conflicting initialization-spec sections **only when t
 - `docs/rfc/RFC-COG-001.md` - Subjective Scene and Cognitive Continuity Model
 - `docs/rfc/RFC-TRACE-001.md` - Deterministic Ground Truth Event Provenance
 - `docs/rfc/RFC-PERCEPT-001.md` - Physical Access, Generic Extraction, and Attention Boundary
+- `docs/rfc/RFC-SCENE-001.md` - Bounded Subjective Scene and Cognitive Continuity
 
 ## ADRs
 

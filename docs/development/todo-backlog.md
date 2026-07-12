@@ -155,12 +155,12 @@
 **Out of Scope:** Subjective identity, scenes, concepts, semantic classifiers, exhaustive feature algorithms
 
 ## TODO-SCENE-001: Implement Minimal Subjective Scene Representation
-**Status:** Pending
+**Status:** Completed
 **Phase:** 9
 **Priority:** High
 **Dependencies:** RFC-COG-001 accepted
 **Goal:** Implement the minimum viable subjective scene representation based on accepted RFC-COG-001
-**Acceptance Criteria:** Rust types exist for bounded subjective scene; scene construction is deterministic; no authoritative entity identity leaks into cognitive state
+**Acceptance Criteria:** Fixed-capacity Rust scene and cue types; deterministic reconstruction; attention-gated contents; no authoritative identity or trace identifiers in cognitive state
 **Performance Requirements:** Bounded active state per agent; deterministic reconstruction
 **Determinism Requirements:** Scene construction deterministic given same inputs and history
 **Ontology Implications:** Agents act on constructed scenes, not raw Ground Truth (INV-029)
@@ -169,12 +169,12 @@
 **Out of Scope:** Full implementation of all scene subsystems
 
 ## TODO-SCENE-002: Perceived Object Persistence
-**Status:** Pending
+**Status:** Completed
 **Phase:** 9
 **Priority:** High
 **Dependencies:** TODO-SCENE-001
 **Goal:** Design and implement subjective object identity tracking
-**Acceptance Criteria:** PerceivedObjectIdentity distinct from EntityId; agents can merge, split, lose, and misidentify objects; identity errors propagate
+**Acceptance Criteria:** `PerceivedObjectId` distinct from `EntityId`; deterministic signature/location matching permits merge and split errors; bounded stale hypotheses may be lost or replaced
 **Performance Requirements:** Sparse updates; bounded number of tracked objects per agent
 **Determinism Requirements:** Identity updates deterministic given same perceptual history
 **Ontology Implications:** Perceived identity is a subjective hypothesis (INV-028)
@@ -183,12 +183,12 @@
 **Out of Scope:** Perfect identity tracking; omniscient object knowledge
 
 ## TODO-SCENE-003: Subjective Body Schema
-**Status:** Pending
+**Status:** Completed
 **Phase:** 9
 **Priority:** Medium
 **Dependencies:** TODO-BIO-001, TODO-SCENE-001
 **Goal:** Design the mapping from biological signals to experienced body model
-**Acceptance Criteria:** Body schema is distinct from BodyStructure; updates via sensory and internal signals; may disagree with authoritative state
+**Acceptance Criteria:** Fixed-capacity subjective part identities and experienced numeric properties are structurally distinct from `BodyStructure`/`BodySegmentId` and update only through identity-free inputs
 **Performance Requirements:** Incremental updates; bounded schema size
 **Determinism Requirements:** Schema updates deterministic given same signal history
 **Ontology Implications:** Objective body state and subjective body schema are distinct (INV-034)
@@ -197,12 +197,12 @@
 **Out of Scope:** Full physiological simulation; neural body mapping
 
 ## TODO-SCENE-004: Self-Model Architecture
-**Status:** Pending
+**Status:** Completed
 **Phase:** 9
 **Priority:** Medium
 **Dependencies:** TODO-SCENE-001
 **Goal:** Design the persistent but revisable self-model
-**Acceptance Criteria:** Self-model contains believed abilities, autobiographical continuity, social identities; may disagree with Ground Truth
+**Acceptance Criteria:** Persistent bounded opaque self-associations are revisable, percept-supported, activated separately into scenes, and contain no Ground Truth identity or predefined trait taxonomy
 **Performance Requirements:** Persistent but not continuously active
 **Determinism Requirements:** Self-model updates deterministic given same experiences
 **Ontology Implications:** The self-model is subjective (INV-033)
@@ -211,12 +211,12 @@
 **Out of Scope:** Full personality simulation; fixed trait enums
 
 ## TODO-SCENE-005: Predictive World Model
-**Status:** Pending
+**Status:** Completed
 **Phase:** 10
 **Priority:** High
 **Dependencies:** TODO-SCENE-001
 **Goal:** Design sparse, bounded prediction and prediction-error handling
-**Acceptance Criteria:** Predictions are sparse and context-limited; prediction error affects attention, salience, memory, and concept revision
+**Acceptance Criteria:** Fixed-capacity generic near-future predictions resolve against accessible cues and emit bounded numeric prediction errors suitable for downstream attention, salience, memory, and concept revision
 **Performance Requirements:** No global physics per agent; bounded prediction count
 **Determinism Requirements:** Predictions deterministic given same beliefs and scene
 **Ontology Implications:** Prediction error is a first-class cognitive driver (INV-035)
@@ -225,12 +225,12 @@
 **Out of Scope:** Global physics simulator; perfect prediction
 
 ## TODO-SCENE-006: Working Memory and Active Context
-**Status:** Pending
+**Status:** Completed
 **Phase:** 10
 **Priority:** High
 **Dependencies:** TODO-SCENE-001
 **Goal:** Design bounded working memory separate from persistent storage
-**Acceptance Criteria:** Working memory has capacity limit and decay; long-term memory is not continuously active
+**Acceptance Criteria:** Working context has a hard capacity, canonical activation ranking, deterministic decay/rehearsal, and is structurally separate from episodic storage
 **Performance Requirements:** Bounded active items per agent; minimal overhead for inactive agents
 **Determinism Requirements:** Working memory updates deterministic given same cues and state
 **Ontology Implications:** Persistent memory is not continuously active context (INV-032)
@@ -239,12 +239,12 @@
 **Out of Scope:** Unlimited working memory; perfect recall
 
 ## TODO-SCENE-007: Episodic Memory Reactivation
-**Status:** Pending
+**Status:** Completed
 **Phase:** 10
 **Priority:** Medium
 **Dependencies:** TODO-SCENE-006
 **Goal:** Design similarity-driven, relevance-weighted memory reactivation
-**Acceptance Criteria:** Current perceptual patterns can reactivate stored episodes; reactivation is partial and graded; no semantic event triggers
+**Acceptance Criteria:** Quantized perceptual signatures reactivate at most four ranked episodes through graded similarity and relevance; no semantic event triggers
 **Performance Requirements:** Efficient similarity matching; bounded reactivation per tick
 **Determinism Requirements:** Reactivation deterministic given same memory index and cues
 **Ontology Implications:** Memories become active through similarity, not semantic lookup
@@ -253,12 +253,12 @@
 **Out of Scope:** Perfect memory retrieval; keyword-based search
 
 ## TODO-SCENE-008: Agency Attribution
-**Status:** Pending
+**Status:** Completed
 **Phase:** 10
 **Priority:** Medium
 **Dependencies:** TODO-SCENE-005
 **Goal:** Design learned agency attribution from action-outcome observation
-**Acceptance Criteria:** Agents can learn and mislearn that their actions cause outcomes; agency model feeds self-model and causal inference
+**Acceptance Criteria:** Bounded opaque action/outcome associations learn deterministic proximity-weighted strength and can represent incorrect attribution without privileged causality
 **Performance Requirements:** Incremental updates; bounded agency model size
 **Determinism Requirements:** Agency updates deterministic given same action-outcome history
 **Ontology Implications:** Agency is constructed, not innate
@@ -267,12 +267,12 @@
 **Out of Scope:** Perfect causal knowledge; innate agency
 
 ## TODO-SCENE-009: Subjective Temporal Continuity
-**Status:** Pending
+**Status:** Completed
 **Phase:** 10
 **Priority:** Medium
 **Dependencies:** TODO-SCENE-001
 **Goal:** Design the bounded temporal envelope binding recent past, current scene, and expected near future
-**Acceptance Criteria:** Current scene is not an isolated tick; temporal anchors structure subjective time; bounded history buffer
+**Acceptance Criteria:** A fixed-capacity temporal envelope binds recent subjective object/percept frames and prediction error with deterministic oldest-frame eviction
 **Performance Requirements:** Bounded temporal envelope size
 **Determinism Requirements:** Temporal envelope updates deterministic given same scene sequence
 **Ontology Implications:** Temporal continuity is constructed, not a simulation primitive

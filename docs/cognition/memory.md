@@ -166,3 +166,9 @@ Memory data may be large. Strategies:
 
 - `COG` — cognition
 - `MEM` — memory
+
+## Phase 10 Implementation Status
+
+`WorkingContext` is implemented as at most eight active items with deterministic fixed-point ranking, decay, and rehearsal. It is structurally separate from `EpisodicStore`, a capped minimal cold store used to validate the boundary rather than define the final persistence format.
+
+Episodic reactivation compares quantized appearance signatures, multiplies similarity by numeric relevance and stored strength, and activates at most four ranked episodes. It uses no keyword, event-name, concept enum, Ground Truth ID, or trace reference. Rich long-term memory, distortion, consolidation, and durable indexing remain future work.

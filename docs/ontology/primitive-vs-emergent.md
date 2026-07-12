@@ -208,4 +208,10 @@ The completed pathogen extension stores typed lineage ancestry, fixed-point tran
 
 `ontopolis-perception` implements property-based physical signals, sensor apertures, deterministic accessibility filtering, relative acquired samples, and generic magnitude/change extraction with causal input spans. Signal channels are opaque schema identities, not named modality enums.
 
-`ontopolis-cognition::attention` implements bounded fixed-point ranking over agent-local `AttentionTargetId`. It cannot store authoritative entity or feature identity. Phase 9 must map extractor bookkeeping to subjective perceived identities before cognition consumes it. Object categories, situations, threats, opportunities, and modality names remain emergent or observer-level.
+`ontopolis-cognition::attention` implements bounded fixed-point ranking over agent-local `AttentionTargetId`. It cannot store authoritative entity or feature identity. The Phase 9 boundary maps extractor bookkeeping to identity-free cues before cognition consumes it. Object categories, situations, threats, opportunities, and modality names remain emergent or observer-level.
+
+## Phase 9–10 Subjective Continuity Status
+
+`ontopolis-cognition` accepts identity-free, quantized `PerceptualCue` values and constructs bounded transient scenes with fallible `PerceivedObjectId` hypotheses. Subjective body parts, self-associations, working items, episodes, predictions, actions, and outcomes use opaque agent-local IDs and numeric properties only.
+
+Working context, episodic reactivation, prediction error, agency attribution, and temporal continuity are implemented as fixed-capacity deterministic mechanisms. They do not introduce object categories, situation enums, emotions, traits, abilities, semantic events, or authoritative identity guesses. Those meanings remain emergent in later concept/belief phases.
