@@ -23,10 +23,11 @@ A foundational domain cannot enter implementation without coverage analysis.
 
 | Domain | Coverage | Status |
 |--------|----------|--------|
-| Space | Pending | Phase 1 |
-| Time | Pending | Phase 1 |
-| Matter | Pending | Phase 2 |
-| Energy | Pending | Phase 2 |
+| Space | Completed | Phase 1 |
+| Time | Completed | Phase 1 |
+| Matter | Completed | Phase 2 |
+| Energy | Completed | Phase 2 |
+| Pattern / Feature | Completed | Phase 2 |
 | Geography | Pending | Phase 3-4 |
 | Geology | Pending | Phase 4 |
 | Hydrology | Pending | Phase 4 |

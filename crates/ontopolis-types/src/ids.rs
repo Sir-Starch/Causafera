@@ -51,3 +51,5 @@ define_id!(MaterialId, u64);
 define_id!(PathogenId, u64);
 define_id!(PopulationLineageId, u64);
 define_id!(AggregateId, u64);
+define_id!(EntityId, u64);
+define_id!(SubstanceId, u64);

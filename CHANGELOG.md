@@ -86,6 +86,43 @@ This project follows a structured changelog format. Each entry includes:
 
 - Added `rand` to workspace dependencies for deterministic RNG.
 
+### Phase 2: Ontology Primitives and Generic Feature Representation
+
+#### ONTO
+
+- Completed primitive vs emergent inventory (`TODO-ONTO-001`);
+- Updated `docs/ontology/primitive-vs-emergent.md` with structured Phase 1 and Phase 2 primitive tables;
+- Updated `docs/ontology/domain-coverage-matrix.md` — Space, Time, Matter, Energy, Pattern marked Completed;
+- Accepted `RFC-ONTO-001` with detailed primitive ontology and generic feature representation design.
+
+#### CORE
+
+- Implemented generic perceptual feature types in `ontopolis-types/src/features.rs`;
+- Added `FeatureRelation` (Change, Magnitude, Direction, Variance, Periodicity, Synchrony, Recurrence, Duration, SpatialRelation, TemporalRelation, CoOccurrence, StructuralSimilarity, RelativeDifference, SequenceSimilarity);
+- Added `FeatureValue` (Scalar, Direction, FrequencyBand, MagnitudeBand);
+- Added `Persistence` (Fleeting, Brief, Moderate, Persistent, High);
+- Added `Feature` struct tying relation, value, persistence, target entity, and ID.
+
+#### WORLD
+
+- Implemented primitive physical state types in `ontopolis-types/src/physics.rs`;
+- Added `Temperature` (Kelvin, with Celsius conversion);
+- Added `Orientation` (yaw, pitch, roll);
+- Added `Velocity`, `AngularVelocity`, and `Motion`;
+- Added `Material` (density, thermal conductivity, specific heat, hardness, porosity, composition by SubstanceId);
+- No semantic material names introduced; all properties are measurable physical quantities.
+
+#### Types
+
+- Added `EntityId` and `SubstanceId` typed IDs to `ontopolis-types/src/ids.rs`;
+- Added `serde_json` dev-dependency for serde roundtrip tests.
+
+#### Testing
+
+- Added 5 unit tests for feature type serde roundtrips and Direction3D math;
+- Added 5 unit tests for physics type creation, conversion, serde roundtrips, and Material composition;
+- All 39 workspace tests pass (10 core unit + 6 core integration + 15 types unit + 8 types integration).
+
 ## Categories
 
 - **ARCH** - Architecture

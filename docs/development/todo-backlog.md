@@ -435,7 +435,7 @@
 **Out of Scope:** Full language evolution
 
 ## TODO-ONTO-001: Primitive Inventory
-**Status:** Pending
+**Status:** Completed
 **Phase:** 2
 **Priority:** High
 **Dependencies:** TODO-CORE-001
