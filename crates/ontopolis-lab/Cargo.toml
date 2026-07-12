@@ -11,6 +11,8 @@ ontopolis-types = { workspace = true }
 ontopolis-core = { workspace = true }
 ontopolis-runtime = { workspace = true }
 ontopolis-metaphysics = { workspace = true }
+ontopolis-analytics = { workspace = true }
+ontopolis-explanation = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]

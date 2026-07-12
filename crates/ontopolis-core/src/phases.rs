@@ -11,20 +11,22 @@ pub enum Phase {
     Physics = 3,
     Mana = 4,
     Resolution = 5,
+    Lifecycle = 6,
 }
 
 impl Phase {
     /// Number of defined phases.
-    pub const COUNT: usize = 6;
+    pub const COUNT: usize = 7;
 
     /// All phases in execution order.
     pub const ALL: [Phase; Self::COUNT] = [
-        Phase::Perception,
-        Phase::Cognition,
-        Phase::Action,
         Phase::Physics,
         Phase::Mana,
         Phase::Resolution,
+        Phase::Perception,
+        Phase::Cognition,
+        Phase::Action,
+        Phase::Lifecycle,
     ];
 
     /// Return the discriminant value as a small integer.
@@ -45,6 +47,7 @@ impl Phase {
             Phase::Physics => "physics",
             Phase::Mana => "mana",
             Phase::Resolution => "resolution",
+            Phase::Lifecycle => "lifecycle",
         }
     }
 }
@@ -66,6 +69,7 @@ impl PhaseId {
             3 => Some(Phase::Physics),
             4 => Some(Phase::Mana),
             5 => Some(Phase::Resolution),
+            6 => Some(Phase::Lifecycle),
             _ => None,
         }
     }

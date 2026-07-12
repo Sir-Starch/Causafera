@@ -47,12 +47,12 @@ struct PhaseRegistry {
 /// # Phase Order
 ///
 /// Phases execute in the order defined by [`Phase::ALL`]:
-/// 1. Perception
-/// 2. Cognition
-/// 3. Action
-/// 4. Physics
-/// 5. Mana
-/// 6. Resolution
+/// 1. Physics
+/// 2. Mana
+/// 3. Resolution
+/// 4. Perception
+/// 5. Cognition
+/// 6. Action
 ///
 /// # Example
 ///

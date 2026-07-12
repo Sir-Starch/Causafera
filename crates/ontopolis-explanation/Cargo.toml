@@ -10,5 +10,6 @@ rust-version.workspace = true
 ontopolis-types = { workspace = true }
 ontopolis-core = { workspace = true }
 serde = { workspace = true }
+thiserror = { workspace = true }
 
 [dev-dependencies]

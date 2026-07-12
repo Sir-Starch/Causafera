@@ -9,5 +9,7 @@ rust-version.workspace = true
 [dependencies]
 ontopolis-types = { workspace = true }
 ontopolis-core = { workspace = true }
+ontopolis-explanation = { workspace = true }
+thiserror = { workspace = true }
 
 [dev-dependencies]

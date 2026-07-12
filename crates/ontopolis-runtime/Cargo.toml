@@ -12,6 +12,7 @@ ontopolis-core = { workspace = true }
 ontopolis-world = { workspace = true }
 ontopolis-geography = { workspace = true }
 ontopolis-biology = { workspace = true }
+ontopolis-perception = { workspace = true }
 ontopolis-cognition = { workspace = true }
 ontopolis-language = { workspace = true }
 ontopolis-epistemics = { workspace = true }

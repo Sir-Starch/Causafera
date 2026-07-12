@@ -22,6 +22,18 @@ fn scheduler_phase_order_is_fixed() {
 
     let values = probe.lock().unwrap();
     assert_eq!(values.len(), Phase::COUNT);
+    assert_eq!(
+        Phase::ALL,
+        [
+            Phase::Physics,
+            Phase::Mana,
+            Phase::Resolution,
+            Phase::Perception,
+            Phase::Cognition,
+            Phase::Action,
+            Phase::Lifecycle,
+        ]
+    );
 }
 
 #[test]

@@ -1,4 +1,6 @@
-use ontopolis_types::{ChunkId, ResolutionChannelId, ResolutionFieldId, SimulationTime, TraceId};
+use ontopolis_types::{
+    ChartChunkCoord, ResolutionChannelId, ResolutionFieldId, SimulationTime, TraceId,
+};
 use thiserror::Error;
 
 pub const RELEVANCE_SCALE: i64 = 1_000;
@@ -148,8 +150,8 @@ fn validate_thresholds(thresholds: &[i64], maximum: i64) -> Result<(), Resolutio
 /// semantic domain categories by this reducer.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct CausalRelevanceSignal {
-    source: ChunkId,
-    target: ChunkId,
+    source: ChartChunkCoord,
+    target: ChartChunkCoord,
     channel: ResolutionChannelId,
     strength: i64,
     trace: TraceId,
@@ -158,8 +160,8 @@ pub struct CausalRelevanceSignal {
 
 impl CausalRelevanceSignal {
     pub fn new(
-        source: ChunkId,
-        target: ChunkId,
+        source: ChartChunkCoord,
+        target: ChartChunkCoord,
         channel: ResolutionChannelId,
         strength: i64,
         trace: TraceId,
@@ -178,7 +180,23 @@ impl CausalRelevanceSignal {
         })
     }
 
-    fn canonical_key(self) -> (ChunkId, ResolutionChannelId, ChunkId, u32, TraceId) {
+    pub const fn source(self) -> ChartChunkCoord {
+        self.source
+    }
+
+    pub const fn target(self) -> ChartChunkCoord {
+        self.target
+    }
+
+    fn canonical_key(
+        self,
+    ) -> (
+        ChartChunkCoord,
+        ResolutionChannelId,
+        ChartChunkCoord,
+        u32,
+        TraceId,
+    ) {
         (
             self.target,
             self.channel,
@@ -194,7 +212,7 @@ impl CausalRelevanceSignal {
 pub struct ResolutionField {
     id: ResolutionFieldId,
     evaluated_through: SimulationTime,
-    chunks: Vec<ChunkId>,
+    chunks: Vec<ChartChunkCoord>,
     relevance: Vec<i64>,
     levels: Vec<u8>,
     last_traces: Vec<TraceId>,
@@ -204,7 +222,7 @@ impl ResolutionField {
     pub fn new(
         id: ResolutionFieldId,
         evaluated_through: SimulationTime,
-        mut chunks: Vec<ChunkId>,
+        mut chunks: Vec<ChartChunkCoord>,
         initial_traces: Vec<TraceId>,
     ) -> Result<Self, ResolutionError> {
         if chunks.is_empty() || chunks.len() > MAX_RESOLUTION_ENTRIES {
@@ -247,7 +265,7 @@ impl ResolutionField {
         self.evaluated_through
     }
 
-    pub fn entry(&self, chunk: ChunkId) -> Option<ResolutionEntry> {
+    pub fn entry(&self, chunk: ChartChunkCoord) -> Option<ResolutionEntry> {
         let index = self.chunks.binary_search(&chunk).ok()?;
         Some(ResolutionEntry {
             chunk,
@@ -338,7 +356,7 @@ impl ResolutionField {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ResolutionEntry {
-    pub chunk: ChunkId,
+    pub chunk: ChartChunkCoord,
     pub relevance: i64,
     pub level: u8,
     pub last_trace: TraceId,
@@ -346,7 +364,7 @@ pub struct ResolutionEntry {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ResolutionChange {
-    pub chunk: ChunkId,
+    pub chunk: ChartChunkCoord,
     pub before_relevance: i64,
     pub after_relevance: i64,
     pub before_level: u8,
@@ -364,7 +382,7 @@ impl ResolutionChange {
 pub struct ResolutionProposal {
     field_id: ResolutionFieldId,
     through: SimulationTime,
-    chunks: Vec<ChunkId>,
+    chunks: Vec<ChartChunkCoord>,
     relevance: Vec<i64>,
     levels: Vec<u8>,
     last_traces: Vec<TraceId>,
@@ -424,7 +442,7 @@ pub enum ResolutionError {
     #[error("invalid entry count: {count}")]
     InvalidEntryCount { count: usize },
     #[error("duplicate chunk {chunk}")]
-    DuplicateChunk { chunk: ChunkId },
+    DuplicateChunk { chunk: ChartChunkCoord },
     #[error("invalid signal strength: {strength}")]
     InvalidSignalStrength { strength: i64 },
     #[error("too many resolution signals: {count}")]
@@ -432,7 +450,7 @@ pub enum ResolutionError {
     #[error("duplicate canonical signal at index {index}")]
     DuplicateSignal { index: usize },
     #[error("signal targets unknown chunk {chunk}")]
-    UnknownTarget { chunk: ChunkId },
+    UnknownTarget { chunk: ChartChunkCoord },
     #[error("signal uses unregistered channel {channel}")]
     UnknownChannel { channel: ResolutionChannelId },
     #[error("resolution evaluation time must advance")]
@@ -444,6 +462,11 @@ pub enum ResolutionError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ontopolis_types::{ChunkCoord, SpatialChartId};
+
+    fn chart_chunk(x: i32) -> ChartChunkCoord {
+        ChartChunkCoord::new(SpatialChartId::new(1), ChunkCoord::new(x, 0, 0))
+    }
 
     fn policy() -> ResolutionPolicy {
         ResolutionPolicy::new(
@@ -463,7 +486,7 @@ mod tests {
         ResolutionField::new(
             ResolutionFieldId::new(1),
             SimulationTime::new(0),
-            vec![ChunkId::new(2), ChunkId::new(1)],
+            vec![chart_chunk(2), chart_chunk(1)],
             vec![TraceId::new(20), TraceId::new(10)],
         )
         .unwrap()
@@ -471,8 +494,8 @@ mod tests {
 
     fn signal(target: u64, strength: i64, trace: u64, ordinal: u32) -> CausalRelevanceSignal {
         CausalRelevanceSignal::new(
-            ChunkId::new(99),
-            ChunkId::new(target),
+            chart_chunk(99),
+            chart_chunk(target as i32),
             ResolutionChannelId::new(1),
             strength,
             TraceId::new(trace),
@@ -493,7 +516,7 @@ mod tests {
             .propose_evaluation(SimulationTime::new(1), &policy(), &[b, a])
             .unwrap();
         assert_eq!(first, second);
-        assert_eq!(field.entry(ChunkId::new(1)).unwrap().relevance, 0);
+        assert_eq!(field.entry(chart_chunk(1)).unwrap().relevance, 0);
     }
 
     #[test]
@@ -508,8 +531,8 @@ mod tests {
         let committed = proposal
             .commit(&[TraceId::new(41), TraceId::new(42)])
             .unwrap();
-        assert_eq!(committed.entry(ChunkId::new(1)).unwrap().level, 0);
-        assert_eq!(committed.entry(ChunkId::new(2)).unwrap().level, 1);
+        assert_eq!(committed.entry(chart_chunk(1)).unwrap().level, 0);
+        assert_eq!(committed.entry(chart_chunk(2)).unwrap().level, 1);
     }
 
     #[test]
@@ -519,13 +542,13 @@ mod tests {
             .unwrap()
             .commit(&[TraceId::new(41)])
             .unwrap();
-        assert_eq!(first.entry(ChunkId::new(1)).unwrap().level, 1);
+        assert_eq!(first.entry(chart_chunk(1)).unwrap().level, 1);
         let second = first
             .propose_evaluation(SimulationTime::new(2), &policy(), &[])
             .unwrap()
             .commit(&[TraceId::new(42)])
             .unwrap();
-        assert_eq!(second.entry(ChunkId::new(1)).unwrap().level, 0);
+        assert_eq!(second.entry(chart_chunk(1)).unwrap().level, 0);
     }
 
     #[test]
@@ -552,7 +575,7 @@ mod tests {
             proposal
                 .commit(&[TraceId::new(40)])
                 .unwrap()
-                .entry(ChunkId::new(1))
+                .entry(chart_chunk(1))
                 .unwrap()
                 .last_trace,
             TraceId::new(40)

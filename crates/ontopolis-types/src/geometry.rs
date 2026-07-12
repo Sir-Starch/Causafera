@@ -73,6 +73,23 @@ impl ChartChunkCoord {
     pub const fn new(chart: SpatialChartId, chunk: ChunkCoord) -> Self {
         Self { chart, chunk }
     }
+
+    pub const fn same_chart_neighbor(self, dx: i32, dy: i32, dz: i32) -> Self {
+        Self {
+            chart: self.chart,
+            chunk: ChunkCoord::new(self.chunk.x + dx, self.chunk.y + dy, self.chunk.z + dz),
+        }
+    }
+
+    pub const fn is_same_chart_adjacent(self, other: Self) -> bool {
+        self.chart.raw() == other.chart.raw() && self.chunk.manhattan_distance(other.chunk) == 1
+    }
+}
+
+impl std::fmt::Display for ChartChunkCoord {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "chart {} chunk {}", self.chart, self.chunk)
+    }
 }
 
 /// Millimetre position in a bounded local three-dimensional Euclidean frame.

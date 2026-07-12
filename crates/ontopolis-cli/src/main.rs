@@ -1,11 +1,12 @@
-use std::error::Error;
-use std::fmt::Write as _;
-
 use clap::{Parser, Subcommand};
 use ontopolis_core::StateFingerprint;
-use ontopolis_lab::ExperimentRunner;
-use ontopolis_runtime::Runtime;
+use ontopolis_explanation::{
+    ClaimEvidenceState, ComparisonContext, ExplanationReport, FrameAssessment, NumericClaimValue,
+};
+use ontopolis_lab::{ExperimentError, ExperimentRunner};
+use ontopolis_runtime::{Runtime, RuntimeError};
 use ontopolis_types::SimulationTime;
+use thiserror::Error;
 
 #[derive(Parser)]
 #[command(name = "ontopolis")]
@@ -44,7 +45,7 @@ pub enum Commands {
     },
 }
 
-pub fn main() -> Result<(), Box<dyn Error>> {
+pub fn main() -> Result<(), CliError> {
     let cli = Cli::parse();
     match cli.command {
         Commands::Doctor => doctor()?,
@@ -57,7 +58,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
             suppression_through,
         } => {
             if name != "long-run" {
-                return Err(format!("unknown non-authoritative lab selector: {name}").into());
+                return Err(CliError::UnknownLabSelector { name });
             }
             let report = ExperimentRunner::run_control_and_intervention(
                 seed,
@@ -75,7 +76,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 control.causal_trace_count,
                 control.mana_total,
                 control.resolution_level,
-                fingerprint_hex(control.canonical_state),
+                fingerprint_hex(control.canonical_state.fingerprint),
             );
             println!(
                 "intervention ticks={} traces={} mana_total={} resolution_level={} digest={}",
@@ -83,7 +84,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 intervention.causal_trace_count,
                 intervention.mana_total,
                 intervention.resolution_level,
-                fingerprint_hex(intervention.canonical_state),
+                fingerprint_hex(intervention.canonical_state.fingerprint),
             );
             println!(
                 "trajectories_diverged={} measured_replay_wall_ms_control={} measured_replay_wall_ms_intervention={}",
@@ -91,6 +92,21 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 report.control.elapsed.as_millis(),
                 report.intervention.elapsed.as_millis(),
             );
+            println!(
+                "recovery baseline_distance={} perturbation_min_distance={} perturbation_max_distance={} final_distance={} time_to_recovery={}",
+                report
+                    .matched_checkpoint_analysis
+                    .pre_intervention_baseline_distance,
+                report
+                    .matched_checkpoint_analysis
+                    .perturbation_minimum_distance,
+                report
+                    .matched_checkpoint_analysis
+                    .perturbation_maximum_distance,
+                report.matched_checkpoint_analysis.final_recovery_distance,
+                optional_u64(report.matched_checkpoint_analysis.time_to_recovery),
+            );
+            render_explanation_report(&report.explanation_report);
         }
         Commands::Run { seed, ticks } => {
             let mut runtime = Runtime::from_seed(seed)?;
@@ -110,35 +126,132 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 snapshot.mana_maximum,
                 snapshot.resolution_relevance,
                 snapshot.resolution_level,
-                fingerprint_hex(snapshot.canonical_state),
+                fingerprint_hex(snapshot.canonical_state.fingerprint),
             );
         }
     }
     Ok(())
 }
 
-fn doctor() -> Result<(), Box<dyn Error>> {
+fn render_explanation_report(report: &ExplanationReport) {
+    println!(
+        "explanation_report experiment={} assessment={}",
+        report.experiment.raw(),
+        assessment_code(report.overall_assessment),
+    );
+    for frame in &report.frames {
+        println!(
+            "explanation_frame checkpoint={} assessment={} claims={}",
+            frame.checkpoint_time.raw(),
+            assessment_code(frame.overall_assessment),
+            frame.claims.len(),
+        );
+        for claim in &frame.claims {
+            println!(
+                "explanation_claim schema={} value={} confidence={:.6} evidence_state={} comparison={} traces={}",
+                claim.schema.raw(),
+                numeric_value_code(claim.value),
+                claim.confidence.raw(),
+                evidence_state_code(claim.evidence_state),
+                comparison_code(claim.comparison),
+                trace_list_code(&claim.evidence_traces),
+            );
+        }
+    }
+}
+
+fn numeric_value_code(value: NumericClaimValue) -> String {
+    match value {
+        NumericClaimValue::Scalar { value } => format!("scalar:{value}"),
+        NumericClaimValue::Range { start, end } => format!("range:{start}..{end}"),
+        NumericClaimValue::Ratio {
+            numerator,
+            denominator,
+        } => format!("ratio:{numerator}/{denominator}"),
+    }
+}
+
+fn comparison_code(comparison: ComparisonContext) -> String {
+    match comparison {
+        ComparisonContext::None => "none".to_owned(),
+        ComparisonContext::MatchedCohort { cohort } => format!("matched:{}", cohort.raw()),
+        ComparisonContext::Counterfactual { cohort } => format!("counterfactual:{}", cohort.raw()),
+    }
+}
+
+fn trace_list_code(traces: &[ontopolis_types::TraceId]) -> String {
+    let mut output = String::new();
+    for (index, trace) in traces.iter().enumerate() {
+        if index > 0 {
+            output.push(',');
+        }
+        output.push_str(&trace.raw().to_string());
+    }
+    output
+}
+
+fn assessment_code(assessment: FrameAssessment) -> &'static str {
+    match assessment {
+        FrameAssessment::Supported => "supported",
+        FrameAssessment::Partial => "partial",
+        FrameAssessment::Unsupported => "unsupported",
+        FrameAssessment::Unknown => "unknown",
+    }
+}
+
+fn evidence_state_code(state: ClaimEvidenceState) -> &'static str {
+    match state {
+        ClaimEvidenceState::Supported => "supported",
+        ClaimEvidenceState::Unsupported => "unsupported",
+        ClaimEvidenceState::Unknown => "unknown",
+    }
+}
+
+fn optional_u64(value: Option<u64>) -> String {
+    match value {
+        Some(value) => value.to_string(),
+        None => "unknown".to_owned(),
+    }
+}
+
+fn doctor() -> Result<(), CliError> {
     let mut first = Runtime::from_seed(0)?;
     let mut second = Runtime::from_seed(0)?;
     let first = first.run_ticks(8)?;
     let second = second.run_ticks(8)?;
     if first != second {
-        return Err("strict replay mismatch".into());
+        return Err(CliError::StrictReplayMismatch);
     }
     println!("Ontopolis Doctor");
     println!(
         "status=ok runtime=true replay=true ticks={} traces={} digest={}",
         first.time.raw(),
         first.causal_trace_count,
-        fingerprint_hex(first.canonical_state),
+        fingerprint_hex(first.canonical_state.fingerprint),
     );
     Ok(())
 }
 
 fn fingerprint_hex(fingerprint: StateFingerprint) -> String {
+    const HEX: [char; 16] = [
+        '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f',
+    ];
     let mut output = String::with_capacity(64);
     for byte in fingerprint.bytes() {
-        write!(&mut output, "{byte:02x}").expect("writing to a String cannot fail");
+        output.push(HEX[usize::from(byte >> 4)]);
+        output.push(HEX[usize::from(byte & 0x0f)]);
     }
     output
+}
+
+#[derive(Debug, Error)]
+pub enum CliError {
+    #[error("unknown non-authoritative lab selector: {name}")]
+    UnknownLabSelector { name: String },
+    #[error("strict replay mismatch")]
+    StrictReplayMismatch,
+    #[error(transparent)]
+    Runtime(#[from] RuntimeError),
+    #[error(transparent)]
+    Experiment(#[from] ExperimentError),
 }

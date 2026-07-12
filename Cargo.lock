@@ -177,7 +177,9 @@ name = "ontopolis-analytics"
 version = "0.1.0"
 dependencies = [
  "ontopolis-core",
+ "ontopolis-explanation",
  "ontopolis-types",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
@@ -195,9 +197,11 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "ontopolis-core",
+ "ontopolis-explanation",
  "ontopolis-lab",
  "ontopolis-runtime",
  "ontopolis-types",
+ "thiserror 2.0.18",
  "tracing",
 ]
 
@@ -246,6 +250,7 @@ dependencies = [
  "ontopolis-core",
  "ontopolis-types",
  "serde",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
@@ -271,7 +276,9 @@ dependencies = [
 name = "ontopolis-lab"
 version = "0.1.0"
 dependencies = [
+ "ontopolis-analytics",
  "ontopolis-core",
+ "ontopolis-explanation",
  "ontopolis-metaphysics",
  "ontopolis-runtime",
  "ontopolis-types",
@@ -355,6 +362,7 @@ dependencies = [
  "ontopolis-metaphysics",
  "ontopolis-observer-api",
  "ontopolis-observer-wire",
+ "ontopolis-perception",
  "ontopolis-persistence",
  "ontopolis-resolution",
  "ontopolis-types",

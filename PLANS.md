@@ -49,6 +49,10 @@ Progress
 
 None.
 
+## Draft Plans
+
+- `plans/post-phase-24-simulation-depth.md` — proposed eight-stage path from the Phase 24 causal laboratory to a coupled, interpretable, populated long-run simulation. Not active; TODO and roadmap statuses are unchanged.
+
 ## Completed Plans
 
 - `plans/phases-23-24-long-run-experiments.md` — accepted neutral metaphysics research and multiscale spatial geometry, then delivered the first executable replay-verified physical → mana → resolution experiment (`TODO-GEO-003`, `TODO-META-001`, `TODO-META-002`, `TODO-LAB-001`) on 2026-07-12.
