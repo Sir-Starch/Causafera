@@ -1,100 +1,40 @@
 # Mana Topology
 
-Mana is an information-sensitive field that responds to real patterns in the world. Its topology, the spatial distribution and structure of mana fields, is influenced by geographic features.
+Mana is a local information-sensitive physical field. Phase 17 establishes its minimum deterministic topology without claiming final mana physics.
 
-## Mana Field Representation
+## Authoritative state
 
-```text
-ManaField:
-    field_state: ScalarField / VectorField
-    resonance_patterns: [ResonancePattern]
-    coupling_points: [CouplingPoint]
-    historical_accumulation: AccumulationHistory
-    diffusion_properties: DiffusionParameters
-```
+`ontopolis-domains::mana::ManaField` stores a chunk coordinate, a cubic extent of at most `CHUNK_SIZE`, row-major fixed-point intensity, the last committed causal trace per cell, and the latest incorporated simulation tick. Human names and classifications are absent.
 
-## Geographic Influences on Mana
+## Physical inputs
 
-Mana topology is shaped by geographic features:
+The field accepts bounded `PhysicalPatternSample` batches. Each sample supplies an opaque fingerprint of canonical carrier structure, local coordinate, observation tick, magnitude, stable source ordinal, and causal trace. Integrations may derive fingerprints from acoustic wave structure, repeated geometry, motion, physical glyph arrangements, material state, or other objective carriers. They may not hash words, beliefs, concepts, practice meanings, document genres, or observer labels into a fingerprint.
 
-- **Terrain**: certain landforms may create stable field configurations
-- **Geology**: specific materials may have unusual mana properties
-- **Hydrology**: water flow patterns may carry or concentrate mana
-- **Climate**: atmospheric patterns may interact with surface fields
-- **Ecology**: biological activity may create or respond to mana patterns
-- **Settlements**: repeated human activity may create persistent patterns
+## Minimal response
 
-## Mana and Spatial Structure
+Canonical same-fingerprint samples increase response through repeated occurrence, regular temporal intervals, simultaneous occurrence, and repeated placement at distinct coordinates. Magnitude scales local injection. A fixed six-neighbour stencil then applies diffusion and decay, with non-negative saturation.
 
-Mana responds to:
+This permits two physically similar structures to couple even when societies interpret them differently, and physically different structures to couple differently even when agents believe they mean the same thing.
 
-- **Frequency**: repeated events at regular intervals
-- **Phase**: timing relationships between events
-- **Periodicity**: cyclic patterns
-- **Synchronization**: coordinated activity
-- **Spatial symmetry**: geometric arrangements
-- **Sequence recurrence**: repeated action patterns
-- **Pattern density**: concentration of structured activity
-- **Persistence**: long-duration stable patterns
+## Provenance and commits
 
-## Mana Attractors
+Evolution produces replacement-state proposals and changed-cell records. It does not mutate the source field. Each changed cell carries traces supporting direct pattern injection and neighbouring prior field state. A caller must commit one new provenance trace per changed cell before constructing the next field.
 
-Certain geographic configurations may act as mana attractors:
+## Geography
 
-- **Natural attractors**: caves, springs, mountain peaks, river confluences
-- **Constructed attractors**: temples, towers, ritual sites
-- **Emergent attractors**: long-used locations with accumulated pattern history
+Fields are chunk-local causal state, so terrain, geology, hydrology, climate, ecology, and construction can later alter sample production or field parameters. Phase 17 does not invent those couplings. Cross-chunk boundary exchange is also deferred.
 
-Attractors may exhibit:
-- field concentration
-- resonance with specific patterns
-- responsive behavior
-- state persistence
+## Determinism and performance
 
-## Mana and Human Activity
+All hot arithmetic is fixed-point integer arithmetic; sample and cell traversal is canonical. Field volume and input batches have public hard bounds. The dense CPU implementation makes no scale claim. Sparse and accelerated alternatives require benchmarks and bit-identical validation.
 
-Human activity creates mana patterns:
+## Deferred phenomena
 
-- **Repetition**: daily routines, seasonal festivals
-- **Synchronization**: coordinated work, religious services
-- **Geometry**: building layouts, street patterns
-- **Symbolism**: written documents, seals, flags
+Field-to-matter effects, interference phase state, hysteresis, long-lived attractors, artifacts, gods/spirits, semantic observer classifications, causal resolution, persistence, and visualization remain future work.
 
-These patterns may interact with natural mana topology to create emergent effects.
+## Related documents
 
-## Determinism
-
-Mana field evolution must be deterministic given:
-
-- initial field state
-- geographic configuration
-- activity patterns
-- field physics parameters
-
-## Performance
-
-Mana field computation may be expensive. Strategies:
-
-- GPU acceleration for field operations
-- Sparse representation for inactive regions
-- Multi-resolution representation
-- Cached stable field configurations
-
-## Related Documents
-
-- `geography-philosophy.md` — geographic causality
-- `terrain.md` — terrain effects on mana
-- `geology.md` — geological effects on mana
-- `hydrology.md` — water flow effects on mana
-- `docs/simulation/` — practice and activity patterns
-- `docs/metaphysics/` — identity and attractor research
-
-## RFCs
-
-- `RFC-MANA-001: Minimal Information-Sensitive Field Model`
-- `RFC-META-002: Stateful Mana Attractors`
-
-## TODO Categories
-
-- `MANA` — mana systems
-- `WORLD` — general world systems
+- `docs/rfc/RFC-MANA-001.md`
+- `docs/vision/project-thesis.md`
+- `docs/architecture/provenance.md`
+- `docs/ontology/causal-carriers.md`

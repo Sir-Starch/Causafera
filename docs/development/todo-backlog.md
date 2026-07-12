@@ -365,18 +365,18 @@
 **Out of Scope:** Full instrument, experiment, and science-institution simulation
 
 ## TODO-MANA-001: Information-Sensitive Field Model
-**Status:** Pending
+**Status:** Completed
 **Phase:** 17
 **Priority:** High
 **Dependencies:** TODO-GEO-001
 **Goal:** RFC acceptance and implementation
-**Acceptance Criteria:** RFC approved, minimal field model responds to patterns
-**Performance Requirements:** GPU candidate
+**Acceptance Criteria:** Accepted RFC; bounded fixed-point local field responds to physical recurrence, periodicity, synchronization, and spatial repetition; deterministic diffusion/decay/saturation; proposal-only evolution with per-cell commit traces
+**Performance Requirements:** Dense bounded CPU baseline; benchmark before sparse or GPU alternatives
 **Determinism Requirements:** Field evolution deterministic
 **Ontology Implications:** Mana does not understand meaning
-**Observer Implications:** Exposes field visualization
-**Explanation Implications:** Explains magical effects causally
-**Out of Scope:** Full spell system
+**Observer Implications:** Future read-only numeric field visualization
+**Explanation Implications:** Trace-backed cell changes support future causal explanations without semantic inference
+**Out of Scope:** Full spell system, physical effects, carrier adapters, attractors, causal resolution, persistence, observer protocol, GPU implementation
 
 ## TODO-RES-001: Causal Resolution Field
 **Status:** Pending

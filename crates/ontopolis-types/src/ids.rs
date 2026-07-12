@@ -82,6 +82,8 @@ define_id!(WritingSystemId, u64);
 define_id!(GlyphId, u64);
 define_id!(DocumentMediumId, u64);
 define_id!(DocumentTransformationId, u64);
+define_id!(ManaFieldId, u64);
+define_id!(PhysicalPatternId, u64);
 define_id!(OrganizationId, u64);
 define_id!(PlaceId, u64);
 define_id!(ChunkId, u64);

@@ -37,7 +37,7 @@ A foundational domain cannot enter implementation without coverage analysis.
 | Physical access / perception | Partial — range/threshold acquisition and generic magnitude/change extraction | Phases 7-8 |
 | Cognition | Partial — bounded attention, subjective scenes, active context, prediction, memory reactivation, agency, temporal continuity, sparse concepts, beliefs, trust, causal hypotheses, and subjective lexical associations | Phases 7, 9-14; richer goals and social inference remain future work |
 | Language | Partial — deterministic lineage bootstrap, opaque phonology, intent/utterance/interpretation boundary, pressure, coinage, adoption, semantic revision, and physical glyph/document carriers | Phases 13-16; grammar, morphology, physical acoustics, semantic reading, and rich social diffusion remain future work |
-| Mana | Pending | Phase 17 |
+| Mana | Partial — bounded fixed-point local field, physical pattern response, diffusion/decay/saturation, and traced replacement proposals | Phase 17; concrete carrier couplings and physical effects remain future work |
 | Society | Pending | Phases 19-20 |
 | Economy | Pending | Phase 20 |
 | Epistemics | Partial — socially constructed fixed-point units, bounded calibration ancestry, accessible-observation measurement, and physical document copying | Phase 16; instruments, experiments, replication, and institutions remain future work |

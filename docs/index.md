@@ -215,6 +215,7 @@ Later documents supersede conflicting initialization-spec sections **only when t
 - `docs/rfc/RFC-PERCEPT-001.md` - Physical Access, Generic Extraction, and Attention Boundary
 - `docs/rfc/RFC-SCENE-001.md` - Bounded Subjective Scene and Cognitive Continuity
 - `docs/rfc/RFC-CONCEPT-001.md` - Sparse Subjective Concept Formation
+- `docs/rfc/RFC-MANA-001.md` - Minimal Information-Sensitive Field Model
 
 ## ADRs
 

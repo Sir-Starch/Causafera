@@ -118,6 +118,15 @@ This project follows a structured changelog format. Each entry includes:
 - **ONTO** — Kept named actions, quantity names, unit names, genres, textual meaning, authoritative identities, and hidden true values out of the new state.
 - **PERF** — Added hard program, execution, calibration, glyph, and edit budgets without making throughput claims.
 
+### Phase 17: Minimal Information-Sensitive Mana
+
+- **MANA** — Accepted RFC-MANA-001 and completed TODO-MANA-001 with a bounded chunk-local fixed-point scalar field.
+- **MANA** — Added canonical physical samples and numeric response to recurrence, regular intervals, synchronization, repeated coordinates, and magnitude, followed by deterministic diffusion, decay, and saturation.
+- **CORE** — Kept evolution proposal-only and required one newly committed provenance trace for every accepted changed cell; proposals retain direct sample and neighbouring prior-field causes.
+- **ONTO** — Kept words, beliefs, concepts, practice meanings, spell categories, sacredness, attractors, and observer labels outside mana state; opaque fingerprints identify canonical physical structure only.
+- **PERF** — Established a bounded dense CPU baseline without scale claims; sparse, multi-resolution, and GPU variants require benchmarks and bit-identical validation.
+- **ARCH** — Completed Phase 17; Phase 18 Causal Resolution Field is next and remains a separate foundational plan.
+
 ## Categories
 
 - **ARCH** - Architecture

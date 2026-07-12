@@ -34,9 +34,11 @@ See `RFC-ISEKAI-001: Cross-World Transfer Model`.
 
 ## Mana
 
-The exact field model for information-sensitive mana remains open. Candidate measurable properties include frequency, phase, periodicity, synchronization, spatial symmetry, sequence recurrence, pattern density, and persistence. Planned mechanisms include local field state, resonance, interference, decay, saturation, hysteresis, and diffusion-like behaviour.
+RFC-MANA-001 now settles the Phase 17 minimum: a bounded fixed-point scalar field responds to opaque physical fingerprints through recurrence, regular intervals, synchronization, repeated coordinates, magnitude, diffusion, decay, and saturation. Evolution is proposal-only and every committed changed cell requires causal provenance.
 
-No serious mana implementation should proceed before `RFC-MANA-001: Minimal Information-Sensitive Field Model` is accepted.
+The final field physics remain open. Vector state, explicit phase/interference, cross-chunk exchange, hysteresis, field-to-matter effects, concrete carrier adapters, sparse/multi-resolution layouts, acceleration, and empirical parameter selection are deferred. Stateful attractors remain a separate metaphysical research hypothesis.
+
+See `RFC-MANA-001: Minimal Information-Sensitive Field Model`.
 
 ## Causal Resolution
 

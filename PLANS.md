@@ -51,6 +51,7 @@ None.
 
 ## Completed Plans
 
+- `plans/phase-17-minimal-mana.md` — implemented the bounded deterministic information-sensitive mana field (`TODO-MANA-001`) on 2026-07-12.
 - `plans/phases-15-16-practices-epistemics.md` — implemented bounded practices, fixed-point measurement/metrology, and physical document lineages (`TODO-PRACTICE-001`, `TODO-EPI-001`, `TODO-LANG-004`) on 2026-07-12.
 - `plans/phases-13-14-language-foundation.md` — implemented deterministic language bootstrap, communication boundaries, lexical innovation, adoption, and subjective semantic learning (`TODO-LANG-001` through `TODO-LANG-003`) on 2026-07-12.
 - `plans/phases-11-12-concepts-beliefs.md` — implemented sparse subjective concepts, beliefs, trust, and causal hypotheses (`TODO-CONCEPT-001`, `TODO-COG-002`) on 2026-07-12.

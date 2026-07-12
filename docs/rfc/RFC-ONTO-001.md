@@ -49,7 +49,7 @@ Generic feature relations extract structural patterns from raw Ground Truth stat
 | Causal event provenance | 6 | Implemented: events, effects, trace edges |
 | Physical access | 7 | Implemented minimum: signals, apertures, relative samples |
 | Generic extraction | 8 | Implemented minimum: magnitude and change |
-| Field state | 17 | Pending: mana field properties |
+| Field state | 17 | Implemented: bounded fixed-point local mana field and physical pattern response |
 
 ### Emergent Concepts (Never Primitive)
 

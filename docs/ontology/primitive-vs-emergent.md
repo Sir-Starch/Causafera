@@ -49,11 +49,11 @@ Generic perceptual features that extract structural patterns from raw state. The
 | Relative difference | `FeatureRelation::RelativeDifference` | `ontopolis-types` |
 | Sequence similarity | `FeatureRelation::SequenceSimilarity` | `ontopolis-types` |
 
-### Future Primitives (Phases 3+)
+### Additional Primitives (Phases 3+)
 
 | Primitive | Phase | Notes |
 |-----------|-------|-------|
-| Field state | 17 | Mana field properties |
+| Field state | 17 | Implemented fixed-point local mana intensity and physical pattern coupling |
 | Repetition / Frequency / Sequence | 2 | Generic feature relations |
 | Transformation | 2 | Change relation captures state transitions |
 
@@ -227,3 +227,9 @@ A lexeme lineage never stores a meaning. `ConceptId` associations exist only in 
 `ontopolis-domains` stores only bounded control flow, opaque learned action and condition identities, integer timing/tolerance, proposal records, and parent lineage. Named rituals, techniques, jobs, skills, and procedural explanations are not primitive state.
 
 `ontopolis-epistemics` stores opaque quantity/unit/calibration identities, rational scale, fixed-point observations and uncertainty, physical glyph sequences, and explicit document-copy ancestry. Unit names, quantity categories such as “length”, document genres, textual meaning, correctness, and science remain social, subjective, or observer-level constructions.
+
+## Phase 17 Mana Status
+
+`ontopolis-domains::mana` stores bounded chunk-local fixed-point intensity, opaque fingerprints of canonical physical structure, numeric space/time samples, deterministic structural response, diffusion, decay, saturation, and traced replacement proposals. These are Ground Truth field mechanisms.
+
+Spells, rituals, mana schools or types, sacredness, enchantment, skills, levels, attractors, artifacts, gods, spirits, and interpretations of a pattern are not primitive state. `PhysicalPatternId` identifies carrier structure only and must never be assigned from a semantic label or subjective category.

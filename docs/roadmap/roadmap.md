@@ -108,11 +108,13 @@ Completed.
 
 Minimal information-sensitive mana.
 
-Next phase.
+Completed.
 
 ## Phase 18
 
 Causal Resolution Field.
+
+Next phase.
 
 ## Phase 19
 
