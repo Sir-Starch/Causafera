@@ -2,6 +2,10 @@
 
 Law exists through texts, interpretations, precedent, authority, and enforcement. It is not a primitive engine system. It is an emergent social institution built from documents, practices, and power relationships.
 
+## Implemented foundation
+
+Phase 19 stores an `InstitutionalRule` only as a traced organizational claim linking a physical source document, separate interpretation and precedent documents, and supporting authority grants. The record has no universal `active` flag, jurisdiction inference, privileged interpretation, or automatic enforcement.
+
 ## Law as Information Structure
 
 A law is not `active: bool`. It is:

@@ -55,6 +55,7 @@ Generic perceptual features that extract structural patterns from raw state. The
 |-----------|-------|-------|
 | Field state | 17 | Implemented fixed-point local mana intensity and physical pattern coupling |
 | Causal relevance / detail ordinal | 18 | Implemented fixed-point relevance and numeric resolution levels over opaque traced carrier channels |
+| Social carrier record | 19 | Implemented traced directed links, assignments, claims, and document/practice associations with opaque schemas; their social meaning remains emergent |
 | Repetition / Frequency / Sequence | 2 | Generic feature relations |
 | Transformation | 2 | Change relation captures state transitions |
 

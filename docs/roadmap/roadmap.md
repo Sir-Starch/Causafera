@@ -120,11 +120,13 @@ Completed.
 
 Social networks and organizations.
 
-Next phase.
+Completed.
 
 ## Phase 20
 
 Material economy and city infrastructure.
+
+Next phase.
 
 ## Phase 21
 

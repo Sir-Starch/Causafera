@@ -2,6 +2,8 @@
 
 Bureaucracy is the organizational infrastructure that manages information, records, and procedures at scale. It creates massive repeated informational structures that may have unintended consequences in a pattern-sensitive magical world.
 
+Phase 19 provides only the distributed substrate: role assignments, communication paths, authority grants, document-backed rules, property claims, and practice associations. It does not implement a bureaucracy controller or organization cognition.
+
 ## Bureaucratic Artifacts
 
 Bureaucracy produces:

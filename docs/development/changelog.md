@@ -136,6 +136,14 @@ This project follows a structured changelog format. Each entry includes:
 - **PERF** — Established bounded CPU reference contracts without scale claims; full domain aggregation and alternative layouts require later contracts and benchmarks.
 - **ARCH** — Completed Phase 18; Phase 19 social networks and organizations is next.
 
+### Phase 19: Distributed Social Foundation
+
+- **SOCIAL** — Accepted RFC-SOCIAL-001 and completed TODO-SOCIAL-001/002 with bounded trace-backed relations, roles, communication links, authority grants, property claims, rule records, practice associations, and attested agreements.
+- **ONTO** — Kept organization cognition, semantic relation/role/legal taxonomies, universal rule validity, shared interpretation, and automatic enforcement out of authoritative state.
+- **LANG** — Made institutional rules and agreements reference physical documents while preserving separate interpretation, precedent, party, witness, and authority records.
+- **PERF** — Added hard capacities, canonical ordering, and binary-search reference validation without making scale claims.
+- **ARCH** — Completed Phase 19; Phase 20 material economy and city infrastructure is next.
+
 ## Categories
 
 - **ARCH** - Architecture
@@ -148,6 +156,7 @@ This project follows a structured changelog format. Each entry includes:
 - **EPI** - Epistemics
 - **MANA** - Mana
 - **RES** - Causal resolution
+- **SOCIAL** - Social carriers and institutions
 - **ISEKAI** - Isekai
 - **META** - Metaphysics
 - **EXPLAIN** - Explanation Engine

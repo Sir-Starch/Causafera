@@ -393,18 +393,18 @@
 **Out of Scope:** Full multi-resolution domain aggregation, promotion/demotion, scheduler integration, persistence, observer protocol, and GPU implementation
 
 ## TODO-SOCIAL-001: Organization Primitives
-**Status:** Pending
+**Status:** Completed
 **Phase:** 19
 **Priority:** Medium
 **Dependencies:** TODO-RES-001
 **Goal:** Define organization structures
-**Acceptance Criteria:** Members, roles, communication, authority, records, property, rules, practices
-**Performance Requirements:** Distributed representation
-**Determinism Requirements:** N/A
+**Acceptance Criteria:** Bounded trace-backed relations, members/roles, communication links, authority grants, document-backed records, property claims, rules, and practice associations with canonical validation
+**Performance Requirements:** Distributed sorted-vector representation with hard capacities; benchmark before layout claims
+**Determinism Requirements:** Canonical numeric ordering and input-order-independent validation
 **Ontology Implications:** No organization brain
 **Observer Implications:** Exposes organizational structure
 **Explanation Implications:** Explains institutional beliefs
-**Out of Scope:** Full governance simulation
+**Out of Scope:** Full governance, organization cognition, lifecycle mutation, enforcement, observer projection, persistence, and economy
 
 ## TODO-ECON-001: Material Flow Contracts
 **Status:** Pending
@@ -687,18 +687,18 @@
 **Out of Scope:** Full paleography
 
 ## TODO-SOCIAL-002: Law and Contracts
-**Status:** Pending
+**Status:** Completed
 **Phase:** 19
 **Priority:** Low
 **Dependencies:** TODO-SOCIAL-001
 **Goal:** Define legal primitives
-**Acceptance Criteria:** Texts, interpretations, precedent, authority
+**Acceptance Criteria:** Contestable rule records separate source text, interpretations, precedent, authority, and trace; attested agreements separate physical text, opaque parties/witnesses, authority, time, and trace
 **Performance Requirements:** N/A
-**Determinism Requirements:** N/A
+**Determinism Requirements:** Canonical reference ordering and deterministic validation
 **Ontology Implications:** Law is not `active: bool`
 **Observer Implications:** Exposes legal structure
 **Explanation Implications:** Explains legal evolution
-**Out of Scope:** Full legal simulation
+**Out of Scope:** Full legal simulation, adjudication, universal validity, automatic enforcement, semantic legal taxonomy, and contract magic
 
 ## TODO-ISEKAI-002: Imported Knowledge Separation
 **Status:** Pending

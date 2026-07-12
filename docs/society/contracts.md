@@ -2,6 +2,10 @@
 
 Contracts are agreements that create mutual obligations. They are not primitive `ContractMagic` objects. They are socially constructed information structures that may, through long historical processes, acquire magical properties.
 
+## Implemented foundation
+
+Phase 19 stores an `AttestedAgreement` as a traced physical document association with opaque parties, witnesses, supporting authority, and formation time. This records attestation, not shared meaning, performance, legal validity, enforcement, or magical effect.
+
 ## Contract Structure
 
 A contract may involve:
