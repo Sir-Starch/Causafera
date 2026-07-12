@@ -71,7 +71,7 @@
 **Out of Scope:** Terrain generation
 
 ## TODO-WORLD-001: Spatial Hierarchy
-**Status:** Pending
+**Status:** Completed
 **Phase:** 3
 **Priority:** High
 **Dependencies:** TODO-COORD-001

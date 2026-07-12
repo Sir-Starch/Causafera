@@ -58,6 +58,17 @@ Generic perceptual features that extract structural patterns from raw state. The
 | Repetition / Frequency / Sequence | 2 | Generic feature relations |
 | Transformation | 2 | Change relation captures state transitions |
 
+### Spatial Containment Primitives (Phase 3)
+
+| Primitive | Representation | Crate |
+|-----------|----------------|-------|
+| Nested spatial containment | `SpatialHierarchy`, `SpatialNode` | `ontopolis-world` |
+| Structural containment level | `SpatialLevel` | `ontopolis-world` |
+| Deterministic hierarchy construction | `SpatialHierarchyBuilder` | `ontopolis-world` |
+| Chunk/place identity boundary | Validated `PlaceId` ↔ `ChunkId` conversion | `ontopolis-world` |
+
+These structural levels describe objective containment only. They do not encode political regions, ownership, place names, land use, observer classifications, or causal resolution.
+
 ## Emergent Human Concepts
 
 Emergent concepts are categories created by agents or societies through perception, learning, and social transmission. They may or may not correspond to Ground Truth structure.
@@ -163,3 +174,7 @@ All Phase 2 primitives are now represented as Rust types in `ontopolis-types`:
 - `physics.rs` — temperature, orientation, motion, material properties
 
 No semantic shortcuts were introduced. All types are property-based, not taxonomy-based.
+
+## Phase 3 Spatial Skeleton Status
+
+The documented world-to-interior containment chain is implemented as validated, label-free structural state in `ontopolis-world`. The implementation retains explicit seed provenance but performs no random geographic generation.

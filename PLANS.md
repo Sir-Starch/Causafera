@@ -47,8 +47,8 @@ Progress
 
 ## Active Plans
 
-None yet.
+None.
 
 ## Completed Plans
 
-None yet.
+- `plans/phase-3-spatial-hierarchy.md` — implemented the deterministic spatial containment skeleton (`TODO-WORLD-001`) on 2026-07-12.

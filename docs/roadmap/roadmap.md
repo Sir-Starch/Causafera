@@ -4,11 +4,13 @@
 
 Complete project foundation.
 
-Current task.
+Completed.
 
 ## Phase 1
 
 Deterministic simulation kernel.
+
+Completed.
 
 ## Phase 2
 
@@ -16,13 +18,19 @@ Ontology primitives and generic feature representation.
 
 Do not implement semantic concepts yet.
 
+Completed.
+
 ## Phase 3
 
 Spatial world skeleton.
 
+Completed.
+
 ## Phase 4
 
 Minimal causal geography.
+
+Next phase.
 
 ## Phase 5
 

@@ -123,6 +123,24 @@ This project follows a structured changelog format. Each entry includes:
 - Added 5 unit tests for physics type creation, conversion, serde roundtrips, and Material composition;
 - All 39 workspace tests pass (10 core unit + 6 core integration + 15 types unit + 8 types integration).
 
+### Phase 3: Spatial World Skeleton
+
+#### WORLD
+
+- Completed the authoritative spatial containment skeleton (`TODO-WORLD-001`);
+- Added `SpatialLevel` for the exact World → Landmass → Basin → Region → Territory → Chunk → Parcel → Structure → Interior Space chain;
+- Added a validated `SpatialHierarchyBuilder` that rejects skipped or invalid containment transitions;
+- Added immutable `SpatialHierarchy` storage with dense nodes and contiguous child adjacency;
+- Added constant-index parent lookup and direct child-slice traversal without per-node allocation;
+- Added level-checked `PlaceId` ↔ `ChunkId` conversion;
+- Replaced the placeholder world root with a seed-explicit `World` wrapper over the finalized hierarchy;
+- Retained the world seed as minimal construction provenance without generating fake geography or history.
+
+#### Testing
+
+- Added 8 unit tests covering the complete hierarchy, parent/child traversal, interleaved construction order, transition validation, unknown parents, deterministic replay, chunk identity conversion, and world wrapping;
+- All 47 workspace tests pass.
+
 ## Categories
 
 - **ARCH** - Architecture

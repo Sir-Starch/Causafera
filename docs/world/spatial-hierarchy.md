@@ -65,6 +65,18 @@ The Causal Resolution Field determines the level of detail applied to each spati
 
 Every spatial unit has a canonical coordinate address. See `coordinates.md` for the coordinate system specification.
 
+## Phase 3 Implementation
+
+The authoritative containment skeleton is implemented in `ontopolis-world` as an immutable `SpatialHierarchy`:
+
+- `PlaceId` values are dense, stable indexes assigned in deterministic insertion order.
+- `SpatialHierarchyBuilder` accepts only direct transitions in the documented hierarchy.
+- nodes and child references are stored in contiguous arrays; direct parents and child slices require no graph search.
+- hierarchy construction retains the explicit world seed as minimal generation provenance.
+- chunk nodes convert to and from `ChunkId` only after their structural level is validated.
+
+The hierarchy does not yet generate geography. Terrain, geological state, hydrology, climate, ecology, parcels, structures, and interiors remain empty attachment points for later phases. Political claims and causal resolution remain separate overlays.
+
 ## Ownership and Jurisdiction
 
 Spatial units may have multiple overlapping claims:
