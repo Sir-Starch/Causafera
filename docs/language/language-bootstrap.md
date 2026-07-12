@@ -71,3 +71,5 @@ This depth is essential for making the simulation world feel historically real r
 ## Implemented foundation
 
 Phase 13 implements a bounded structural bootstrap. An explicit seed generates opaque phonological inventories, a language ancestry tree, and lexeme form lineages with formation times. Descendant languages inherit form ancestry, but no historical people, English dictionary, or observer gloss is synthesized as authoritative state. This is a causal contract for later historical bootstrap, not a claim of complete linguistic realism.
+
+Phase 21 can now schedule a future language-history adapter as an opaque, trace-backed historical stage. It does not yet add contact, grammar evolution, population coupling, or meanings to the Phase 13 output.

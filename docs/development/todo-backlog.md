@@ -434,6 +434,20 @@
 **Explanation Implications:** Explains urban development
 **Out of Scope:** Generated settlements, full urban growth, flow physics, traffic, interiors, lifecycle mutation, degradation, maintenance, fire, observer projection, persistence, and benchmarks
 
+## TODO-HIST-001: Causal Historical Bootstrap Orchestration
+**Status:** Completed
+**Phase:** 21
+**Priority:** High
+**Dependencies:** TODO-TRACE-001, TODO-RES-001, TODO-LANG-001, TODO-ECON-001, TODO-CITY-001
+**Goal:** Define bounded deterministic ordering and provenance contracts for low/high-resolution historical synthesis without generating semantic high-level history.
+**Acceptance Criteria:** Canonical stage DAG with opaque process schemas, time spans, numeric detail, spatial targets, parameter fingerprints, stable seed contributions, and exact committed receipt ancestry
+**Performance Requirements:** Hard stage/target/dependency/cause bounds; benchmark concrete adapters before scale claims
+**Determinism Requirements:** Same seed and canonical plan produce identical stage seeds and validation results independent of input order
+**Ontology Implications:** Historical causality is explicit trace structure; wars, plagues, migrations, settlements, and discoveries are not primitive event kinds
+**Observer Implications:** Future read-only plan/receipt projection only
+**Explanation Implications:** Future explanations traverse committed receipt traces and may not fill gaps narratively
+**Out of Scope:** Fake history, residents, cities, event tables, domain synthesis algorithms, aggregation, mutation, scheduler integration, persistence, observer protocol, acceleration, Phase 22 metaphysics
+
 ## TODO-ISEKAI-001: Cross-World Transfer Model
 **Status:** Pending
 **Phase:** 22

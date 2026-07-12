@@ -370,6 +370,7 @@ version = "0.1.0"
 dependencies = [
  "ontopolis-core",
  "ontopolis-types",
+ "thiserror 2.0.18",
 ]
 
 [[package]]

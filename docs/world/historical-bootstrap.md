@@ -74,6 +74,14 @@ Historical bootstrap must be deterministic given:
 - bootstrap parameters
 - resolution parameters
 
+## Implemented orchestration foundation
+
+Phase 21 implements `HistoricalBootstrapPlan` as a bounded canonical DAG of opaque synthesis processes. Each stage declares a simulation-time interval, numeric detail ordinal, target chunks, prior stages, external causal traces, and a parameter fingerprint. Stable per-stage seed contributions depend only on explicit numeric inputs.
+
+Concrete domain adapters still perform authoritative changes through READ → PROPOSE → REDUCE → COMMIT. After commit they return a receipt containing the result fingerprint and committed trace. A complete bootstrap record is accepted only when every planned stage has one receipt whose causes exactly continue the declared dependency traces.
+
+This foundation does not generate the output examples above. Old districts, families, language depth, institutions, and ruins remain targets for later domain synthesis; neither their existence nor their plausibility is claimed by Phase 21.
+
 ## Performance
 
 Historical bootstrap may be computationally expensive. Strategies:

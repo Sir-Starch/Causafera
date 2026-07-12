@@ -48,6 +48,8 @@ Provenance may be stored:
 - **Separate**: in a provenance graph (for complex chains)
 - **Compressed**: as generation parameters and seed (for reproducible features)
 
+Phase 21 adds a cross-domain orchestration layer: a canonical historical stage retains target chunks, time span, numeric detail, process/parameter identity, dependencies, and external traces. Its receipt retains a result fingerprint and committed trace. Receipt validation cannot replace domain event provenance; it proves that endpoint synthesis continued the declared stage ancestry.
+
 ## Provenance and Explanation
 
 The Explanation Engine uses provenance to answer causal questions:

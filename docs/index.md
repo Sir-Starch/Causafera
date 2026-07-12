@@ -220,6 +220,7 @@ Later documents supersede conflicting initialization-spec sections **only when t
 - `docs/rfc/RFC-SOCIAL-001.md` - Distributed Social and Institutional Records
 - `docs/rfc/RFC-ECON-001.md` - Traceable Material Economy Foundation
 - `docs/rfc/RFC-CITY-001.md` - Physical Urban Infrastructure Foundation
+- `docs/rfc/RFC-HIST-001.md` - Causal Historical Bootstrap Orchestration
 
 ## ADRs
 

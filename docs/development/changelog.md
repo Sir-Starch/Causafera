@@ -152,6 +152,14 @@ This project follows a structured changelog format. Each entry includes:
 - **PERF** — Added hard capacities, canonical typed-ID ordering, binary-search validation, and deterministic topology traversal without making scale claims.
 - **ARCH** — Completed Phase 20; Phase 21 historical bootstrap is next.
 
+### Phase 21: Causal Historical Bootstrap
+
+- **WORLD** — Accepted RFC-HIST-001 and completed TODO-HIST-001 with a bounded canonical stage DAG, explicit time/target/detail inputs, parameter fingerprints, and deterministic stage seed contributions.
+- **TRACE** — Added exact committed receipt ancestry validation so every completed stage continues its declared external and prior-stage causes.
+- **ONTO** — Kept wars, plagues, migrations, discoveries, settlements, eras, residents, cities, and lore out of authoritative bootstrap semantics; opaque process schemas are adapter identities only.
+- **PERF** — Added hard stage, target, dependency, and cause bounds without making synthesis speed, scale, or plausibility claims.
+- **ARCH** — Completed Phase 21; Phase 22 isekai transfer remains separate because its physical/metaphysical model requires its own RFC.
+
 ## Categories
 
 - **ARCH** - Architecture

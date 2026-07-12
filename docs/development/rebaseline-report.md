@@ -1,6 +1,6 @@
 # Architecture Rebaseline Final Report
 
-> Historical audit note: this report captured readiness immediately after the cognition rebaseline. Phases 6–20 were subsequently completed on 2026-07-12; the roadmap and TODO backlog are authoritative for current status.
+> Historical audit note: this report captured readiness immediately after the cognition rebaseline. Phases 6–21 were subsequently completed on 2026-07-12; the roadmap and TODO backlog are authoritative for current status.
 
 ## 1. Which completed phases were audited?
 
@@ -170,7 +170,7 @@ At the time of this audit, all Phase 6 work was unblocked: it depended only on `
 
 ## Subsequent implementation status (2026-07-12)
 
-RFC-COG-001, RFC-SCENE-001, RFC-CONCEPT-001, RFC-LANG-001, RFC-LANG-002, RFC-PRACTICE-001, RFC-EPI-001, RFC-MANA-001, RFC-RES-001, RFC-SOCIAL-001, RFC-ECON-001, and RFC-CITY-001 are now accepted. `TODO-SCENE-001` through `TODO-SCENE-009` were completed in the Phase 9–10 batch; `TODO-CONCEPT-001` and `TODO-COG-002` were completed in the Phase 11–12 batch; `TODO-LANG-001` through `TODO-LANG-003` were completed in the Phase 13–14 batch; `TODO-PRACTICE-001`, `TODO-EPI-001`, and `TODO-LANG-004` were completed in the Phase 15–16 batch; `TODO-MANA-001` was completed in Phase 17; `TODO-RES-001` was completed in Phase 18; `TODO-SOCIAL-001` and `TODO-SOCIAL-002` were completed in Phase 19; `TODO-ECON-001` and `TODO-CITY-001` were completed together in Phase 20. Phase 21 historical bootstrap is now next; this historical report otherwise preserves the findings that motivated the rebaseline.
+RFC-COG-001, RFC-SCENE-001, RFC-CONCEPT-001, RFC-LANG-001, RFC-LANG-002, RFC-PRACTICE-001, RFC-EPI-001, RFC-MANA-001, RFC-RES-001, RFC-SOCIAL-001, RFC-ECON-001, RFC-CITY-001, and RFC-HIST-001 are now accepted. `TODO-SCENE-001` through `TODO-SCENE-009` were completed in the Phase 9–10 batch; `TODO-CONCEPT-001` and `TODO-COG-002` were completed in the Phase 11–12 batch; `TODO-LANG-001` through `TODO-LANG-003` were completed in the Phase 13–14 batch; `TODO-PRACTICE-001`, `TODO-EPI-001`, and `TODO-LANG-004` were completed in the Phase 15–16 batch; `TODO-MANA-001` was completed in Phase 17; `TODO-RES-001` was completed in Phase 18; `TODO-SOCIAL-001` and `TODO-SOCIAL-002` were completed in Phase 19; `TODO-ECON-001` and `TODO-CITY-001` were completed together in Phase 20; `TODO-HIST-001` was completed in Phase 21. Phase 22 is now next; this historical report otherwise preserves the findings that motivated the rebaseline.
 
 ## 15. What was deliberately not implemented?
 

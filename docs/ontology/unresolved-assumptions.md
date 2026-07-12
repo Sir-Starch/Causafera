@@ -54,7 +54,9 @@ See `RFC-RES-001: Causal Resolution and Aggregation`.
 
 ## Language Bootstrap
 
-The exact mechanism for generating initial languages from pre-simulation historical bootstrap remains unspecified. The historical bootstrap may use lower-resolution cultural simulation and constrained causal synthesis. The resulting lexicon contains internal IDs and generated forms, not manually authored dictionaries.
+RFC-HIST-001 settles the Phase 21 orchestration minimum: bounded opaque stages provide time, target chunks, numeric detail, parameter fingerprints, deterministic seed contributions, explicit dependencies, and exact committed receipt ancestry. It does not settle concrete domain synthesis.
+
+The exact mechanism for richer initial languages remains unspecified. Historical bootstrap may use lower-resolution cultural simulation and constrained causal synthesis. The resulting lexicon contains internal IDs and generated forms, not manually authored dictionaries. Phase 21 only provides the adapter slot and causal receipt boundary.
 
 See `RFC-LANG-001: Historical Language Bootstrap`.
 

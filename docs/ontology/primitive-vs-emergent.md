@@ -243,3 +243,9 @@ Spells, rituals, mana schools or types, sacredness, enchantment, skills, levels,
 `ontopolis-domains::social` keeps ownership as trace-backed contestable claims. `ontopolis-domains::economy` separately stores physical custody, positive integer quantity, material-lot ancestry, transformations, and performed agent labour. Possession does not establish ownership, and labour does not establish a job or profession.
 
 `ontopolis-domains::city` stores physical parcel references, building entities, and generic directed infrastructure topology tied to material lots. Roads, water systems, sewers, utilities, buildings by use, districts, settlements, and cities remain agent/social/observer concepts rather than authoritative enums.
+
+## Phase 21 Historical Bootstrap Status
+
+`ontopolis-world::historical` stores bounded synthesis stages with typed identity, time spans, numeric detail, target chunks, canonical fingerprints, explicit dependencies, deterministic seed inputs, and committed receipts. It contains no event names, historical eras, peoples, settlements, wars, plagues, discoveries, lore, or narrative.
+
+Receipts demonstrate orchestration-level causal continuity but do not authorize mutation or make endpoint plausibility primitive. Concrete domain adapters and their committed event traces remain responsible for objective history.

@@ -132,11 +132,13 @@ Completed.
 
 Historical bootstrap.
 
-Next phase.
+Completed.
 
 ## Phase 22
 
 Isekai transfer and imported priors.
+
+Next phase.
 
 ## Phase 23
 
