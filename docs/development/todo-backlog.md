@@ -29,7 +29,7 @@
 **Out of Scope:** Implementation of domain logic
 
 ## TODO-CORE-001: Deterministic Scheduler
-**Status:** Pending
+**Status:** Completed
 **Phase:** 1
 **Priority:** High
 **Dependencies:** TODO-ARCH-001
@@ -57,7 +57,7 @@
 **Out of Scope:** ID generation algorithm
 
 ## TODO-COORD-001: Coordinate Primitives
-**Status:** Pending
+**Status:** Completed
 **Phase:** 1
 **Priority:** High
 **Dependencies:** TODO-CORE-001

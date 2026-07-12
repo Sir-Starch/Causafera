@@ -66,6 +66,7 @@ protobuf = "3"
 clap = { version = "4", features = ["derive"] }
 tracing = "0.1"
 hashbrown = "0.15"
+rand = "0.8"
 
 [profile.dev]
 opt-level = 0

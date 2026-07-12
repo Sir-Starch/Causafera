@@ -56,6 +56,36 @@ This project follows a structured changelog format. Each entry includes:
 
 - Created initial Architecture Decision Records.
 
+### Phase 1: Deterministic Simulation Kernel
+
+#### CORE
+
+- Implemented deterministic scheduler with phase-aware execution (`TODO-CORE-001`);
+- Added [`Phase`] enum with fixed execution order and [`PhaseId`] identifier;
+- Added [`System`] trait and per-phase registration API;
+- Implemented [`RandomStream`] with ChaCha12 RNG keyed by `(world_seed, time, phase, system_id)`;
+- Scheduler ticks deterministically in strict mode; identical config + systems → identical state;
+- Updated [`Runtime`] to accept [`DeterministicConfig`].
+
+#### WORLD
+
+- Implemented coordinate primitives (`TODO-COORD-001`);
+- Added [`WorldCoord`], [`ChunkCoord`], [`LocalCoord`] with integer math;
+- Added bidirectional `WorldCoord` ↔ `(ChunkCoord, LocalCoord)` conversions;
+- Added flat index for dense chunk array layout.
+
+#### Testing
+
+- Added 10 unit tests for scheduler determinism, phase ordering, and random stream independence;
+- Added 6 integration tests for scheduler replay, seed divergence, and multi-system streams;
+- Added 4 unit tests for coordinate roundtrips and chunk origins;
+- Added 8 integration tests for coordinate conversions, distances, and edge cases;
+- All tests pass under `--workspace --all-targets`.
+
+#### Dependencies
+
+- Added `rand` to workspace dependencies for deterministic RNG.
+
 ## Categories
 
 - **ARCH** - Architecture
