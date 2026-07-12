@@ -34,7 +34,8 @@ A foundational domain cannot enter implementation without coverage analysis.
 | Climate | Pending | Future geographic work |
 | Ecology | Pending | Future geographic work |
 | Biology | Partial — body topology and immutable pathogen contracts | Phase 5 |
-| Cognition | Pending | Phases 7-12 |
+| Physical access / perception | Partial — range/threshold acquisition and generic magnitude/change extraction | Phases 7-8 |
+| Cognition | Partial — bounded subjective attention only | Phase 7; broader work Phases 9-12 |
 | Language | Pending | Phases 13-14 |
 | Mana | Pending | Phase 17 |
 | Society | Pending | Phases 19-20 |

@@ -8,7 +8,7 @@ Define the immutable authoritative boundary for pathogen lineage ancestry, prope
 
 ## Context
 
-Pathogen transmission is a biological causal carrier, but Ground Truth must not contain a developer disease taxonomy or shortcut physical propagation into named routes. Phase 6 causal event infrastructure is not yet implemented. The Phase 5 extension therefore establishes deterministic inputs that later scheduler-controlled systems can consume.
+Pathogen transmission is a biological causal carrier, but Ground Truth must not contain a developer disease taxonomy or shortcut physical propagation into named routes. At acceptance time, Phase 6 causal event infrastructure was not yet implemented. The Phase 5 extension therefore established deterministic inputs that later scheduler-controlled systems could consume. RFC-TRACE-001 subsequently completed the generic provenance boundary; pathogen domain mutation remains future work.
 
 ## Authoritative primitives
 
@@ -88,6 +88,6 @@ Geography, hydrology, ecology, migration, practice, and material movement may la
 ## Unresolved future questions
 
 - Which physical material and environmental stores carry pathogen quantities.
-- How Phase 6 event proposals identify exposure, establishment, mutation, and recovery changes.
+- How pathogen domain systems map exposure, establishment, mutation, and recovery property changes into the generic Phase 6 event proposal schema.
 - Which measured workloads justify indexed host-profile lookup or aggregated epidemic state.
 - How multiresolution infection aggregation preserves rare but causally important lineages.

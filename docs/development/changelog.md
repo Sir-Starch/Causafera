@@ -75,6 +75,20 @@ This project follows a structured changelog format. Each entry includes:
 - **ONTO** — Kept pathogen types, transmission routes, diseases, and symptoms out of authoritative enums; infection mutation and evolution remain deferred to provenance-aware scheduler phases.
 - **PERF** — Added deterministic structure-of-arrays lineage storage without making unbenchmarked epidemic-scale claims.
 
+### Phases 6–8: Causal Perception Foundation
+
+#### Ground Truth provenance
+
+- **CORE** — Accepted RFC-TRACE-001 and completed `TODO-TRACE-001` with stable proposal reduction, opaque event/state schema IDs, property before/after fingerprints, monotonic event/trace allocation, and direct parent/child traversal.
+- **ONTO** — Kept semantic event names and domain taxonomies outside authoritative provenance.
+
+#### Physical access and generic extraction
+
+- **ONTO** — Added `ontopolis-perception` and accepted RFC-PERCEPT-001, completing `TODO-SENSE-001` and `TODO-PERCEPT-001` with property-based signal apertures, deterministic accessibility filtering, relative samples, generic magnitude/change features, and flattened causal inputs.
+- **COG** — Completed `TODO-COG-001` with fixed-capacity attention over agent-local `AttentionTargetId`; authoritative entity and feature identities cannot enter attention state.
+- **ARCH** — Marked Phases 6–8 complete and Phase 9 Subjective Scene Construction next. Feature-to-subjective identity mapping remains mandatory before broader cognition.
+- **PERF** — Used flat event/edge/feature batches and fixed attention arrays without making unbenchmarked throughput or scale claims.
+
 ## Categories
 
 - **ARCH** - Architecture

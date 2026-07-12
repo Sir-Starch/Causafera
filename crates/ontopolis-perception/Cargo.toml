@@ -1,5 +1,5 @@
 [package]
-name = "ontopolis-cognition"
+name = "ontopolis-perception"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

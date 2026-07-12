@@ -1,5 +1,7 @@
 # Architecture Rebaseline Final Report
 
+> Historical audit note: this report captured readiness immediately after the cognition rebaseline. Phases 6–8 and `TODO-COG-001` were subsequently completed on 2026-07-12; the roadmap and TODO backlog are authoritative for current status.
+
 ## 1. Which completed phases were audited?
 
 Phases 1 through 5 were audited:
@@ -162,9 +164,9 @@ Phases 1–5 remain unchanged. Phases 6–27 were resequenced to insert the subj
 
 ## 14. Which future task is now the first READY task?
 
-The first pending (READY-to-begin) task is **`TODO-TRACE-001: Causal Provenance System`** (Phase 6).
+At the time of this audit, the first pending (READY-to-begin) task was **`TODO-TRACE-001: Causal Provenance System`** (Phase 6).
 
-All Phase 6 work is unblocked: it depends only on `TODO-CORE-001` (completed). The next sequential task after that would be `TODO-COG-001: Attention Primitives` (Phase 7), which depends on `TODO-BIO-001` (completed).
+At the time of this audit, all Phase 6 work was unblocked: it depended only on `TODO-CORE-001` (completed). The next sequential task was `TODO-COG-001: Attention Primitives` (Phase 7), depending on `TODO-BIO-001` (completed).
 
 No Phase 9–10 subjective scene work is marked READY because its blocking implementation dependencies (`TODO-SCENE-001` through `TODO-SCENE-009`) require `RFC-COG-001` to be accepted first.
 

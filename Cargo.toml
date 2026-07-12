@@ -5,6 +5,7 @@ members = [
     "crates/ontopolis-world",
     "crates/ontopolis-geography",
     "crates/ontopolis-biology",
+    "crates/ontopolis-perception",
     "crates/ontopolis-cognition",
     "crates/ontopolis-language",
     "crates/ontopolis-epistemics",
@@ -39,6 +40,7 @@ ontopolis-core = { path = "crates/ontopolis-core" }
 ontopolis-world = { path = "crates/ontopolis-world" }
 ontopolis-geography = { path = "crates/ontopolis-geography" }
 ontopolis-biology = { path = "crates/ontopolis-biology" }
+ontopolis-perception = { path = "crates/ontopolis-perception" }
 ontopolis-cognition = { path = "crates/ontopolis-cognition" }
 ontopolis-language = { path = "crates/ontopolis-language" }
 ontopolis-epistemics = { path = "crates/ontopolis-epistemics" }

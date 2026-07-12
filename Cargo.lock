@@ -204,8 +204,8 @@ dependencies = [
 name = "ontopolis-cognition"
 version = "0.1.0"
 dependencies = [
- "ontopolis-core",
  "ontopolis-types",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
@@ -308,6 +308,14 @@ dependencies = [
  "ontopolis-observer-api",
  "ontopolis-types",
  "protobuf",
+]
+
+[[package]]
+name = "ontopolis-perception"
+version = "0.1.0"
+dependencies = [
+ "ontopolis-types",
+ "thiserror 2.0.18",
 ]
 
 [[package]]

@@ -248,7 +248,7 @@ The kernel supports transient per-agent active state through the existing `Syste
 
 `FeatureRelation` remains genuinely generic. No semantic shortcuts were found in the generic feature layer.
 
-`Feature.target_id` currently references `EntityId`. This is acceptable at the extractor level because the extractor operates on Ground Truth. The subjective scene construction layer must map these authoritative references to perceived identities before cognition consumes them. This is documented as a future contract requirement; no current code violates the new invariants because no agent cognition exists yet.
+`Feature.target_id` references `EntityId`. This is acceptable at the extractor level because `ontopolis-perception` operates on Ground Truth samples admitted through physical access. The subjective scene construction layer must map these authoritative references to perceived identities before cognition consumes them. The implemented attention primitive accepts only agent-local `AttentionTargetId` and therefore does not cross this boundary.
 
 ### Phase 3: Spatial World
 

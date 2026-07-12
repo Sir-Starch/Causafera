@@ -113,18 +113,46 @@
 **Out of Scope:** Physiological simulation
 
 ## TODO-COG-001: Attention Primitives
-**Status:** Pending
+**Status:** Completed
 **Phase:** 7
 **Priority:** Medium
-**Dependencies:** TODO-BIO-001
-**Goal:** Implement attention mechanism
-**Acceptance Criteria:** Agents have limited attention, focus shifts based on salience
-**Performance Requirements:** Sparse updates
+**Dependencies:** TODO-BIO-001, TODO-SENSE-001
+**Goal:** Implement a bounded subjective attention mechanism without authoritative identity
+**Acceptance Criteria:** Fixed focus/candidate bounds; subjective AttentionTargetId distinct from Ground Truth IDs; threshold, salience, and continuity ranking; supporting subjective PerceptId references; no EntityId or TraceId in attention state
+**Performance Requirements:** Fixed active-state arrays and sparse bounded updates; no scale claim before benchmarks
 **Determinism Requirements:** Attention deterministic given same inputs
 **Ontology Implications:** Cognition is bounded
 **Observer Implications:** May expose attention state
 **Explanation Implications:** Explains why agents miss things
-**Out of Scope:** Full cognitive architecture
+**Out of Scope:** Full cognitive architecture, feature-to-subjective mapping, subjective scene construction, semantic target types
+
+## TODO-SENSE-001: Physical Access and Sensory Acquisition
+**Status:** Completed
+**Phase:** 7
+**Priority:** High
+**Dependencies:** TODO-TRACE-001, TODO-BIO-001
+**Goal:** Establish a structural boundary that admits only physically accessible signals to extraction
+**Acceptance Criteria:** Property-based signals and sensor apertures; deterministic channel/time/range/threshold filtering; relative acquired samples; causal input traces
+**Performance Requirements:** Contiguous canonical output batches; benchmark before scale claims
+**Determinism Requirements:** Input ordering does not change acquired samples or acquisition IDs
+**Ontology Implications:** Observation is incomplete physical access, not Ground Truth transfer
+**Observer Implications:** Future read-only diagnostics only
+**Explanation Implications:** Supplies causal support for why a signal was accessible
+**Out of Scope:** Semantic modalities, realistic propagation/occlusion, physiology, sensor noise, cognition
+
+## TODO-PERCEPT-001: Generic Feature Extraction
+**Status:** Completed
+**Phase:** 8
+**Priority:** High
+**Dependencies:** TODO-SENSE-001, TODO-ONTO-001
+**Goal:** Extract generic structural features only from acquired sensory samples
+**Acceptance Criteria:** Deterministic magnitude/change extraction; typed acquired-sample input; canonical FeatureId assignment; flattened supporting TraceId spans
+**Performance Requirements:** Contiguous feature batches and flat provenance offsets; benchmark before scale claims
+**Determinism Requirements:** Sample input ordering does not change features or provenance
+**Ontology Implications:** Feature relations remain generic; authoritative target identity stops before Phase 9 cognition
+**Observer Implications:** Future read-only feature diagnostics only
+**Explanation Implications:** Feature claims retain physical causal support
+**Out of Scope:** Subjective identity, scenes, concepts, semantic classifiers, exhaustive feature algorithms
 
 ## TODO-SCENE-001: Implement Minimal Subjective Scene Representation
 **Status:** Pending
@@ -589,18 +617,18 @@
 **Out of Scope:** Full ontology implementation
 
 ## TODO-TRACE-001: Causal Provenance System
-**Status:** Pending
+**Status:** Completed
 **Phase:** 6
 **Priority:** High
 **Dependencies:** TODO-CORE-001
-**Goal:** Define causal trace format
-**Acceptance Criteria:** Events have causes, effects, and event type
-**Performance Requirements:** Efficient graph traversal
+**Goal:** Define deterministic Ground Truth event and causal trace format
+**Acceptance Criteria:** Stable proposal keys; opaque event-kind IDs; ordered prior causes; property-level before/after effects; monotonic event/trace IDs; direct parent/child traversal
+**Performance Requirements:** Flat event/cause/effect storage with deterministic cold reverse-edge index; benchmark before scale claims
 **Determinism Requirements:** Traces deterministic
 **Ontology Implications:** INV-014: Provenance is first-class
 **Observer Implications:** Exposes causal graphs
 **Explanation Implications:** Core to causal explanations
-**Out of Scope:** Full causal query engine
+**Out of Scope:** Semantic event strings, domain mutation systems, full causal query engine, persistence and observer wire projection
 
 ## TODO-ANALYTICS-001: Phenomenon Evaluation
 **Status:** Pending

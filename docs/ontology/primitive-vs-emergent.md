@@ -53,7 +53,7 @@ Generic perceptual features that extract structural patterns from raw state. The
 
 | Primitive | Phase | Notes |
 |-----------|-------|-------|
-| Field state | 14 | Mana field properties |
+| Field state | 17 | Mana field properties |
 | Repetition / Frequency / Sequence | 2 | Generic feature relations |
 | Transformation | 2 | Change relation captures state transitions |
 
@@ -199,3 +199,13 @@ The causal terrain boundary is implemented in `ontopolis-geography` with fixed-p
 The causal body-structure boundary is implemented in `ontopolis-biology` as a validated, canonically ordered structure-of-arrays model. Ground Truth stores only typed segment identity, rooted parent connections, property-based joint limits, fixed-point length, and physical orientation. Named anatomy, species, physiology, capability, and social taxonomy remain emergent or future concerns.
 
 The completed pathogen extension stores typed lineage ancestry, fixed-point transmission and progression properties, canonically ordered host-lineage interactions, and causally referenced physical exposure dose. It contains no disease, symptom, pathogen-type, or transmission-route enum. Infection mutation, evolution, immunity, and epidemic processes remain future provenance-aware work.
+
+## Phase 6 Causal Provenance Status
+
+`ontopolis-core::provenance` implements opaque event and state-schema IDs, canonical property fingerprints, stable proposal keys, prior-cause validation, and append-only parent/child trace traversal. Event names and domain classifications are not core state. The graph records objective changes; observer/explanation systems may later classify supported subgraphs without feedback.
+
+## Phase 7–8 Access and Perception Status
+
+`ontopolis-perception` implements property-based physical signals, sensor apertures, deterministic accessibility filtering, relative acquired samples, and generic magnitude/change extraction with causal input spans. Signal channels are opaque schema identities, not named modality enums.
+
+`ontopolis-cognition::attention` implements bounded fixed-point ranking over agent-local `AttentionTargetId`. It cannot store authoritative entity or feature identity. Phase 9 must map extractor bookkeeping to subjective perceived identities before cognition consumes it. Object categories, situations, threats, opportunities, and modality names remain emergent or observer-level.

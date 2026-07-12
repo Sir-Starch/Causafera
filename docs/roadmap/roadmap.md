@@ -42,19 +42,25 @@ Completed.
 
 Ground Truth events and causal provenance.
 
-Next phase.
+Completed.
 
 ## Phase 7
 
-Physical access and sensory acquisition.
+Physical access, sensory acquisition, and bounded attention primitives.
+
+Completed.
 
 ## Phase 8
 
 Generic perceptual feature extraction.
 
+Completed.
+
 ## Phase 9
 
 Subjective Scene Construction.
+
+Next phase.
 
 ## Phase 10
 

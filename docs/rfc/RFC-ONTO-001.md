@@ -40,13 +40,16 @@ Generic feature relations extract structural patterns from raw Ground Truth stat
 - `Persistence` enum: Fleeting, Brief, Moderate, Persistent, High.
 - `Feature` struct: ties relation, value, persistence, target entity, and feature ID.
 
-### Future Primitives (Pending)
+### Later Primitive Status
 
 | Primitive | Phase | Representation |
 |-----------|-------|---------------|
-| Biological structure | 5 | Body segments, joints, lengths |
-| Field state | 14 | Mana field properties |
-| Structural connection | 5 | Parent/child segment links |
+| Biological structure | 5 | Implemented: body segments, joints, lengths |
+| Structural connection | 5 | Implemented: parent/child segment links |
+| Causal event provenance | 6 | Implemented: events, effects, trace edges |
+| Physical access | 7 | Implemented minimum: signals, apertures, relative samples |
+| Generic extraction | 8 | Implemented minimum: magnitude and change |
+| Field state | 17 | Pending: mana field properties |
 
 ### Emergent Concepts (Never Primitive)
 
@@ -76,7 +79,7 @@ Feature and physics types are compact and stack-allocated. No heap allocation in
 ## Unresolved Questions
 
 - Emergence detection criteria: how do we programmatically detect that an agent has formed a concept? (Deferred to Phase 11 concept formation.)
-- Feature extraction algorithms: how are generic features actually extracted from state? (Deferred to Phase 7-12 cognition.)
+- Additional feature extraction algorithms beyond the implemented magnitude/change minimum remain future work. They must continue to accept only physically acquired samples.
 
 ## Decision Log
 

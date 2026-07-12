@@ -2,16 +2,27 @@
 
 Attention is the mechanism that selects which information an agent processes. Cognition is bounded. Agents do not continuously recompute an optimal world model.
 
+## Implemented Phase 7 foundation
+
+`ontopolis-cognition::attention` implements the minimum bounded attention state accepted by RFC-PERCEPT-001:
+
+- at most eight active foci and 64 candidates per update;
+- fixed-point salience threshold and continuity bonus;
+- deterministic ranking with subjective-ID tie-breaking;
+- fixed-size active-state arrays;
+- supporting subjective `PerceptId` references;
+- agent-local `AttentionTargetId`, structurally distinct from `EntityId`, `BodySegmentId`, `PlaceId`, and `FeatureId`.
+
+This primitive does not consume Ground Truth features or causal trace identities directly. Phase 9 subjective scene mapping must create grounded subjective targets and keep percept-to-trace correspondence in inaccessible external bookkeeping before attention participates in broader cognition. Goal relevance, learned salience, threat/opportunity interpretation, habituation, prediction error, and attention history remain future processes rather than semantic target enums.
+
 ## Attention Representation
 
 ```text
 AttentionState:
-    current_focus: [AttentionTarget]
-    focus_capacity: float
-    focus_duration: Time
-    interruptibility: float
-    attention_history: [AttentionEvent]
-    salience_threshold: float
+    config: (capacity, salience_threshold, continuity_bonus)
+    current_focus: bounded [AttentionTargetId]
+    active_since: bounded [SimulationTime]
+    supporting_percepts: bounded [PerceptId]
 ```
 
 ## Attention Targets

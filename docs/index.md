@@ -39,6 +39,7 @@ Later documents supersede conflicting initialization-spec sections **only when t
 - `docs/architecture/data-oriented.md` - Data-oriented storage
 - `docs/architecture/observer.md` - Observer architecture
 - `docs/architecture/protocol.md` - Observer protocol
+- `docs/architecture/provenance.md` - Ground Truth events and causal provenance
 - `docs/architecture/cognition-rebaseline.md` - Cognition rebaseline: subjective scene and cognitive continuity
 
 ## World
@@ -205,6 +206,8 @@ Later documents supersede conflicting initialization-spec sections **only when t
 
 - `docs/rfc/` - Request for Comments
 - `docs/rfc/RFC-COG-001.md` - Subjective Scene and Cognitive Continuity Model
+- `docs/rfc/RFC-TRACE-001.md` - Deterministic Ground Truth Event Provenance
+- `docs/rfc/RFC-PERCEPT-001.md` - Physical Access, Generic Extraction, and Attention Boundary
 
 ## ADRs
 

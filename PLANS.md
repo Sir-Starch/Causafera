@@ -55,3 +55,4 @@ None.
 - `plans/phase-4-terrain-contracts.md` — implemented deterministic terrain state and batch generation contracts (`TODO-GEO-001`) on 2026-07-12.
 - `plans/phase-5-biological-structure.md` — implemented the minimal biological structural model (`TODO-BIO-001`) on 2026-07-12.
 - `plans/phase-5-pathogen-contracts.md` — implemented deterministic pathogen lineage, exposure, and host-interaction contracts (`TODO-BIO-002`) on 2026-07-12.
+- `plans/phases-6-8-causal-perception.md` — implemented deterministic causal provenance, physical access, generic extraction, and bounded attention (`TODO-TRACE-001`, `TODO-SENSE-001`, `TODO-PERCEPT-001`, `TODO-COG-001`) on 2026-07-12.
