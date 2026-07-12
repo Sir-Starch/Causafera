@@ -54,7 +54,9 @@ Political regions are separate from geographic regions:
 
 ## Resolution and Aggregation
 
-The Causal Resolution Field determines the level of detail applied to each spatial unit:
+Phase 18 implements a separate chunk-keyed Causal Resolution Field. Trace-backed numeric carrier signals, rather than distance alone, determine fixed-point relevance and a bounded detail ordinal. A causally connected distant chunk may therefore receive more detail than a nearby isolated chunk.
+
+The field establishes the decision contract but does not yet aggregate domain state. Future consumers may use levels to select behavior such as:
 
 - Active chunks near the observation focus receive full simulation
 - Distant chunks may be aggregated to landscape region averages
@@ -75,7 +77,7 @@ The authoritative containment skeleton is implemented in `ontopolis-world` as an
 - hierarchy construction retains the explicit world seed as minimal generation provenance.
 - chunk nodes convert to and from `ChunkId` only after their structural level is validated.
 
-The hierarchy does not itself generate geography. Phase 4 terrain chunks can now attach deterministic surface fields and generation provenance to chunk coordinates through the separate `ontopolis-geography` contract. Geological state, hydrology, climate, ecology, parcels, structures, and interiors remain empty attachment points for later work. Political claims and causal resolution remain separate overlays.
+The hierarchy does not itself generate geography. Phase 4 terrain chunks can attach deterministic surface fields and generation provenance to chunk coordinates through the separate `ontopolis-geography` contract. Phase 18 causal resolution is a separate traced overlay and does not alter containment. Geological state, hydrology, climate, ecology, parcels, structures, interiors, and domain-specific aggregation remain future work. Political claims remain separate overlays.
 
 ## Ownership and Jurisdiction
 

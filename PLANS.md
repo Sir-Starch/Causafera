@@ -51,6 +51,7 @@ None.
 
 ## Completed Plans
 
+- `plans/phase-18-causal-resolution.md` — implemented the bounded deterministic Causal Resolution Field (`TODO-RES-001`) on 2026-07-12.
 - `plans/phase-17-minimal-mana.md` — implemented the bounded deterministic information-sensitive mana field (`TODO-MANA-001`) on 2026-07-12.
 - `plans/phases-15-16-practices-epistemics.md` — implemented bounded practices, fixed-point measurement/metrology, and physical document lineages (`TODO-PRACTICE-001`, `TODO-EPI-001`, `TODO-LANG-004`) on 2026-07-12.
 - `plans/phases-13-14-language-foundation.md` — implemented deterministic language bootstrap, communication boundaries, lexical innovation, adoption, and subjective semantic learning (`TODO-LANG-001` through `TODO-LANG-003`) on 2026-07-12.

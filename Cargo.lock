@@ -330,6 +330,7 @@ dependencies = [
  "ontopolis-core",
  "ontopolis-types",
  "ontopolis-world",
+ "thiserror 2.0.18",
 ]
 
 [[package]]

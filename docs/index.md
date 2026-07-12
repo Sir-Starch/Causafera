@@ -216,6 +216,7 @@ Later documents supersede conflicting initialization-spec sections **only when t
 - `docs/rfc/RFC-SCENE-001.md` - Bounded Subjective Scene and Cognitive Continuity
 - `docs/rfc/RFC-CONCEPT-001.md` - Sparse Subjective Concept Formation
 - `docs/rfc/RFC-MANA-001.md` - Minimal Information-Sensitive Field Model
+- `docs/rfc/RFC-RES-001.md` - Causal Resolution and State Aggregation
 
 ## ADRs
 

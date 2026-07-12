@@ -54,6 +54,7 @@ Generic perceptual features that extract structural patterns from raw state. The
 | Primitive | Phase | Notes |
 |-----------|-------|-------|
 | Field state | 17 | Implemented fixed-point local mana intensity and physical pattern coupling |
+| Causal relevance / detail ordinal | 18 | Implemented fixed-point relevance and numeric resolution levels over opaque traced carrier channels |
 | Repetition / Frequency / Sequence | 2 | Generic feature relations |
 | Transformation | 2 | Change relation captures state transitions |
 
@@ -66,7 +67,7 @@ Generic perceptual features that extract structural patterns from raw state. The
 | Deterministic hierarchy construction | `SpatialHierarchyBuilder` | `ontopolis-world` |
 | Chunk/place identity boundary | Validated `PlaceId` ↔ `ChunkId` conversion | `ontopolis-world` |
 
-These structural levels describe objective containment only. They do not encode political regions, ownership, place names, land use, observer classifications, or causal resolution.
+These structural levels describe objective containment only. They do not encode political regions, ownership, place names, land use, observer classifications, or causal resolution. Phase 18 resolution is a separate overlay keyed by validated chunk identity.
 
 ### Terrain Primitives (Phase 4)
 

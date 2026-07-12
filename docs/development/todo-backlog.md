@@ -379,18 +379,18 @@
 **Out of Scope:** Full spell system, physical effects, carrier adapters, attractors, causal resolution, persistence, observer protocol, GPU implementation
 
 ## TODO-RES-001: Causal Resolution Field
-**Status:** Pending
+**Status:** Completed
 **Phase:** 18
 **Priority:** High
 **Dependencies:** TODO-MANA-001
 **Goal:** RFC acceptance and implementation
-**Acceptance Criteria:** RFC approved, resolution varies by causal relevance
-**Performance Requirements:** Efficient aggregation
+**Acceptance Criteria:** Accepted RFC; bounded fixed-point field, opaque trace-backed carrier signals, deterministic decay/weighting/threshold hysteresis, and proposal-only transitions with per-entry commit traces
+**Performance Requirements:** Bounded structure-of-arrays CPU baseline; benchmark before alternative layouts
 **Determinism Requirements:** Resolution decisions deterministic
 **Ontology Implications:** Distance is not resolution
-**Observer Implications:** Exposes resolution state
-**Explanation Implications:** Explains why some areas are detailed
-**Out of Scope:** Full multi-resolution simulation
+**Observer Implications:** Future read-only numeric resolution and provenance projection
+**Explanation Implications:** Trace-backed transitions explain why areas receive detail without semantic inference
+**Out of Scope:** Full multi-resolution domain aggregation, promotion/demotion, scheduler integration, persistence, observer protocol, and GPU implementation
 
 ## TODO-SOCIAL-001: Organization Primitives
 **Status:** Pending

@@ -114,11 +114,13 @@ Completed.
 
 Causal Resolution Field.
 
-Next phase.
+Completed.
 
 ## Phase 19
 
 Social networks and organizations.
+
+Next phase.
 
 ## Phase 20
 

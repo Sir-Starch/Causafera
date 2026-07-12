@@ -127,6 +127,15 @@ This project follows a structured changelog format. Each entry includes:
 - **PERF** — Established a bounded dense CPU baseline without scale claims; sparse, multi-resolution, and GPU variants require benchmarks and bit-identical validation.
 - **ARCH** — Completed Phase 17; Phase 18 Causal Resolution Field is next and remains a separate foundational plan.
 
+### Phase 18: Causal Resolution Field
+
+- **RES** — Accepted RFC-RES-001 and completed TODO-RES-001 with a bounded fixed-point structure-of-arrays resolution field.
+- **RES** — Added directed trace-backed relevance signals on opaque weighted channels, deterministic prior-score decay, saturation, numeric thresholds, and hysteresis.
+- **CORE** — Kept evaluation proposal-only; changed entries retain canonical signal/prior-state causes and require exactly one new commit trace.
+- **ONTO** — Kept distance non-privileged and excluded trade, migration, politics, religion, observer labels, and other semantic dimensions from authoritative resolution state.
+- **PERF** — Established bounded CPU reference contracts without scale claims; full domain aggregation and alternative layouts require later contracts and benchmarks.
+- **ARCH** — Completed Phase 18; Phase 19 social networks and organizations is next.
+
 ## Categories
 
 - **ARCH** - Architecture
@@ -138,6 +147,7 @@ This project follows a structured changelog format. Each entry includes:
 - **LANG** - Language
 - **EPI** - Epistemics
 - **MANA** - Mana
+- **RES** - Causal resolution
 - **ISEKAI** - Isekai
 - **META** - Metaphysics
 - **EXPLAIN** - Explanation Engine
