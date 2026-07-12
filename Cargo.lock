@@ -280,8 +280,6 @@ dependencies = [
 name = "ontopolis-language"
 version = "0.1.0"
 dependencies = [
- "ontopolis-cognition",
- "ontopolis-core",
  "ontopolis-types",
 ]
 

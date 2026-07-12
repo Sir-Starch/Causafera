@@ -215,3 +215,9 @@ The completed pathogen extension stores typed lineage ancestry, fixed-point tran
 `ontopolis-cognition` accepts identity-free, quantized `PerceptualCue` values and constructs bounded transient scenes with fallible `PerceivedObjectId` hypotheses. Subjective body parts, self-associations, working items, episodes, predictions, actions, and outcomes use opaque agent-local IDs and numeric properties only.
 
 Working context, episodic reactivation, prediction error, agency attribution, and temporal continuity are implemented as fixed-capacity deterministic mechanisms. Sparse concepts add only agent-local prototypes over quantized signatures; beliefs add only opaque subjects, signed evidence direction, inertia, subjective trust, and directed pattern associations. They do not introduce object categories, situation enums, emotions, traits, abilities, semantic events, truth access, or authoritative identity guesses.
+
+## Phase 13–14 Language Foundation Status
+
+`ontopolis-language` represents abstract phonological units, ordered forms, language/lexeme ancestry, physical-form utterances, transmission records, and bounded numeric learning state. These are structural and historical carriers, not human vocabulary.
+
+A lexeme lineage never stores a meaning. `ConceptId` associations exist only in individual subjective lexicon entries and may disagree. Words, meanings, languages as communities, polysemy, synonymy, register, grammar, and dialect remain emergent distributions rather than authoritative semantic enums.

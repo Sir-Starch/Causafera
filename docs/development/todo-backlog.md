@@ -309,12 +309,12 @@
 **Out of Scope:** Full psychological model
 
 ## TODO-LANG-001: Historical Language Bootstrap
-**Status:** Pending
+**Status:** Completed
 **Phase:** 13
 **Priority:** High
 **Dependencies:** TODO-CONCEPT-001
 **Goal:** RFC acceptance and implementation
-**Acceptance Criteria:** RFC approved, bootstrap generates language lineages
+**Acceptance Criteria:** Accepted RFC; seed-deterministic bounded language and lexeme lineages; opaque phonological units and valid forms; no objective meaning or human-language strings
 **Performance Requirements:** Lower-resolution than main simulation
 **Determinism Requirements:** Bootstrap deterministic from seed
 **Ontology Implications:** Languages are physical patterns, not English strings
@@ -323,12 +323,12 @@
 **Out of Scope:** Manual dictionary creation
 
 ## TODO-LANG-002: Lexical Innovation
-**Status:** Pending
+**Status:** Completed
 **Phase:** 14
 **Priority:** Medium
 **Dependencies:** TODO-LANG-001
 **Goal:** Implement novel word creation
-**Acceptance Criteria:** Phonotactic generation, community adoption model
+**Acceptance Criteria:** Deterministic pressure-gated phonotactic coinage; percept-supported bounded adoption history; subjective fixed-point semantic revision
 **Performance Requirements:** Deterministic in strict mode
 **Determinism Requirements:** Form generation deterministic from inputs
 **Ontology Implications:** Words are socially transmitted lineages
@@ -589,12 +589,12 @@
 **Out of Scope:** Full localization
 
 ## TODO-LANG-003: Communicative Pressure Model
-**Status:** Pending
+**Status:** Completed
 **Phase:** 13
 **Priority:** Medium
 **Dependencies:** TODO-LANG-001
 **Goal:** Model when agents create new words
-**Acceptance Criteria:** Repeated communication need → lexical pressure
+**Acceptance Criteria:** Repeated unmet subjective concept-reference need accumulates bounded fixed-point pressure and gates deterministic coinage
 **Performance Requirements:** Sparse computation
 **Determinism Requirements:** Pressure calculation deterministic
 **Ontology Implications:** Words emerge from social need

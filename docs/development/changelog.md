@@ -101,6 +101,14 @@ This project follows a structured changelog format. Each entry includes:
 - **RFC** — Accepted and expanded RFC-CONCEPT-001; concepts consume only attended identity-free observations and retain subjective percept support.
 - **ARCH** — Completed TODO-CONCEPT-001 and TODO-COG-002; Phase 13 language bootstrap is next.
 
+### Phases 13–14: Language Bootstrap and Lexical Change
+
+- **LANG** — Accepted RFC-LANG-001/002 and replaced string/float placeholders with bounded opaque phonology, deterministic language/lexeme ancestry, and subjective fixed-point lexicons.
+- **LANG** — Added a structural intent → physical form → listener interpretation boundary, percept-supported exposure/adoption, repeated lexical pressure, deterministic coinage, and minimal semantic revision.
+- **ONTO** — Kept human strings, objective meanings, semantic speech-act enums, and authoritative identities out of language state.
+- **ARCH** — Completed TODO-LANG-001 through TODO-LANG-003 and Phases 13–14; Phase 15 practice representation is next.
+- **PERF** — Added hard capacities and canonical integer ordering without making unbenchmarked language-scale claims.
+
 ## Categories
 
 - **ARCH** - Architecture

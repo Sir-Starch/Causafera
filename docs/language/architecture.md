@@ -48,6 +48,19 @@ Languages are not global objects. They exist as patterns of shared practice with
 - INV-LANG-001: Simulation has no privileged human interface language
 - INV-008: Language decoding does not directly transfer speaker concepts
 
+## Phase 13–14 implementation
+
+The foundation is implemented with bounded integer state in `ontopolis-language`:
+
+- `LanguageBootstrap` creates seed-deterministic language and lexeme ancestry;
+- `PhonemeInventory` stores opaque units and validates/generates ordered forms;
+- `LexemeLineage` stores form history without objective meaning;
+- `AgentLexiconEntry` stores listener-local weighted concept associations;
+- `CommunicativeIntent`, `PhysicalUtterance`, and `ListenerInterpretation` enforce the communication boundary;
+- `PressureStore` and `AdoptionHistory` support deterministic coinage and percept-grounded spread.
+
+Grammar, morphology, writing, physical acoustics, and rich community/cohort evolution remain future work.
+
 ## Related Documents
 
 - `docs/language/semantic-layer.md` - How meaning is represented

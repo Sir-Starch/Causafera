@@ -170,7 +170,7 @@ At the time of this audit, all Phase 6 work was unblocked: it depended only on `
 
 ## Subsequent implementation status (2026-07-12)
 
-RFC-COG-001, RFC-SCENE-001, and RFC-CONCEPT-001 are now accepted. `TODO-SCENE-001` through `TODO-SCENE-009` were completed in the Phase 9–10 batch; `TODO-CONCEPT-001` and `TODO-COG-002` were completed in the Phase 11–12 batch. Phase 13 language bootstrap is now next; this historical report otherwise preserves the findings that motivated the rebaseline.
+RFC-COG-001, RFC-SCENE-001, RFC-CONCEPT-001, RFC-LANG-001, and RFC-LANG-002 are now accepted. `TODO-SCENE-001` through `TODO-SCENE-009` were completed in the Phase 9–10 batch; `TODO-CONCEPT-001` and `TODO-COG-002` were completed in the Phase 11–12 batch; `TODO-LANG-001` through `TODO-LANG-003` were completed in the Phase 13–14 batch. Phase 15 practice representation is now next; this historical report otherwise preserves the findings that motivated the rebaseline.
 
 ## 15. What was deliberately not implemented?
 

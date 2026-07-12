@@ -106,3 +106,7 @@ A false claim may become socially successful. Repeated behaviour created by that
 - `docs/language/lexical-innovation.md` - How new words are created under pressure
 - `docs/cognition/strategic-communication.md` - Lying and manipulation
 - `docs/language/translation.md` - Cross-linguistic communication
+
+## Implemented boundary
+
+Phase 13 represents the three critical layers as separate Rust types. Encoding checks a speaker-local association and emits only an ordered form and time. Decoding accepts that form, a physically acquired `PerceptId`, listener-local lexical associations, and contextual hypotheses. The listener API has no speaker-intent argument, so misunderstanding is structural rather than optional commentary.

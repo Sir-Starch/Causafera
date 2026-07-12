@@ -84,15 +84,19 @@ Completed.
 
 Language bootstrap and communication architecture.
 
-Next phase.
+Completed.
 
 ## Phase 14
 
 Lexical innovation, semantic inference, and language change.
 
+Completed.
+
 ## Phase 15
 
 Practice representation and evolution.
+
+Next phase.
 
 ## Phase 16
 

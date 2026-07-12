@@ -62,6 +62,8 @@ The architecture must support future implementation of:
 
 Phase 0 does not implement these mechanisms. It documents the requirements so future implementation respects the architectural foundation.
 
+Phase 14 now implements the minimal bounded update mechanism: percept-supported exposures create or revise fixed-point concept associations in an individual lexicon. This permits divergent meanings and gradual association changes. It does not yet classify those changes as broadening, narrowing, pejoration, or other observer-level phenomena.
+
 ## Semantic Inference for Unknown Forms
 
 When an agent encounters an unfamiliar lexeme, it generates candidate meaning hypotheses based on context, phonological similarity to known forms, and current conversational relevance. These hypotheses are probabilistic and update with subsequent exposure.

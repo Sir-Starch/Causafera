@@ -60,3 +60,7 @@ The choice depends on cognitive cost, social context, and language-specific reso
 - `docs/language/phonology.md` - The sound system constraining innovation
 - `docs/language/communication.md` - Communicative pressure that drives innovation
 - `docs/language/lexicon.md` - How new lexemes enter the community lexicon
+
+## Implemented foundation
+
+Phase 14 accumulates fixed-point lexical pressure for repeated unmet subjective concept references. Once the bounded numeric threshold is crossed, seed and opaque IDs deterministically select a valid form from the language inventory. Adoption remains exposure-driven: a transmission record references the listener's percept and revises only that listener's association. Full social-network competition and borrowing remain deferred.

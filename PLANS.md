@@ -51,6 +51,7 @@ None.
 
 ## Completed Plans
 
+- `plans/phases-13-14-language-foundation.md` — implemented deterministic language bootstrap, communication boundaries, lexical innovation, adoption, and subjective semantic learning (`TODO-LANG-001` through `TODO-LANG-003`) on 2026-07-12.
 - `plans/phases-11-12-concepts-beliefs.md` — implemented sparse subjective concepts, beliefs, trust, and causal hypotheses (`TODO-CONCEPT-001`, `TODO-COG-002`) on 2026-07-12.
 - `plans/phase-3-spatial-hierarchy.md` — implemented the deterministic spatial containment skeleton (`TODO-WORLD-001`) on 2026-07-12.
 - `plans/phase-4-terrain-contracts.md` — implemented deterministic terrain state and batch generation contracts (`TODO-GEO-001`) on 2026-07-12.
