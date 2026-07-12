@@ -197,3 +197,5 @@ The causal terrain boundary is implemented in `ontopolis-geography` with fixed-p
 ## Phase 5 Biological Structure Status
 
 The causal body-structure boundary is implemented in `ontopolis-biology` as a validated, canonically ordered structure-of-arrays model. Ground Truth stores only typed segment identity, rooted parent connections, property-based joint limits, fixed-point length, and physical orientation. Named anatomy, species, physiology, capability, and social taxonomy remain emergent or future concerns.
+
+The completed pathogen extension stores typed lineage ancestry, fixed-point transmission and progression properties, canonically ordered host-lineage interactions, and causally referenced physical exposure dose. It contains no disease, symptom, pathogen-type, or transmission-route enum. Infection mutation, evolution, immunity, and epidemic processes remain future provenance-aware work.

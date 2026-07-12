@@ -24,7 +24,7 @@ Biological state is causal state. It must be capable of influencing and being in
 
 ### Phase 5 Boundary
 
-Phase 5 implements only the label-free structural substrate in `ontopolis-biology`: typed body-segment identity, rooted parent topology, physical joint angle limits, fixed-point length, and relative orientation. The broader organism, body-system, lineage, development, physiology, health, and reproduction sketches below remain future architecture, not implemented authoritative types.
+Phase 5 implements the label-free structural substrate in `ontopolis-biology`: typed body-segment identity, rooted parent topology, physical joint angle limits, fixed-point length, and relative orientation. Its completed pathogen-contract extension also defines property-based pathogen lineage ancestry, fixed-point transmission properties, canonically ordered objective host interactions, and causally referenced exposure records. Live infection, evolution, and host mutation remain deferred until provenance-aware scheduler processes exist. The broader organism, body-system, development, physiology, health, and reproduction sketches below remain future architecture, not implemented authoritative types.
 
 ## Biological Representation
 
@@ -144,6 +144,7 @@ Biological data may be large. Strategies:
 ## RFCs
 
 - `RFC-BIO-001: Minimal Biological Structural Model` — Accepted and implemented for Phase 5 structure
+- `RFC-BIO-002: Minimal Pathogen Contracts` — Accepted and implemented for the Phase 5 pathogen extension
 
 ## TODO Categories
 

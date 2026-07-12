@@ -54,3 +54,4 @@ None.
 - `plans/phase-3-spatial-hierarchy.md` — implemented the deterministic spatial containment skeleton (`TODO-WORLD-001`) on 2026-07-12.
 - `plans/phase-4-terrain-contracts.md` — implemented deterministic terrain state and batch generation contracts (`TODO-GEO-001`) on 2026-07-12.
 - `plans/phase-5-biological-structure.md` — implemented the minimal biological structural model (`TODO-BIO-001`) on 2026-07-12.
+- `plans/phase-5-pathogen-contracts.md` — implemented deterministic pathogen lineage, exposure, and host-interaction contracts (`TODO-BIO-002`) on 2026-07-12.

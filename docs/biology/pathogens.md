@@ -2,61 +2,43 @@
 
 Pathogens are disease-causing biological agents. The engine must not require predefined social disease categories. Ground Truth contains pathogen lineages and physiological state transitions. Agents observe symptom patterns and construct subjective illness concepts.
 
-## Pathogen Representation
+## Implemented Contract Boundary
 
 ```text
-PathogenState:
-    pathogen_id: PathogenId
-    pathogen_type: PathogenType
-    virulence: float
-    transmission_rate: float
-    incubation_period: Time
-    infectious_period: Time
-    host_range: [PopulationLineageId]
-    mutation_rate: float
-    environmental_survival: float
+PathogenLineage:
+    id: PathogenId
+    parent: PathogenId?
+    properties: PathogenProperties
+    host_interactions: ordered [HostInteraction]
+
+PathogenProperties:
+    minimum_infectious_dose: PathogenQuantity
+    shedding_per_tick: PathogenQuantity
+    environmental_persistence: FractionPpm
+    mutation_propensity: FractionPpm
+    incubation: TickDuration
+    infectious: TickDuration
 ```
 
-### Pathogen Types
+`ontopolis-biology` implements these immutable Phase 5 extension contracts in `pathogens.rs`. Fractions are bounded integer parts per million and durations are positive simulation ticks. `PathogenLineages` validates a unique, parent-before-child ancestry forest and preserves canonical structure-of-arrays iteration order.
 
-- **Bacteria**: cellular pathogens
-- **Viruses**: subcellular pathogens
-- **Fungi**: eukaryotic pathogens
-- **Parasites**: multicellular pathogens
-- **Prions**: protein pathogens
+There is deliberately no authoritative pathogen-type enum. Classifications such as bacteria, virus, fungus, parasite, and prion require evidence and analytical purpose; they are not needed to establish the physical simulation contract.
 
 ## Infection Process
 
 ### Transmission
 
-Transmission occurs through:
+`PathogenExposure` records a pathogen lineage, optional source body, target body, positive physical dose, simulation time, and causal trace. It records a transmission opportunity, not an infection outcome.
 
-- **Contact**: direct physical contact
-- **Airborne**: respiratory droplets
-- **Vector**: insect or animal intermediary
-- **Waterborne**: contaminated water
-- **Foodborne**: contaminated food
-- **Fomite**: contaminated objects
-
-Transmission depends on:
-- pathogen properties
-- host susceptibility
-- environmental conditions
-- social behavior
+There is deliberately no transmission-route enum. Material contact, suspended particles, fluids, food, environmental surfaces, and intermediary organisms must create dose through their physical domain processes. A label such as "airborne" cannot bypass that causal path.
 
 ### Infection Course
 
-```text
-Exposure
-    ↓
-Incubation (asymptomatic, non-infectious or low-infectious)
-    ↓
-Prodrome (early symptoms)
-    ↓
-Clinical illness (symptoms, infectious)
-    ↓
-Resolution (recovery, death, or chronic state)
-```
+The implemented contract supplies incubation and infectious durations but does not implement infection stages. Exposure, establishment, physiological effects, recovery, chronic state, and death will require scheduler-controlled proposal/reduce/commit processes with causal provenance.
+
+### Host Interaction
+
+Each lineage may contain a canonically ordered profile keyed by objective `PopulationLineageId`. A profile stores bounded susceptibility, replication compatibility, and damage response. These values are physical model inputs. Host lineage IDs are not social population categories and are never directly available to agent cognition.
 
 ## Disease Ecology
 
@@ -71,7 +53,7 @@ Disease ecology interacts with:
 
 ## Pathogen Evolution
 
-Pathogens may evolve:
+Future pathogen processes may evolve through:
 
 - **Mutation**: genetic change creating new variants
 - **Selection**: pressure favoring certain traits
@@ -98,16 +80,26 @@ Pathogen processes must be deterministic given:
 - host state
 - environmental conditions
 - transmission opportunities
-- random stream (for stochastic aspects)
+- scheduler-provided random stream (for future stochastic aspects)
+
+Implemented construction consumes no randomness or floating point. Lineage ancestry and host profiles have canonical order. Future transmission and evolution outcomes must use deterministic stream keys and stable operation ordinals.
 
 ## Performance
 
-Pathogen simulation may be expensive for epidemics. Strategies:
+The implemented registry uses contiguous lineage fields and cold boxed host profiles. No performance or epidemic-scale claim is made. Candidate strategies requiring benchmarks include:
 
 - Aggregate representation for population-level epidemics
 - Individual simulation for significant infections
 - Event-driven transmission
 - Spatial batching for environmental transmission
+
+## Current Non-Goals
+
+- infection or immune-state mutation
+- pathogen generation, mutation algorithms, or epidemic scheduling
+- pathogen-type, transmission-route, disease, or symptom enums
+- molecular and cellular biology
+- observer protocol and persistence formats
 
 ## Related Documents
 
@@ -122,3 +114,7 @@ Pathogen simulation may be expensive for epidemics. Strategies:
 - `PATH` — pathogens
 - `BIO` — biology
 - `DEMO` — demography
+
+## RFCs
+
+- `RFC-BIO-002: Minimal Pathogen Contracts` — Accepted and implemented

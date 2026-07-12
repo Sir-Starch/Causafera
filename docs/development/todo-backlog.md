@@ -631,18 +631,18 @@
 **Out of Scope:** Full trade chain simulation
 
 ## TODO-BIO-002: Pathogen Model
-**Status:** Pending
+**Status:** Completed
 **Phase:** 5
 **Priority:** Medium
 **Dependencies:** TODO-BIO-001
 **Goal:** Define pathogen primitives
-**Acceptance Criteria:** Pathogen lineages, transmission, host interaction
-**Performance Requirements:** Epidemic simulation efficient
-**Determinism Requirements:** Pathogen evolution deterministic
+**Acceptance Criteria:** Property-based pathogen lineages, traced physical exposure, objective host-interaction profiles
+**Performance Requirements:** Canonical dense lineage traversal; epidemic performance claims deferred to benchmarks
+**Determinism Requirements:** Construction and ancestry deterministic; future evolution uses scheduler-provided streams
 **Ontology Implications:** Disease is socially constructed, pathogens are real
-**Observer Implications:** Exposes pathogen analytics
-**Explanation Implications:** Explains disease concepts
-**Out of Scope:** Molecular biology
+**Observer Implications:** Future read models may expose traced pathogen analytics
+**Explanation Implications:** Exposure carries causal trace references for future explanations
+**Out of Scope:** Molecular biology, live infection mutation, pathogen evolution algorithms, semantic disease/type/route enums
 
 ## TODO-LANG-004: Writing System Model
 **Status:** Pending

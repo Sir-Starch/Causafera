@@ -67,6 +67,14 @@ This project follows a structured changelog format. Each entry includes:
 
 - Created initial Architecture Decision Records.
 
+### Phase 5: Biological Foundations
+
+#### Pathogen Contracts
+
+- **BIO** — Accepted RFC-BIO-002 and completed `TODO-BIO-002` with validated fixed-point pathogen properties, canonical lineage ancestry, objective host-interaction profiles, and traced physical exposure records.
+- **ONTO** — Kept pathogen types, transmission routes, diseases, and symptoms out of authoritative enums; infection mutation and evolution remain deferred to provenance-aware scheduler phases.
+- **PERF** — Added deterministic structure-of-arrays lineage storage without making unbenchmarked epidemic-scale claims.
+
 ## Categories
 
 - **ARCH** - Architecture
