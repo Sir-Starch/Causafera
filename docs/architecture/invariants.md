@@ -159,3 +159,7 @@ Physical, history, and experiment digests establish exact identity, equality, or
 ## INV-039: Production state requires causal initialization
 
 Fixtures and test helpers may construct isolated state in tests. Production runtime sessions, historical runs, and experiments may not create residents, histories, settlements, languages, or other authoritative world state through fixture/demo paths. Initial state and detail promotion must pass through accepted generation or historical-bootstrap processes and retain causal provenance and conservation accounting.
+
+## INV-040: Biological mana interaction remains external and physical
+
+Organisms have no unexplained semantic mana pool, magic class, scalar aptitude, or spell authority. They may differ in lower-level physical coupling to the external mana field and may acquire spatially contained, materially retained, or dynamically bound mana through traced physical processes. Such retained state may already exist at birth when produced by gestation, development, inheritance-mediated carrier structure, environmental transfer, or an explicit physical conversion process. Intention affects mana only through embodied physical action. Ritual history remains a primary coupling mechanism, while rare active biological coupling may emerge without being guaranteed or privileged by the simulation. See `RFC-BIO-003`.

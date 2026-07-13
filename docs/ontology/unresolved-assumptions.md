@@ -48,6 +48,10 @@ The final field physics remain open. Vector state, explicit phase/interference, 
 
 See `RFC-MANA-001: Minimal Information-Sensitive Field Model`.
 
+RFC-BIO-003 settles the semantic boundary for organisms: mana remains physical state; no unexplained MP or authoritative magic aptitude exists; contextual biological coupling and causally formed retention are permitted, including congenital reserves produced during gestation or development; ritual/history remains the common route; rare active coupling may emerge but is never guaranteed. Concrete carrier variables, transfer/conversion laws, final field components, prevalence, and evolved biological structures remain unresolved implementation and research questions.
+
+See `RFC-BIO-003: Biological Mana Coupling and Emergent Practitioners`.
+
 ## Causal Resolution
 
 RFC-RES-001 now settles the Phase 18 decision-field minimum: bounded fixed-point relevance is reduced from directed, trace-backed signals on opaque weighted channels; deterministic decay, saturation, thresholds, and hysteresis select numeric detail ordinals through proposal/commit transitions. Distance is only one possible adapter input and is not privileged by the reducer.

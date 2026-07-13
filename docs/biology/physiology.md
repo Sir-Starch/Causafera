@@ -113,6 +113,8 @@ Physiology interacts with:
 - **Environment**: temperature, altitude, toxins affect physiology
 - **Mana**: physiological processes may interact with mana fields
 
+Physiological mana interaction uses physical field and carrier state. Organisms do not regenerate mana without a causal source, but tissues, equipment, symbionts, or associated spatial structures may acquire and retain field state through explicit transfer, conversion, leakage, saturation, and release processes. Retention may begin during gestation or development, so a newborn may possess a real congenital reserve without an intrinsic RPG-style pool. Physiological rhythms and controlled actions may serve as physical carriers; intention is never read by mana directly. See `RFC-BIO-003`.
+
 ## Physiological Observation
 
 Agents observe physiological state indirectly:

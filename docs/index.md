@@ -71,6 +71,7 @@ Later documents supersede conflicting initialization-spec sections **only when t
 - `docs/biology/pathogens.md` - Pathogens
 - `docs/biology/populations.md` - Populations
 - `docs/biology/demography.md` - Demography
+- `docs/rfc/RFC-BIO-003.md` - External biological mana coupling, acquired retention, and emergent practitioners
 
 ## Cognition
 

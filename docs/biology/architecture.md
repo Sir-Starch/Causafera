@@ -99,6 +99,8 @@ Traits include:
 - metabolism
 - mana coupling
 
+Mana coupling is not a scalar magical aptitude and organisms contain no unexplained semantic mana resource. It is a contextual result of morphology, tissue properties, physiology, development, action, external field state, tools, geometry, and history. Mana may become physically retained in or around an organism as a carrier state, including during prenatal or other pre-birth development, but must retain transfer or conversion provenance and remain distinct from subjective “personal mana.” See `RFC-BIO-003`.
+
 ## Biological and Other Domains
 
 Biology interacts with:

@@ -51,7 +51,7 @@ None.
 
 ## Draft Plans
 
-None.
+- `plans/biological-mana-coupling.md` — accepted architecture and pending implementation stages for external biological mana coupling, acquired environmental retention, ritual dominance, and rare emergent practitioners.
 
 ## Completed Plans
 

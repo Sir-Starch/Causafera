@@ -40,6 +40,8 @@ Traits include:
 - **Behavioral**: temperament, learning rate, social tendency
 - **Mana-related**: mana sensitivity, coupling tendency
 
+Mana-related inheritance transmits ordinary physical and developmental parameters that may influence external-field interaction. It never directly transmits a semantic magic class, spell knowledge, universal scalar affinity, or reserve number. An offspring may still be born with physically retained mana when inherited carrier structures act during development or when mana is transferred from its gestational environment, egg, seed, parent-associated field, symbiont, or incubation site. That congenital reserve is causal developmental state, not a genetic MP assignment. Useful coupling remains contextual and may fail to express without appropriate development, environment, practice, tools, and local mana. See `RFC-BIO-003`.
+
 ## Variation and Adaptation
 
 Heredity creates variation:

@@ -798,6 +798,20 @@
 **Explanation Implications:** Exposure carries causal trace references for future explanations
 **Out of Scope:** Molecular biology, live infection mutation, pathogen evolution algorithms, semantic disease/type/route enums
 
+## TODO-BIO-003: Biological Mana Coupling and Emergent Practitioners
+**Status:** Proposed
+**Phase:** Detailed Development — Biology/Mana
+**Priority:** High
+**Dependencies:** TODO-DEPTH-001, TODO-SIM-001, TODO-BIO-001, TODO-MANA-001, TODO-PERCEPT-001, TODO-PRACTICE-001, TODO-PERSIST-001
+**Goal:** Implement external physical biological mana coupling, including rare active modulation, dominant ritual/history coupling, and causally formed acquired or congenital retention without intrinsic MP or authoritative mage/spell categories
+**Acceptance Criteria:** RFC-BIO-003 implementation gate is satisfied; ordinary weak coupling and negative controls exist; retained state has traced inflow or conversion, capacity, leakage, release, birth/death behavior, and environmental accounting; inherited structures and developmental history may produce congenital reserves without assigning a genetic MP value; intention reaches mana only through physical action; learned procedures remain subjective practices; ritual and active-coupling counterfactuals replay exactly
+**Performance Requirements:** Representative organism, ritual, retained-carrier, and resolution workloads benchmark time, memory, provenance growth, and observer-off cost before scale claims
+**Determinism Requirements:** Fixed-point authoritative state, canonical proposal reduction, named RNG streams, same-seed replay, save/resume equivalence, and batch-order invariance
+**Ontology Implications:** Mana remains physical; mage, spell, affinity, personal mana, school, and magical taxonomy are emergent classifications rather than authoritative state
+**Observer Implications:** Bounded evidence may expose field/carrier transfers, physiological costs, and uncertainty without asserting subjective classifications as Ground Truth
+**Explanation Implications:** Claims distinguish coupling, developmental origin, retained field, execution, ritual history, learned belief, and social classification with trace support
+**Out of Scope:** Semantic spell dispatch, elemental enums, guaranteed practitioners, free mana regeneration, wish fulfillment, direct belief/intention coupling, final field physics, and implementation before detailed biology contracts
+
 ## TODO-LANG-004: Writing System Model
 **Status:** Completed
 **Phase:** 16

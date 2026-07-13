@@ -16,6 +16,8 @@ This project follows a structured changelog format. Each entry includes:
 
 ### Detailed Development Rebaseline
 
+- **BIO/MANA** — Accepted RFC-BIO-003 and INV-040: organisms have no unexplained semantic MP, while contextual physical coupling and causally formed acquired or congenital mana retention are allowed; ritual history remains primary and rare active practitioners are emergent rather than guaranteed.
+- **TODO** — Added TODO-BIO-003 and a draft ExecPlan covering biological carriers, developmental retention, perception, practice learning, conservation, persistence, explanation, and comparative validation.
 - **ARCH** — Closed the preallocated roadmap at Phase 26 and established an open-ended Detailed Development Program with no predetermined final phase count.
 - **ROADMAP** — Removed optional LLM/narrative realization from Phase 27; it is now an unnumbered terminal integration gate after validated simulation and deterministic Explanation maturity.
 - **PROCESS** — Defined capability maturity levels M0–M5 and normative priority `simulation → Explanation → observer support → batched UI`.
