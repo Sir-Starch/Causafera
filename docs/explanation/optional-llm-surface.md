@@ -1,6 +1,18 @@
 # Optional LLM Surface
 
-LLMs may be used in the explanation pipeline, but only after Explanation IR exists. They are optional and strictly limited.
+LLMs may eventually be used in the explanation pipeline, but Explanation IR existence alone is not
+sufficient authorization. They are optional, strictly limited, and currently not scheduled.
+
+## Implementation status
+
+Optional LLM surface realization is not a numbered roadmap phase. It is the final possible
+integration stage after the unknown amount of Detailed Development required to mature the
+simulation, deterministic Explanation Engine, observer contracts, persistence, provenance, and
+performance. No final phase number is reserved.
+
+A dedicated future RFC may propose implementation only after every terminal condition in
+`docs/architecture/detailed-development-rebaseline.md` passes. Until then this document defines a
+boundary, not planned work.
 
 ## Allowed Pipeline
 
@@ -50,3 +62,4 @@ LLM outputs are never authoritative. They are presentation-layer polish. The und
 - `docs/explanation/explanation-ir.md` - Source IR
 - `docs/explanation/deterministic-rendering.md` - Deterministic alternative
 - `docs/architecture/invariants.md` - INV-011: LLMs are non-authoritative
+- `docs/architecture/detailed-development-rebaseline.md` - terminal readiness gate

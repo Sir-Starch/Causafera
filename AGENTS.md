@@ -31,6 +31,25 @@ Before making any changes, read:
 - Avoid unrelated opportunistic implementation.
 - Use `codebase-memory-mcp` to maintain and query a semantic knowledge graph of the codebase (via `search_graph`, `trace_path`, `get_code_snippet`, and Cypher queries) as the primary method for code discovery and dependency tracing, prioritizing it over raw text searches.
 
+## Detailed Development Priorities
+
+Phases 0–26 are the completed Foundation Era. They prove minimum contracts and an executable causal
+loop, not mature simulation depth. Current work belongs to the open-ended Detailed Development
+Program described in `docs/architecture/detailed-development-rebaseline.md`.
+
+- Prioritize authoritative simulation depth first, Explanation/analytics second, observer protocol
+  as required for inspection, and batched UI milestones last.
+- Keep Explanation current enough that every accepted simulation capability remains causally
+  inspectable; do not postpone all interpretation until the end.
+- Do not update UI for every internal field. Add UI work when a stable read model enables a complete
+  inspection workflow.
+- Treat digests as equality/divergence anchors only. Never use digest-byte distance as physical,
+  recovery, stability, or semantic distance. See INV-038.
+- Do not use fixture/demo constructors in production bootstrap or runtime sessions. See INV-039.
+- Assign new phase numbers only through accepted ExecPlans. The final number of phases is unknown.
+- Optional LLM surface realization is not a numbered phase and is forbidden until the terminal gate
+  in the Detailed Development rebaseline is satisfied.
+
 ## Cognitive Architecture Constraints
 
 When working on cognition-related code (attention, memory, concepts, beliefs, language, or social inference), observe the following boundaries established by the subjective scene rebaseline:

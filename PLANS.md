@@ -55,6 +55,10 @@ None.
 
 ## Completed Plans
 
+- `plans/detailed-development-rebaseline.md` — closed the Phase 0–26 Foundation Era and established
+  the open-ended Detailed Development Program, M0–M5 capability maturity gates, simulation-first
+  priorities, continuous Explanation support, batched UI work, digest/fixture corrections, and an
+  unnumbered terminal LLM gate on 2026-07-13.
 - `plans/phase-26-rich-observer-ui.md` — completed the real Tauri 2 + React observer, bounded chart-qualified world projection, protobuf-only live session, typed Explanation IR interface, responsive dark UI, native/browser verification, and `TODO-UI-002` closure on 2026-07-13.
 - `plans/observer-transport-and-explanation-delivery.md` — completed the versioned read-only observer projection, Protocol Buffer query and streaming boundary, bounded backpressure, deterministic localized Explanation IR delivery, locale-independence proof, and observer overhead diagnostic on 2026-07-13.
 - `plans/persistence-roundtrip.md` — completed deterministic snapshot v1 with sectioned canonical binary format, validated domain-state reconstruction, runtime/scheduler resume at completed tick, uninterrupted-versus-resumed equivalence proof, atomic file workflow, CLI save/resume commands, and `TODO-PERSIST-001` closure; workspace verification reported zero failures on 2026-07-13.

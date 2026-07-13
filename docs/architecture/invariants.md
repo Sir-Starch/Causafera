@@ -151,3 +151,11 @@ Local physical space is three-dimensional. Global geography is a charted planeta
 ## INV-037: Geometry is not containment or resolution
 
 Containment, physical geometry, ownership/jurisdiction, rendering, and causal resolution are structurally separate. A hierarchy edge does not define shape or distance. A resolution transition may change representation detail but cannot alter topology, metric distance, geometric adjacency, or physical extent without a committed physical process.
+
+## INV-038: State digests are identities, not physical metrics
+
+Physical, history, and experiment digests establish exact identity, equality, or divergence within a schema version. Arithmetic distance between digest bytes is not a measure of physical similarity, causal strength, recovery, stability, or semantic difference. Those claims require typed domain values or validated state vectors with explicit scales, tolerances, and evidence.
+
+## INV-039: Production state requires causal initialization
+
+Fixtures and test helpers may construct isolated state in tests. Production runtime sessions, historical runs, and experiments may not create residents, histories, settlements, languages, or other authoritative world state through fixture/demo paths. Initial state and detail promotion must pass through accepted generation or historical-bootstrap processes and retain causal provenance and conservation accounting.

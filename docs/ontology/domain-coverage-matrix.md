@@ -19,35 +19,51 @@ Every fundamental domain must answer:
 
 A foundational domain cannot enter implementation without coverage analysis.
 
+## Status interpretation after Phase 26
+
+Foundation-era `Completed` and `Partial` labels describe the acceptance scope of Phases 0–26. They
+do not mean that a domain is mature. Detailed Development uses the capability maturity levels in
+`docs/architecture/detailed-development-rebaseline.md`:
+
+```text
+M0 documented → M1 contracted → M2 executable → M3 coupled → M4 observable → M5 validated
+```
+
+The maturity ranges below are provisional and intentionally conservative. A dedicated audit must
+split broad domains into capabilities and assign evidence-backed levels before new sequencing is
+accepted.
+
 ## Domains
 
-| Domain | Coverage | Status |
-|--------|----------|--------|
-| Space | Completed | Phase 1 |
-| Time | Completed | Phase 1 |
-| Matter | Completed | Phase 2 |
-| Energy | Completed | Phase 2 |
-| Pattern / Feature | Completed | Phase 2 |
-| Spatial geometry | Partial — finite closed charted surface contract, fixed-point surface/local coordinates, bounded local 3D transforms | Foundational correction with Phase 24; concrete planet metric, atlas transforms, and domain migration remain future work |
-| Geography | Partial — hierarchy and terrain contracts | Phases 3-4 |
-| Geology | Pending | Future geographic work |
-| Hydrology | Pending | Future geographic work |
-| Climate | Pending | Future geographic work |
-| Ecology | Pending | Future geographic work |
-| Biology | Partial — body topology and immutable pathogen contracts | Phase 5 |
-| Physical access / perception | Partial — range/threshold acquisition and generic magnitude/change extraction | Phases 7-8 |
-| Cognition | Partial — bounded attention, subjective scenes, active context, prediction, memory reactivation, agency, temporal continuity, sparse concepts, beliefs, trust, causal hypotheses, and subjective lexical associations | Phases 7, 9-14; richer goals and social inference remain future work |
-| Language | Partial — deterministic lineage bootstrap, opaque phonology, intent/utterance/interpretation boundary, pressure, coinage, adoption, semantic revision, and physical glyph/document carriers | Phases 13-16; grammar, morphology, physical acoustics, semantic reading, and rich social diffusion remain future work |
-| Mana | Partial — bounded fixed-point local field, physical pattern response, diffusion/decay/saturation, traced replacement proposals, and bounded traced physical-effect feedback | Phase 17 plus post-Phase-24 Stage 4; concrete carrier couplings remain future work |
-| Causal resolution | Partial — bounded fixed-point relevance field, opaque traced carrier channels, deterministic level hysteresis, and traced replacement proposals | Phase 18; domain aggregation and promotion/demotion remain future work |
-| Society | Partial — bounded distributed relations, roles, communication, authority, claims, rules, practices, and agreements | Phase 19; lifecycle, governance, enforcement, shared knowledge, and social resolution remain future work |
-| Economy | Partial — bounded physical inventory lots, transfers, transformations, labour records, and contestable ownership support | Phase 20; committed lifecycle, allocation, markets, and aggregation remain future work |
-| City infrastructure | Partial — parcel/building records and opaque-schema directed physical networks with material provenance | Phase 20; flows, lifecycle, maintenance, hazards, and growth remain future work |
-| Historical bootstrap | Partial — bounded canonical stage DAG, deterministic seed contributions, and exact committed receipt ancestry | Phase 21; concrete domain synthesis, aggregation, caching, and scheduler integration remain future work |
-| Epistemics | Partial — socially constructed fixed-point units, bounded calibration ancestry, accessible-observation measurement, and physical document copying | Phase 16; instruments, experiments, replication, and institutions remain future work |
-| Practice | Partial — bounded programs, proposal-only execution, structural mutation, and lineage | Phase 15; embodied execution, diffusion, roles, resources, and institutions remain future work |
-| Isekai | Partial — bounded opaque transfer plans/receipts, objective payload correspondence, imported subjective priors, and independent capability evidence | Phase 22; concrete transfer physics, cognition integration, translation, persistence, and observer projection remain future work |
-| Metaphysics | Partial — neutral identity-criterion evaluation and read-only field trajectory stability/recovery probes | Phase 23; final identity and attractor hypotheses remain unresolved |
-| Simulation runtime | Partial — executable physical recurrence → mana → resolution loop, provenance, canonical digest, strict replay, persistence/resume, and read-only observer projection/transport | Phase 24 plus post-phase-24 depth; richer domain population remains future work |
-| Observer | Partial — versioned query/response, bounded streams/backpressure, runtime and chart-qualified chunk projections, typed Explanation IR | Phases 25–26; entity, language, society, historical, and large spatial projections remain future work |
-| UI | Partial — Tauri 2 + React live runtime, bounded World/causal/timeline/inspector views, bilingual typed Explanation rendering | Phase 26; agent-known maps, rich domain views, large-dataset WebGPU, and narrative surface remain future work |
+| Domain | Foundation baseline | Provisional maturity | Detailed Development gap |
+|--------|---------------------|----------------------|--------------------------|
+| Space | Coordinate and hierarchy primitives | M1–M2 | Complete chart/frame migration, adjacency, topology, and physically owned local geometry |
+| Time | Deterministic scheduler time | M2 | Domain timescales, calendars as emergent/observer structures, temporal aggregation, and benchmarked long horizons |
+| Matter | Generic physical/material contracts | M1 | Durable conserved state, transformations, contact/containment coupling, and production mutation systems |
+| Energy | Numeric physical primitives | M1 | Conserved transfer/storage mechanisms and coupling to bodies, matter, environment, and mana |
+| Pattern / Feature | Generic samples and bounded history participate in mana | M2–M3 | Broader physical carriers, validated detection metrics, resolution behavior, and domain effects |
+| Spatial geometry | Finite charted 2.5D surface plus bounded local 3D contracts | M1–M2 | Concrete planet metric, atlas transforms, cross-chart geodesics, interiors/subsurface, and domain migration |
+| Geography | Hierarchy, terrain cells, deterministic terrain carrier | M1–M2 | Durable geographic processes, materials, water, climate/ecology coupling, multiscale synthesis, and observer detail |
+| Geology | Documentation only | M0 | Formation, strata, deposits, deformation, material provenance, and long-timescale resolution |
+| Hydrology | Documentation only | M0 | Conserved water state, terrain flow, groundwater, climate coupling, hazards, and aggregation |
+| Climate | Documentation only | M0 | Atmosphere/energy state, transport, seasonality, terrain/water/ecology coupling, and resolution |
+| Ecology | Documentation only | M0 | Populations, resources, trophic/material interactions, succession, disturbance, and observation |
+| Biology | Body topology and pathogen contracts; minimal runtime body is separate | M1 with a narrow M2 path | Integrate morphology, physiology, development, heredity, reproduction, aging, death, pathogens, and population conservation into runtime |
+| Physical access / perception | Range/threshold acquisition and generic extraction run for promoted actors | M2 | Real geometry, occlusion/media, multiple physical signal carriers, internal access, adaptation, and costs |
+| Cognition | Bounded attention, scene, continuity, concepts, beliefs, trust, and hypotheses exist | M1 with a narrow M2 path | State-dependent goals, learning across real environments, memory lifecycle, prediction-error propagation, social inference, and performance |
+| Language | Lineage, opaque phonology, communication boundary, lexical change, and documents | M1 | Physical acoustics, grammar/morphology, grounded interpretation, conversation, diffusion, writing/reading, and runtime coupling |
+| Mana | Local fixed-point field, history response, diffusion/decay, and traced boost feedback | M3 with limited M4 metrics | Durable physical targets, multiple real carriers, validated pattern response, domain-specific effects, resolution, and explanatory metrics |
+| Causal resolution | Relevance field, hysteresis, traced transitions, and minimal actor/population promotion | M2–M3 | Domain aggregation contracts, conservation proofs, reconstruction, cross-chart operation, and quality/error metrics |
+| Society | Distributed relation, role, authority, claim, rule, practice, and agreement contracts | M1 | Agent-local social inference, lifecycle, institutions, governance, enforcement, conflict, diffusion, and resolution |
+| Economy | Inventory, transfer, transformation, labour, and contestable ownership contracts | M1 | Production runtime, allocation, scarcity response, capability constraints, exchange emergence, conservation, and aggregation |
+| City infrastructure | Parcel/building/network contracts | M1 | Generated physical structures, flows, occupancy, degradation, maintenance, hazards, growth, and geographic coupling |
+| Historical bootstrap | Stage DAG and receipt provenance; minimal aggregate bootstrap exists | M1 with a narrow M2 path | Concrete domain synthesis, causal population/actor creation, deep-time integration, aggregation, caching, and plausibility tests |
+| Epistemics | Units, calibration ancestry, measurement, and physical documents | M1 | Instruments, experimental practice, uncertainty propagation, replication, institutions, credibility, and runtime learning |
+| Practice | Bounded programs, proposal execution, mutation, and lineage | M1 | Embodied execution, resources/tools, learning, transmission, roles, failure, standardization, and mana coupling |
+| Isekai | Transfer plans/receipts, imported priors, and capability separation | M1 | Transfer physics, body/cognition integration, translation, historical occurrence, contamination, persistence, and observation |
+| Metaphysics | Neutral identity criteria and minimal trajectory probes | M1 | Domain-valid attractor/state metrics, causal hypotheses, repeated experiments, alternatives, and non-semantic agency evidence |
+| Simulation runtime | Deterministic eight-phase harness, provenance, replay, persistence, bounded observer | M3 infrastructure; domain depth uneven | Remove fixtures/timers, integrate all claimed domains, durable coupling, maturity validation, provenance growth strategy, and representative performance |
+| Explanation / analytics | Typed IR, evidence states, comparison context, localized rendering | M2–M3 infrastructure | Replace digest distances, add domain metrics/units/alternatives, causal queries, intervention design, phenomenon evaluation, and honest insufficiency |
+| Observer | Versioned queries and bounded streams for summary, chunks, and Explanation | M3 infrastructure | Causal slices, domain series, objective/subjective views, entity/history inspection, schema metadata, and measured overhead |
+| UI | Real dark Tauri/React observer with bounded aggregate views | M2 presentation | Batch stable inspection workflows after simulation/Explanation contracts mature; do not chase every internal field |
+| Optional LLM surface | Policy boundary only | Not scheduled | Terminal gate only after target simulation and deterministic Explanation reach validated maturity |

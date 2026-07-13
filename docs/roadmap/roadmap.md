@@ -161,7 +161,8 @@ rendering, and observer v1 transport are complete; richer analytical ontology re
 
 A minimal Explanation IR may exist earlier for developer inspection.
 
-Next phase.
+Completed within the Foundation Era scope. Digest-distance recovery and the minimal analytical
+ontology are explicitly not considered mature Detailed Development analytics.
 
 ## Phase 26
 
@@ -175,10 +176,42 @@ timeline, inspector, and comparative-explanation views in deterministic English/
 presentation. Rich entity, language, society, historical comparison, and large-dataset WebGPU
 views remain incremental observer work.
 
-## Phase 27
+## Foundation Era boundary
 
-Optional narrative surface realization.
+Phase 26 is the last preallocated Foundation Era phase. Completion of Phases 0–26 means Ontopolis
+has minimum valid domain contracts, deterministic execution, causal provenance, persistence, a
+bounded long-run harness, Explanation IR transport, and a real observer UI. It does not mean that
+the domains have reached full causal depth or that semantic emergence has been demonstrated.
 
-LLMs remain non-authoritative.
+## Detailed Development Program — current
 
-Next phase.
+Ontopolis is now in open-ended detailed development. The final number of phases is deliberately
+unknown. New numbered phases or implementation batches are allocated only when bounded ExecPlans
+are accepted; the roadmap does not reserve a terminal phase in advance.
+
+Normative priority:
+
+1. authoritative simulation depth and cross-domain coupling;
+2. Explanation/analytics kept current with accepted simulation capabilities;
+3. bounded observer read models and protocol support required for inspection;
+4. coherent UI milestone batches after read models stabilize.
+
+Detailed work advances capabilities through documented, contracted, executable, coupled,
+observable, and validated maturity levels. Foundation `Completed` labels are historical scope
+statements, not claims that a whole domain is mature.
+
+Immediate program priorities are durable physical-state coupling, production historical bootstrap
+without fixtures, domain-valid recovery and phenomenon metrics, causal/domain inspection, and a
+complete maturity audit that sequences deeper geography, biology, cognition, language, practices,
+epistemics, society, economy, city, history, isekai, and metaphysics work.
+
+See `docs/architecture/detailed-development-rebaseline.md` and
+`plans/detailed-development-rebaseline.md`.
+
+## Optional LLM surface — terminal gate, unnumbered
+
+Optional LLM wording is removed from the numbered roadmap. It may be considered only after the
+simulation's target scope has validated maturity, deterministic Explanation can already explain
+the world and experiments, structured source packets are inspectable through the observer/UI, and
+persistence, provenance, determinism, and performance gates pass. A future dedicated RFC is
+required. LLMs remain optional and non-authoritative under INV-011.

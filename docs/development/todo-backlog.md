@@ -501,7 +501,7 @@
 **Determinism Requirements:** Same seed and plan produce identical checkpoints and final state digest
 **Ontology Implications:** Experiment labels are non-authoritative; trajectory evidence is not an emergence verdict
 **Observer Implications:** CLI diagnostic only; observer protocol unchanged
-**Explanation Implications:** Numeric evidence and causal traces available; Phase 25 still required
+**Explanation Implications:** Numeric evidence and causal traces enabled the minimal Foundation Phase 25 IR; domain-valid Detailed Development analytics remain required
 **Out of Scope:** Fake populations/history, full phenomenon miner, persistence, observer streaming, scale claims
 
 ## TODO-EXPLAIN-001: Explanation IR
@@ -574,11 +574,81 @@
 **Explanation Implications:** Preserves schema, numeric value, evidence state, confidence, comparison, checkpoint, and trace count
 **Out of Scope:** Entity-per-DOM views, global planetary map, large-dataset WebGPU renderer, agent-known maps, LLM narrative, authoritative mutation
 
+## TODO-DEPTH-001: Detailed Domain Maturity Audit and Sequencing
+**Status:** Pending
+**Phase:** Detailed Development — Program
+**Priority:** Critical
+**Dependencies:** TODO-UI-002, TODO-PERSIST-001, TODO-LAB-001
+**Goal:** Split every broad domain into evidence-bearing capabilities, assign provisional M0–M5 maturity, identify production placeholders and missing couplings, and propose the first bounded Detailed Development ExecPlans
+**Acceptance Criteria:** Every domain in the coverage matrix has capability-level authoritative state, mutation owner, incoming/outgoing carriers, resolution, persistence, provenance, observer, Explanation, performance, and negative-control gaps; dependencies are canonical; no final phase number is reserved
+**Performance Requirements:** Audit records representative workload requirements for every capability targeting M5
+**Determinism Requirements:** Every planned mutation path identifies RNG streams, canonical ordering, replay, and save/resume gates
+**Ontology Implications:** Deepening mechanisms must not promote observer or human semantic categories into authoritative primitives
+**Observer Implications:** Identifies inspection contracts needed for validation; does not require a UI panel per capability
+**Explanation Implications:** No capability may target M4/M5 without typed metrics, uncertainty, traces, and counterfactual/negative-control strategy
+**Out of Scope:** Implementing every domain in one batch, fixed final phase count, optional LLM integration
+
+## TODO-SIM-001: Durable Physical State and Cross-Domain Coupling
+**Status:** Pending
+**Phase:** Detailed Development — Simulation Core
+**Priority:** Critical
+**Dependencies:** TODO-DEPTH-001, TODO-TRACE-001, TODO-MANA-001, TODO-PERSIST-001
+**Goal:** Replace counter/sample-only physical feedback with durable authoritative physical changes owned by explicit domain systems
+**Acceptance Criteria:** At least one accepted vertical slice commits durable material, terrain, geometry, body, or other physical property changes; mana and actor actions affect that state through causal proposals; later perception/carrier samples read the changed state; negative controls and persistence/replay equivalence pass
+**Performance Requirements:** Representative active-set workload with time, memory, provenance growth, and observer-off overhead measurements
+**Determinism Requirements:** Canonical proposal reduction and same-seed replay across uninterrupted and resumed runs
+**Ontology Implications:** Effects target structural physical properties, never semantic event labels or meanings
+**Observer Implications:** Bounded property deltas and supporting traces are inspectable
+**Explanation Implications:** Typed before/after values and causal attribution replace digest-byte proximity
+**Out of Scope:** Fake weather, fake settlements, gameplay mechanics, or unbounded global voxel physics
+
+## TODO-RUNTIME-001: Production Bootstrap and Fixture Elimination
+**Status:** Pending
+**Phase:** Detailed Development — Runtime
+**Priority:** Critical
+**Dependencies:** TODO-DEPTH-001, TODO-HIST-001, TODO-PERSIST-001
+**Goal:** Ensure all production residents and authoritative initial state originate from accepted causal generation/bootstrap paths
+**Acceptance Criteria:** Production runtime/session code contains no fixture/demo constructors; aggregate population conservation includes promoted actors; actor/body/object state has bootstrap ancestry; reset, experiment, save/resume, and observer sessions use the same production recipe; tests prove fixtures remain test-only
+**Performance Requirements:** Bootstrap time and memory measured for the accepted bounded envelope
+**Determinism Requirements:** Same seed and bootstrap plan produce identical state/history digests and ancestry
+**Ontology Implications:** No invented residents, histories, languages, settlements, or semantic roles
+**Observer Implications:** Bootstrap receipts and promotion/demotion summaries are inspectable without exposing Ground Truth to agents
+**Explanation Implications:** Initial conditions and later outcomes can be traced to real bootstrap receipts
+**Out of Scope:** Authored lore, demo worlds, or random high-level history tables
+
+## TODO-OBSERVER-003: Bounded Causal and Domain Inspection
+**Status:** Pending
+**Phase:** Detailed Development — Observer
+**Priority:** High
+**Dependencies:** TODO-DEPTH-001, TODO-OBSERVER-002, TODO-TRACE-001
+**Goal:** Expose the evidence required to understand and validate detailed simulation behavior without coupling UI to runtime internals
+**Acceptance Criteria:** Versioned bounded queries provide causal event slices, typed domain state series/deltas, resolution transitions, bootstrap receipts, and explicitly separated objective/subjective projections; pagination/capacity and provenance anchors are mandatory
+**Performance Requirements:** Observer-off, idle, normal inspection, and heavy bounded query overhead measured
+**Determinism Requirements:** Query cadence, locale, selection, and rendering cannot alter authoritative digests or event ordering
+**Ontology Implications:** Schema metadata and human labels remain observer-only
+**Observer Implications:** Becomes the primary validation surface for M4 capabilities
+**Explanation Implications:** Explanation claims can link to inspectable typed evidence rather than trace counts alone
+**Out of Scope:** Direct storage access, unbounded graph dumps, a panel for every field, or LLM prose
+
+## TODO-EXPLAIN-003: Domain-Aware Causal Explanation
+**Status:** Pending
+**Phase:** Detailed Development — Explanation
+**Priority:** High
+**Dependencies:** TODO-ANALYTICS-001, TODO-OBSERVER-003, TODO-EXPLAIN-001
+**Goal:** Maintain an explanation layer that can answer what changed, why, relative to what baseline, with what uncertainty, and which alternatives remain viable
+**Acceptance Criteria:** Stable typed schemas cover accepted Detailed Development vertical slices; reports retain all comparison frames; claims include domain units/scales, observation windows, causal/counterfactual context, alternatives or insufficiency, and inspectable trace-backed evidence
+**Performance Requirements:** Bounded interactive queries benchmarked separately from offline experiment analysis
+**Determinism Requirements:** Same state, query, and schema registry produce identical IR independent of locale/UI
+**Ontology Implications:** Human classifications remain analytical and cannot become simulation or agent semantics
+**Observer Implications:** Read models carry all structured claim inputs and source references
+**Explanation Implications:** Deterministic rendering remains complete without an LLM
+**Out of Scope:** Narrative invention, uncertainty resolution by prose, or terminal optional LLM integration
+
 ## TODO-PERF-001: Benchmark Framework
 **Status:** Pending
-**Phase:** 0
-**Priority:** Medium
-**Dependencies:** TODO-ARCH-001
+**Phase:** Detailed Development — Cross-cutting
+**Priority:** High
+**Dependencies:** TODO-ARCH-001, TODO-DEPTH-001
 **Goal:** Benchmark harness
 **Acceptance Criteria:** Can measure ticks/second, memory, active sets
 **Performance Requirements:** Minimal measurement overhead
@@ -604,7 +674,7 @@
 
 ## TODO-CUDA-001: Accelerator Abstraction
 **Status:** Pending
-**Phase:** 0
+**Phase:** Detailed Development — Performance (deferred until measured crossover)
 **Priority:** Low
 **Dependencies:** TODO-ARCH-001
 **Goal:** Define accelerator trait
@@ -674,22 +744,22 @@
 
 ## TODO-ANALYTICS-001: Phenomenon Evaluation
 **Status:** Pending
-**Phase:** 24
-**Priority:** Low
+**Phase:** Detailed Development — Explanation
+**Priority:** Critical
 **Dependencies:** TODO-EXPLAIN-001
-**Goal:** Implement phenomenon metrics
-**Acceptance Criteria:** Causal depth, domain coupling, path dependence measurable
+**Goal:** Implement domain-valid phenomenon, divergence, persistence, and recovery metrics
+**Acceptance Criteria:** Digests are used only for equality/divergence; typed domain state vectors define scales and tolerances; causal depth is not reduced to trace count; domain coupling, path dependence, persistence, and recovery have baselines, observation windows, negative controls, supporting traces, and explicit unknown/unsupported outcomes
 **Performance Requirements:** Offline analysis acceptable
 **Determinism Requirements:** Metrics deterministic from state
 **Ontology Implications:** Emergence must be inspectable (INV-019)
 **Observer Implications:** Exposes phenomenon analytics
 **Explanation Implications:** Supports emergence claims
-**Out of Scope:** Real-time mining
+**Out of Scope:** Digest-byte distance as physical similarity, arbitrary recovery tolerance, real-time mining, semantic verdicts without evidence
 
 ## TODO-GEO-002: Material Provenance
 **Status:** Pending
-**Phase:** 4
-**Priority:** Medium
+**Phase:** Detailed Development — Geography / Matter
+**Priority:** High
 **Dependencies:** TODO-GEO-001
 **Goal:** Track material origins
 **Acceptance Criteria:** Material has geological formation → deposit → quarry → ... chain

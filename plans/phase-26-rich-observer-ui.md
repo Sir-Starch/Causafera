@@ -1,5 +1,12 @@
 # Phase 26 — Rich Observer UI
 
+> Detailed Development audit note (2026-07-13): the observer connection and absence of fabricated
+> React fallback data remain valid, but the default runtime session configures initial actors through
+> the production-visible `fixture_actors` helper rather than deriving all of them from aggregate
+> population promotion. The original “no demo residents” interpretation is therefore superseded by
+> INV-039 and `TODO-RUNTIME-001`. Phase 26 remains complete for protocol/UI delivery, not for mature
+> production bootstrap.
+
 ## Goal
 
 Deliver a visually polished, usable Tauri + React observer that runs the real bounded Ontopolis runtime, negotiates observer protocol v1, receives runtime and world data only as versioned Protocol Buffer payloads, consumes bounded stream envelopes, and renders typed Explanation IR without introducing a UI mutation path into authoritative state.

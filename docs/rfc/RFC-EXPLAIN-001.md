@@ -126,9 +126,22 @@ These IDs describe numeric schemas, not human semantic categories. Rendering may
 
 Matched checkpoint analysis compares an intervention series against a control series at identical ticks. It must use the separated Stage 1 digests:
 
-- `PhysicalStateDigest` for physical recovery and divergence;
+- `PhysicalStateDigest` for exact physical identity/equality and divergence detection;
 - `HistoryDigest` for historical/provenance divergence;
 - `ExperimentDigest` only for whole-trajectory identity, not as a replacement for physical/history analysis.
+
+### Detailed Development correction: identity is not distance
+
+Digest bytes are avalanche-style identity summaries. Equality is meaningful; arithmetic distance
+between their bytes is not. `PhysicalStateDigest` therefore cannot define physical proximity,
+recovery distance, stability, counterfactual magnitude, or tolerance. The Foundation Era
+digest-distance implementation is transitional diagnostic code and may not support a mature
+`Supported` physical-recovery claim.
+
+Physical comparison requires a versioned typed domain state vector or a set of typed property
+deltas. Each component must declare its unit/scale, normalization or comparison rule, aggregation
+rule, observation scope, and acceptable tolerance. Missing domain components must reduce coverage
+or produce `Unknown`/`Unsupported`; they may not be replaced by digest arithmetic.
 
 Required recovery outputs:
 
@@ -137,6 +150,11 @@ Required recovery outputs:
 - matched control distance at identical ticks;
 - final recovery distance;
 - optional time-to-recovery when distance returns within tolerance after perturbation.
+
+Every tolerance must be valid for the declared domain metric and must be smaller than or equal to
+that metric's documented range unless an explicit unbounded scale is justified. Recovery requires
+both a post-perturbation checkpoint and convergence under the same typed metric used for the
+baseline. A checkpoint interval cannot itself be reported as discovered recovery without this test.
 
 The distinction between driven equilibrium and autonomous persistence is evidence-based:
 
@@ -155,7 +173,9 @@ The distinction between driven equilibrium and autonomous persistence is evidenc
 ## Unresolved Questions
 
 - Richer analytical ontology registration and metadata transport.
-- Optional LLM fact-packet boundary after IR validation.
+- Domain state-vector registration, scaling, and partial-coverage reduction.
+- Optional LLM fact-packet boundary only after the terminal gate in the Detailed Development
+  rebaseline; it is not current roadmap work.
 
 ## Implemented observer delivery
 

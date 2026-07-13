@@ -952,7 +952,7 @@ EXPLANATION IR
     ↓
 DETERMINISTIC LOCALIZED RENDERING
     ↓
-OPTIONAL LLM SURFACE REALIZATION
+OPTIONAL LLM SURFACE REALIZATION (TERMINAL GATE; NOT SCHEDULED)
     ↓
 UI
 ```
@@ -1015,7 +1015,9 @@ LLMs do not:
 * modify beliefs;
 * generate simulation events.
 
-An optional LLM may eventually receive a validated structured fact packet from the Explanation Engine and improve the wording of a paragraph.
+Only after the simulation and deterministic Explanation Engine satisfy the terminal readiness gate
+may an optional LLM eventually receive a validated structured fact packet and improve the wording
+of a paragraph. This work has no phase number and is not currently scheduled.
 
 ```text
 Explanation IR
@@ -1032,6 +1034,10 @@ The LLM is allowed to make an explanation less unpleasant to read.
 > **It is not allowed to decide what happened.**
 
 Ontopolis must remain fully understandable and operational without an LLM.
+
+The final number of simulation-development phases is unknown. LLM integration is the last possible
+presentation step after validated simulation depth, causal Explanation, inspectable source packets,
+persistence, determinism, provenance, and performance—not the next feature after the first UI.
 
 ---
 
@@ -1122,113 +1128,41 @@ Core invariants include:
 * 👤 **The self-model is subjective.**
 * 🫀 **Objective body state and subjective body schema are distinct.**
 * ⚠️ **Prediction error is a first-class cognitive driver.**
+* 🧮 **State digests are identities, not physical distance metrics.**
+* 🌱 **Production state requires causal initialization, never fixtures.**
 
 ---
 
 # 🗺️ Roadmap and Current Status
 
-Ontopolis is developed in dependency-ordered phases.
+Ontopolis completed the dependency-ordered **Foundation Era, Phases 0–26**. It now has deterministic
+execution, domain contracts, causal provenance, persistence/resume, a bounded executable long-run
+harness, typed Explanation IR, observer protocol, and a real desktop UI.
 
-Completed phases preserve their original historical numbering.
+Foundation completion means the minimum acceptance scope of those phases passed. It does not mean
+that every domain is deeply simulated or that semantic emergence has been demonstrated.
 
-> **Current status: Phase 8 completed. Entering Phase 9, Subjective Scene Construction.**
+> **Current status: open-ended Detailed Development. Simulation → Explanation → observer support → batched UI.**
 
-## ✅ Completed
+The final number of phases is deliberately unknown. New phase numbers are allocated only through
+accepted bounded ExecPlans. Current work deepens capabilities from documented and contracted
+foundations into executable, coupled, observable, and long-run validated systems.
 
-### Phase 1: Deterministic simulation kernel
+Immediate priorities:
 
-* phase-aware scheduler;
-* deterministic execution contracts;
-* keyed random streams;
-* runtime configuration.
+* durable physical state and real cross-domain effects;
+* production causal bootstrap without fixture residents or demo history;
+* deep geography, biology, cognition, language, practices, epistemics, society, economy, city,
+  historical, isekai, and metaphysical integration;
+* domain-valid analytics and causal explanations kept current with simulation work;
+* bounded causal/domain inspection before additional UI polish;
+* representative performance, memory, provenance, persistence, and determinism validation.
 
-### Phase 2: Ontology primitives and generic features
-
-* coordinate primitives;
-* fixed-point and physical property foundations;
-* typed identifiers;
-* generic feature relations such as periodicity, recurrence, structural similarity, and relative difference.
-
-### Phase 3: Spatial world skeleton
-
-* authoritative world hierarchy;
-* spatial containment;
-* stable spatial ownership contracts.
-
-### Phase 4: Minimal causal geography
-
-* terrain;
-* geological, hydrological, and climate boundaries;
-* terrain generation;
-* generation provenance.
-
-### Phase 5: Biological structural model
-
-* body segments;
-* joints;
-* orientation and structural state;
-* pathogen lineage and host-interaction contracts.
-
-### Phase 6: Ground Truth events and causal provenance
-
-* causal event infrastructure;
-* traceable authoritative transitions.
-
-### Phase 7: Physical access and sensory acquisition
-
-* physical signal accessibility;
-* sensor apertures;
-* bounded acquisition.
-
-### Phase 8: Generic perceptual feature extraction
-
-* non-semantic feature extraction;
-* bounded attention foundations.
-
-## 🚧 Next
-
-### Phase 9: Subjective Scene Construction
-
-A sparse, agent-specific model of the currently experienced situation.
-
-See `RFC-COG-001`.
-
-### Phase 10: Working context, prediction, and cognitive continuity
-
-* active context;
-* bounded working state;
-* prediction;
-* prediction error;
-* episodic reactivation;
-* subjective temporal continuity.
-
-### Phase 11: Sparse subjective concept formation
-
-Agents begin constructing useful categories from their own experience.
-
-### Phase 12: Beliefs and subjective causal inference
-
-Agents build and revise causal hypotheses.
-
-## 🔭 Later
-
-* 🗣️ language bootstrap;
-* 🔤 lexical innovation and semantic drift;
-* 🔁 evolvable practices;
-* 📏 measurement and epistemic infrastructure;
-* ✨ information-sensitive mana;
-* 📡 Causal Resolution Field;
-* 🧑‍🤝‍🧑 social networks and organizations;
-* ⚙️ material economy and city infrastructure;
-* 🕰️ historical bootstrap;
-* 🌀 isekai transfer;
-* 👻 metaphysical experiments;
-* 🔬 long-run emergence studies;
-* 🔍 Explanation Engine expansion;
-* 🖥️ rich observer application;
-* 📖 optional narrative surface realization.
+Optional LLM wording is an unnumbered terminal gate after the simulation and deterministic
+Explanation system are mature. It is not current roadmap work.
 
 See `docs/roadmap/roadmap.md` for the authoritative roadmap.
+See `docs/architecture/detailed-development-rebaseline.md` for maturity and sequencing rules.
 
 ---
 

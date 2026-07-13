@@ -41,6 +41,7 @@ Later documents supersede conflicting initialization-spec sections **only when t
 - `docs/architecture/protocol.md` - Observer protocol
 - `docs/architecture/provenance.md` - Ground Truth events and causal provenance
 - `docs/architecture/cognition-rebaseline.md` - Cognition rebaseline: subjective scene and cognitive continuity
+- `docs/architecture/detailed-development-rebaseline.md` - Post-Phase-26 detailed development priorities, maturity gates, and terminal LLM policy
 
 ## World
 
@@ -173,7 +174,7 @@ Later documents supersede conflicting initialization-spec sections **only when t
 - `docs/explanation/glossing.md` - Glossing
 - `docs/explanation/deterministic-rendering.md` - Deterministic rendering
 - `docs/explanation/localization.md` - Localization
-- `docs/explanation/optional-llm-surface.md` - Optional LLM surface
+- `docs/explanation/optional-llm-surface.md` - Unscheduled terminal-gate policy for optional LLM wording
 
 ## Observer
 

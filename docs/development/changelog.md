@@ -14,6 +14,15 @@ This project follows a structured changelog format. Each entry includes:
 
 ## Unreleased
 
+### Detailed Development Rebaseline
+
+- **ARCH** — Closed the preallocated roadmap at Phase 26 and established an open-ended Detailed Development Program with no predetermined final phase count.
+- **ROADMAP** — Removed optional LLM/narrative realization from Phase 27; it is now an unnumbered terminal integration gate after validated simulation and deterministic Explanation maturity.
+- **PROCESS** — Defined capability maturity levels M0–M5 and normative priority `simulation → Explanation → observer support → batched UI`.
+- **DET** — Added INV-038: state digests prove identity/equality or divergence but cannot serve as physical, recovery, stability, or semantic distance metrics.
+- **HIST** — Added INV-039: production runtime state must originate through causal generation/bootstrap; fixture/demo constructors are test-only.
+- **TODO** — Added critical Detailed Development work for domain maturity audit, durable physical coupling, production bootstrap, causal/domain inspection, and domain-aware Explanation; promoted analytics and benchmark work.
+
 ### Phase 26: Protocol-Connected Observer UI
 
 - **UI** — Replaced the static shell with a clean responsive dark research interface for World, causal-loop, timeline, chunk inspection, state identity, and typed experiment explanation views.

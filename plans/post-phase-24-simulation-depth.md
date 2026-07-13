@@ -2,6 +2,12 @@
 
 **Status:** Completed and verified on 2026-07-13
 
+> Detailed Development audit note (2026-07-13): the eight stages remain complete within their
+> bounded acceptance scope, but later inspection found two maturity gaps. Initial configured actors
+> still use a fixture helper in production sessions, and recovery analytics use digest-byte distance.
+> INV-038, INV-039, `TODO-ANALYTICS-001`, and `TODO-RUNTIME-001` supersede the stronger production
+> maturity interpretation. This plan proved an executable causal harness, not a finished world.
+
 ## Goal
 
 Turn the Phase 24 executable causal field laboratory into the first genuinely coupled Ontopolis world simulation by completing eight ordered milestones:

@@ -1,6 +1,6 @@
 # Architecture Rebaseline Final Report
 
-> Historical audit note: this report captured readiness immediately after the cognition rebaseline. Phases 6–24 were subsequently completed on 2026-07-12; the roadmap and TODO backlog are authoritative for current status. RFC-GEO-002 later corrected a pre-existing ambiguity by separating finite charted global geography, bounded local 3D geometry, containment, and causal resolution without invalidating the completed subjective-scene boundary.
+> Historical audit note: this report captured readiness immediately after the cognition rebaseline. Phases 6–26 were subsequently completed as the Foundation Era; the roadmap and TODO backlog are authoritative for current status. RFC-GEO-002 later corrected a pre-existing ambiguity by separating finite charted global geography, bounded local 3D geometry, containment, and causal resolution without invalidating the completed subjective-scene boundary. The later Detailed Development rebaseline closes preallocated numbering at Phase 26 and treats optional LLM wording as an unnumbered terminal gate.
 
 ## 1. Which completed phases were audited?
 
@@ -139,7 +139,11 @@ Phases 1–5 remain unchanged. Phases 6–27 were resequenced to insert the subj
 | 24 | 24 | Long-run emergence |
 | — | 25 | Explanation Engine expansion |
 | — | 26 | Rich observer UI |
-| — | 27 | Optional narrative surface |
+| — | terminal gate (unnumbered) | Optional narrative surface, later removed from the fixed roadmap |
+
+> Subsequent supersession: the Detailed Development rebaseline closes the preallocated Foundation
+> Era at Phase 26. Optional LLM wording has no phase number and may be considered only after the
+> terminal readiness gate.
 
 ## 13. How was the TODO dependency graph changed?
 

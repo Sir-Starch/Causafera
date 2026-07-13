@@ -82,3 +82,12 @@ Every GPU kernel requires a CPU reference implementation, defined inputs and out
 - causal depth per CPU cycle
 - meaningful agent activity per megabyte
 - reconstructable emergence per hour of simulation
+
+## Detailed Development benchmark gate
+
+Foundation completion is not a performance claim. Every capability targeting validated maturity
+must define a representative workload and measure wall time, peak memory, persistent bytes,
+provenance growth, active-set size, save/resume cost, and observer-off/observer-on overhead.
+Synthetic counters or mostly inert populations cannot stand in for the claimed workload. GPU or
+other acceleration work remains deferred until a CPU profile demonstrates a bottleneck and an
+end-to-end crossover point.

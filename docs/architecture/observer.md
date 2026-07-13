@@ -53,7 +53,7 @@ EXPLANATION IR
     ↓
 DETERMINISTIC HUMAN-READABLE RENDERING
     ↓
-OPTIONAL LLM SURFACE REALIZATION
+OPTIONAL LLM SURFACE REALIZATION (TERMINAL GATE; NOT SCHEDULED)
     ↓
 UI
 ```
@@ -95,6 +95,20 @@ The Tauri 2 observer is the first complete protocol consumer. It receives no dir
 references. Its current views are a bounded objective chunk projection, aggregate causal loop,
 numeric timeline, chunk inspector, digest identity, and typed experiment Explanation IR. Session
 buttons only select a seed and bounded scheduler progression; they do not mutate world content.
+
+## Detailed Development cadence
+
+Observer development follows simulation and Explanation evidence needs. The immediate priority is
+bounded causal event slices, typed domain time series and state deltas, bootstrap receipts,
+resolution transitions, and explicitly separated objective/subjective projections. These read
+models enable capability validation and causal explanation without direct storage access.
+
+The desktop UI is updated in coherent milestone batches after read-model contracts stabilize. A
+new internal simulation field does not automatically require a UI component. Diagnostic protocol
+coverage may advance without immediate visual polish.
+
+The optional LLM step shown in the eventual pipeline is a terminal, unnumbered gate and is not
+current observer or UI work.
 
 ## Future UI Views
 

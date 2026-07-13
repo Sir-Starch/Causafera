@@ -293,9 +293,13 @@ The cognitive sequence has been rebaselined. Phases 1–5 remain completed with 
 | 24 | Optional narrative surface realization | Long-run emergence experiments |
 | 25 | — | Explanation Engine expansion |
 | 26 | — | Rich observer UI |
-| 27 | — | Optional narrative surface realization |
 
 See `docs/roadmap/roadmap.md` for the authoritative updated roadmap.
+
+> Subsequent supersession: the Detailed Development rebaseline closes the preallocated roadmap at
+> Phase 26. Optional narrative/LLM realization is now an unnumbered terminal gate after an unknown
+> amount of simulation and Explanation depth work. The table above remains the historical record of
+> the cognition resequencing through the completed Foundation Era.
 
 ---
 
