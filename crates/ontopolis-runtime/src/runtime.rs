@@ -5,15 +5,18 @@ use std::{
 
 use ontopolis_core::{
     CausalCommitError, CausalEffect, CausalEffectError, CausalEventProposal,
-    CausalEventProposalError, CausalTarget, CausalTraceStore, DeterministicConfig,
-    EventProposalKey, Phase, RandomStream, Scheduler, StateFingerprint, System,
+    CausalEventProposalError, CausalTarget, CausalTraceSnapshot, CausalTraceStore,
+    DeterministicConfig, EventProposalKey, Phase, RandomStream, Scheduler, StateFingerprint,
+    System,
 };
 use ontopolis_domains::{
-    ManaError, ManaField, ManaFieldSet, ManaParameters, ManaPhysicalEffectProposal,
-    ManaPhysicalEffectSchemaId, PhysicalCarrierAdapter, PhysicalPatternSample,
+    ManaError, ManaField, ManaFieldSet, ManaFieldSetSnapshot, ManaParameters,
+    ManaPhysicalEffectProposal, ManaPhysicalEffectSchemaId, PhysicalCarrierAdapter,
+    PhysicalPatternSample,
 };
 use ontopolis_resolution::{
-    CausalRelevanceSignal, ChannelWeight, ResolutionError, ResolutionField, ResolutionPolicy,
+    CausalRelevanceSignal, ChannelWeight, ResolutionError, ResolutionField,
+    ResolutionFieldSnapshot, ResolutionPolicy, ResolutionPolicySnapshot,
 };
 use ontopolis_types::{
     ChartChunkCoord, ChunkCoord, EventKindId, HistoricalStageId, ManaFieldId, ResolutionChannelId,
@@ -23,10 +26,11 @@ use ontopolis_types::{
 use thiserror::Error;
 
 use crate::{
-    ActionKindId, ActionRejection, ActionValidationResult, ActorId, ActorPhysicalObject,
-    ActorRuntimeConfig, ActorState, MinimalBodyState, PhysicalPatternHistory,
-    TerrainCarrierAdapter, actor_cognition_step, actor_perception_step, actor_state_fingerprint,
-    apply_action, deterministic_terrain_chunk, fixture_actors, fixture_sensors, validate_action,
+    ActionKindId, ActionRejection, ActionValidationResult, ActorId, ActorObjectiveSnapshot,
+    ActorPhysicalObject, ActorRuntimeConfig, ActorState, ActorSubjectiveSnapshot, MinimalBodyState,
+    PatternHistorySnapshot, PhysicalPatternHistory, TerrainCarrierAdapter, TerrainCarrierSnapshot,
+    actor_cognition_step, actor_perception_step, actor_state_fingerprint, apply_action,
+    deterministic_terrain_chunk, fixture_actors, fixture_sensors, validate_action,
 };
 
 pub const MAX_RUNTIME_TICKS: u64 = 1_000_000;
@@ -292,6 +296,129 @@ pub struct RuntimeSnapshot {
     pub latest_trace: TraceId,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct RuntimeSnapshotData {
+    pub recipe: RuntimeRecipeSnapshot,
+    pub spatial: SpatialChunkSnapshot,
+    pub mana: ManaFieldSetSnapshot,
+    pub resolution: ResolutionFieldSnapshot,
+    pub resolution_policy: ResolutionPolicySnapshot,
+    pub pattern_history: PatternHistorySnapshot,
+    pub physical_counters: PhysicalCountersSnapshot,
+    pub actors_objective: ActorObjectiveStateSnapshot,
+    pub actors_subjective: ActorSubjectiveStateSnapshot,
+    pub population: PopulationAggregateSnapshot,
+    pub bootstrap: BootstrapReceiptSnapshot,
+    pub traces: CausalTraceSnapshot,
+    pub experiment_manifest: Option<ExperimentManifestSnapshot>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RuntimeRecipeSnapshot {
+    pub seed: u64,
+    pub config: RuntimeConfig,
+    pub system_registrations: Vec<SystemRegistrationSnapshot>,
+    pub completed_time: SimulationTime,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SystemRegistrationSnapshot {
+    pub phase: Phase,
+    pub system_schema_id: u64,
+    pub revision: u16,
+    pub registration_order: u16,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SpatialChunkSnapshot {
+    pub active_chunks: Vec<ActiveChunkSnapshot>,
+    pub carrier_adapters: Vec<TerrainCarrierSnapshot>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ActiveChunkSnapshot {
+    pub chunk: ChartChunkCoord,
+    pub relevance: i64,
+    pub level: u8,
+    pub total_mana: i64,
+    pub event_count: u64,
+    pub last_transition: Option<TraceId>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PhysicalCountersSnapshot {
+    pub pending_samples: Vec<PhysicalPatternSample>,
+    pub latest_physical_trace: TraceId,
+    pub latest_mana_trace: Option<TraceId>,
+    pub advanced_through: SimulationTime,
+    pub physical_counter: u64,
+    pub physical_events: u64,
+    pub mana_cell_changes: u64,
+    pub mana_physical_effects: u64,
+    pub resolution_changes: u64,
+    pub resolution_transitions: u64,
+    pub perceived_actor_features: u64,
+    pub subjective_actor_objects: u64,
+    pub actor_actions_committed: u64,
+    pub actor_actions_rejected: u64,
+    pub population_births: u64,
+    pub population_deaths: u64,
+    pub population_movements: u64,
+    pub actor_promotions: u64,
+    pub actor_demotions: u64,
+    pub material_activity_events: u64,
+    pub next_actor_id: u64,
+    pub last_mana_changes: u32,
+    pub mana_effect_active: bool,
+    pub physical_mana_effect_boost: u32,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ActorObjectiveStateSnapshot {
+    pub actors: Vec<(ActorId, ActorObjectiveSnapshot)>,
+    pub actor_ancestry: Vec<(ActorId, Vec<TraceId>)>,
+    pub actor_objects: Vec<(u64, ActorPhysicalObject)>,
+    pub actor_action_bounds: i64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ActorSubjectiveStateSnapshot {
+    pub actors: Vec<(ActorId, ActorSubjectiveSnapshot)>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PopulationAggregateSnapshot {
+    pub aggregates: Vec<PopulationAggregate>,
+    pub aggregate_actor_pool: Vec<(ChartChunkCoord, Vec<ActorId>)>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BootstrapReceiptSnapshot {
+    pub receipts: Vec<BootstrapReceiptRecord>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct BootstrapReceiptRecord {
+    pub stage: HistoricalStageId,
+    pub trace: TraceId,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ExperimentManifestSnapshot {
+    pub format_version: u16,
+    pub seed_set: Vec<u64>,
+    pub checkpoint_interval: u64,
+    pub bootstrap_population: u64,
+    pub suppression_from: SimulationTime,
+    pub suppression_through: SimulationTime,
+    pub warm_up_ticks: u64,
+    pub duration_ticks: u64,
+    pub physical_digest: PhysicalStateDigest,
+    pub history_digest: HistoryDigest,
+    pub supporting_traces: Vec<TraceId>,
+    pub evidence_sufficient: bool,
+}
+
 /// Headless deterministic runtime for the first executable causal experiment.
 pub struct Runtime {
     scheduler: Scheduler,
@@ -389,6 +516,34 @@ impl Runtime {
         Ok(state.snapshot(self.scheduler.current_time()))
     }
 
+    pub fn export_snapshot(&self) -> Result<RuntimeSnapshotData, RuntimeError> {
+        let state = self.lock_state()?;
+        if let Some(error) = state.failure.clone() {
+            return Err(error);
+        }
+        if state.advanced_through != self.scheduler.current_time() {
+            return Err(RuntimeError::PhaseDesynchronized);
+        }
+        Ok(state.export_snapshot())
+    }
+
+    /// Reconstruct a full `Runtime` from a completed-tick snapshot.
+    pub fn from_snapshot(data: RuntimeSnapshotData) -> Result<Self, RuntimeError> {
+        let config = data.recipe.config.clone();
+        let mut runtime = Self::new(config)?;
+        runtime.scheduler.set_current_time(data.recipe.completed_time);
+        runtime
+            .scheduler
+            .restore_system_times(data.recipe.completed_time.tick());
+        let restored_state = RuntimeState::import_snapshot(data)?;
+        *runtime.lock_state()? = restored_state;
+        Ok(runtime)
+    }
+
+    pub fn import_snapshot(data: RuntimeSnapshotData) -> Result<RuntimeState, RuntimeError> {
+        RuntimeState::import_snapshot(data)
+    }
+
     fn lock_state(&self) -> Result<MutexGuard<'_, RuntimeState>, RuntimeError> {
         self.state.lock().map_err(|_| RuntimeError::StatePoisoned)
     }
@@ -438,6 +593,8 @@ pub enum RuntimeError {
     ActorPerception(#[from] ontopolis_perception::AcquisitionError),
     #[error("actor cognition failed: {0}")]
     ActorCognition(#[from] ontopolis_cognition::SceneUpdateError),
+    #[error("snapshot is invalid: {0}")]
+    InvalidSnapshot(&'static str),
 }
 
 impl From<ManaError> for RuntimeError {
@@ -651,6 +808,7 @@ pub enum BootstrapError {
 }
 
 pub struct RuntimeState {
+    config: RuntimeConfig,
     traces: CausalTraceStore,
     mana: ManaFieldSet,
     resolution: ResolutionField,
@@ -785,6 +943,7 @@ impl RuntimeState {
         let actors = fixture_actors(actor_config)?;
         let next_actor_id = next_actor_id.max(u64::from(config.actor_count) + 1);
         Ok(Self {
+            config: config.clone(),
             traces,
             mana,
             resolution,
@@ -829,7 +988,238 @@ impl RuntimeState {
         })
     }
 
-    fn snapshot(&self, time: SimulationTime) -> RuntimeSnapshot {
+    pub fn export_snapshot(&self) -> RuntimeSnapshotData {
+        RuntimeSnapshotData {
+            recipe: RuntimeRecipeSnapshot {
+                seed: self.config.deterministic.world_seed,
+                config: self.config.clone(),
+                system_registrations: runtime_system_registrations(),
+                completed_time: self.advanced_through,
+            },
+            spatial: SpatialChunkSnapshot {
+                active_chunks: self
+                    .active_chunks
+                    .iter()
+                    .map(|(chunk, state)| ActiveChunkSnapshot {
+                        chunk: *chunk,
+                        relevance: state.relevance,
+                        level: state.level,
+                        total_mana: state.total_mana,
+                        event_count: state.event_count,
+                        last_transition: state.last_transition,
+                    })
+                    .collect(),
+                carrier_adapters: self
+                    .carrier_adapters
+                    .values()
+                    .map(TerrainCarrierAdapter::export_snapshot)
+                    .collect(),
+            },
+            mana: self.mana.export_snapshot(),
+            resolution: self.resolution.export_snapshot(),
+            resolution_policy: self.resolution_policy.export_snapshot(),
+            pattern_history: self.pattern_history.export_snapshot(),
+            physical_counters: PhysicalCountersSnapshot {
+                pending_samples: self.pending_samples.clone(),
+                latest_physical_trace: self.latest_physical_trace,
+                latest_mana_trace: self.latest_mana_trace,
+                advanced_through: self.advanced_through,
+                physical_counter: self.physical_counter,
+                physical_events: self.physical_events,
+                mana_cell_changes: self.mana_cell_changes,
+                mana_physical_effects: self.mana_physical_effects,
+                resolution_changes: self.resolution_changes,
+                resolution_transitions: self.resolution_transitions,
+                perceived_actor_features: self.perceived_actor_features,
+                subjective_actor_objects: self.subjective_actor_objects,
+                actor_actions_committed: self.actor_actions_committed,
+                actor_actions_rejected: self.actor_actions_rejected,
+                population_births: self.population_births,
+                population_deaths: self.population_deaths,
+                population_movements: self.population_movements,
+                actor_promotions: self.actor_promotions,
+                actor_demotions: self.actor_demotions,
+                material_activity_events: self.material_activity_events,
+                next_actor_id: self.next_actor_id,
+                last_mana_changes: self.last_mana_changes,
+                mana_effect_active: self.mana_effect_active,
+                physical_mana_effect_boost: self.physical_mana_effect_boost,
+            },
+            actors_objective: ActorObjectiveStateSnapshot {
+                actors: self
+                    .actors
+                    .iter()
+                    .map(|(id, actor)| (*id, actor.export_objective_snapshot()))
+                    .collect(),
+                actor_ancestry: self
+                    .actor_ancestry
+                    .iter()
+                    .map(|(id, ancestry)| (*id, ancestry.clone()))
+                    .collect(),
+                actor_objects: self
+                    .actor_objects
+                    .iter()
+                    .map(|(key, object)| (*key, *object))
+                    .collect(),
+                actor_action_bounds: self.actor_action_bounds,
+            },
+            actors_subjective: ActorSubjectiveStateSnapshot {
+                actors: self
+                    .actors
+                    .iter()
+                    .map(|(id, actor)| (*id, actor.export_subjective_snapshot()))
+                    .collect(),
+            },
+            population: PopulationAggregateSnapshot {
+                aggregates: self.population_aggregates.values().cloned().collect(),
+                aggregate_actor_pool: self
+                    .aggregate_actor_pool
+                    .iter()
+                    .map(|(chunk, actors)| (*chunk, actors.clone()))
+                    .collect(),
+            },
+            bootstrap: BootstrapReceiptSnapshot {
+                receipts: Vec::new(),
+            },
+            traces: self.traces.export_snapshot(),
+            experiment_manifest: None,
+        }
+    }
+
+    pub fn import_snapshot(data: RuntimeSnapshotData) -> Result<Self, RuntimeError> {
+        let config = data.recipe.config.validate()?;
+        let traces = CausalTraceStore::import_snapshot(data.traces)
+            .map_err(|_| RuntimeError::InvalidSnapshot("trace store failed validation"))?;
+        let mana = ManaFieldSet::import_snapshot(data.mana)?;
+        let resolution = ResolutionField::import_snapshot(data.resolution)?;
+        let resolution_policy = ResolutionPolicy::import_snapshot(data.resolution_policy)?;
+        let carrier_adapters = import_carrier_adapters(data.spatial.carrier_adapters)?;
+        let active_chunks = import_active_chunks(data.spatial.active_chunks)?;
+        let pattern_history = PhysicalPatternHistory::import_snapshot(data.pattern_history);
+        let subjective_count = data.actors_subjective.actors.len();
+        let subjective_by_actor = data
+            .actors_subjective
+            .actors
+            .into_iter()
+            .collect::<BTreeMap<_, _>>();
+        if subjective_by_actor.len() != subjective_count {
+            return Err(RuntimeError::InvalidSnapshot(
+                "duplicate actor subjective id",
+            ));
+        }
+        let mut actors = BTreeMap::new();
+        for (actor_id, objective) in data.actors_objective.actors {
+            let subjective = subjective_by_actor.get(&actor_id).cloned().ok_or(
+                RuntimeError::InvalidSnapshot("missing actor subjective state"),
+            )?;
+            if actors
+                .insert(
+                    actor_id,
+                    ActorState::import_snapshots(objective, subjective)?,
+                )
+                .is_some()
+            {
+                return Err(RuntimeError::InvalidSnapshot("duplicate actor id"));
+            }
+        }
+        if actors.len() != subjective_by_actor.len() {
+            return Err(RuntimeError::InvalidSnapshot(
+                "orphan actor subjective state",
+            ));
+        }
+        let actor_ancestry = import_actor_ancestry(data.actors_objective.actor_ancestry)?;
+        let actor_objects = import_actor_objects(data.actors_objective.actor_objects)?;
+        let population_aggregates = import_population_aggregates(data.population.aggregates)?;
+        let aggregate_actor_pool =
+            import_aggregate_actor_pool(data.population.aggregate_actor_pool)?;
+        let counters = data.physical_counters;
+        let state = Self {
+            config,
+            traces,
+            mana,
+            resolution,
+            resolution_policy,
+            carrier_adapters,
+            active_chunks,
+            actors,
+            actor_ancestry,
+            actor_objects,
+            population_aggregates,
+            aggregate_actor_pool,
+            actor_action_bounds: data.actors_objective.actor_action_bounds,
+            pending_samples: counters.pending_samples,
+            pattern_history,
+            latest_physical_trace: counters.latest_physical_trace,
+            latest_mana_trace: counters.latest_mana_trace,
+            advanced_through: counters.advanced_through,
+            physical_counter: counters.physical_counter,
+            physical_events: counters.physical_events,
+            mana_cell_changes: counters.mana_cell_changes,
+            mana_physical_effects: counters.mana_physical_effects,
+            resolution_changes: counters.resolution_changes,
+            resolution_transitions: counters.resolution_transitions,
+            perceived_actor_features: counters.perceived_actor_features,
+            subjective_actor_objects: counters.subjective_actor_objects,
+            actor_actions_committed: counters.actor_actions_committed,
+            actor_actions_rejected: counters.actor_actions_rejected,
+            population_births: counters.population_births,
+            population_deaths: counters.population_deaths,
+            population_movements: counters.population_movements,
+            actor_promotions: counters.actor_promotions,
+            actor_demotions: counters.actor_demotions,
+            material_activity_events: counters.material_activity_events,
+            next_actor_id: counters.next_actor_id,
+            last_mana_changes: counters.last_mana_changes,
+            mana_effect_active: counters.mana_effect_active,
+            physical_mana_effect_boost: counters.physical_mana_effect_boost,
+            failure: None,
+        };
+        state.validate_snapshot_references()?;
+        Ok(state)
+    }
+
+    fn validate_snapshot_references(&self) -> Result<(), RuntimeError> {
+        validate_trace_exists(&self.traces, self.latest_physical_trace)?;
+        if let Some(trace) = self.latest_mana_trace {
+            validate_trace_exists(&self.traces, trace)?;
+        }
+        for sample in self
+            .pattern_history
+            .samples()
+            .chain(self.pending_samples.iter())
+        {
+            validate_trace_exists(&self.traces, sample.cause)?;
+        }
+        for field in self.mana.fields().values() {
+            for trace in field.last_change().iter().flatten().copied() {
+                validate_trace_exists(&self.traces, trace)?;
+            }
+        }
+        for entry in self.resolution.entries() {
+            validate_trace_exists(&self.traces, entry.last_trace)?;
+        }
+        for active in self.active_chunks.values() {
+            if let Some(trace) = active.last_transition {
+                validate_trace_exists(&self.traces, trace)?;
+            }
+        }
+        for ancestry in self.actor_ancestry.values() {
+            for trace in ancestry {
+                validate_trace_exists(&self.traces, *trace)?;
+            }
+        }
+        for object in self.actor_objects.values() {
+            validate_trace_exists(&self.traces, object.trace)?;
+        }
+        for aggregate in self.population_aggregates.values() {
+            for trace in &aggregate.causal_ancestry {
+                validate_trace_exists(&self.traces, *trace)?;
+            }
+        }
+        Ok(())
+    }
+
+    pub(crate) fn snapshot(&self, time: SimulationTime) -> RuntimeSnapshot {
         let mana_total = self.mana.total_intensity();
         let mana_maximum = self.mana.maximum_intensity();
         let (resolution_relevance, resolution_level) = self
@@ -893,7 +1283,7 @@ impl RuntimeState {
         (field.intensity().len() * std::mem::size_of::<i64>()) as u64
     }
 
-    fn physical_state_digest(&self, time: SimulationTime) -> PhysicalStateDigest {
+    pub(crate) fn physical_state_digest(&self, time: SimulationTime) -> PhysicalStateDigest {
         let mut digest = CanonicalDigest::new();
         digest.write(u64::from(CURRENT_DIGEST_SCHEMA_VERSION.raw()));
         digest.write(PHYSICAL_DIGEST_DOMAIN);
@@ -983,7 +1373,7 @@ impl RuntimeState {
         }
     }
 
-    fn history_digest(&self) -> HistoryDigest {
+    pub(crate) fn history_digest(&self) -> HistoryDigest {
         let mut digest = CanonicalDigest::new();
         digest.write(u64::from(CURRENT_DIGEST_SCHEMA_VERSION.raw()));
         digest.write(HISTORY_DIGEST_DOMAIN);
@@ -1027,6 +1417,161 @@ impl RuntimeState {
             schema_version: CURRENT_DIGEST_SCHEMA_VERSION,
             fingerprint: digest.finish(),
         }
+    }
+}
+
+fn runtime_system_registrations() -> Vec<SystemRegistrationSnapshot> {
+    vec![
+        SystemRegistrationSnapshot {
+            phase: Phase::Physics,
+            system_schema_id: PHYSICAL_SYSTEM_ID,
+            revision: 1,
+            registration_order: 0,
+        },
+        SystemRegistrationSnapshot {
+            phase: Phase::Mana,
+            system_schema_id: MANA_SYSTEM_ID,
+            revision: 1,
+            registration_order: 1,
+        },
+        SystemRegistrationSnapshot {
+            phase: Phase::Mana,
+            system_schema_id: MANA_EFFECTS_SYSTEM_ID,
+            revision: 1,
+            registration_order: 2,
+        },
+        SystemRegistrationSnapshot {
+            phase: Phase::Resolution,
+            system_schema_id: RESOLUTION_SYSTEM_ID,
+            revision: 1,
+            registration_order: 3,
+        },
+        SystemRegistrationSnapshot {
+            phase: Phase::Perception,
+            system_schema_id: 40,
+            revision: 1,
+            registration_order: 4,
+        },
+        SystemRegistrationSnapshot {
+            phase: Phase::Cognition,
+            system_schema_id: 41,
+            revision: 1,
+            registration_order: 5,
+        },
+        SystemRegistrationSnapshot {
+            phase: Phase::Action,
+            system_schema_id: ACTOR_ACTION_SYSTEM_ID,
+            revision: 1,
+            registration_order: 6,
+        },
+        SystemRegistrationSnapshot {
+            phase: Phase::Lifecycle,
+            system_schema_id: LIFECYCLE_SYSTEM_ID,
+            revision: 1,
+            registration_order: 7,
+        },
+    ]
+}
+
+fn import_carrier_adapters(
+    snapshots: Vec<TerrainCarrierSnapshot>,
+) -> Result<BTreeMap<ChartChunkCoord, TerrainCarrierAdapter>, RuntimeError> {
+    let mut adapters = BTreeMap::new();
+    for snapshot in snapshots {
+        let chunk = snapshot.chunk;
+        let adapter = TerrainCarrierAdapter::import_snapshot(snapshot)
+            .map_err(|_| RuntimeError::InvalidSnapshot("invalid terrain carrier"))?;
+        if adapters.insert(chunk, adapter).is_some() {
+            return Err(RuntimeError::InvalidSnapshot("duplicate carrier chunk"));
+        }
+    }
+    Ok(adapters)
+}
+
+fn import_active_chunks(
+    snapshots: Vec<ActiveChunkSnapshot>,
+) -> Result<BTreeMap<ChartChunkCoord, ActiveChunkState>, RuntimeError> {
+    let mut chunks = BTreeMap::new();
+    for snapshot in snapshots {
+        if chunks
+            .insert(
+                snapshot.chunk,
+                ActiveChunkState {
+                    relevance: snapshot.relevance,
+                    level: snapshot.level,
+                    total_mana: snapshot.total_mana,
+                    event_count: snapshot.event_count,
+                    last_transition: snapshot.last_transition,
+                },
+            )
+            .is_some()
+        {
+            return Err(RuntimeError::InvalidSnapshot("duplicate active chunk"));
+        }
+    }
+    Ok(chunks)
+}
+
+fn import_actor_ancestry(
+    entries: Vec<(ActorId, Vec<TraceId>)>,
+) -> Result<BTreeMap<ActorId, Vec<TraceId>>, RuntimeError> {
+    let mut ancestry = BTreeMap::new();
+    for (actor, traces) in entries {
+        validate_trace_ancestry(&traces)?;
+        if ancestry.insert(actor, traces).is_some() {
+            return Err(RuntimeError::InvalidSnapshot("duplicate actor ancestry"));
+        }
+    }
+    Ok(ancestry)
+}
+
+fn import_actor_objects(
+    entries: Vec<(u64, ActorPhysicalObject)>,
+) -> Result<BTreeMap<u64, ActorPhysicalObject>, RuntimeError> {
+    let mut objects = BTreeMap::new();
+    for (key, object) in entries {
+        if key != object.object_key || objects.insert(key, object).is_some() {
+            return Err(RuntimeError::InvalidSnapshot("duplicate actor object"));
+        }
+    }
+    Ok(objects)
+}
+
+fn import_population_aggregates(
+    entries: Vec<PopulationAggregate>,
+) -> Result<BTreeMap<ChartChunkCoord, PopulationAggregate>, RuntimeError> {
+    let mut aggregates = BTreeMap::new();
+    for aggregate in entries {
+        validate_trace_ancestry(&aggregate.causal_ancestry)?;
+        if aggregates.insert(aggregate.chart, aggregate).is_some() {
+            return Err(RuntimeError::InvalidSnapshot(
+                "duplicate population aggregate",
+            ));
+        }
+    }
+    Ok(aggregates)
+}
+
+fn import_aggregate_actor_pool(
+    entries: Vec<(ChartChunkCoord, Vec<ActorId>)>,
+) -> Result<BTreeMap<ChartChunkCoord, Vec<ActorId>>, RuntimeError> {
+    let mut pool = BTreeMap::new();
+    for (chunk, actors) in entries {
+        if actors.windows(2).any(|pair| pair[0] >= pair[1]) || pool.insert(chunk, actors).is_some()
+        {
+            return Err(RuntimeError::InvalidSnapshot(
+                "invalid aggregate actor pool",
+            ));
+        }
+    }
+    Ok(pool)
+}
+
+fn validate_trace_exists(store: &CausalTraceStore, trace: TraceId) -> Result<(), RuntimeError> {
+    if store.event(trace).is_some() {
+        Ok(())
+    } else {
+        Err(RuntimeError::InvalidSnapshot("unknown trace reference"))
     }
 }
 
@@ -1099,6 +1644,10 @@ impl System for PhysicalPatternSystem {
                 state.failure.get_or_insert(error);
             }
         }
+    }
+
+    fn restore_time(&mut self, time: SimulationTime) {
+        self.next_time = time;
     }
 }
 
@@ -1264,6 +1813,10 @@ impl System for ManaEffectsSystem {
             }
         }
     }
+
+    fn restore_time(&mut self, time: SimulationTime) {
+        self.next_time = time;
+    }
 }
 
 impl System for ManaRuntimeSystem {
@@ -1273,6 +1826,10 @@ impl System for ManaRuntimeSystem {
                 state.failure.get_or_insert(error);
             }
         }
+    }
+
+    fn restore_time(&mut self, time: SimulationTime) {
+        self.next_time = time;
     }
 }
 
@@ -1415,6 +1972,10 @@ impl System for ResolutionRuntimeSystem {
             }
         }
     }
+
+    fn restore_time(&mut self, time: SimulationTime) {
+        self.next_time = time;
+    }
 }
 
 struct ActorPerceptionSystem {
@@ -1449,6 +2010,10 @@ impl System for ActorPerceptionSystem {
                 state.failure.get_or_insert(error);
             }
         }
+    }
+
+    fn restore_time(&mut self, time: SimulationTime) {
+        self.next_time = time;
     }
 }
 
@@ -1487,6 +2052,10 @@ impl System for ActorCognitionSystem {
                 state.failure.get_or_insert(error);
             }
         }
+    }
+
+    fn restore_time(&mut self, time: SimulationTime) {
+        self.next_time = time;
     }
 }
 
@@ -1590,6 +2159,10 @@ impl System for ActorActionSystem {
             }
         }
     }
+
+    fn restore_time(&mut self, time: SimulationTime) {
+        self.next_time = time;
+    }
 }
 
 struct PopulationLifecycleSystem {
@@ -1624,6 +2197,10 @@ impl System for PopulationLifecycleSystem {
                 state.failure.get_or_insert(error);
             }
         }
+    }
+
+    fn restore_time(&mut self, time: SimulationTime) {
+        self.next_time = time;
     }
 }
 

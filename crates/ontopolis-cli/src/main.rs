@@ -4,7 +4,8 @@ use ontopolis_explanation::{
     ClaimEvidenceState, ComparisonContext, ExplanationReport, FrameAssessment, NumericClaimValue,
 };
 use ontopolis_lab::{ExperimentError, ExperimentRunner};
-use ontopolis_runtime::{Runtime, RuntimeError};
+use ontopolis_persistence::{PersistenceError, read_snapshot_file, write_snapshot_file};
+use ontopolis_runtime::{Runtime, RuntimeError, assemble_envelope, disassemble_envelope};
 use ontopolis_types::SimulationTime;
 use thiserror::Error;
 
@@ -40,6 +41,22 @@ pub enum Commands {
     Run {
         #[arg(long, default_value_t = 0)]
         seed: u64,
+        #[arg(long, default_value_t = 100)]
+        ticks: u64,
+    },
+    /// Save a snapshot of the current runtime state.
+    Save {
+        #[arg(long, default_value_t = 0)]
+        seed: u64,
+        #[arg(long, default_value_t = 100)]
+        ticks: u64,
+        #[arg(long, default_value = "ontopolis.snapshot")]
+        path: String,
+    },
+    /// Resume a simulation from a saved snapshot and continue running.
+    Resume {
+        #[arg(long, default_value = "ontopolis.snapshot")]
+        path: String,
         #[arg(long, default_value_t = 100)]
         ticks: u64,
     },
@@ -127,6 +144,36 @@ pub fn main() -> Result<(), CliError> {
                 snapshot.resolution_relevance,
                 snapshot.resolution_level,
                 fingerprint_hex(snapshot.canonical_state.fingerprint),
+            );
+        }
+        Commands::Save { seed, ticks, path } => {
+            let mut runtime = Runtime::from_seed(seed)?;
+            runtime.run_ticks(ticks)?;
+            let data = runtime.export_snapshot()?;
+            let envelope = assemble_envelope(&data)?;
+            let path = std::path::Path::new(&path);
+            write_snapshot_file(path, &envelope)?;
+            println!("snapshot_status=ok path={} ticks={}", path.display(), ticks);
+        }
+        Commands::Resume { path, ticks } => {
+            let path = std::path::Path::new(&path);
+            let envelope = read_snapshot_file(path)?;
+            let data = disassemble_envelope(&envelope)?;
+            let mut runtime = Runtime::from_snapshot(data)?;
+            let completed = runtime.current_time().raw();
+            let snapshot = runtime.run_ticks(ticks)?;
+            println!("resume_status=ok path={} resumed_at={} new_ticks={} total_ticks={}",
+                path.display(),
+                completed,
+                ticks,
+                snapshot.time.raw(),
+            );
+            println!(
+                "traces={} physical_events={} mana_changes={} resolution_changes={}",
+                snapshot.causal_trace_count,
+                snapshot.physical_events,
+                snapshot.mana_cell_changes,
+                snapshot.resolution_changes,
             );
         }
     }
@@ -254,4 +301,6 @@ pub enum CliError {
     Runtime(#[from] RuntimeError),
     #[error(transparent)]
     Experiment(#[from] ExperimentError),
+    #[error(transparent)]
+    Persistence(#[from] PersistenceError),
 }

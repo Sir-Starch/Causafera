@@ -112,6 +112,21 @@ pub struct ManaField {
     last_change: Vec<Option<TraceId>>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ManaFieldSnapshot {
+    pub id: ManaFieldId,
+    pub chunk: ChartChunkCoord,
+    pub extent: u8,
+    pub observed_through: SimulationTime,
+    pub intensity: Vec<i64>,
+    pub last_change: Vec<Option<TraceId>>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ManaFieldSetSnapshot {
+    pub fields: Vec<ManaFieldSnapshot>,
+}
+
 impl ManaField {
     pub fn new(id: ManaFieldId, chunk: ChartChunkCoord, extent: u8) -> Result<Self, ManaError> {
         if extent == 0 || extent > CHUNK_SIZE {
@@ -146,6 +161,40 @@ impl ManaField {
 
     pub fn intensity(&self) -> &[i64] {
         &self.intensity
+    }
+
+    pub fn last_change(&self) -> &[Option<TraceId>] {
+        &self.last_change
+    }
+
+    pub fn export_snapshot(&self) -> ManaFieldSnapshot {
+        ManaFieldSnapshot {
+            id: self.id,
+            chunk: self.chunk,
+            extent: self.extent,
+            observed_through: self.observed_through,
+            intensity: self.intensity.clone(),
+            last_change: self.last_change.clone(),
+        }
+    }
+
+    pub fn import_snapshot(snapshot: ManaFieldSnapshot) -> Result<Self, ManaError> {
+        let volume = usize::from(snapshot.extent).pow(3);
+        if snapshot.extent == 0
+            || snapshot.extent > CHUNK_SIZE
+            || snapshot.intensity.len() != volume
+            || snapshot.last_change.len() != volume
+        {
+            return Err(ManaError::InvalidExtent);
+        }
+        Ok(Self {
+            id: snapshot.id,
+            chunk: snapshot.chunk,
+            extent: snapshot.extent,
+            observed_through: snapshot.observed_through,
+            intensity: snapshot.intensity,
+            last_change: snapshot.last_change,
+        })
     }
 
     pub fn intensity_at(&self, position: LocalCoord) -> Option<i64> {
@@ -280,6 +329,25 @@ impl ManaFieldSet {
 
     pub fn fields(&self) -> &BTreeMap<ChartChunkCoord, ManaField> {
         &self.fields
+    }
+
+    pub fn export_snapshot(&self) -> ManaFieldSetSnapshot {
+        ManaFieldSetSnapshot {
+            fields: self
+                .fields
+                .values()
+                .map(ManaField::export_snapshot)
+                .collect(),
+        }
+    }
+
+    pub fn import_snapshot(snapshot: ManaFieldSetSnapshot) -> Result<Self, ManaError> {
+        let fields = snapshot
+            .fields
+            .into_iter()
+            .map(ManaField::import_snapshot)
+            .collect::<Result<Vec<_>, _>>()?;
+        Self::new(fields)
     }
 
     pub fn field(&self, chunk: ChartChunkCoord) -> Option<&ManaField> {

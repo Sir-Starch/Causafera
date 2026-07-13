@@ -2,8 +2,9 @@ use std::collections::BTreeMap;
 
 use ontopolis_cognition::{
     AppearanceSignature, AttentionConfig, AttentionState, AttentionWeight, BodySchema,
-    BodySchemaPart, CognitiveWeight, SceneContinuityState, SceneObject, SelfAssociation, SelfModel,
-    SubjectiveScene as CognitionScene,
+    BodySchemaPart, BodySchemaSnapshot, CognitiveWeight, SceneContinuitySnapshot,
+    SceneContinuityState, SceneObject, SelfAssociation, SelfModel, SelfModelSnapshot,
+    SubjectiveScene as CognitionScene, SubjectiveSceneSnapshot as CognitionSceneSnapshot,
 };
 use ontopolis_types::{
     AngularVelocity, AttentionTargetId, FeatureRelation, FeatureValue, LocalCoord, Orientation,
@@ -132,6 +133,33 @@ pub struct ActorState {
     pub(super) self_model: SelfModel,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct ActorObjectiveSnapshot {
+    pub body: MinimalBodyState,
+    pub sensors: Vec<SensorAperture>,
+    pub features: Vec<GenericFeature>,
+    pub proposals: Vec<ActionProposal>,
+    pub validation_results: Vec<ActionValidationResult>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ActorSubjectiveSnapshot {
+    pub subjective_scene: Option<SubjectiveSceneSnapshot>,
+    pub continuity: SceneContinuitySnapshot,
+    pub attention: ontopolis_cognition::AttentionStateSnapshot,
+    pub body_schema: BodySchemaSnapshot,
+    pub self_model: SelfModelSnapshot,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SubjectiveSceneSnapshot {
+    pub perceived_self: PerceivedSelf,
+    pub objects: Vec<SceneObject>,
+    pub body_schema: BodySchemaSnapshot,
+    pub active_goals: Vec<ActiveGoal>,
+    pub inner: CognitionSceneSnapshot,
+}
+
 impl ActorState {
     pub fn new(
         body: MinimalBodyState,
@@ -167,6 +195,62 @@ impl ActorState {
             attention,
             body_schema,
             self_model,
+        })
+    }
+
+    pub fn export_objective_snapshot(&self) -> ActorObjectiveSnapshot {
+        ActorObjectiveSnapshot {
+            body: self.body,
+            sensors: self.sensors.clone(),
+            features: self.features.clone(),
+            proposals: self.proposals.clone(),
+            validation_results: self.validation_results.clone(),
+        }
+    }
+
+    pub fn export_subjective_snapshot(&self) -> ActorSubjectiveSnapshot {
+        ActorSubjectiveSnapshot {
+            subjective_scene: self
+                .subjective_scene
+                .as_ref()
+                .map(|scene| SubjectiveSceneSnapshot {
+                    perceived_self: scene.perceived_self,
+                    objects: scene.objects.clone(),
+                    body_schema: scene.body_schema.export_snapshot(),
+                    active_goals: scene.active_goals.clone(),
+                    inner: scene.inner.export_snapshot(),
+                }),
+            continuity: self.continuity.export_snapshot(),
+            attention: self.attention.export_snapshot(),
+            body_schema: self.body_schema.export_snapshot(),
+            self_model: self.self_model.export_snapshot(),
+        }
+    }
+
+    pub fn import_snapshots(
+        objective: ActorObjectiveSnapshot,
+        subjective: ActorSubjectiveSnapshot,
+    ) -> Result<Self, ActorInitError> {
+        Ok(Self {
+            body: objective.body,
+            sensors: objective.sensors,
+            features: objective.features,
+            subjective_scene: match subjective.subjective_scene {
+                Some(scene) => Some(SubjectiveScene {
+                    perceived_self: scene.perceived_self,
+                    objects: scene.objects,
+                    body_schema: BodySchema::import_snapshot(scene.body_schema)?,
+                    active_goals: scene.active_goals,
+                    inner: CognitionScene::import_snapshot(scene.inner)?,
+                }),
+                None => None,
+            },
+            proposals: objective.proposals,
+            validation_results: objective.validation_results,
+            continuity: SceneContinuityState::import_snapshot(subjective.continuity)?,
+            attention: AttentionState::import_snapshot(subjective.attention)?,
+            body_schema: BodySchema::import_snapshot(subjective.body_schema)?,
+            self_model: SelfModel::import_snapshot(subjective.self_model)?,
         })
     }
 }

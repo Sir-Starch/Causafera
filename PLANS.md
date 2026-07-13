@@ -51,10 +51,12 @@ None.
 
 ## Draft Plans
 
-- `plans/post-phase-24-simulation-depth.md` — proposed eight-stage path from the Phase 24 causal laboratory to a coupled, interpretable, populated long-run simulation. Not active; TODO and roadmap statuses are unchanged.
+None.
 
 ## Completed Plans
 
+- `plans/persistence-roundtrip.md` — completed deterministic snapshot v1 with sectioned canonical binary format, validated domain-state reconstruction, runtime/scheduler resume at completed tick, uninterrupted-versus-resumed equivalence proof, atomic file workflow, CLI save/resume commands, and `TODO-PERSIST-001` closure; workspace verification reported zero failures on 2026-07-13.
+- `plans/post-phase-24-simulation-depth.md` — completed all eight stages from digest separation through a coupled historical/population long-run experiment; workspace verification reported zero failures on 2026-07-13.
 - `plans/phases-23-24-long-run-experiments.md` — accepted neutral metaphysics research and multiscale spatial geometry, then delivered the first executable replay-verified physical → mana → resolution experiment (`TODO-GEO-003`, `TODO-META-001`, `TODO-META-002`, `TODO-LAB-001`) on 2026-07-12.
 - `plans/phase-22-isekai-transfer.md` — implemented metaphysically neutral transfer provenance and imported-prior/capability separation (`TODO-ISEKAI-001`, `TODO-ISEKAI-002`) on 2026-07-12.
 - `plans/phase-21-historical-bootstrap.md` — implemented bounded causal historical synthesis orchestration and receipt provenance (`TODO-HIST-001`) on 2026-07-12.

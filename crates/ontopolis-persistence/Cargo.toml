@@ -8,7 +8,10 @@ rust-version.workspace = true
 
 [dependencies]
 ontopolis-types = { workspace = true }
+ontopolis-core = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+blake3 = "1"
+thiserror = { workspace = true }
 
 [dev-dependencies]

@@ -18,6 +18,13 @@ pub struct PhysicalPatternHistory {
     global_cap: usize,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PatternHistorySnapshot {
+    pub samples: Vec<PhysicalPatternSample>,
+    pub global_cap: usize,
+    pub per_pattern_cap: usize,
+}
+
 impl PhysicalPatternHistory {
     pub fn new(global_cap: usize, per_pattern_cap: usize) -> Self {
         Self {
@@ -85,6 +92,20 @@ impl PhysicalPatternHistory {
 
     pub const fn per_pattern_cap(&self) -> usize {
         self.per_pattern_cap
+    }
+
+    pub fn export_snapshot(&self) -> PatternHistorySnapshot {
+        PatternHistorySnapshot {
+            samples: self.samples().copied().collect(),
+            global_cap: self.global_cap,
+            per_pattern_cap: self.per_pattern_cap,
+        }
+    }
+
+    pub fn import_snapshot(snapshot: PatternHistorySnapshot) -> Self {
+        let mut history = Self::new(snapshot.global_cap, snapshot.per_pattern_cap);
+        history.extend(snapshot.samples);
+        history
     }
 
     fn enforce_per_pattern_cap(&mut self, pattern: PhysicalPatternId) {

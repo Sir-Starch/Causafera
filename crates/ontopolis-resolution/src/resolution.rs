@@ -43,6 +43,15 @@ pub struct ResolutionPolicy {
     channels: Vec<ChannelWeight>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ResolutionPolicySnapshot {
+    pub maximum_relevance: i64,
+    pub retained_relevance: i64,
+    pub hysteresis: i64,
+    pub thresholds: Vec<i64>,
+    pub channels: Vec<ChannelWeight>,
+}
+
 impl ResolutionPolicy {
     pub fn new(
         maximum_relevance: i64,
@@ -98,6 +107,26 @@ impl ResolutionPolicy {
 
     pub fn channels(&self) -> &[ChannelWeight] {
         &self.channels
+    }
+
+    pub fn export_snapshot(&self) -> ResolutionPolicySnapshot {
+        ResolutionPolicySnapshot {
+            maximum_relevance: self.maximum_relevance,
+            retained_relevance: self.retained_relevance,
+            hysteresis: self.hysteresis,
+            thresholds: self.thresholds.clone(),
+            channels: self.channels.clone(),
+        }
+    }
+
+    pub fn import_snapshot(snapshot: ResolutionPolicySnapshot) -> Result<Self, ResolutionError> {
+        Self::new(
+            snapshot.maximum_relevance,
+            snapshot.retained_relevance,
+            snapshot.hysteresis,
+            snapshot.thresholds,
+            snapshot.channels,
+        )
     }
 
     fn channel_weight(&self, channel: ResolutionChannelId) -> Option<i64> {
@@ -218,6 +247,13 @@ pub struct ResolutionField {
     last_traces: Vec<TraceId>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ResolutionFieldSnapshot {
+    pub id: ResolutionFieldId,
+    pub evaluated_through: SimulationTime,
+    pub entries: Vec<ResolutionEntry>,
+}
+
 impl ResolutionField {
     pub fn new(
         id: ResolutionFieldId,
@@ -272,6 +308,59 @@ impl ResolutionField {
             relevance: self.relevance[index],
             level: self.levels[index],
             last_trace: self.last_traces[index],
+        })
+    }
+
+    pub fn entries(&self) -> impl ExactSizeIterator<Item = ResolutionEntry> + '_ {
+        self.chunks
+            .iter()
+            .enumerate()
+            .map(|(index, chunk)| ResolutionEntry {
+                chunk: *chunk,
+                relevance: self.relevance[index],
+                level: self.levels[index],
+                last_trace: self.last_traces[index],
+            })
+    }
+
+    pub fn export_snapshot(&self) -> ResolutionFieldSnapshot {
+        ResolutionFieldSnapshot {
+            id: self.id,
+            evaluated_through: self.evaluated_through,
+            entries: self.entries().collect(),
+        }
+    }
+
+    pub fn import_snapshot(snapshot: ResolutionFieldSnapshot) -> Result<Self, ResolutionError> {
+        if snapshot.entries.is_empty() || snapshot.entries.len() > MAX_RESOLUTION_ENTRIES {
+            return Err(ResolutionError::InvalidEntryCount {
+                count: snapshot.entries.len(),
+            });
+        }
+        let mut entries = snapshot.entries;
+        entries.sort_unstable_by_key(|entry| entry.chunk);
+        for index in 1..entries.len() {
+            if entries[index - 1].chunk == entries[index].chunk {
+                return Err(ResolutionError::DuplicateChunk {
+                    chunk: entries[index].chunk,
+                });
+            }
+        }
+        if entries
+            .iter()
+            .any(|entry| entry.level > MAX_RESOLUTION_LEVEL)
+        {
+            return Err(ResolutionError::TooManyLevels {
+                count: usize::from(MAX_RESOLUTION_LEVEL) + 1,
+            });
+        }
+        Ok(Self {
+            id: snapshot.id,
+            evaluated_through: snapshot.evaluated_through,
+            chunks: entries.iter().map(|entry| entry.chunk).collect(),
+            relevance: entries.iter().map(|entry| entry.relevance).collect(),
+            levels: entries.iter().map(|entry| entry.level).collect(),
+            last_traces: entries.iter().map(|entry| entry.last_trace).collect(),
         })
     }
 

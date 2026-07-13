@@ -16,6 +16,7 @@ ontopolis-core = { workspace = true }
 ontopolis-runtime = { workspace = true }
 ontopolis-lab = { workspace = true }
 ontopolis-explanation = { workspace = true }
+ontopolis-persistence = { workspace = true }
 clap = { workspace = true }
 tracing = { workspace = true }
 thiserror = { workspace = true }

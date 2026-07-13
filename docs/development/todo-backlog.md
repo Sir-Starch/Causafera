@@ -575,18 +575,18 @@
 **Out of Scope:** Full performance suite
 
 ## TODO-PERSIST-001: Snapshot Format
-**Status:** Pending
+**Status:** Completed
 **Phase:** 0
 **Priority:** Medium
 **Dependencies:** TODO-ARCH-001
 **Goal:** Define snapshot structure
-**Acceptance Criteria:** Snapshot can be serialized and deserialized
+**Acceptance Criteria:** Canonical bounded envelope with sectioned binary format; validated domain-state reconstruction; Runtime/scheduler resume at completed tick; uninterrupted versus save/reload/resume equivalence proven; CLI save/resume workflow; digest equality after reconstruction
 **Performance Requirements:** Efficient serialization
 **Determinism Requirements:** Roundtrip preserves state exactly
 **Ontology Implications:** N/A
 **Observer Implications:** N/A
 **Explanation Implications:** N/A
-**Out of Scope:** Full persistence system
+**Out of Scope:** Full persistence system (incremental saves, compression, distributed storage)
 
 ## TODO-CUDA-001: Accelerator Abstraction
 **Status:** Pending

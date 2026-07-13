@@ -71,6 +71,11 @@ pub struct BodySchema {
     len: u8,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BodySchemaSnapshot {
+    pub parts: Vec<BodySchemaPart>,
+}
+
 impl BodySchema {
     pub const fn empty() -> Self {
         Self {
@@ -101,6 +106,18 @@ impl BodySchema {
     pub fn parts(&self) -> &[BodySchemaPart] {
         &self.parts[..self.len as usize]
     }
+
+    pub fn export_snapshot(&self) -> BodySchemaSnapshot {
+        BodySchemaSnapshot {
+            parts: self.parts().to_vec(),
+        }
+    }
+
+    pub fn import_snapshot(snapshot: BodySchemaSnapshot) -> Result<Self, SceneUpdateError> {
+        let mut schema = Self::empty();
+        schema.replace(snapshot.parts)?;
+        Ok(schema)
+    }
 }
 
 impl Default for BodySchema {
@@ -120,6 +137,11 @@ pub struct SelfAssociation {
 pub struct SelfModel {
     associations: [SelfAssociation; MAX_SELF_ASSOCIATIONS],
     len: u8,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SelfModelSnapshot {
+    pub associations: Vec<SelfAssociation>,
 }
 
 impl SelfModel {
@@ -155,6 +177,20 @@ impl SelfModel {
     pub fn associations(&self) -> &[SelfAssociation] {
         &self.associations[..self.len as usize]
     }
+
+    pub fn export_snapshot(&self) -> SelfModelSnapshot {
+        SelfModelSnapshot {
+            associations: self.associations().to_vec(),
+        }
+    }
+
+    pub fn import_snapshot(snapshot: SelfModelSnapshot) -> Result<Self, SceneUpdateError> {
+        let mut model = Self::empty();
+        for association in snapshot.associations {
+            model.revise(association)?;
+        }
+        Ok(model)
+    }
 }
 
 impl Default for SelfModel {
@@ -172,6 +208,17 @@ struct TrackedObject {
     confidence: CognitiveWeight,
     last_seen: SimulationTime,
     supporting_percept: PerceptId,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TrackedObjectSnapshot {
+    pub id: PerceivedObjectId,
+    pub last_target: AttentionTargetId,
+    pub appearance: AppearanceSignature,
+    pub relative_position: [i32; 3],
+    pub confidence: CognitiveWeight,
+    pub last_seen: SimulationTime,
+    pub supporting_percept: PerceptId,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -193,6 +240,14 @@ pub struct SubjectiveScene {
     self_len: u8,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SubjectiveSceneSnapshot {
+    pub time: SimulationTime,
+    pub objects: Vec<SceneObject>,
+    pub body_schema: BodySchemaSnapshot,
+    pub active_self: Vec<SelfAssociation>,
+}
+
 impl SubjectiveScene {
     pub fn objects(&self) -> &[SceneObject] {
         &self.objects[..self.object_len as usize]
@@ -209,6 +264,42 @@ impl SubjectiveScene {
     pub fn active_self(&self) -> &[SelfAssociation] {
         &self.active_self[..self.self_len as usize]
     }
+
+    pub fn export_snapshot(&self) -> SubjectiveSceneSnapshot {
+        SubjectiveSceneSnapshot {
+            time: self.time,
+            objects: self.objects().to_vec(),
+            body_schema: self.body_schema.export_snapshot(),
+            active_self: self.active_self().to_vec(),
+        }
+    }
+
+    pub fn import_snapshot(snapshot: SubjectiveSceneSnapshot) -> Result<Self, SceneUpdateError> {
+        if snapshot.objects.len() > MAX_SCENE_OBJECTS
+            || snapshot.active_self.len() > MAX_ACTIVE_SELF_ASSOCIATIONS
+        {
+            return Err(SceneUpdateError::TooManyCues {
+                count: snapshot.objects.len(),
+            });
+        }
+        let mut objects = snapshot.objects;
+        objects.sort_by_key(|object| object.id);
+        if objects.windows(2).any(|pair| pair[0].id == pair[1].id) {
+            return Err(SceneUpdateError::DuplicatePercept);
+        }
+        let mut scene_objects = [SceneObject::default(); MAX_SCENE_OBJECTS];
+        scene_objects[..objects.len()].copy_from_slice(&objects);
+        let mut active_self = [SelfAssociation::default(); MAX_ACTIVE_SELF_ASSOCIATIONS];
+        active_self[..snapshot.active_self.len()].copy_from_slice(&snapshot.active_self);
+        Ok(Self {
+            time: snapshot.time,
+            objects: scene_objects,
+            object_len: objects.len() as u8,
+            body_schema: BodySchema::import_snapshot(snapshot.body_schema)?,
+            active_self,
+            self_len: snapshot.active_self.len() as u8,
+        })
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -219,6 +310,15 @@ pub struct SceneContinuityState {
     last_update: Option<SimulationTime>,
     appearance_tolerance: u32,
     position_tolerance: u32,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SceneContinuitySnapshot {
+    pub tracked: Vec<TrackedObjectSnapshot>,
+    pub next_object_id: u64,
+    pub last_update: Option<SimulationTime>,
+    pub appearance_tolerance: u32,
+    pub position_tolerance: u32,
 }
 
 impl SceneContinuityState {
@@ -239,6 +339,49 @@ impl SceneContinuityState {
             appearance_tolerance,
             position_tolerance,
         }
+    }
+
+    pub fn export_snapshot(&self) -> SceneContinuitySnapshot {
+        SceneContinuitySnapshot {
+            tracked: self.tracked[..self.tracked_len as usize]
+                .iter()
+                .map(|object| TrackedObjectSnapshot {
+                    id: object.id,
+                    last_target: object.last_target,
+                    appearance: object.appearance,
+                    relative_position: object.relative_position,
+                    confidence: object.confidence,
+                    last_seen: object.last_seen,
+                    supporting_percept: object.supporting_percept,
+                })
+                .collect(),
+            next_object_id: self.next_object_id,
+            last_update: self.last_update,
+            appearance_tolerance: self.appearance_tolerance,
+            position_tolerance: self.position_tolerance,
+        }
+    }
+
+    pub fn import_snapshot(snapshot: SceneContinuitySnapshot) -> Result<Self, SceneUpdateError> {
+        if snapshot.tracked.len() > MAX_TRACKED_OBJECTS || snapshot.next_object_id == 0 {
+            return Err(SceneUpdateError::IdentifierExhausted);
+        }
+        let mut state = Self::new(snapshot.appearance_tolerance, snapshot.position_tolerance);
+        state.tracked_len = snapshot.tracked.len() as u8;
+        state.next_object_id = snapshot.next_object_id;
+        state.last_update = snapshot.last_update;
+        for (index, object) in snapshot.tracked.into_iter().enumerate() {
+            state.tracked[index] = TrackedObject {
+                id: object.id,
+                last_target: object.last_target,
+                appearance: object.appearance,
+                relative_position: object.relative_position,
+                confidence: object.confidence,
+                last_seen: object.last_seen,
+                supporting_percept: object.supporting_percept,
+            };
+        }
+        Ok(state)
     }
 
     pub fn reconstruct(

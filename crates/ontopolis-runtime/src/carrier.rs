@@ -22,6 +22,20 @@ pub struct TerrainCarrierAdapter {
     field_extent: u8,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TerrainCarrierSnapshot {
+    pub chunk: ChartChunkCoord,
+    pub field_extent: u8,
+    pub world_seed: u64,
+    pub generation_trace: TraceId,
+    pub generator: u64,
+    pub parameters: u64,
+    pub causal_inputs: Vec<TraceId>,
+    pub elevations_mm: Vec<i32>,
+    pub surface_materials: Vec<MaterialId>,
+    pub roughness_mm: Vec<u32>,
+}
+
 impl TerrainCarrierAdapter {
     pub const fn new(chunk: ChartChunkCoord, terrain: TerrainChunk, field_extent: u8) -> Self {
         Self {
@@ -44,6 +58,60 @@ impl TerrainCarrierAdapter {
         let x = u8::try_from(index % usize::from(CHUNK_SIZE)).ok()?;
         let y = u8::try_from(index / usize::from(CHUNK_SIZE)).ok()?;
         self.terrain.cell(x, y)
+    }
+
+    pub fn export_snapshot(&self) -> TerrainCarrierSnapshot {
+        let provenance = self.terrain.provenance();
+        TerrainCarrierSnapshot {
+            chunk: self.chunk,
+            field_extent: self.field_extent,
+            world_seed: provenance.world_seed(),
+            generation_trace: provenance.generation_trace(),
+            generator: provenance.generator().raw(),
+            parameters: provenance.parameters().raw(),
+            causal_inputs: provenance.causal_inputs().to_vec(),
+            elevations_mm: self
+                .terrain
+                .elevations()
+                .iter()
+                .map(|value| value.millimetres())
+                .collect(),
+            surface_materials: self.terrain.surface_materials().to_vec(),
+            roughness_mm: self
+                .terrain
+                .roughness()
+                .iter()
+                .map(|value| value.millimetres())
+                .collect(),
+        }
+    }
+
+    pub fn import_snapshot(
+        snapshot: TerrainCarrierSnapshot,
+    ) -> Result<Self, ontopolis_geography::TerrainChunkError> {
+        let provenance = TerrainGenerationProvenance::new(
+            snapshot.world_seed,
+            snapshot.generation_trace,
+            TerrainGeneratorFingerprint::new(snapshot.generator),
+            TerrainParameterFingerprint::new(snapshot.parameters),
+            snapshot.causal_inputs,
+        );
+        let terrain = TerrainChunk::from_fields(
+            snapshot.chunk.chunk,
+            provenance,
+            snapshot
+                .elevations_mm
+                .into_iter()
+                .map(ElevationMm::new)
+                .collect(),
+            snapshot.surface_materials,
+            snapshot
+                .roughness_mm
+                .into_iter()
+                .map(RoughnessMm::new)
+                .collect(),
+        )?;
+        Ok(Self::new(snapshot.chunk, terrain, snapshot.field_extent))
     }
 
     fn sample_at(

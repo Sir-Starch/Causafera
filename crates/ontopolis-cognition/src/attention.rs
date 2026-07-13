@@ -105,6 +105,20 @@ pub struct AttentionFocus {
     pub supporting_percept: PerceptId,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AttentionConfigSnapshot {
+    pub capacity: u8,
+    pub salience_threshold: u32,
+    pub continuity_bonus: u32,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AttentionStateSnapshot {
+    pub config: AttentionConfigSnapshot,
+    pub foci: Vec<AttentionFocus>,
+    pub last_update: Option<SimulationTime>,
+}
+
 /// Fixed-capacity active attention state.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AttentionState {
@@ -146,6 +160,51 @@ impl AttentionState {
             active_since: self.active_since[index],
             supporting_percept: self.supporting_percepts[index],
         })
+    }
+
+    pub fn export_snapshot(&self) -> AttentionStateSnapshot {
+        AttentionStateSnapshot {
+            config: AttentionConfigSnapshot {
+                capacity: self.config.capacity,
+                salience_threshold: self.config.salience_threshold.raw(),
+                continuity_bonus: self.config.continuity_bonus.raw(),
+            },
+            foci: (0..self.len())
+                .filter_map(|index| self.focus(index))
+                .collect(),
+            last_update: self.last_update,
+        }
+    }
+
+    pub fn import_snapshot(snapshot: AttentionStateSnapshot) -> Result<Self, AttentionConfigError> {
+        if snapshot.foci.len() > MAX_ATTENTION_FOCI
+            || snapshot.foci.len() > usize::from(snapshot.config.capacity)
+        {
+            return Err(AttentionConfigError::CapacityOutOfRange {
+                capacity: snapshot.config.capacity,
+            });
+        }
+        let config = AttentionConfig::new(
+            snapshot.config.capacity,
+            AttentionWeight::new(snapshot.config.salience_threshold)?,
+            AttentionWeight::new(snapshot.config.continuity_bonus)?,
+        )?;
+        let mut state = Self::new(config);
+        for index in 1..snapshot.foci.len() {
+            if snapshot.foci[index - 1].target >= snapshot.foci[index].target {
+                return Err(AttentionConfigError::CapacityOutOfRange {
+                    capacity: snapshot.config.capacity,
+                });
+            }
+        }
+        state.len = snapshot.foci.len() as u8;
+        for (index, focus) in snapshot.foci.into_iter().enumerate() {
+            state.targets[index] = focus.target;
+            state.active_since[index] = focus.active_since;
+            state.supporting_percepts[index] = focus.supporting_percept;
+        }
+        state.last_update = snapshot.last_update;
+        Ok(state)
     }
 
     /// Re-rank bounded candidates deterministically.

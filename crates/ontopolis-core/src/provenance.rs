@@ -372,6 +372,127 @@ impl Default for CausalTraceStore {
     }
 }
 
+/// Logical snapshot of a `CausalTraceStore` for persistence.
+///
+/// Contains all forward-edge state needed to reconstruct the store
+/// deterministically. Reverse child indexes are rebuilt after import.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CausalTraceSnapshot {
+    pub next_event_id: u64,
+    pub next_trace_id: u64,
+    pub events: Vec<CausalEventSnapshot>,
+}
+
+/// Logical snapshot of a single causal event.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CausalEventSnapshot {
+    pub event_id: EventId,
+    pub trace_id: TraceId,
+    pub time: SimulationTime,
+    pub phase: Phase,
+    pub kind: EventKindId,
+    pub causes: Vec<TraceId>,
+    pub effects: Vec<CausalEffect>,
+}
+
+#[derive(Clone, Debug, Error, PartialEq, Eq)]
+pub enum CausalSnapshotError {
+    #[error("event count exceeds capacity")]
+    EventCountExceeded,
+    #[error("cause count exceeds capacity")]
+    CauseCountExceeded,
+    #[error("effect count exceeds capacity")]
+    EffectCountExceeded,
+    #[error("trace IDs are not strictly monotonic")]
+    NonMonotonicTraceIds,
+    #[error("cause refers to unknown trace ID: {0}")]
+    UnknownCause(TraceId),
+}
+
+impl CausalTraceStore {
+    /// Export a logical snapshot of the entire trace store.
+    pub fn export_snapshot(&self) -> CausalTraceSnapshot {
+        let events = self
+            .iter()
+            .map(|event| CausalEventSnapshot {
+                event_id: event.event_id,
+                trace_id: event.trace_id,
+                time: event.time,
+                phase: event.phase,
+                kind: event.kind,
+                causes: event.causes.to_vec(),
+                effects: event.effects.to_vec(),
+            })
+            .collect();
+        CausalTraceSnapshot {
+            next_event_id: self.next_event_id,
+            next_trace_id: self.next_trace_id,
+            events,
+        }
+    }
+
+    /// Reconstruct a trace store from a logical snapshot.
+    ///
+    /// Validates monotonic IDs, parent-before-child ordering, and
+    /// cause existence. Rebuilds the child index deterministically.
+    pub fn import_snapshot(snapshot: CausalTraceSnapshot) -> Result<Self, CausalSnapshotError> {
+        let event_count = snapshot.events.len();
+        if event_count > usize::MAX / 2 {
+            return Err(CausalSnapshotError::EventCountExceeded);
+        }
+
+        let mut store = Self::new();
+        store.next_event_id = snapshot.next_event_id;
+        store.next_trace_id = snapshot.next_trace_id;
+
+        let mut last_trace_id: Option<TraceId> = None;
+        for event in &snapshot.events {
+            if let Some(last) = last_trace_id {
+                if event.trace_id <= last {
+                    return Err(CausalSnapshotError::NonMonotonicTraceIds);
+                }
+            }
+            last_trace_id = Some(event.trace_id);
+
+            store.event_ids.push(event.event_id);
+            store.trace_ids.push(event.trace_id);
+            store.times.push(event.time);
+            store.phases.push(event.phase);
+            store.kinds.push(event.kind);
+
+            let cause_count = event.causes.len();
+            if cause_count > u32::MAX as usize {
+                return Err(CausalSnapshotError::CauseCountExceeded);
+            }
+            for &cause in &event.causes {
+                if store.trace_index(cause).is_none() {
+                    return Err(CausalSnapshotError::UnknownCause(cause));
+                }
+            }
+            store.causes.extend_from_slice(&event.causes);
+            store.cause_offsets.push(store.causes.len() as u32);
+
+            let effect_count = event.effects.len();
+            if effect_count > u32::MAX as usize {
+                return Err(CausalSnapshotError::EffectCountExceeded);
+            }
+            store.effects.extend_from_slice(&event.effects);
+            store.effect_offsets.push(store.effects.len() as u32);
+
+            // Rebuild child index.
+            for &cause in &event.causes {
+                store
+                    .children
+                    .entry(cause)
+                    .or_default()
+                    .push(event.trace_id);
+            }
+        }
+
+        Ok(store)
+    }
+}
+
 #[derive(Clone, Copy, Debug, Error, PartialEq, Eq)]
 pub enum CausalCommitError {
     #[error("proposal key {key:?} appears more than once in a commit batch")]

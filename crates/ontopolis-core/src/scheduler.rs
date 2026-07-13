@@ -13,6 +13,9 @@ use crate::random::{RandomStream, StreamKey};
 /// on different threads while preserving deterministic ordering in strict mode.
 pub trait System: Send {
     fn run(&mut self, stream: &mut RandomStream);
+
+    /// Restore the system's internal next-execution time after a snapshot resume.
+    fn restore_time(&mut self, _time: SimulationTime) {}
 }
 
 /// Type-erased system container for registration.
@@ -97,6 +100,14 @@ impl Scheduler {
         self.current_time
     }
 
+    /// Restore simulation time to a completed tick for snapshot resume.
+    ///
+    /// This does not execute systems; it only sets the internal time
+    /// counter so that the next tick resumes from the restored boundary.
+    pub fn set_current_time(&mut self, time: SimulationTime) {
+        self.current_time = time;
+    }
+
     /// Reference to the deterministic configuration.
     pub fn config(&self) -> &DeterministicConfig {
         &self.config
@@ -151,6 +162,15 @@ impl Scheduler {
     pub fn system_count(&self, phase: Phase) -> usize {
         let phase_idx = phase.id().0 as usize;
         self.phases[phase_idx].systems.len()
+    }
+
+    /// Restore next-execution time on all registered systems.
+    pub fn restore_system_times(&mut self, time: SimulationTime) {
+        for phase in &mut self.phases {
+            for reg in &mut phase.systems {
+                reg.system.restore_time(time);
+            }
+        }
     }
 }
 
