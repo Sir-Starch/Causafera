@@ -14,6 +14,17 @@ This project follows a structured changelog format. Each entry includes:
 
 ## Unreleased
 
+### Phase 26: Protocol-Connected Observer UI
+
+- **UI** — Replaced the static shell with a clean responsive dark research interface for World, causal-loop, timeline, chunk inspection, state identity, and typed experiment explanation views.
+- **OBSERVER** — Added a bounded chart-qualified world-chunk projection and protobuf v1 query carrying elevation range, roughness, mana, resolution, population, activity, and trace anchors.
+- **ARCH** — Added a Tauri 2 session boundary that runs real causal bootstrap, exposes only protobuf-derived data to React, and limits execution control to reset and bounded scheduler progression.
+- **EXPLAIN** — Connected the replay-verified 192-tick control/intervention report to typed UI rendering with evidence state, confidence, comparison context, checkpoints, and trace counts.
+- **DET** — Proved locale-independent session payloads and digest anchors; client locale, selected view, and bounded timeline remain outside authoritative state.
+- **PERF** — Used a capacity-one latest-state stream and 96-sample client FIFO; local release diagnostics measured the live session path at 0.01 s and the bounded analysis at 2.19 s without making scale claims.
+- **BUILD** — Migrated the dormant Tauri 1 shell to Tauri 2/WebKitGTK 4.1 and added the desktop crate to workspace clippy/test gates.
+- **BUILD** — Added a Linux desktop launcher that automatically uses a WebKitGTK XWayland/software-rendering compatibility profile when Wayland and X11 coexist, while preserving an explicit native-Wayland diagnostic path.
+
 ### Post-Phase-24 Observer Transport
 
 - **OBSERVER** — Replaced the placeholder handler with version-negotiated protobuf query/response, runtime-summary projection, typed Explanation IR payloads, and snapshot/delta envelopes.

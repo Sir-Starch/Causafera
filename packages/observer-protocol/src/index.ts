@@ -1,4 +1,4 @@
-/** Observer v1 client codec. Field numbers are defined by proto/ontopolis/observer/v1. */
+/** Canonical observer v1 client codec. Field numbers come from proto/ontopolis/observer/v1. */
 export const OBSERVER_PROTOCOL_V1 = 1;
 
 export interface ConnectRequest {
@@ -8,13 +8,14 @@ export interface ConnectRequest {
 
 export interface ConnectResponse {
   selectedProtocolVersion: number;
-  currentTime: { ticks: bigint };
+  currentTime: bigint;
   capabilities: number[];
 }
 
 export enum QueryKind {
   RuntimeSummary = 1,
   ExplanationIr = 2,
+  WorldChunks = 3,
 }
 
 export enum QueryStatus {
@@ -22,6 +23,13 @@ export enum QueryStatus {
   InvalidRequest = 2,
   Unsupported = 3,
   NotAvailable = 4,
+}
+
+export interface QueryResponse {
+  requestId: bigint;
+  protocolVersion: number;
+  status: QueryStatus;
+  payload: Uint8Array;
 }
 
 export interface RuntimeSummary {
@@ -37,22 +45,166 @@ export interface RuntimeSummary {
   causalTraceCount: bigint;
   actorCount: number;
   populationTotal: bigint;
+  physicalEvents: bigint;
+  manaCellChanges: bigint;
+  manaPhysicalEffects: bigint;
+  resolutionTransitions: bigint;
+  actorActionsCommitted: bigint;
+  actorActionsRejected: bigint;
+  populationBirths: bigint;
+  populationDeaths: bigint;
+  populationMovements: bigint;
+  bytesPerChunk: bigint;
   latestTraceId: bigint;
 }
 
-export function encodeRuntimeSummaryQuery(requestId: bigint): Uint8Array {
+export interface WorldChunkSnapshot {
+  simulationTicks: bigint;
+  chunks: SpatialChunkSummary[];
+}
+
+export interface SpatialChunkSummary {
+  chartId: bigint;
+  chunkX: number;
+  chunkY: number;
+  chunkZ: number;
+  minimumElevationMm: number;
+  maximumElevationMm: number;
+  meanRoughnessMm: number;
+  manaTotal: bigint;
+  resolutionRelevance: bigint;
+  resolutionLevel: number;
+  populationTotal: bigint;
+  causalEventCount: bigint;
+  latestTraceId: bigint;
+}
+
+export enum StreamKind {
+  RuntimeSummary = 1,
+  Explanation = 2,
+  Metrics = 3,
+}
+
+export interface StreamEnvelope {
+  header: {
+    streamId: bigint;
+    schemaVersion: number;
+    sequenceNumber: bigint;
+    simulationTime: bigint;
+    physicalDigest: Uint8Array;
+    historyDigest: Uint8Array;
+    isSnapshot: boolean;
+  };
+  kind: StreamKind;
+  chunkId?: bigint;
+  payload: Uint8Array;
+}
+
+export enum EvidenceState {
+  Supported = 1,
+  Unsupported = 2,
+  Unknown = 3,
+}
+
+export enum Assessment {
+  Supported = 1,
+  Partial = 2,
+  Unsupported = 3,
+  Unknown = 4,
+}
+
+export type NumericClaimValue =
+  | { kind: "scalar"; value: bigint }
+  | { kind: "range"; start: bigint; end: bigint }
+  | { kind: "ratio"; numerator: bigint; denominator: bigint };
+
+export interface ExplanationClaim {
+  schemaId: bigint;
+  value: NumericClaimValue;
+  confidence: number;
+  evidenceTraceIds: bigint[];
+  comparison: { kind: number; cohortId?: bigint };
+  evidenceState: EvidenceState;
+}
+
+export interface ExplanationFrame {
+  checkpointTicks: bigint;
+  claims: ExplanationClaim[];
+  overallAssessment: Assessment;
+}
+
+export interface ExplanationReport {
+  experimentId: bigint;
+  frames: ExplanationFrame[];
+  overallAssessment: Assessment;
+}
+
+export function encodeConnectRequest(request: ConnectRequest): Uint8Array {
+  const output: number[] = [];
+  for (const version of request.supportedProtocolVersions) {
+    fieldVarint(output, 1, BigInt(version));
+  }
+  if (request.observerLocale.length > 0) {
+    fieldBytes(output, 2, new TextEncoder().encode(request.observerLocale));
+  }
+  return Uint8Array.from(output);
+}
+
+export function decodeConnectResponse(input: Uint8Array): ConnectResponse {
+  const cursor = new Cursor(input);
+  let selectedProtocolVersion: number | undefined;
+  let currentTime: bigint | undefined;
+  const capabilities: number[] = [];
+  while (!cursor.empty) {
+    const [field, wire] = cursor.key();
+    if (field === 1 && wire === 0) selectedProtocolVersion = Number(cursor.varint());
+    else if (field === 2 && wire === 2) currentTime = decodeSimulationTime(cursor.bytes());
+    else if (field === 3 && wire === 0) capabilities.push(Number(cursor.varint()));
+    else cursor.skip(wire);
+  }
+  if (selectedProtocolVersion === undefined || currentTime === undefined) {
+    throw new Error("incomplete observer connect response");
+  }
+  return { selectedProtocolVersion, currentTime, capabilities };
+}
+
+export function encodeQuery(kind: QueryKind, requestId: bigint): Uint8Array {
   const output: number[] = [];
   fieldVarint(output, 1, requestId);
   fieldVarint(output, 2, BigInt(OBSERVER_PROTOCOL_V1));
-  fieldVarint(output, 3, BigInt(QueryKind.RuntimeSummary));
+  fieldVarint(output, 3, BigInt(kind));
   return Uint8Array.from(output);
+}
+
+export function encodeRuntimeSummaryQuery(requestId: bigint): Uint8Array {
+  return encodeQuery(QueryKind.RuntimeSummary, requestId);
+}
+
+export function decodeQueryResponse(input: Uint8Array): QueryResponse {
+  const cursor = new Cursor(input);
+  let requestId: bigint | undefined;
+  let protocolVersion: number | undefined;
+  let status: QueryStatus | undefined;
+  let payload: Uint8Array = new Uint8Array();
+  while (!cursor.empty) {
+    const [field, wire] = cursor.key();
+    if (field === 1 && wire === 0) requestId = cursor.varint();
+    else if (field === 2 && wire === 0) protocolVersion = Number(cursor.varint());
+    else if (field === 3 && wire === 0) status = Number(cursor.varint()) as QueryStatus;
+    else if (field === 4 && wire === 2) payload = cursor.bytes();
+    else cursor.skip(wire);
+  }
+  if (requestId === undefined || protocolVersion === undefined || status === undefined) {
+    throw new Error("incomplete observer query response");
+  }
+  return { requestId, protocolVersion, status, payload };
 }
 
 export function decodeRuntimeSummary(input: Uint8Array): RuntimeSummary {
   const cursor = new Cursor(input);
   const values = new Map<number, bigint>();
-  let physicalDigest = new Uint8Array();
-  let historyDigest = new Uint8Array();
+  let physicalDigest: Uint8Array = new Uint8Array();
+  let historyDigest: Uint8Array = new Uint8Array();
   while (!cursor.empty) {
     const [field, wire] = cursor.key();
     if (wire === 0) values.set(field, cursor.varint());
@@ -60,13 +212,10 @@ export function decodeRuntimeSummary(input: Uint8Array): RuntimeSummary {
     else if (wire === 2 && field === 4) historyDigest = cursor.bytes();
     else cursor.skip(wire);
   }
-  if (physicalDigest.length !== 32 || historyDigest.length !== 32)
+  if (physicalDigest.length !== 32 || historyDigest.length !== 32) {
     throw new Error("observer digest must contain 32 bytes");
-  const value = (field: number): bigint => {
-    const found = values.get(field);
-    if (found === undefined) throw new Error(`missing RuntimeSummary field ${field}`);
-    return found;
-  };
+  }
+  const value = requiredValue(values, "RuntimeSummary");
   return {
     simulationTicks: value(1),
     digestSchemaVersion: Number(value(2)),
@@ -80,13 +229,271 @@ export function decodeRuntimeSummary(input: Uint8Array): RuntimeSummary {
     causalTraceCount: value(10),
     actorCount: Number(value(11)),
     populationTotal: value(12),
+    physicalEvents: value(13),
+    manaCellChanges: value(14),
+    manaPhysicalEffects: value(15),
+    resolutionTransitions: value(16),
+    actorActionsCommitted: value(17),
+    actorActionsRejected: value(18),
+    populationBirths: value(19),
+    populationDeaths: value(20),
+    populationMovements: value(21),
+    bytesPerChunk: value(22),
     latestTraceId: value(23),
   };
+}
+
+export function decodeWorldChunkSnapshot(input: Uint8Array): WorldChunkSnapshot {
+  const cursor = new Cursor(input);
+  let simulationTicks: bigint | undefined;
+  const chunks: SpatialChunkSummary[] = [];
+  while (!cursor.empty) {
+    const [field, wire] = cursor.key();
+    if (field === 1 && wire === 0) simulationTicks = cursor.varint();
+    else if (field === 2 && wire === 2) chunks.push(decodeSpatialChunk(cursor.bytes()));
+    else cursor.skip(wire);
+  }
+  if (simulationTicks === undefined) throw new Error("missing WorldChunkSnapshot field 1");
+  return { simulationTicks, chunks };
+}
+
+export function decodeStreamEnvelope(input: Uint8Array): StreamEnvelope {
+  const cursor = new Cursor(input);
+  let header: StreamEnvelope["header"] | undefined;
+  let kind: StreamKind | undefined;
+  let chunkId: bigint | undefined;
+  let payload: Uint8Array = new Uint8Array();
+  while (!cursor.empty) {
+    const [field, wire] = cursor.key();
+    if (field === 1 && wire === 2) header = decodeStreamHeader(cursor.bytes());
+    else if (field === 2 && wire === 0) kind = Number(cursor.varint()) as StreamKind;
+    else if (field === 3 && wire === 2) chunkId = decodeChunkScope(cursor.bytes());
+    else if (field === 4 && wire === 2) payload = cursor.bytes();
+    else cursor.skip(wire);
+  }
+  if (header === undefined || kind === undefined) throw new Error("incomplete stream envelope");
+  return { header, kind, chunkId, payload };
+}
+
+export function decodeExplanationReport(input: Uint8Array): ExplanationReport {
+  const cursor = new Cursor(input);
+  let experimentId: bigint | undefined;
+  let overallAssessment: Assessment | undefined;
+  const frames: ExplanationFrame[] = [];
+  while (!cursor.empty) {
+    const [field, wire] = cursor.key();
+    if (field === 1 && wire === 0) experimentId = cursor.varint();
+    else if (field === 2 && wire === 2) frames.push(decodeExplanationFrame(cursor.bytes()));
+    else if (field === 3 && wire === 0) overallAssessment = Number(cursor.varint()) as Assessment;
+    else cursor.skip(wire);
+  }
+  if (experimentId === undefined || overallAssessment === undefined) {
+    throw new Error("incomplete ExplanationReport");
+  }
+  return { experimentId, frames, overallAssessment };
+}
+
+export function digestHex(value: Uint8Array, length = value.length): string {
+  return Array.from(value.slice(0, length), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function decodeSpatialChunk(input: Uint8Array): SpatialChunkSummary {
+  const cursor = new Cursor(input);
+  const values = new Map<number, bigint>();
+  while (!cursor.empty) {
+    const [field, wire] = cursor.key();
+    if (wire === 0) values.set(field, cursor.varint());
+    else cursor.skip(wire);
+  }
+  const value = requiredValue(values, "SpatialChunkSummary");
+  return {
+    chartId: value(1),
+    chunkX: Number(zigzagDecode(value(2))),
+    chunkY: Number(zigzagDecode(value(3))),
+    chunkZ: Number(zigzagDecode(value(4))),
+    minimumElevationMm: Number(zigzagDecode(value(5))),
+    maximumElevationMm: Number(zigzagDecode(value(6))),
+    meanRoughnessMm: Number(value(7)),
+    manaTotal: zigzagDecode(value(8)),
+    resolutionRelevance: zigzagDecode(value(9)),
+    resolutionLevel: Number(value(10)),
+    populationTotal: value(11),
+    causalEventCount: value(12),
+    latestTraceId: value(13),
+  };
+}
+
+function decodeStreamHeader(input: Uint8Array): StreamEnvelope["header"] {
+  const cursor = new Cursor(input);
+  let streamId: bigint | undefined;
+  let schemaVersion: number | undefined;
+  let sequenceNumber: bigint | undefined;
+  let simulationTime: bigint | undefined;
+  let physicalDigest: Uint8Array = new Uint8Array();
+  let historyDigest: Uint8Array = new Uint8Array();
+  let isSnapshot = false;
+  while (!cursor.empty) {
+    const [field, wire] = cursor.key();
+    if (field === 1 && wire === 0) streamId = cursor.varint();
+    else if (field === 2 && wire === 0) schemaVersion = Number(cursor.varint());
+    else if (field === 3 && wire === 0) sequenceNumber = cursor.varint();
+    else if (field === 4 && wire === 2) simulationTime = decodeSimulationTime(cursor.bytes());
+    else if (field === 5 && wire === 2) physicalDigest = decodeDigest(cursor.bytes());
+    else if (field === 6 && wire === 2) historyDigest = decodeDigest(cursor.bytes());
+    else if (field === 7 && wire === 0) isSnapshot = cursor.varint() !== 0n;
+    else cursor.skip(wire);
+  }
+  if (
+    streamId === undefined ||
+    schemaVersion === undefined ||
+    sequenceNumber === undefined ||
+    simulationTime === undefined ||
+    physicalDigest.length !== 32 ||
+    historyDigest.length !== 32
+  ) {
+    throw new Error("incomplete stream header");
+  }
+  return {
+    streamId,
+    schemaVersion,
+    sequenceNumber,
+    simulationTime,
+    physicalDigest,
+    historyDigest,
+    isSnapshot,
+  };
+}
+
+function decodeExplanationFrame(input: Uint8Array): ExplanationFrame {
+  const cursor = new Cursor(input);
+  let checkpointTicks: bigint | undefined;
+  let overallAssessment: Assessment | undefined;
+  const claims: ExplanationClaim[] = [];
+  while (!cursor.empty) {
+    const [field, wire] = cursor.key();
+    if (field === 1 && wire === 0) checkpointTicks = cursor.varint();
+    else if (field === 2 && wire === 2) claims.push(decodeExplanationClaim(cursor.bytes()));
+    else if (field === 3 && wire === 0) overallAssessment = Number(cursor.varint()) as Assessment;
+    else cursor.skip(wire);
+  }
+  if (checkpointTicks === undefined || overallAssessment === undefined) {
+    throw new Error("incomplete ExplanationFrame");
+  }
+  return { checkpointTicks, claims, overallAssessment };
+}
+
+function decodeExplanationClaim(input: Uint8Array): ExplanationClaim {
+  const cursor = new Cursor(input);
+  let schemaId: bigint | undefined;
+  let value: NumericClaimValue | undefined;
+  let confidence: number | undefined;
+  let comparison: ExplanationClaim["comparison"] | undefined;
+  let evidenceState: EvidenceState | undefined;
+  const evidenceTraceIds: bigint[] = [];
+  while (!cursor.empty) {
+    const [field, wire] = cursor.key();
+    if (field === 1 && wire === 0) schemaId = cursor.varint();
+    else if (field === 2 && wire === 2) value = decodeNumericClaimValue(cursor.bytes());
+    else if (field === 3 && wire === 1) confidence = cursor.float64();
+    else if (field === 4 && wire === 0) evidenceTraceIds.push(cursor.varint());
+    else if (field === 5 && wire === 2) comparison = decodeComparison(cursor.bytes());
+    else if (field === 6 && wire === 0) evidenceState = Number(cursor.varint()) as EvidenceState;
+    else cursor.skip(wire);
+  }
+  if (
+    schemaId === undefined ||
+    value === undefined ||
+    confidence === undefined ||
+    comparison === undefined ||
+    evidenceState === undefined
+  ) {
+    throw new Error("incomplete ExplanationClaim");
+  }
+  return { schemaId, value, confidence, evidenceTraceIds, comparison, evidenceState };
+}
+
+function decodeNumericClaimValue(input: Uint8Array): NumericClaimValue {
+  const cursor = new Cursor(input);
+  while (!cursor.empty) {
+    const [field, wire] = cursor.key();
+    if (field === 1 && wire === 0) return { kind: "scalar", value: zigzagDecode(cursor.varint()) };
+    if (field === 2 && wire === 2) {
+      const values = decodeVarintFields(cursor.bytes());
+      const value = requiredValue(values, "NumericRange");
+      return { kind: "range", start: zigzagDecode(value(1)), end: zigzagDecode(value(2)) };
+    }
+    if (field === 3 && wire === 2) {
+      const values = decodeVarintFields(cursor.bytes());
+      const value = requiredValue(values, "NumericRatio");
+      return { kind: "ratio", numerator: value(1), denominator: value(2) };
+    }
+    cursor.skip(wire);
+  }
+  throw new Error("missing NumericClaimValue variant");
+}
+
+function decodeComparison(input: Uint8Array): ExplanationClaim["comparison"] {
+  const values = decodeVarintFields(input);
+  const kind = Number(values.get(1) ?? 0n);
+  const cohortId = values.get(2);
+  return cohortId === undefined ? { kind } : { kind, cohortId };
+}
+
+function decodeSimulationTime(input: Uint8Array): bigint {
+  const values = decodeVarintFields(input);
+  const value = values.get(1);
+  if (value === undefined) throw new Error("missing SimulationTime field 1");
+  return value;
+}
+
+function decodeDigest(input: Uint8Array): Uint8Array {
+  const cursor = new Cursor(input);
+  let value: Uint8Array = new Uint8Array();
+  while (!cursor.empty) {
+    const [field, wire] = cursor.key();
+    if (field === 2 && wire === 2) value = cursor.bytes();
+    else cursor.skip(wire);
+  }
+  return value;
+}
+
+function decodeChunkScope(input: Uint8Array): bigint | undefined {
+  const values = decodeVarintFields(input);
+  return values.get(2);
+}
+
+function decodeVarintFields(input: Uint8Array): Map<number, bigint> {
+  const cursor = new Cursor(input);
+  const values = new Map<number, bigint>();
+  while (!cursor.empty) {
+    const [field, wire] = cursor.key();
+    if (wire === 0) values.set(field, cursor.varint());
+    else cursor.skip(wire);
+  }
+  return values;
+}
+
+function requiredValue(values: Map<number, bigint>, name: string): (field: number) => bigint {
+  return (field: number): bigint => {
+    const found = values.get(field);
+    if (found === undefined) throw new Error(`missing ${name} field ${field}`);
+    return found;
+  };
+}
+
+function zigzagDecode(value: bigint): bigint {
+  return (value >> 1n) ^ -(value & 1n);
 }
 
 function fieldVarint(output: number[], field: number, value: bigint): void {
   writeVarint(output, BigInt(field << 3));
   writeVarint(output, value);
+}
+
+function fieldBytes(output: number[], field: number, value: Uint8Array): void {
+  writeVarint(output, BigInt((field << 3) | 2));
+  writeVarint(output, BigInt(value.length));
+  output.push(...value);
 }
 
 function writeVarint(output: number[], initial: bigint): void {
@@ -100,8 +507,13 @@ function writeVarint(output: number[], initial: bigint): void {
 
 class Cursor {
   private offset = 0;
+
   constructor(private readonly input: Uint8Array) {}
-  get empty(): boolean { return this.offset === this.input.length; }
+
+  get empty(): boolean {
+    return this.offset === this.input.length;
+  }
+
   varint(): bigint {
     let value = 0n;
     for (let shift = 0n; shift <= 63n; shift += 7n) {
@@ -112,10 +524,14 @@ class Cursor {
     }
     throw new Error("invalid protobuf varint");
   }
+
   key(): [number, number] {
     const key = this.varint();
-    return [Number(key >> 3n), Number(key & 7n)];
+    const field = Number(key >> 3n);
+    if (field === 0) throw new Error("invalid protobuf field number");
+    return [field, Number(key & 7n)];
   }
+
   bytes(): Uint8Array {
     const length = Number(this.varint());
     const end = this.offset + length;
@@ -124,11 +540,41 @@ class Cursor {
     this.offset = end;
     return bytes;
   }
+
+  float64(): number {
+    const end = this.offset + 8;
+    if (end > this.input.length) throw new Error("truncated protobuf fixed64");
+    const value = new DataView(
+      this.input.buffer,
+      this.input.byteOffset + this.offset,
+      8,
+    ).getFloat64(0, true);
+    this.offset = end;
+    return value;
+  }
+
   skip(wire: number): void {
-    if (wire === 0) { this.varint(); return; }
-    if (wire === 1) { this.offset += 8; return; }
-    if (wire === 2) { this.bytes(); return; }
-    if (wire === 5) { this.offset += 4; return; }
+    if (wire === 0) {
+      this.varint();
+      return;
+    }
+    if (wire === 1) {
+      this.advance(8);
+      return;
+    }
+    if (wire === 2) {
+      this.bytes();
+      return;
+    }
+    if (wire === 5) {
+      this.advance(4);
+      return;
+    }
     throw new Error(`unsupported protobuf wire type ${wire}`);
+  }
+
+  private advance(count: number): void {
+    this.offset += count;
+    if (this.offset > this.input.length) throw new Error("truncated protobuf field");
   }
 }

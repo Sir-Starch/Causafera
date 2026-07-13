@@ -1,11 +1,13 @@
 syntax = "proto3";
 package ontopolis.observer.v1;
 import "ontopolis/observer/v1/common.proto";
+import "ontopolis/observer/v1/spatial.proto";
 
 enum QueryKind {
   QUERY_KIND_UNSPECIFIED = 0;
   QUERY_KIND_RUNTIME_SUMMARY = 1;
   QUERY_KIND_EXPLANATION_IR = 2;
+  QUERY_KIND_WORLD_CHUNKS = 3;
 }
 message QueryRequest {
   uint64 request_id = 1;
@@ -45,4 +47,9 @@ message RuntimeSummary {
   uint64 population_movements = 21;
   uint64 bytes_per_chunk = 22;
   uint64 latest_trace_id = 23;
+}
+
+message WorldChunkSnapshot {
+  uint64 simulation_ticks = 1;
+  repeated SpatialChunkSummary chunks = 2;
 }

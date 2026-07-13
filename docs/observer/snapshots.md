@@ -42,6 +42,10 @@ not create an artificial sequence gap.
 
 A closed UI panel must not require updates for its hidden data. The observer system must support scoped subscriptions that can be opened and closed dynamically.
 
+Phase 26 consumes a capacity-one `latest-state-wins` runtime-summary stream. World chunks remain a
+request/response projection and are refreshed only while the World view is visible. The React
+timeline retains at most 96 decoded runtime samples and is not authoritative history.
+
 ## Related Documents
 
 - `docs/observer/protocol.md` - Protocol defining stream messages

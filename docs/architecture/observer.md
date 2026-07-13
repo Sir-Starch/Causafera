@@ -89,6 +89,13 @@ These are observer classifications. They are not Ground Truth domain labels expo
 - INV-021: UI is an observer
 - INV-022: Rendering representation is not simulation state
 
+## Delivered Phase 26 UI
+
+The Tauri 2 observer is the first complete protocol consumer. It receives no direct Rust runtime
+references. Its current views are a bounded objective chunk projection, aggregate causal loop,
+numeric timeline, chunk inspector, digest identity, and typed experiment Explanation IR. Session
+buttons only select a seed and bounded scheduler progression; they do not mutate world content.
+
 ## Future UI Views
 
 Planned observer-facing views:

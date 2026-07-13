@@ -166,11 +166,19 @@ Next phase.
 ## Phase 26
 
 Rich observer UI consuming only the versioned observer protocol. Direct runtime storage access is
-forbidden; the next UI milestone connects the existing shell to runtime summaries, streams, and
-Explanation IR.
+forbidden.
+
+Completed. The Tauri 2 desktop application runs a causally bootstrapped runtime, negotiates
+observer v1, consumes digest-anchored bounded runtime streams, queries chart-qualified world chunk
+projections, and renders typed Explanation IR. The delivered UI provides World, causal-loop,
+timeline, inspector, and comparative-explanation views in deterministic English/Russian
+presentation. Rich entity, language, society, historical comparison, and large-dataset WebGPU
+views remain incremental observer work.
 
 ## Phase 27
 
 Optional narrative surface realization.
 
 LLMs remain non-authoritative.
+
+Next phase.

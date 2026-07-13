@@ -27,6 +27,16 @@ proto/ontopolis/observer/v1/
 
 Generate Rust and TypeScript bindings from the proto definitions. Do not manually duplicate schemas.
 
+The implemented v1 surface supports negotiation and three request kinds:
+
+- runtime summary;
+- typed Explanation IR;
+- a bounded chart-qualified world-chunk snapshot.
+
+The world projection contains numeric terrain bounds, roughness, local mana total, causal-resolution
+relevance/level, population aggregate, activity count, and trace anchor. It does not contain a city,
+biome, species, occupation, spell, or other semantic classification.
+
 ## Protocol Boundaries
 
 Observer protocol is not:

@@ -31,9 +31,10 @@ metrics.proto     - performance and telemetry data
 
 Generate Rust bindings for the simulation side and TypeScript bindings for the UI side. Do not manually duplicate schemas. The single source of truth is the `.proto` definition.
 
-The initial in-process Rust and TypeScript v1 codecs cover negotiation, runtime-summary
-query/response, typed Explanation IR payloads, and stream envelopes. Schema validity is checked
-with `protoc`; expanding either codec must begin with the v1 `.proto` files.
+The Rust and TypeScript v1 codecs cover negotiation, runtime-summary and chart-qualified
+world-chunk query/response, typed Explanation IR payloads, and stream envelopes. The Phase 26
+Tauri bridge transports only these bytes. Schema validity is checked with `protoc`; expanding
+either codec must begin with the v1 `.proto` files.
 
 ## What the Protocol Is Not
 

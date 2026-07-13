@@ -75,6 +75,16 @@ warms up for 16 ticks and measures 128 ticks in headless, idle, normal (one quer
 encoded 0, 0, 18,198, and 582,336 bytes respectively. These are environment-specific diagnostics,
 not throughput or scale claims; the statistical/RSS framework remains `TODO-PERF-001`.
 
+## Phase 26 UI Session Diagnostic
+
+The desktop session uses a capacity-one latest-state stream and the client retains at most 96
+timeline samples. On the 2026-07-13 local release build, the negotiation, initial runtime snapshot,
+and four-tick delta test completed in 0.01 s, the bounded world projection test completed below the
+test harness's 0.01 s display precision, and the replay-verified 192-tick populated
+control/intervention Explanation run completed in 2.19 s. Build time, WebKit startup, and browser
+paint are excluded. These are single environment-specific diagnostics, not statistical latency,
+throughput, or population-scale claims; `TODO-PERF-001` remains pending.
+
 ## Reference Hardware
 
 - Linux;

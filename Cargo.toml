@@ -23,6 +23,7 @@ members = [
     "crates/ontopolis-runtime",
     "crates/ontopolis-lab",
     "crates/ontopolis-cli",
+    "apps/observer/src-tauri",
     "tools/xtask",
 ]
 resolver = "3"

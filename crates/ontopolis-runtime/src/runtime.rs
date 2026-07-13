@@ -14,7 +14,7 @@ use ontopolis_domains::{
     ManaPhysicalEffectProposal, ManaPhysicalEffectSchemaId, PhysicalCarrierAdapter,
     PhysicalPatternSample,
 };
-use ontopolis_observer_api::ObserverSnapshot;
+use ontopolis_observer_api::{ObserverChunkSummary, ObserverSnapshot, ObserverWorldSnapshot};
 use ontopolis_resolution::{
     CausalRelevanceSignal, ChannelWeight, ResolutionError, ResolutionField,
     ResolutionFieldSnapshot, ResolutionPolicy, ResolutionPolicySnapshot,
@@ -547,6 +547,14 @@ impl Runtime {
             return Err(error);
         }
         Ok(state.snapshot(self.scheduler.current_time()))
+    }
+
+    pub fn observer_world_snapshot(&self) -> Result<ObserverWorldSnapshot, RuntimeError> {
+        let state = self.lock_state()?;
+        if let Some(error) = state.failure.clone() {
+            return Err(error);
+        }
+        Ok(state.observer_world_snapshot(self.scheduler.current_time()))
     }
 
     pub fn export_snapshot(&self) -> Result<RuntimeSnapshotData, RuntimeError> {
@@ -1309,6 +1317,64 @@ impl RuntimeState {
             bytes_per_chunk: self.bytes_per_chunk(),
             latest_trace,
         }
+    }
+
+    fn observer_world_snapshot(&self, time: SimulationTime) -> ObserverWorldSnapshot {
+        let chunks = self
+            .active_chunks
+            .iter()
+            .map(|(chart_chunk, active)| {
+                let terrain = self
+                    .carrier_adapters
+                    .get(chart_chunk)
+                    .map(TerrainCarrierAdapter::export_snapshot);
+                let (minimum_elevation_mm, maximum_elevation_mm, mean_roughness_mm) = terrain
+                    .as_ref()
+                    .map(|terrain| {
+                        let minimum = terrain.elevations_mm.iter().copied().min().unwrap_or(0);
+                        let maximum = terrain.elevations_mm.iter().copied().max().unwrap_or(0);
+                        let roughness = if terrain.roughness_mm.is_empty() {
+                            0
+                        } else {
+                            (terrain
+                                .roughness_mm
+                                .iter()
+                                .copied()
+                                .map(u64::from)
+                                .sum::<u64>()
+                                / terrain.roughness_mm.len() as u64)
+                                as u32
+                        };
+                        (minimum, maximum, roughness)
+                    })
+                    .unwrap_or((0, 0, 0));
+                let population_total = self
+                    .population_aggregates
+                    .get(chart_chunk)
+                    .map(|aggregate| aggregate.count)
+                    .unwrap_or(0);
+                let latest_trace = active
+                    .last_transition
+                    .or_else(|| terrain.as_ref().map(|terrain| terrain.generation_trace))
+                    .unwrap_or(self.latest_physical_trace);
+                ObserverChunkSummary {
+                    chart_id: chart_chunk.chart.raw(),
+                    chunk_x: chart_chunk.chunk.x,
+                    chunk_y: chart_chunk.chunk.y,
+                    chunk_z: chart_chunk.chunk.z,
+                    minimum_elevation_mm,
+                    maximum_elevation_mm,
+                    mean_roughness_mm,
+                    mana_total: active.total_mana,
+                    resolution_relevance: active.relevance,
+                    resolution_level: u32::from(active.level),
+                    population_total,
+                    causal_event_count: active.event_count,
+                    latest_trace,
+                }
+            })
+            .collect();
+        ObserverWorldSnapshot { time, chunks }
     }
 
     fn bytes_per_chunk(&self) -> u64 {
@@ -3482,6 +3548,43 @@ mod tests {
 
         assert_eq!(snapshot.actor_count, 0);
         assert!(state.actors.is_empty());
+    }
+
+    #[test]
+    fn observer_world_projection_is_bounded_chart_qualified_and_causal() {
+        let mut config = RuntimeConfig::new(450);
+        config.bootstrap_population = 128;
+        let mut runtime = Runtime::new(config).unwrap();
+        let runtime_snapshot = runtime.run_ticks(2).unwrap();
+
+        let world = runtime.observer_world_snapshot().unwrap();
+        assert_eq!(world.time, SimulationTime::new(2));
+        assert!(!world.chunks.is_empty());
+        assert!(world.chunks.len() <= 9);
+        assert!(world.chunks.iter().all(|chunk| chunk.chart_id == 1));
+        let projected_population = world
+            .chunks
+            .iter()
+            .map(|chunk| chunk.population_total)
+            .sum::<u64>();
+        assert_eq!(projected_population, runtime_snapshot.population_total);
+        assert!(projected_population <= 128);
+        assert!(world.chunks.iter().all(|chunk| {
+            chunk.minimum_elevation_mm <= chunk.maximum_elevation_mm && chunk.latest_trace.raw() > 0
+        }));
+        assert!(world.chunks.windows(2).all(|pair| {
+            (
+                pair[0].chart_id,
+                pair[0].chunk_x,
+                pair[0].chunk_y,
+                pair[0].chunk_z,
+            ) < (
+                pair[1].chart_id,
+                pair[1].chunk_x,
+                pair[1].chunk_y,
+                pair[1].chunk_z,
+            )
+        }));
     }
 
     #[test]

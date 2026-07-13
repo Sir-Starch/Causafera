@@ -560,6 +560,20 @@
 **Explanation Implications:** N/A
 **Out of Scope:** Simulation connection
 
+## TODO-UI-002: Protocol-Connected Rich Observer
+**Status:** Completed
+**Phase:** 26
+**Priority:** High
+**Dependencies:** TODO-UI-001, TODO-PROTO-001, TODO-OBSERVER-002, TODO-EXPLAIN-001
+**Goal:** Connect the desktop observer to real bounded simulation data
+**Acceptance Criteria:** Tauri 2 shell negotiates observer v1, receives runtime stream snapshots/deltas, queries chart-qualified chunks, renders typed Explanation IR, and contains no fabricated simulation data
+**Performance Requirements:** Capacity-one latest-state runtime stream, bounded 96-sample client timeline, hidden world view performs no world refresh queries
+**Determinism Requirements:** Same seed/ticks produce identical payloads and locale changes preserve physical/history digests
+**Ontology Implications:** Human labels, colors, selected views, and locale remain non-authoritative presentation
+**Observer Implications:** First complete external consumer of observer v1
+**Explanation Implications:** Preserves schema, numeric value, evidence state, confidence, comparison, checkpoint, and trace count
+**Out of Scope:** Entity-per-DOM views, global planetary map, large-dataset WebGPU renderer, agent-known maps, LLM narrative, authoritative mutation
+
 ## TODO-PERF-001: Benchmark Framework
 **Status:** Pending
 **Phase:** 0

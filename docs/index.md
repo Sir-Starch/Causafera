@@ -185,6 +185,7 @@ Later documents supersede conflicting initialization-spec sections **only when t
 ## UI
 
 - `docs/ui/views.md` - User views
+- `docs/ui/observer-application.md` - Phase 26 desktop observer architecture and operation
 - `docs/ui/map-perspectives.md` - Map perspectives
 - `docs/ui/language-inspection.md` - Language inspection
 

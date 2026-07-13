@@ -1,16 +1,33 @@
 # User Views
 
-The future desktop application supports multiple views for inspecting different aspects of the simulation.
+The Phase 26 desktop observer delivers a bounded first set of views and preserves room for richer
+domain inspection.
 
-## Planned Views
+## Delivered Views
 
 ### World
 
-Map and geographic overlays. Shows terrain, settlements, infrastructure, and spatial phenomena.
+Chart-qualified active chunks with real terrain elevation range, roughness, mana, resolution,
+population, activity, and trace anchors. This is an objective observer projection, not agent
+knowledge or a global planetary map.
 
 ### Causality
 
-Causal graph explorer. Allows tracing provenance chains and understanding why phenomena exist.
+An aggregate physical → mana → resolution → action → population flow using current runtime counts.
+It is not yet an arbitrary provenance graph explorer.
+
+### Timeline and Inspector
+
+A bounded client-side metric history and selected chunk details. Closing the World view stops world
+queries. Timeline state is rendering state, not authoritative history.
+
+### Explanation
+
+Typed claims from the replay-verified bounded experiment, including evidence state, confidence,
+comparison, checkpoint, and supporting trace count. The UI never invents a claim when the report is
+unavailable.
+
+## Planned Rich Views
 
 ### Society
 
@@ -35,10 +52,6 @@ Field and resonance visualization. Displays mana topology and pattern responses.
 ### History
 
 Timeline and state comparison. Allows comparing simulation states at different times.
-
-### Explanation
-
-Plain-language explanation of selected phenomena. Integrates with the Explanation Engine.
 
 ### Performance
 

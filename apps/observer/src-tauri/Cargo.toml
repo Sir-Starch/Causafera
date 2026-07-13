@@ -1,12 +1,18 @@
 [package]
 name = "ontopolis-observer"
-version = "0.1.0"
+version.workspace = true
 description = "Ontopolis Observer Desktop Shell"
-edition = "2021"
-license = "AGPL-3.0-only"
+edition.workspace = true
+license.workspace = true
 
 [dependencies]
-tauri = { version = "1", features = [] }
+tauri = { version = "2", features = [] }
+ontopolis-lab.workspace = true
+ontopolis-observer-api.workspace = true
+ontopolis-observer-wire.workspace = true
+ontopolis-runtime.workspace = true
+ontopolis-types.workspace = true
+thiserror.workspace = true
 
 [build-dependencies]
-tauri-build = { version = "1", features = [] }
+tauri-build = { version = "2", features = [] }

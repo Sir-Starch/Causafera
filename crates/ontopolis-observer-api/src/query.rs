@@ -9,6 +9,7 @@ pub const MAX_QUERY_PAYLOAD_BYTES: usize = 1 << 20;
 pub enum QueryKind {
     RuntimeSummary = 1,
     ExplanationIr = 2,
+    WorldChunks = 3,
 }
 
 impl TryFrom<u32> for QueryKind {
@@ -18,6 +19,7 @@ impl TryFrom<u32> for QueryKind {
         match value {
             1 => Ok(Self::RuntimeSummary),
             2 => Ok(Self::ExplanationIr),
+            3 => Ok(Self::WorldChunks),
             value => Err(ObserverApiError::UnknownQueryKind(value)),
         }
     }
@@ -38,6 +40,16 @@ impl ObserverQuery {
             request_id,
             protocol_version: OBSERVER_PROTOCOL_V1,
             kind: QueryKind::RuntimeSummary,
+            scope: None,
+            payload: Vec::new(),
+        }
+    }
+
+    pub fn world_chunks(request_id: u64) -> Self {
+        Self {
+            request_id,
+            protocol_version: OBSERVER_PROTOCOL_V1,
+            kind: QueryKind::WorldChunks,
             scope: None,
             payload: Vec::new(),
         }
@@ -97,6 +109,29 @@ pub struct ObserverSnapshot {
     pub population_deaths: u64,
     pub population_movements: u64,
     pub bytes_per_chunk: u64,
+    pub latest_trace: TraceId,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ObserverWorldSnapshot {
+    pub time: SimulationTime,
+    pub chunks: Vec<ObserverChunkSummary>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ObserverChunkSummary {
+    pub chart_id: u64,
+    pub chunk_x: i32,
+    pub chunk_y: i32,
+    pub chunk_z: i32,
+    pub minimum_elevation_mm: i32,
+    pub maximum_elevation_mm: i32,
+    pub mean_roughness_mm: u32,
+    pub mana_total: i64,
+    pub resolution_relevance: i64,
+    pub resolution_level: u32,
+    pub population_total: u64,
+    pub causal_event_count: u64,
     pub latest_trace: TraceId,
 }
 

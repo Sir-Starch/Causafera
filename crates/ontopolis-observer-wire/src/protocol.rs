@@ -4,8 +4,8 @@ use ontopolis_explanation::{
     ClaimEvidenceState, ComparisonContext, ExplanationReport, FrameAssessment, NumericClaimValue,
 };
 use ontopolis_observer_api::{
-    OBSERVER_PROTOCOL_V1, ObserverQuery, ObserverResponse, ObserverSnapshot, QueryKind,
-    QueryStatus, StreamEnvelope, StreamKind,
+    OBSERVER_PROTOCOL_V1, ObserverChunkSummary, ObserverQuery, ObserverResponse, ObserverSnapshot,
+    ObserverWorldSnapshot, QueryKind, QueryStatus, StreamEnvelope, StreamKind,
 };
 use ontopolis_types::{ChunkId, SimulationTime, TraceId};
 use thiserror::Error;
@@ -57,6 +57,11 @@ impl ProtocolHandler {
         self.set_explanation_payload(encode_explanation_report(report));
     }
 
+    pub fn set_world_snapshot(&mut self, snapshot: &ObserverWorldSnapshot) {
+        self.payloads
+            .insert(QueryKind::WorldChunks, encode_world_snapshot(snapshot));
+    }
+
     pub fn negotiate(&self, request: &ConnectRequest) -> Result<ConnectResponse, WireError> {
         if !request.supported_versions.contains(&OBSERVER_PROTOCOL_V1) {
             return Err(WireError::NoCompatibleProtocolVersion);
@@ -67,6 +72,7 @@ impl ProtocolHandler {
             capabilities: vec![
                 QueryKind::RuntimeSummary as u32,
                 QueryKind::ExplanationIr as u32,
+                QueryKind::WorldChunks as u32,
             ],
         })
     }
@@ -183,6 +189,72 @@ pub fn decode_response(bytes: &[u8]) -> Result<ObserverResponse, WireError> {
     })
 }
 
+pub fn encode_connect_request(request: &ConnectRequest) -> Vec<u8> {
+    let mut out = Vec::new();
+    for version in &request.supported_versions {
+        field_varint(&mut out, 1, u64::from(*version));
+    }
+    if !request.locale.is_empty() {
+        field_bytes(&mut out, 2, request.locale.as_bytes());
+    }
+    out
+}
+
+pub fn decode_connect_request(bytes: &[u8]) -> Result<ConnectRequest, WireError> {
+    let mut cursor = Cursor::new(bytes);
+    let mut supported_versions = Vec::new();
+    let mut locale = String::new();
+    while !cursor.is_empty() {
+        let (field, wire) = cursor.key()?;
+        match (field, wire) {
+            (1, WIRE_VARINT) => supported_versions.push(to_u32(cursor.varint()?)?),
+            (2, WIRE_LEN) => {
+                locale = std::str::from_utf8(cursor.bytes()?)
+                    .map_err(|_| WireError::InvalidUtf8)?
+                    .to_owned();
+            }
+            _ => cursor.skip(wire)?,
+        }
+    }
+    Ok(ConnectRequest {
+        supported_versions,
+        locale,
+    })
+}
+
+pub fn encode_connect_response(response: &ConnectResponse) -> Vec<u8> {
+    let mut out = Vec::new();
+    field_varint(&mut out, 1, u64::from(response.selected_version));
+    let mut time = Vec::new();
+    field_varint(&mut time, 1, response.current_time.raw());
+    field_bytes(&mut out, 2, &time);
+    for capability in &response.capabilities {
+        field_varint(&mut out, 3, u64::from(*capability));
+    }
+    out
+}
+
+pub fn decode_connect_response(bytes: &[u8]) -> Result<ConnectResponse, WireError> {
+    let mut cursor = Cursor::new(bytes);
+    let mut selected_version = None;
+    let mut current_time = None;
+    let mut capabilities = Vec::new();
+    while !cursor.is_empty() {
+        let (field, wire) = cursor.key()?;
+        match (field, wire) {
+            (1, WIRE_VARINT) => selected_version = Some(to_u32(cursor.varint()?)?),
+            (2, WIRE_LEN) => current_time = Some(decode_time(cursor.bytes()?)?),
+            (3, WIRE_VARINT) => capabilities.push(to_u32(cursor.varint()?)?),
+            _ => cursor.skip(wire)?,
+        }
+    }
+    Ok(ConnectResponse {
+        selected_version: selected_version.ok_or(WireError::MissingField(1))?,
+        current_time: current_time.ok_or(WireError::MissingField(2))?,
+        capabilities,
+    })
+}
+
 pub fn encode_observer_snapshot(snapshot: &ObserverSnapshot) -> Vec<u8> {
     let mut out = Vec::with_capacity(256);
     field_varint(&mut out, 1, snapshot.time.raw());
@@ -262,6 +334,84 @@ pub fn decode_observer_snapshot(bytes: &[u8]) -> Result<ObserverSnapshot, WireEr
         population_movements: values[20],
         bytes_per_chunk: values[21],
         latest_trace: TraceId::new(values[22]),
+    })
+}
+
+pub fn encode_world_snapshot(snapshot: &ObserverWorldSnapshot) -> Vec<u8> {
+    let mut out = Vec::new();
+    field_varint(&mut out, 1, snapshot.time.raw());
+    for chunk in &snapshot.chunks {
+        let mut nested = Vec::new();
+        field_varint(&mut nested, 1, chunk.chart_id);
+        field_varint(&mut nested, 2, zigzag(i64::from(chunk.chunk_x)));
+        field_varint(&mut nested, 3, zigzag(i64::from(chunk.chunk_y)));
+        field_varint(&mut nested, 4, zigzag(i64::from(chunk.chunk_z)));
+        field_varint(
+            &mut nested,
+            5,
+            zigzag(i64::from(chunk.minimum_elevation_mm)),
+        );
+        field_varint(
+            &mut nested,
+            6,
+            zigzag(i64::from(chunk.maximum_elevation_mm)),
+        );
+        field_varint(&mut nested, 7, u64::from(chunk.mean_roughness_mm));
+        field_varint(&mut nested, 8, zigzag(chunk.mana_total));
+        field_varint(&mut nested, 9, zigzag(chunk.resolution_relevance));
+        field_varint(&mut nested, 10, u64::from(chunk.resolution_level));
+        field_varint(&mut nested, 11, chunk.population_total);
+        field_varint(&mut nested, 12, chunk.causal_event_count);
+        field_varint(&mut nested, 13, chunk.latest_trace.raw());
+        field_bytes(&mut out, 2, &nested);
+    }
+    out
+}
+
+pub fn decode_world_snapshot(bytes: &[u8]) -> Result<ObserverWorldSnapshot, WireError> {
+    let mut cursor = Cursor::new(bytes);
+    let mut time = None;
+    let mut chunks = Vec::new();
+    while !cursor.is_empty() {
+        let (field, wire) = cursor.key()?;
+        match (field, wire) {
+            (1, WIRE_VARINT) => time = Some(SimulationTime::new(cursor.varint()?)),
+            (2, WIRE_LEN) => chunks.push(decode_chunk_summary(cursor.bytes()?)?),
+            _ => cursor.skip(wire)?,
+        }
+    }
+    Ok(ObserverWorldSnapshot {
+        time: time.ok_or(WireError::MissingField(1))?,
+        chunks,
+    })
+}
+
+fn decode_chunk_summary(bytes: &[u8]) -> Result<ObserverChunkSummary, WireError> {
+    let mut cursor = Cursor::new(bytes);
+    let mut values = [None; 13];
+    while !cursor.is_empty() {
+        let (field, wire) = cursor.key()?;
+        if (1..=13).contains(&field) && wire == WIRE_VARINT {
+            values[field as usize - 1] = Some(cursor.varint()?);
+        } else {
+            cursor.skip(wire)?;
+        }
+    }
+    let value = |field: usize| values[field - 1].ok_or(WireError::MissingField(field as u32));
+    Ok(ObserverChunkSummary {
+        chart_id: value(1)?,
+        chunk_x: to_i32(unzigzag(value(2)?))?,
+        chunk_y: to_i32(unzigzag(value(3)?))?,
+        chunk_z: to_i32(unzigzag(value(4)?))?,
+        minimum_elevation_mm: to_i32(unzigzag(value(5)?))?,
+        maximum_elevation_mm: to_i32(unzigzag(value(6)?))?,
+        mean_roughness_mm: to_u32(value(7)?)?,
+        mana_total: unzigzag(value(8)?),
+        resolution_relevance: unzigzag(value(9)?),
+        resolution_level: to_u32(value(10)?)?,
+        population_total: value(11)?,
+        causal_event_count: value(12)?,
+        latest_trace: TraceId::new(value(13)?),
     })
 }
 
@@ -505,6 +655,14 @@ fn to_u32(value: u64) -> Result<u32, WireError> {
     u32::try_from(value).map_err(|_| WireError::IntegerOverflow)
 }
 
+fn to_i32(value: i64) -> Result<i32, WireError> {
+    i32::try_from(value).map_err(|_| WireError::IntegerOverflow)
+}
+
+fn unzigzag(value: u64) -> i64 {
+    ((value >> 1) as i64) ^ (-((value & 1) as i64))
+}
+
 fn array32(bytes: &[u8]) -> Result<[u8; 32], WireError> {
     bytes
         .try_into()
@@ -595,6 +753,8 @@ pub enum WireError {
     InvalidDigestLength(usize),
     #[error("no compatible observer protocol version")]
     NoCompatibleProtocolVersion,
+    #[error("protobuf string is not valid UTF-8")]
+    InvalidUtf8,
     #[error(transparent)]
     Api(#[from] ontopolis_observer_api::ObserverApiError),
 }
@@ -671,6 +831,59 @@ mod tests {
             }),
             Err(WireError::NoCompatibleProtocolVersion)
         );
+    }
+
+    #[test]
+    fn negotiation_messages_roundtrip_through_protobuf() {
+        let request = ConnectRequest {
+            supported_versions: vec![1, 2],
+            locale: "ru-RU".into(),
+        };
+        assert_eq!(
+            decode_connect_request(&encode_connect_request(&request)).unwrap(),
+            request
+        );
+        let response = ConnectResponse {
+            selected_version: 1,
+            current_time: SimulationTime::new(12),
+            capabilities: vec![1, 2, 3],
+        };
+        assert_eq!(
+            decode_connect_response(&encode_connect_response(&response)).unwrap(),
+            response
+        );
+    }
+
+    #[test]
+    fn world_query_roundtrips_chart_qualified_chunks() {
+        let expected = ObserverWorldSnapshot {
+            time: SimulationTime::new(7),
+            chunks: vec![ObserverChunkSummary {
+                chart_id: 5,
+                chunk_x: -1,
+                chunk_y: 2,
+                chunk_z: -3,
+                minimum_elevation_mm: -400,
+                maximum_elevation_mm: 2_100,
+                mean_roughness_mm: 38,
+                mana_total: -90,
+                resolution_relevance: 120,
+                resolution_level: 2,
+                population_total: 44,
+                causal_event_count: 11,
+                latest_trace: TraceId::new(8),
+            }],
+        };
+        let mut handler = ProtocolHandler::default();
+        handler.set_world_snapshot(&expected);
+        let response = decode_response(
+            &handler
+                .handle_query(&encode_query(&ObserverQuery::world_chunks(17)))
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(response.status, QueryStatus::Ok);
+        assert_eq!(decode_world_snapshot(&response.payload).unwrap(), expected);
     }
 
     #[test]
