@@ -67,6 +67,14 @@ Benchmark results must be:
 
 The headless runtime and lab report wall-clock duration for bounded runs and numeric activity counts. Duration is excluded from canonical replay equality and is not a throughput or scale claim. The full benchmark matrix, RSS measurement, statistical repetition, and reference-hardware reports remain `TODO-PERF-001`.
 
+## Observer Transport Diagnostic
+
+Run `cargo run --release -p ontopolis-runtime --example observer_overhead`. The bounded harness
+warms up for 16 ticks and measures 128 ticks in headless, idle, normal (one query/tick), and heavy
+(32 queries/tick) modes. A 2026-07-13 local run measured 357–368 ms across the four modes and
+encoded 0, 0, 18,198, and 582,336 bytes respectively. These are environment-specific diagnostics,
+not throughput or scale claims; the statistical/RSS framework remains `TODO-PERF-001`.
+
 ## Reference Hardware
 
 - Linux;

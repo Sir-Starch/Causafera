@@ -1,19 +1,14 @@
 syntax = "proto3";
-
 package ontopolis.observer.v1;
 
-option java_package = "com.ontopolis.observer.v1";
-option go_package = "github.com/ontopolis/observer/v1";
+message SimulationTime { uint64 ticks = 1; }
+message Digest { uint32 schema_version = 1; bytes value = 2; }
+message ChunkScope { optional uint64 chart_id = 1; optional uint64 chunk_id = 2; }
 
-// Common types used across observer protocol.
-message SimulationTime {
-    uint64 ticks = 1;
-}
-
-message ChunkId {
-    uint64 id = 1;
-}
-
-message EntityId {
-    uint64 id = 1;
+enum QueryStatus {
+  QUERY_STATUS_UNSPECIFIED = 0;
+  QUERY_STATUS_OK = 1;
+  QUERY_STATUS_INVALID_REQUEST = 2;
+  QUERY_STATUS_UNSUPPORTED = 3;
+  QUERY_STATUS_NOT_AVAILABLE = 4;
 }

@@ -156,7 +156,8 @@ RFC-GEO-002 and `TODO-GEO-003` were completed as a foundational correction disco
 
 ## Phase 25
 
-Explanation Engine expansion.
+Explanation Engine expansion. Minimal typed IR, matched experiment claims, deterministic localized
+rendering, and observer v1 transport are complete; richer analytical ontology remains incremental.
 
 A minimal Explanation IR may exist earlier for developer inspection.
 
@@ -164,7 +165,9 @@ Next phase.
 
 ## Phase 26
 
-Rich observer UI.
+Rich observer UI consuming only the versioned observer protocol. Direct runtime storage access is
+forbidden; the next UI milestone connects the existing shell to runtime summaries, streams, and
+Explanation IR.
 
 ## Phase 27
 

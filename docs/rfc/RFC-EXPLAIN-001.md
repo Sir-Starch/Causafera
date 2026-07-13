@@ -1,6 +1,6 @@
 # RFC-EXPLAIN-001: Observer Analytical Ontology and Explanation IR
 
-**Status:** Proposed
+**Status:** Accepted
 
 ## Summary
 
@@ -155,5 +155,11 @@ The distinction between driven equilibrium and autonomous persistence is evidenc
 ## Unresolved Questions
 
 - Richer analytical ontology registration and metadata transport.
-- Localized deterministic render templates.
 - Optional LLM fact-packet boundary after IR validation.
+
+## Implemented observer delivery
+
+The accepted minimal renderer provides deterministic English and Russian templates for the
+reserved Stage 2 numeric schemas, preserves evidence state, confidence, comparison context,
+and trace counts, and uses an explicit generic fallback for unknown schema IDs. Observer v1
+transports the typed IR separately from optional rendered prose.

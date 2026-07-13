@@ -201,32 +201,31 @@ impl SnapshotEnvelope {
     pub fn encode(&self) -> Result<Vec<u8>, PersistenceError> {
         // First pass: encode everything except the header to compute sizes and integrity.
         let mut payload_buf = Vec::new();
-        let mut payload_encoder = LittleEndianEncoder::new(&mut payload_buf);
-
-        // Encode section payloads in schema-ID order.
         let header_size = SnapshotHeader::SIZE as u64;
         let mut entries = Vec::with_capacity(self.sections.len());
-        for (&schema_id, payload) in &self.sections {
-            let payload_offset = header_size + payload_encoder.written() as u64;
-            payload_encoder.write_bytes(&payload.bytes);
-            let payload_length = payload.bytes.len() as u64;
-            let section_integrity = compute_integrity(&payload.bytes);
-            entries.push(SectionDirectoryEntry {
-                section_schema_id: schema_id,
-                section_major: payload.section_major,
-                section_minor: payload.section_minor,
-                flags: payload.flags,
-                payload_offset,
-                payload_length,
-                decoded_size_limit: payload.decoded_size_limit,
-                section_integrity,
-            });
-        }
+        let sections_end = {
+            let mut payload_encoder = LittleEndianEncoder::new(&mut payload_buf);
+            // Encode section payloads in schema-ID order.
+            for (&schema_id, payload) in &self.sections {
+                let payload_offset = header_size + payload_encoder.written() as u64;
+                payload_encoder.write_bytes(&payload.bytes);
+                let payload_length = payload.bytes.len() as u64;
+                let section_integrity = compute_integrity(&payload.bytes);
+                entries.push(SectionDirectoryEntry {
+                    section_schema_id: schema_id,
+                    section_major: payload.section_major,
+                    section_minor: payload.section_minor,
+                    flags: payload.flags,
+                    payload_offset,
+                    payload_length,
+                    decoded_size_limit: payload.decoded_size_limit,
+                    section_integrity,
+                });
+            }
+            payload_encoder.written()
+        };
 
         // Compute payload integrity (sections only, before directory).
-        // Drop encoder first to release mutable borrow.
-        let sections_end = payload_encoder.written();
-        drop(payload_encoder);
         let payload_integrity = compute_integrity(&payload_buf[..sections_end]);
 
         // Encode section directory.

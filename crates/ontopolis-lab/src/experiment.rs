@@ -416,6 +416,7 @@ fn analytics_checkpoints(snapshots: &[RuntimeSnapshot]) -> Vec<AnalyticsCheckpoi
         .collect()
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build_experiment_manifest(
     world_seed: u64,
     ticks: u64,

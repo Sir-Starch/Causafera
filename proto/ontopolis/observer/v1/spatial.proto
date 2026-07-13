@@ -1,17 +1,11 @@
 syntax = "proto3";
-
 package ontopolis.observer.v1;
 
-import "ontopolis/observer/v1/common.proto";
-
-// Spatial data representations.
-message SpatialChunk {
-    ChunkId id = 1;
-    float elevation = 2;
-    repeated float terrain_data = 3;
-}
-
-message SpatialQuery {
-    ChunkId center = 1;
-    uint32 radius = 2;
+message SpatialChunkSummary {
+  uint64 chart_id = 1;
+  sint64 chunk_x = 2;
+  sint64 chunk_y = 3;
+  sint64 minimum_elevation = 4;
+  sint64 maximum_elevation = 5;
+  uint32 resolution_level = 6;
 }

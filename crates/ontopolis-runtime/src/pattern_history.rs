@@ -82,6 +82,10 @@ impl PhysicalPatternHistory {
         self.insertion_order.len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.insertion_order.is_empty()
+    }
+
     pub fn samples(&self) -> impl Iterator<Item = &PhysicalPatternSample> {
         self.insertion_order.iter()
     }

@@ -38,6 +38,13 @@ When no suitable template exists:
 - indicate that a specialized renderer is missing;
 - preserve all structured information even if presentation is plain.
 
+## Implemented baseline
+
+`DeterministicExplanationRenderer` renders the reserved numeric claim schemas in English and
+Russian. Output includes numeric value, evidence state, confidence, comparison context, and trace
+count. Unknown schemas use a generic template that retains their numeric schema ID. Rendering is
+read-only and receives no runtime mutation capability.
+
 ## Related Documents
 
 - `docs/explanation/explanation-ir.md` - Source representation

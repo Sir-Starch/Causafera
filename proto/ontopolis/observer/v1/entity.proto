@@ -1,17 +1,8 @@
 syntax = "proto3";
-
 package ontopolis.observer.v1;
 
-import "ontopolis/observer/v1/common.proto";
-
-// Entity representations.
-message Entity {
-    EntityId id = 1;
-    string entity_type = 2;
-    repeated Component components = 3;
+message EntitySummary {
+  uint64 observer_record_id = 1;
+  repeated NumericComponent components = 2;
 }
-
-message Component {
-    string component_type = 1;
-    bytes data = 2;
-}
+message NumericComponent { uint64 schema_id = 1; sint64 value = 2; }

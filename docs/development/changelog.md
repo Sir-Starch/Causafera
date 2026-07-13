@@ -14,6 +14,14 @@ This project follows a structured changelog format. Each entry includes:
 
 ## Unreleased
 
+### Post-Phase-24 Observer Transport
+
+- **OBSERVER** — Replaced the placeholder handler with version-negotiated protobuf query/response, runtime-summary projection, typed Explanation IR payloads, and snapshot/delta envelopes.
+- **OBSERVER** — Added scoped bounded stream queues with reliable, latest-state-wins, coalesced, sampled, and request/response policies; deltas require an initial snapshot.
+- **EXPLAIN** — Accepted RFC-EXPLAIN-001 and added deterministic English/Russian rendering with evidence-preserving generic fallback.
+- **DET** — Proved different observer locales and query cadences leave physical and history digests identical.
+- **PERF** — Added a bounded four-mode observer overhead diagnostic without making scale claims.
+
 ### Architecture
 
 - **COG** — Added architecture rebaseline `docs/architecture/cognition-rebaseline.md` clarifying the subjective scene construction layer between generic perceptual features and subjective concepts/beliefs.

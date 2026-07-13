@@ -365,15 +365,18 @@ version = "0.1.0"
 dependencies = [
  "ontopolis-types",
  "serde",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
 name = "ontopolis-observer-wire"
 version = "0.1.0"
 dependencies = [
+ "ontopolis-explanation",
  "ontopolis-observer-api",
  "ontopolis-types",
  "protobuf",
+ "thiserror 2.0.18",
 ]
 
 [[package]]

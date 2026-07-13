@@ -14,6 +14,7 @@ use ontopolis_domains::{
     ManaPhysicalEffectProposal, ManaPhysicalEffectSchemaId, PhysicalCarrierAdapter,
     PhysicalPatternSample,
 };
+use ontopolis_observer_api::ObserverSnapshot;
 use ontopolis_resolution::{
     CausalRelevanceSignal, ChannelWeight, ResolutionError, ResolutionField,
     ResolutionFieldSnapshot, ResolutionPolicy, ResolutionPolicySnapshot,
@@ -296,6 +297,38 @@ pub struct RuntimeSnapshot {
     pub latest_trace: TraceId,
 }
 
+impl RuntimeSnapshot {
+    /// Builds the bounded, read-only observer projection. Locale and delivery state are
+    /// deliberately absent so observation cannot alter authoritative identity.
+    pub fn observer_snapshot(&self) -> ObserverSnapshot {
+        ObserverSnapshot {
+            time: self.time,
+            digest_schema_version: u32::from(self.physical_state_digest.schema_version.raw()),
+            physical_digest: self.physical_state_digest.bytes(),
+            history_digest: self.history_digest.bytes(),
+            mana_total: self.mana_total,
+            mana_maximum: self.mana_maximum,
+            active_chunk_count: self.active_chunk_count,
+            resolution_relevance: self.resolution_relevance,
+            resolution_level: u32::from(self.resolution_level),
+            causal_trace_count: self.causal_trace_count,
+            actor_count: self.actor_count,
+            population_total: self.population_total,
+            physical_events: self.physical_events,
+            mana_cell_changes: self.mana_cell_changes,
+            mana_physical_effects: self.mana_physical_effects,
+            resolution_transitions: self.resolution_transitions,
+            actor_actions_committed: self.actor_actions_committed,
+            actor_actions_rejected: self.actor_actions_rejected,
+            population_births: self.population_births,
+            population_deaths: self.population_deaths,
+            population_movements: self.population_movements,
+            bytes_per_chunk: self.bytes_per_chunk,
+            latest_trace: self.latest_trace,
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct RuntimeSnapshotData {
     pub recipe: RuntimeRecipeSnapshot,
@@ -531,7 +564,9 @@ impl Runtime {
     pub fn from_snapshot(data: RuntimeSnapshotData) -> Result<Self, RuntimeError> {
         let config = data.recipe.config.clone();
         let mut runtime = Self::new(config)?;
-        runtime.scheduler.set_current_time(data.recipe.completed_time);
+        runtime
+            .scheduler
+            .set_current_time(data.recipe.completed_time);
         runtime
             .scheduler
             .restore_system_times(data.recipe.completed_time.tick());
@@ -1280,7 +1315,7 @@ impl RuntimeState {
         let Some((_, field)) = self.mana.fields().iter().next() else {
             return 0;
         };
-        (field.intensity().len() * std::mem::size_of::<i64>()) as u64
+        std::mem::size_of_val(field.intensity()) as u64
     }
 
     pub(crate) fn physical_state_digest(&self, time: SimulationTime) -> PhysicalStateDigest {
@@ -2204,6 +2239,7 @@ impl System for PopulationLifecycleSystem {
     }
 }
 
+#[allow(clippy::type_complexity)]
 fn bootstrap_population_aggregates(
     traces: &mut CausalTraceStore,
     population: u64,
@@ -2247,6 +2283,7 @@ fn bootstrap_population_aggregates(
     Ok((aggregates, pools, 1))
 }
 
+#[allow(clippy::too_many_arguments)]
 fn commit_bootstrap_stage_event(
     state: &mut RuntimeState,
     stage: HistoricalStageId,
@@ -2656,6 +2693,7 @@ fn commit_population_event(
     Ok(trace)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn commit_actor_transition(
     state: &mut RuntimeState,
     time: SimulationTime,

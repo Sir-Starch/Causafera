@@ -1,13 +1,48 @@
 syntax = "proto3";
-
 package ontopolis.observer.v1;
 
-import "ontopolis/observer/v1/common.proto";
-
-// Explanation data for observer.
-message Explanation {
-    string explanation_type = 1;
-    string content = 2;
-    double confidence = 3;
-    repeated string sources = 4;
+enum EvidenceState {
+  EVIDENCE_STATE_UNSPECIFIED = 0;
+  EVIDENCE_STATE_SUPPORTED = 1;
+  EVIDENCE_STATE_UNSUPPORTED = 2;
+  EVIDENCE_STATE_UNKNOWN = 3;
+}
+enum Assessment {
+  ASSESSMENT_UNSPECIFIED = 0;
+  ASSESSMENT_SUPPORTED = 1;
+  ASSESSMENT_PARTIAL = 2;
+  ASSESSMENT_UNSUPPORTED = 3;
+  ASSESSMENT_UNKNOWN = 4;
+}
+message NumericClaimValue {
+  oneof value {
+    sint64 scalar = 1;
+    NumericRange range = 2;
+    NumericRatio ratio = 3;
+  }
+}
+message NumericRange { sint64 start = 1; sint64 end = 2; }
+message NumericRatio { uint64 numerator = 1; uint64 denominator = 2; }
+message ComparisonContext { uint32 kind = 1; optional uint64 cohort_id = 2; }
+message ExplanationClaim {
+  uint64 schema_id = 1;
+  NumericClaimValue value = 2;
+  double confidence = 3;
+  repeated uint64 evidence_trace_ids = 4;
+  ComparisonContext comparison = 5;
+  EvidenceState evidence_state = 6;
+}
+message ExplanationFrame {
+  uint64 checkpoint_ticks = 1;
+  repeated ExplanationClaim claims = 2;
+  Assessment overall_assessment = 3;
+}
+message ExplanationReport {
+  uint64 experiment_id = 1;
+  repeated ExplanationFrame frames = 2;
+  Assessment overall_assessment = 3;
+}
+message RenderedExplanation {
+  string locale = 1;
+  string content = 2;
 }

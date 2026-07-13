@@ -25,6 +25,9 @@ entity inspector → request/response
 
 No unbounded observer queues. Every stream must have defined capacity limits and overflow behavior.
 
+`ObserverStreamHub` enforces non-zero capacity per subscription. Unsubscribing removes the queue,
+so a closed UI panel consumes no subsequent delivery work.
+
 ## Overflow Behavior
 
 When queues overflow:

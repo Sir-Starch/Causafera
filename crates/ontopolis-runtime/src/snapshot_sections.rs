@@ -2,8 +2,8 @@ use ontopolis_core::phases::Phase;
 use ontopolis_core::provenance::{CausalEffect, CausalEventSnapshot, CausalTraceSnapshot};
 use ontopolis_domains::{ManaFieldSetSnapshot, ManaFieldSnapshot};
 use ontopolis_persistence::{
-    LittleEndianDecoder, LittleEndianEncoder, PersistenceError, SectionPayload, SnapshotEnvelope,
-    SnapshotHeader, FORMAT_MAJOR_V1, FORMAT_MINOR_V1,
+    FORMAT_MAJOR_V1, FORMAT_MINOR_V1, LittleEndianDecoder, LittleEndianEncoder, PersistenceError,
+    SectionPayload, SnapshotEnvelope, SnapshotHeader,
 };
 use ontopolis_resolution::{
     ChannelWeight, ResolutionEntry, ResolutionFieldSnapshot, ResolutionPolicySnapshot,
@@ -1868,9 +1868,7 @@ fn require_empty(dec: &LittleEndianDecoder<'_>) -> Result<(), PersistenceError> 
 }
 
 /// Assemble a `RuntimeSnapshotData` into a canonical `SnapshotEnvelope`.
-pub fn assemble_envelope(
-    data: &RuntimeSnapshotData,
-) -> Result<SnapshotEnvelope, PersistenceError> {
+pub fn assemble_envelope(data: &RuntimeSnapshotData) -> Result<SnapshotEnvelope, PersistenceError> {
     let mut sections = std::collections::BTreeMap::new();
 
     sections.insert(
@@ -2477,6 +2475,9 @@ mod tests {
             original_snapshot.physical_state_digest,
             resumed_snapshot.physical_state_digest
         );
-        assert_eq!(original_snapshot.history_digest, resumed_snapshot.history_digest);
+        assert_eq!(
+            original_snapshot.history_digest,
+            resumed_snapshot.history_digest
+        );
     }
 }

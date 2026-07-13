@@ -55,6 +55,7 @@ None.
 
 ## Completed Plans
 
+- `plans/observer-transport-and-explanation-delivery.md` — completed the versioned read-only observer projection, Protocol Buffer query and streaming boundary, bounded backpressure, deterministic localized Explanation IR delivery, locale-independence proof, and observer overhead diagnostic on 2026-07-13.
 - `plans/persistence-roundtrip.md` — completed deterministic snapshot v1 with sectioned canonical binary format, validated domain-state reconstruction, runtime/scheduler resume at completed tick, uninterrupted-versus-resumed equivalence proof, atomic file workflow, CLI save/resume commands, and `TODO-PERSIST-001` closure; workspace verification reported zero failures on 2026-07-13.
 - `plans/post-phase-24-simulation-depth.md` — completed all eight stages from digest separation through a coupled historical/population long-run experiment; workspace verification reported zero failures on 2026-07-13.
 - `plans/phases-23-24-long-run-experiments.md` — accepted neutral metaphysics research and multiscale spatial geometry, then delivered the first executable replay-verified physical → mana → resolution experiment (`TODO-GEO-003`, `TODO-META-001`, `TODO-META-002`, `TODO-LAB-001`) on 2026-07-12.

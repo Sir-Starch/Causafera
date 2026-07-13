@@ -1,21 +1,14 @@
 syntax = "proto3";
-
 package ontopolis.observer.v1;
-
 import "ontopolis/observer/v1/common.proto";
 
-// Control messages for observer connection.
 message ConnectRequest {
-    string client_version = 1;
-    string locale = 2;
+  repeated uint32 supported_protocol_versions = 1;
+  string observer_locale = 2;
 }
-
 message ConnectResponse {
-    string server_version = 1;
-    uint32 protocol_version = 2;
-    SimulationTime current_time = 3;
+  uint32 selected_protocol_version = 1;
+  SimulationTime current_time = 2;
+  repeated uint32 capabilities = 3;
 }
-
-message DisconnectRequest {
-    string reason = 1;
-}
+message DisconnectRequest { uint32 reason_code = 1; }

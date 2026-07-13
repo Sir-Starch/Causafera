@@ -18,6 +18,12 @@ Streams require:
 - schema version;
 - sequence number;
 - simulation time.
+- physical and history digest anchors;
+- an explicit initial-snapshot marker.
+
+A stream rejects a delta until its initial scoped snapshot has been accepted. Sequence numbers
+advance only for queued/replaced/coalesced messages; a sampled message dropped before enqueue does
+not create an artificial sequence gap.
 
 ## Possible Streams
 

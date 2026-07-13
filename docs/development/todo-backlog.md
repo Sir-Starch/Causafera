@@ -505,7 +505,7 @@
 **Out of Scope:** Fake populations/history, full phenomenon miner, persistence, observer streaming, scale claims
 
 ## TODO-EXPLAIN-001: Explanation IR
-**Status:** Pending
+**Status:** Completed
 **Phase:** 25
 **Priority:** High
 **Dependencies:** TODO-CONCEPT-001
@@ -519,7 +519,7 @@
 **Out of Scope:** LLM surface
 
 ## TODO-OBSERVER-001: Protocol Buffer Schemas
-**Status:** Pending
+**Status:** Completed
 **Phase:** 0
 **Priority:** High
 **Dependencies:** TODO-ARCH-001
@@ -533,7 +533,7 @@
 **Out of Scope:** Wire implementation
 
 ## TODO-PROTO-001: Wire Protocol Implementation
-**Status:** Pending
+**Status:** Completed
 **Phase:** 0
 **Priority:** High
 **Dependencies:** TODO-OBSERVER-001
@@ -603,7 +603,7 @@
 **Out of Scope:** Full CUDA implementation
 
 ## TODO-DET-001: Locale Independence Test
-**Status:** Pending
+**Status:** Completed
 **Phase:** 0
 **Priority:** High
 **Dependencies:** TODO-ARCH-001
@@ -757,7 +757,7 @@
 **Out of Scope:** Full technology tree
 
 ## TODO-EXPLAIN-002: Deterministic Renderer
-**Status:** Pending
+**Status:** Completed
 **Phase:** 25
 **Priority:** High
 **Dependencies:** TODO-EXPLAIN-001
@@ -771,7 +771,7 @@
 **Out of Scope:** LLM surface
 
 ## TODO-OBSERVER-002: Snapshot and Delta Streaming
-**Status:** Pending
+**Status:** Completed
 **Phase:** 0
 **Priority:** Medium
 **Dependencies:** TODO-PROTO-001

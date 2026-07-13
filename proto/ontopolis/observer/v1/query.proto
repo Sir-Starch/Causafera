@@ -1,17 +1,48 @@
 syntax = "proto3";
-
 package ontopolis.observer.v1;
-
 import "ontopolis/observer/v1/common.proto";
 
-// Query messages for observer data retrieval.
+enum QueryKind {
+  QUERY_KIND_UNSPECIFIED = 0;
+  QUERY_KIND_RUNTIME_SUMMARY = 1;
+  QUERY_KIND_EXPLANATION_IR = 2;
+}
 message QueryRequest {
-    ChunkId scope = 1;
-    string query_type = 2;
-    uint64 query_id = 3;
+  uint64 request_id = 1;
+  uint32 protocol_version = 2;
+  QueryKind kind = 3;
+  optional uint64 chunk_scope = 4;
+  bytes payload = 5;
+}
+message QueryResponse {
+  uint64 request_id = 1;
+  uint32 protocol_version = 2;
+  QueryStatus status = 3;
+  bytes payload = 4;
 }
 
-message QueryResponse {
-    uint64 query_id = 1;
-    bytes payload = 2;
+message RuntimeSummary {
+  uint64 simulation_ticks = 1;
+  uint32 digest_schema_version = 2;
+  bytes physical_digest = 3;
+  bytes history_digest = 4;
+  int64 mana_total = 5;
+  int64 mana_maximum = 6;
+  uint32 active_chunk_count = 7;
+  int64 resolution_relevance = 8;
+  uint32 resolution_level = 9;
+  uint64 causal_trace_count = 10;
+  uint32 actor_count = 11;
+  uint64 population_total = 12;
+  uint64 physical_events = 13;
+  uint64 mana_cell_changes = 14;
+  uint64 mana_physical_effects = 15;
+  uint64 resolution_transitions = 16;
+  uint64 actor_actions_committed = 17;
+  uint64 actor_actions_rejected = 18;
+  uint64 population_births = 19;
+  uint64 population_deaths = 20;
+  uint64 population_movements = 21;
+  uint64 bytes_per_chunk = 22;
+  uint64 latest_trace_id = 23;
 }

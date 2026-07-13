@@ -9,8 +9,8 @@ mod tests;
 
 pub use codec::{LittleEndianDecoder, LittleEndianEncoder};
 pub use envelope::{
-    SectionDirectoryEntry, SectionPayload, SnapshotEnvelope, SnapshotHeader,
     FORMAT_MAJOR_V1, FORMAT_MINOR_V1, MAX_SECTION_COUNT, MAX_TOTAL_SIZE, SNAPSHOT_MAGIC,
+    SectionDirectoryEntry, SectionPayload, SnapshotEnvelope, SnapshotHeader,
 };
 pub use error::PersistenceError;
 pub use file::{atomic_write, read_snapshot_file, write_snapshot_file};

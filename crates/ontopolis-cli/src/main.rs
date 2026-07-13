@@ -162,7 +162,8 @@ pub fn main() -> Result<(), CliError> {
             let mut runtime = Runtime::from_snapshot(data)?;
             let completed = runtime.current_time().raw();
             let snapshot = runtime.run_ticks(ticks)?;
-            println!("resume_status=ok path={} resumed_at={} new_ticks={} total_ticks={}",
+            println!(
+                "resume_status=ok path={} resumed_at={} new_ticks={} total_ticks={}",
                 path.display(),
                 completed,
                 ticks,
