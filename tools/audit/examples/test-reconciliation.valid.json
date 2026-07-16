@@ -1,0 +1,52 @@
+{
+  "completeness": {
+    "evidence_ids": [
+      "e-001"
+    ],
+    "rationale": "single mapping",
+    "status": "complete"
+  },
+  "mappings": [
+    {
+      "binding_id": "bind-space-001",
+      "candidate_key": "candidate-space-001",
+      "evidence_receipt_ids": [
+        "e-001"
+      ],
+      "relation": "call_path",
+      "test_id": "test-001"
+    }
+  ],
+  "receipt_sha256": "480e1598c13cf72bf026bd03cb41af36bc87fdac9054ac37cdd3cef6dcf0d0be",
+  "run_id": "audit-26026fb3862e-20260713T215215Z",
+  "schema_version": 1,
+  "source_baseline_sha": "26507f0c380a943488a2ab0928b5eef77d1f3ca8",
+  "targets": [
+    {
+      "blob_oid": "0000000000000000000000000000000000000000",
+      "eligibility": "exact_test",
+      "package": "ontopolis-audit",
+      "path": "crates/core/src/lib.rs",
+      "rationale": "production target",
+      "target_kind": "lib",
+      "target_name": "audit"
+    }
+  ],
+  "tests": [
+    {
+      "blob_oid": "0000000000000000000000000000000000000000",
+      "definition_character": 0,
+      "discovered_receipt_id": "rcpt-001",
+      "eligibility": "exact_test",
+      "line_end": 1,
+      "line_start": 1,
+      "package": "ontopolis-audit",
+      "path": "tests/schema.rs",
+      "target_kind": "lib",
+      "target_name": "audit",
+      "test_id": "test-001",
+      "test_name": "schema",
+      "test_root_qn": "ontopolis::audit"
+    }
+  ]
+}

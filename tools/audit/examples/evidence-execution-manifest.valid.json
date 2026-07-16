@@ -1,0 +1,25 @@
+{
+  "claims": [
+    {
+      "adapter": "source_definition",
+      "argv": [
+        "node",
+        "tools/audit/validate-capability-audit.mjs",
+        "schema"
+      ],
+      "baseline_target": "tools/audit/examples/capability-audit.valid.json",
+      "binding_id": "bind-space-001",
+      "capability_id": "cap-space-001",
+      "facets": [
+        "primitive_boundary"
+      ],
+      "receipt_id": "source_definition-receipt",
+      "receipt_path": "tools/audit/examples/command-receipt.valid.json",
+      "receipt_sha256": "555f48a71a11d179feb4a29c5070cbc82f4de2c4214e1ef7bd4263ec83679299"
+    }
+  ],
+  "receipt_sha256": "2529b5cc82d022875dcead5b8440680c2e08376a5c7a512bec0ec41ead5c57a0",
+  "run_id": "audit-26026fb3862e-20260713T215215Z",
+  "schema_version": 1,
+  "source_baseline_sha": "26507f0c380a943488a2ab0928b5eef77d1f3ca8"
+}

@@ -1,0 +1,529 @@
+{
+  "schema_version": 1,
+  "m2_plus_capability_classes": [
+    "state",
+    "mutation",
+    "bootstrap",
+    "resolution"
+  ],
+  "domains": [
+    {
+      "domain": "Space",
+      "capability_ids": [
+        "space.world_coordinate",
+        "space.chunk_local_coordinate",
+        "space.spatial_hierarchy"
+      ]
+    },
+    {
+      "domain": "Time",
+      "capability_ids": [
+        "time.simulation_clock",
+        "time.phase_schedule"
+      ]
+    },
+    {
+      "domain": "Matter",
+      "capability_ids": [
+        "matter.material_properties",
+        "matter.material_activity"
+      ]
+    },
+    {
+      "domain": "Energy",
+      "capability_ids": [
+        "energy.thermal_state",
+        "energy.kinetic_motion"
+      ]
+    },
+    {
+      "domain": "Pattern / Feature",
+      "capability_ids": [
+        "pattern_feature.feature_definition",
+        "pattern_feature.physical_pattern_history"
+      ]
+    },
+    {
+      "domain": "Spatial geometry",
+      "capability_ids": [
+        "spatial_geometry.world_geometry_contract",
+        "spatial_geometry.local_metric_frame"
+      ]
+    },
+    {
+      "domain": "Geography",
+      "capability_ids": [
+        "geography.terrain_generation",
+        "geography.terrain_runtime_carrier"
+      ]
+    },
+    {
+      "domain": "Geology",
+      "capability_ids": [
+        "geology.layer_state",
+        "geology.formation_process"
+      ]
+    },
+    {
+      "domain": "Hydrology",
+      "capability_ids": [
+        "hydrology.cell_state",
+        "hydrology.water_flow"
+      ]
+    },
+    {
+      "domain": "Climate",
+      "capability_ids": [
+        "climate.cell_state",
+        "climate.transport_process"
+      ]
+    },
+    {
+      "domain": "Ecology",
+      "capability_ids": [
+        "ecology.population_resource_state",
+        "ecology.trophic_material_interaction"
+      ]
+    },
+    {
+      "domain": "Biology",
+      "capability_ids": [
+        "biology.body_structure",
+        "biology.pathogen_lineage"
+      ]
+    },
+    {
+      "domain": "Physical access / perception",
+      "capability_ids": [
+        "physical_access_perception.signal_acquisition",
+        "physical_access_perception.feature_extraction"
+      ]
+    },
+    {
+      "domain": "Cognition",
+      "capability_ids": [
+        "cognition.attention_state",
+        "cognition.subjective_scene"
+      ]
+    },
+    {
+      "domain": "Language",
+      "capability_ids": [
+        "language.lineage_bootstrap",
+        "language.utterance_interpretation"
+      ]
+    },
+    {
+      "domain": "Mana",
+      "capability_ids": [
+        "mana.field_evolution",
+        "mana.physical_effect_commit"
+      ]
+    },
+    {
+      "domain": "Causal resolution",
+      "capability_ids": [
+        "causal_resolution.relevance_field",
+        "causal_resolution.actor_population_promotion"
+      ]
+    },
+    {
+      "domain": "Society",
+      "capability_ids": [
+        "society.social_state",
+        "society.institutional_rules"
+      ]
+    },
+    {
+      "domain": "Economy",
+      "capability_ids": [
+        "economy.material_ledger",
+        "economy.production_transformation"
+      ]
+    },
+    {
+      "domain": "City infrastructure",
+      "capability_ids": [
+        "city_infrastructure.built_environment",
+        "city_infrastructure.network"
+      ]
+    },
+    {
+      "domain": "Historical bootstrap",
+      "capability_ids": [
+        "historical_bootstrap.stage_dag",
+        "historical_bootstrap.production_bootstrap"
+      ]
+    },
+    {
+      "domain": "Epistemics",
+      "capability_ids": [
+        "epistemics.calibrated_measurement",
+        "epistemics.physical_document"
+      ]
+    },
+    {
+      "domain": "Practice",
+      "capability_ids": [
+        "practice.program",
+        "practice.execution"
+      ]
+    },
+    {
+      "domain": "Isekai",
+      "capability_ids": [
+        "isekai.cross_world_transfer",
+        "isekai.imported_priors"
+      ]
+    },
+    {
+      "domain": "Metaphysics",
+      "capability_ids": [
+        "metaphysics.identity_continuity",
+        "metaphysics.attractor_probe"
+      ]
+    },
+    {
+      "domain": "Simulation runtime",
+      "capability_ids": [
+        "simulation_runtime.deterministic_tick",
+        "simulation_runtime.snapshot_roundtrip"
+      ]
+    },
+    {
+      "domain": "Explanation / analytics",
+      "capability_ids": [
+        "explanation_analytics.typed_claim_ir",
+        "explanation_analytics.checkpoint_analysis"
+      ]
+    },
+    {
+      "domain": "Observer",
+      "capability_ids": [
+        "observer.bounded_query",
+        "observer.bounded_stream"
+      ]
+    },
+    {
+      "domain": "UI",
+      "capability_ids": [
+        "ui.session_control",
+        "ui.inspection_views"
+      ]
+    },
+    {
+      "domain": "Optional LLM surface",
+      "capability_ids": [
+        "optional_llm_surface.policy_gate",
+        "optional_llm_surface.scheduling_deferral"
+      ]
+    }
+  ],
+  "capabilities": [
+    {
+      "capability_id": "space.world_coordinate",
+      "domain": "Space",
+      "rationale": "Concrete audit capability; source anchors are resolved against the immutable baseline during Task 4."
+    },
+    {
+      "capability_id": "space.chunk_local_coordinate",
+      "domain": "Space",
+      "rationale": "Concrete audit capability; source anchors are resolved against the immutable baseline during Task 4."
+    },
+    {
+      "capability_id": "space.spatial_hierarchy",
+      "domain": "Space",
+      "rationale": "Concrete audit capability; source anchors are resolved against the immutable baseline during Task 4."
+    },
+    {
+      "capability_id": "time.simulation_clock",
+      "domain": "Time",
+      "rationale": "Concrete audit capability; source anchors are resolved against the immutable baseline during Task 4."
+    },
+    {
+      "capability_id": "time.phase_schedule",
+      "domain": "Time",
+      "rationale": "Concrete audit capability; source anchors are resolved against the immutable baseline during Task 4."
+    },
+    {
+      "capability_id": "matter.material_properties",
+      "domain": "Matter",
+      "rationale": "Concrete audit capability; source anchors are resolved against the immutable baseline during Task 4."
+    },
+    {
+      "capability_id": "matter.material_activity",
+      "domain": "Matter",
+      "rationale": "Concrete audit capability; source anchors are resolved against the immutable baseline during Task 4."
+    },
+    {
+      "capability_id": "energy.thermal_state",
+      "domain": "Energy",
+      "rationale": "Concrete audit capability; source anchors are resolved against the immutable baseline during Task 4."
+    },
+    {
+      "capability_id": "energy.kinetic_motion",
+      "domain": "Energy",
+      "rationale": "Concrete audit capability; source anchors are resolved against the immutable baseline during Task 4."
+    },
+    {
+      "capability_id": "pattern_feature.feature_definition",
+      "domain": "Pattern / Feature",
+      "rationale": "Concrete audit capability; source anchors are resolved against the immutable baseline during Task 4."
+    },
+    {
+      "capability_id": "pattern_feature.physical_pattern_history",
+      "domain": "Pattern / Feature",
+      "rationale": "Concrete audit capability; source anchors are resolved against the immutable baseline during Task 4."
+    },
+    {
+      "capability_id": "spatial_geometry.world_geometry_contract",
+      "domain": "Spatial geometry",
+      "rationale": "Concrete audit capability; source anchors are resolved against the immutable baseline during Task 4."
+    },
+    {
+      "capability_id": "spatial_geometry.local_metric_frame",
+      "domain": "Spatial geometry",
+      "rationale": "Concrete audit capability; source anchors are resolved against the immutable baseline during Task 4."
+    },
+    {
+      "capability_id": "geography.terrain_generation",
+      "domain": "Geography",
+      "rationale": "Concrete audit capability; source anchors are resolved against the immutable baseline during Task 4."
+    },
+    {
+      "capability_id": "geography.terrain_runtime_carrier",
+      "domain": "Geography",
+      "rationale": "Concrete audit capability; source anchors are resolved against the immutable baseline during Task 4."
+    },
+    {
+      "capability_id": "geology.layer_state",
+      "domain": "Geology",
+      "rationale": "Concrete audit capability; source anchors are resolved against the immutable baseline during Task 4."
+    },
+    {
+      "capability_id": "geology.formation_process",
+      "domain": "Geology",
+      "rationale": "Concrete audit capability; source anchors are resolved against the immutable baseline during Task 4."
+    },
+    {
+      "capability_id": "hydrology.cell_state",
+      "domain": "Hydrology",
+      "rationale": "Concrete audit capability; source anchors are resolved against the immutable baseline during Task 4."
+    },
+    {
+      "capability_id": "hydrology.water_flow",
+      "domain": "Hydrology",
+      "rationale": "Concrete audit capability; source anchors are resolved against the immutable baseline during Task 4."
+    },
+    {
+      "capability_id": "climate.cell_state",
+      "domain": "Climate",
+      "rationale": "Concrete audit capability; source anchors are resolved against the immutable baseline during Task 4."
+    },
+    {
+      "capability_id": "climate.transport_process",
+      "domain": "Climate",
+      "rationale": "Concrete audit capability; source anchors are resolved against the immutable baseline during Task 4."
+    },
+    {
+      "capability_id": "ecology.population_resource_state",
+      "domain": "Ecology",
+      "rationale": "Concrete audit capability; source anchors are resolved against the immutable baseline during Task 4."
+    },
+    {
+      "capability_id": "ecology.trophic_material_interaction",
+      "domain": "Ecology",
+      "rationale": "Concrete audit capability; source anchors are resolved against the immutable baseline during Task 4."
+    },
+    {
+      "capability_id": "biology.body_structure",
+      "domain": "Biology",
+      "rationale": "Concrete audit capability; source anchors are resolved against the immutable baseline during Task 4."
+    },
+    {
+      "capability_id": "biology.pathogen_lineage",
+      "domain": "Biology",
+      "rationale": "Concrete audit capability; source anchors are resolved against the immutable baseline during Task 4."
+    },
+    {
+      "capability_id": "physical_access_perception.signal_acquisition",
+      "domain": "Physical access / perception",
+      "rationale": "Concrete audit capability; source anchors are resolved against the immutable baseline during Task 4."
+    },
+    {
+      "capability_id": "physical_access_perception.feature_extraction",
+      "domain": "Physical access / perception",
+      "rationale": "Concrete audit capability; source anchors are resolved against the immutable baseline during Task 4."
+    },
+    {
+      "capability_id": "cognition.attention_state",
+      "domain": "Cognition",
+      "rationale": "Concrete audit capability; source anchors are resolved against the immutable baseline during Task 4."
+    },
+    {
+      "capability_id": "cognition.subjective_scene",
+      "domain": "Cognition",
+      "rationale": "Concrete audit capability; source anchors are resolved against the immutable baseline during Task 4."
+    },
+    {
+      "capability_id": "language.lineage_bootstrap",
+      "domain": "Language",
+      "rationale": "Concrete audit capability; source anchors are resolved against the immutable baseline during Task 4."
+    },
+    {
+      "capability_id": "language.utterance_interpretation",
+      "domain": "Language",
+      "rationale": "Concrete audit capability; source anchors are resolved against the immutable baseline during Task 4."
+    },
+    {
+      "capability_id": "mana.field_evolution",
+      "domain": "Mana",
+      "rationale": "Concrete audit capability; source anchors are resolved against the immutable baseline during Task 4."
+    },
+    {
+      "capability_id": "mana.physical_effect_commit",
+      "domain": "Mana",
+      "rationale": "Concrete audit capability; source anchors are resolved against the immutable baseline during Task 4."
+    },
+    {
+      "capability_id": "causal_resolution.relevance_field",
+      "domain": "Causal resolution",
+      "rationale": "Concrete audit capability; source anchors are resolved against the immutable baseline during Task 4."
+    },
+    {
+      "capability_id": "causal_resolution.actor_population_promotion",
+      "domain": "Causal resolution",
+      "rationale": "Concrete audit capability; source anchors are resolved against the immutable baseline during Task 4."
+    },
+    {
+      "capability_id": "society.social_state",
+      "domain": "Society",
+      "rationale": "Concrete audit capability; source anchors are resolved against the immutable baseline during Task 4."
+    },
+    {
+      "capability_id": "society.institutional_rules",
+      "domain": "Society",
+      "rationale": "Concrete audit capability; source anchors are resolved against the immutable baseline during Task 4."
+    },
+    {
+      "capability_id": "economy.material_ledger",
+      "domain": "Economy",
+      "rationale": "Concrete audit capability; source anchors are resolved against the immutable baseline during Task 4."
+    },
+    {
+      "capability_id": "economy.production_transformation",
+      "domain": "Economy",
+      "rationale": "Concrete audit capability; source anchors are resolved against the immutable baseline during Task 4."
+    },
+    {
+      "capability_id": "city_infrastructure.built_environment",
+      "domain": "City infrastructure",
+      "rationale": "Concrete audit capability; source anchors are resolved against the immutable baseline during Task 4."
+    },
+    {
+      "capability_id": "city_infrastructure.network",
+      "domain": "City infrastructure",
+      "rationale": "Concrete audit capability; source anchors are resolved against the immutable baseline during Task 4."
+    },
+    {
+      "capability_id": "historical_bootstrap.stage_dag",
+      "domain": "Historical bootstrap",
+      "rationale": "Concrete audit capability; source anchors are resolved against the immutable baseline during Task 4."
+    },
+    {
+      "capability_id": "historical_bootstrap.production_bootstrap",
+      "domain": "Historical bootstrap",
+      "rationale": "Concrete audit capability; source anchors are resolved against the immutable baseline during Task 4."
+    },
+    {
+      "capability_id": "epistemics.calibrated_measurement",
+      "domain": "Epistemics",
+      "rationale": "Concrete audit capability; source anchors are resolved against the immutable baseline during Task 4."
+    },
+    {
+      "capability_id": "epistemics.physical_document",
+      "domain": "Epistemics",
+      "rationale": "Concrete audit capability; source anchors are resolved against the immutable baseline during Task 4."
+    },
+    {
+      "capability_id": "practice.program",
+      "domain": "Practice",
+      "rationale": "Concrete audit capability; source anchors are resolved against the immutable baseline during Task 4."
+    },
+    {
+      "capability_id": "practice.execution",
+      "domain": "Practice",
+      "rationale": "Concrete audit capability; source anchors are resolved against the immutable baseline during Task 4."
+    },
+    {
+      "capability_id": "isekai.cross_world_transfer",
+      "domain": "Isekai",
+      "rationale": "Concrete audit capability; source anchors are resolved against the immutable baseline during Task 4."
+    },
+    {
+      "capability_id": "isekai.imported_priors",
+      "domain": "Isekai",
+      "rationale": "Concrete audit capability; source anchors are resolved against the immutable baseline during Task 4."
+    },
+    {
+      "capability_id": "metaphysics.identity_continuity",
+      "domain": "Metaphysics",
+      "rationale": "Concrete audit capability; source anchors are resolved against the immutable baseline during Task 4."
+    },
+    {
+      "capability_id": "metaphysics.attractor_probe",
+      "domain": "Metaphysics",
+      "rationale": "Concrete audit capability; source anchors are resolved against the immutable baseline during Task 4."
+    },
+    {
+      "capability_id": "simulation_runtime.deterministic_tick",
+      "domain": "Simulation runtime",
+      "rationale": "Concrete audit capability; source anchors are resolved against the immutable baseline during Task 4."
+    },
+    {
+      "capability_id": "simulation_runtime.snapshot_roundtrip",
+      "domain": "Simulation runtime",
+      "rationale": "Concrete audit capability; source anchors are resolved against the immutable baseline during Task 4."
+    },
+    {
+      "capability_id": "explanation_analytics.typed_claim_ir",
+      "domain": "Explanation / analytics",
+      "rationale": "Concrete audit capability; source anchors are resolved against the immutable baseline during Task 4."
+    },
+    {
+      "capability_id": "explanation_analytics.checkpoint_analysis",
+      "domain": "Explanation / analytics",
+      "rationale": "Concrete audit capability; source anchors are resolved against the immutable baseline during Task 4."
+    },
+    {
+      "capability_id": "observer.bounded_query",
+      "domain": "Observer",
+      "rationale": "Concrete audit capability; source anchors are resolved against the immutable baseline during Task 4."
+    },
+    {
+      "capability_id": "observer.bounded_stream",
+      "domain": "Observer",
+      "rationale": "Concrete audit capability; source anchors are resolved against the immutable baseline during Task 4."
+    },
+    {
+      "capability_id": "ui.session_control",
+      "domain": "UI",
+      "rationale": "Concrete audit capability; source anchors are resolved against the immutable baseline during Task 4."
+    },
+    {
+      "capability_id": "ui.inspection_views",
+      "domain": "UI",
+      "rationale": "Concrete audit capability; source anchors are resolved against the immutable baseline during Task 4."
+    },
+    {
+      "capability_id": "optional_llm_surface.policy_gate",
+      "domain": "Optional LLM surface",
+      "rationale": "Concrete audit capability; source anchors are resolved against the immutable baseline during Task 4."
+    },
+    {
+      "capability_id": "optional_llm_surface.scheduling_deferral",
+      "domain": "Optional LLM surface",
+      "rationale": "Concrete audit capability; source anchors are resolved against the immutable baseline during Task 4."
+    }
+  ]
+}

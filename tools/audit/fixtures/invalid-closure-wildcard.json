@@ -1,0 +1,25 @@
+{
+  "attempt_id": "0001",
+  "entries": [
+    {
+      "allowed_transition": "replace",
+      "expected_blob_oid": "0000000000000000000000000000000000000000",
+      "path": "tools/audit/examples/*.json",
+      "preimage_oid": "0000000000000000000000000000000000000000",
+      "replacement_path": "tools/audit/examples/*.json",
+      "replacement_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "validation_commands": [
+        "node tools/audit/validate-capability-audit.mjs closure"
+      ]
+    }
+  ],
+  "preclosure_head_sha": "26507f0c380a943488a2ab0928b5eef77d1f3ca8",
+  "preclosure_tree_oid": "0000000000000000000000000000000000000000",
+  "receipt_sha256": "661397ce801b8ffb2d391d9c9c282ff637697e47cca96cc03244713f0908989c",
+  "run_id": "audit-26026fb3862e-20260713T215215Z",
+  "schema_version": 1,
+  "source_baseline_sha": "26507f0c380a943488a2ab0928b5eef77d1f3ca8",
+  "validation_commands": [
+    "node tools/audit/validate-capability-audit.mjs closure"
+  ]
+}

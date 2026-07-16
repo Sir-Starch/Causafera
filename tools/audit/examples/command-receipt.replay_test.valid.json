@@ -1,0 +1,43 @@
+{
+  "adapter": "replay_test",
+  "argv": [
+    "node",
+    "tools/audit/validate-capability-audit.mjs",
+    "schema"
+  ],
+  "attempt_id": null,
+  "cwd": ".",
+  "deterministic_projection": {
+    "adapter": "replay_test",
+    "commit_sha": null,
+    "mode": "pass",
+    "summary": "replay_test ok",
+    "tree_oid": null
+  },
+  "environment": {
+    "CARGO_TERM_COLOR": "never",
+    "HOME": "logical",
+    "LC_ALL": "C",
+    "NO_COLOR": "1",
+    "TZ": "UTC"
+  },
+  "exit_code": 0,
+  "phase": "collection",
+  "projection_sha256": "317bb95bd539aaa9c2550ce43564afe48d7d49eac5ee55746d43b0ecd5244ae4",
+  "receipt_id": "replay_test-receipt",
+  "receipt_sha256": "68dfb5236bf46f945afc24ed71f141d8de2a99fb5d47c53b5e7f5b6770b06d38",
+  "run_id": "audit-26026fb3862e-20260713T215215Z",
+  "schema_version": 1,
+  "source_baseline_sha": "26507f0c380a943488a2ab0928b5eef77d1f3ca8",
+  "stderr_path": "tools/audit/fixtures/replay_test.stderr.txt",
+  "stderr_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "stdout_path": "tools/audit/fixtures/replay_test.stdout.txt",
+  "stdout_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "tool_versions": {
+    "node": "v22.0.0"
+  },
+  "workload": {
+    "name": "replay_test",
+    "purpose": "audit"
+  }
+}

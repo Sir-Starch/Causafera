@@ -1,0 +1,33 @@
+{
+  "adapter": "source_definition",
+  "argv": [
+    "node",
+    "tools/audit/validate-capability-audit.mjs",
+    "schema"
+  ],
+  "attempt_id": null,
+  "cwd": ".",
+  "environment": {
+    "CARGO_TERM_COLOR": "never",
+    "HOME": "logical",
+    "LC_ALL": "C",
+    "NO_COLOR": "1",
+    "TZ": "UTC"
+  },
+  "phase": "collection",
+  "receipt_id": "intent-001",
+  "receipt_path": "tools/audit/fixtures/intent-001.json",
+  "receipt_sha256": "c7026a6f22917be42bd42990bba8cd166b9fcab586ac505b1a059b7c9bc3c99d",
+  "run_id": "audit-26026fb3862e-20260713T215215Z",
+  "schema_version": 1,
+  "source_baseline_sha": "26507f0c380a943488a2ab0928b5eef77d1f3ca8",
+  "stderr_path": "tools/audit/fixtures/intent-001.stderr.txt",
+  "stdout_path": "tools/audit/fixtures/intent-001.stdout.txt",
+  "tool_versions": {
+    "node": "v22.0.0"
+  },
+  "workload": {
+    "name": "schema",
+    "purpose": "audit"
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "adapter": "benchmark_diagnostic",
+  "argv": [
+    "node",
+    "tools/audit/validate-capability-audit.mjs",
+    "schema"
+  ],
+  "attempt_id": null,
+  "cwd": ".",
+  "deterministic_projection": {
+    "adapter": "benchmark_diagnostic",
+    "commit_sha": null,
+    "mode": "pass",
+    "summary": "benchmark_diagnostic ok",
+    "tree_oid": null
+  },
+  "environment": {
+    "CARGO_TERM_COLOR": "never",
+    "HOME": "logical",
+    "LC_ALL": "C",
+    "NO_COLOR": "1",
+    "TZ": "UTC"
+  },
+  "exit_code": 0,
+  "phase": "collection",
+  "projection_sha256": "640bc451224d1ad559d5859dc8b1c2b04d410f11a9d819a809eebf9cd8579683",
+  "receipt_id": "benchmark_diagnostic-receipt",
+  "receipt_sha256": "25322e75ba2bda86c999ee07e6e493f999fbf8eda0d7e1f1bb8d1edc982cbfc9",
+  "run_id": "audit-26026fb3862e-20260713T215215Z",
+  "schema_version": 1,
+  "source_baseline_sha": "26507f0c380a943488a2ab0928b5eef77d1f3ca8",
+  "stderr_path": "tools/audit/fixtures/benchmark_diagnostic.stderr.txt",
+  "stderr_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "stdout_path": "tools/audit/fixtures/benchmark_diagnostic.stdout.txt",
+  "stdout_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "tool_versions": {
+    "node": "v22.0.0"
+  },
+  "workload": {
+    "name": "benchmark_diagnostic",
+    "purpose": "audit"
+  }
+}

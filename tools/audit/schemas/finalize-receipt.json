@@ -1,0 +1,58 @@
+{
+  "additional_properties": false,
+  "enums": {
+    "phase": [
+      "collection",
+      "preclosure",
+      "finalize"
+    ],
+    "verdict": [
+      "pass",
+      "fail"
+    ]
+  },
+  "formats": {
+    "head_sha": "git-sha1",
+    "head_tree_oid": "git-oid",
+    "index_tree_oid": "git-oid",
+    "receipt_sha256": "sha256",
+    "run_id": "run-id",
+    "schema_version": "integer",
+    "source_baseline_sha": "git-sha1"
+  },
+  "name": "finalize-receipt",
+  "nested_records": [],
+  "nullable_fields": {},
+  "required_fields": {
+    "root": [
+      "schema_version",
+      "run_id",
+      "source_baseline_sha",
+      "attempt_id",
+      "phase",
+      "input_hashes",
+      "commands",
+      "checks",
+      "head_sha",
+      "head_tree_oid",
+      "index_tree_oid",
+      "verdict",
+      "receipt_sha256"
+    ]
+  },
+  "root_fields": [
+    "schema_version",
+    "run_id",
+    "source_baseline_sha",
+    "attempt_id",
+    "phase",
+    "input_hashes",
+    "commands",
+    "checks",
+    "head_sha",
+    "head_tree_oid",
+    "index_tree_oid",
+    "verdict",
+    "receipt_sha256"
+  ]
+}

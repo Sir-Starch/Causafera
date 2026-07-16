@@ -1,0 +1,23 @@
+{
+  "attempt_id": null,
+  "graph_schema_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "index_sha": "26507f0c380a943488a2ab0928b5eef77d1f3ca8",
+  "operation": "query_graph",
+  "ordered_result_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "parameters": {
+    "edge_type": "CALLS",
+    "limit": 1,
+    "query_id": "q-001"
+  },
+  "phase": "collection",
+  "query": "MATCH (a)-[e:CALLS]->(b) RETURN a,b",
+  "raw_path": "tools/audit/fixtures/graph-001.raw.json",
+  "raw_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "receipt_id": "graph-001",
+  "receipt_sha256": "850cb30f767cc6cd73637c2565e3a1d2fddb188e6bd299884015ca35d5f45494",
+  "returned": 1,
+  "run_id": "audit-26026fb3862e-20260713T215215Z",
+  "schema_version": 1,
+  "source_baseline_sha": "26507f0c380a943488a2ab0928b5eef77d1f3ca8",
+  "total": 1
+}

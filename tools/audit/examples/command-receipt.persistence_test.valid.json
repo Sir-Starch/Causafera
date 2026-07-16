@@ -1,0 +1,43 @@
+{
+  "adapter": "persistence_test",
+  "argv": [
+    "node",
+    "tools/audit/validate-capability-audit.mjs",
+    "schema"
+  ],
+  "attempt_id": null,
+  "cwd": ".",
+  "deterministic_projection": {
+    "adapter": "persistence_test",
+    "commit_sha": null,
+    "mode": "pass",
+    "summary": "persistence_test ok",
+    "tree_oid": null
+  },
+  "environment": {
+    "CARGO_TERM_COLOR": "never",
+    "HOME": "logical",
+    "LC_ALL": "C",
+    "NO_COLOR": "1",
+    "TZ": "UTC"
+  },
+  "exit_code": 0,
+  "phase": "collection",
+  "projection_sha256": "f6501e977a3795e68e96b27f252bdbe6ce65900427dd27a28368203d32bd0fc4",
+  "receipt_id": "persistence_test-receipt",
+  "receipt_sha256": "970c738bbb405e2ce24ef7ff0a753b217d0ef9850866190fe6223e08211a08a8",
+  "run_id": "audit-26026fb3862e-20260713T215215Z",
+  "schema_version": 1,
+  "source_baseline_sha": "26507f0c380a943488a2ab0928b5eef77d1f3ca8",
+  "stderr_path": "tools/audit/fixtures/persistence_test.stderr.txt",
+  "stderr_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "stdout_path": "tools/audit/fixtures/persistence_test.stdout.txt",
+  "stdout_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "tool_versions": {
+    "node": "v22.0.0"
+  },
+  "workload": {
+    "name": "persistence_test",
+    "purpose": "audit"
+  }
+}

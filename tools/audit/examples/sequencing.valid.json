@@ -1,0 +1,50 @@
+{
+  "candidates": [
+    {
+      "candidate_id": "TODO-SIM-001",
+      "extensions": {},
+      "target_capability_ids": [
+        "cap-space-001"
+      ],
+      "todo_id": "TODO-SIM-001"
+    }
+  ],
+  "edges": [
+    {
+      "edge_type": "evidence_only",
+      "evidence_ids": [
+        "e-001"
+      ],
+      "from": "node-1",
+      "rationale": "self",
+      "to": "node-1"
+    }
+  ],
+  "extensions": {},
+  "nodes": [
+    {
+      "evidence_ids": [
+        "e-001"
+      ],
+      "node_id": "node-1",
+      "node_kind": "candidate",
+      "status": "ready"
+    }
+  ],
+  "run_id": "audit-26026fb3862e-20260713T215215Z",
+  "schema_version": 1,
+  "selection": {
+    "checker_version": "1",
+    "minimal_remediation_node_ids": [
+      "node-1"
+    ],
+    "mode": "prerequisite-remediation",
+    "rationale": "single candidate",
+    "ready_candidate_ids": [
+      "TODO-SIM-001"
+    ],
+    "selected_candidate_id": "TODO-SIM-001",
+    "tie_break_serialization": "{\"candidate_id\":\"TODO-SIM-001\"}"
+  },
+  "source_baseline_sha": "26507f0c380a943488a2ab0928b5eef77d1f3ca8"
+}

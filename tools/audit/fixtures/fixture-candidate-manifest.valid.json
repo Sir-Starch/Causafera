@@ -1,0 +1,99 @@
+{
+  "candidates": [
+    {
+      "bindings": [
+        {
+          "binding_id": "bind-space-001",
+          "capability_id": "cap-space-001",
+          "role": "primary",
+          "lifecycle_boundary": "initialization"
+        }
+      ],
+      "blob_oid": "0000000000000000000000000000000000000000",
+      "candidate_key": "candidate-space-001",
+      "definition_character": 0,
+      "exclusion_id": null,
+      "failure_cases": [
+        "fc-001"
+      ],
+      "graph_receipt_ids": [
+        "graph-001"
+      ],
+      "is_exported": true,
+      "is_test": false,
+      "kind": "source",
+      "line_end": 10,
+      "line_start": 1,
+      "lsp_receipt_ids": [
+        "lsp-001"
+      ],
+      "path": "crates/core/src/lib.rs",
+      "symbol": "space"
+    }
+  ],
+  "exclusions": [
+    {
+      "candidate_keys": [
+        "candidate-space-001"
+      ],
+      "evidence_ids": [
+        "e-001"
+      ],
+      "exclusion_id": "ex-001",
+      "rationale": "demo",
+      "reason": "test_only"
+    }
+  ],
+  "extensions": {
+    "binding_contexts": [
+      {
+        "binding_id": "bind-space-001",
+        "candidate_key": "candidate-space-001",
+        "grouping": {
+          "domain": "Space",
+          "capability_class": "state",
+          "state_path": null,
+          "mutation_owner": null,
+          "lifecycle_boundary": "initialization"
+        },
+        "endpoint_declaration": {}
+      }
+    ],
+    "receipt_manifests": {
+      "graph": {
+        "receipt_id": "graph-manifest-001",
+        "path": "tools/audit/examples/graph-receipt.valid.json",
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "lsp": {
+        "receipt_id": "lsp-manifest-001",
+        "path": "tools/audit/examples/lsp-receipt.valid.json",
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "data_flows_absence": {
+        "receipt_id": "data-flows-absence-001",
+        "path": "tools/audit/examples/graph-receipt.valid.json",
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+      }
+    },
+    "semantic_review": {
+      "receipt_id": "semantic-review-001",
+      "path": "tools/audit/examples/semantic-review.valid.json",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  },
+  "graph_queries": [
+    {
+      "edge_type": "CALLS",
+      "query": "MATCH (a)-[e:CALLS]->(b) RETURN a,b",
+      "query_id": "q-001",
+      "result_count": 1
+    }
+  ],
+  "run_id": "audit-26026fb3862e-20260713T215215Z",
+  "schema_version": 1,
+  "source_baseline_sha": "26507f0c380a943488a2ab0928b5eef77d1f3ca8",
+  "tree_files": [
+    "tools/audit/examples/candidate-manifest.valid.json"
+  ]
+}

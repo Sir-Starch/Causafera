@@ -1,0 +1,23 @@
+{
+  "candidate_keys": [
+    "candidate-space-001"
+  ],
+  "capability_ids": [
+    "cap-space-001"
+  ],
+  "evidence_ids": [
+    "e-001"
+  ],
+  "extensions": {},
+  "family": "durable physical causality",
+  "findings": [
+    "no timer artifacts"
+  ],
+  "qualified_roots": [
+    "crates/core/src/lib.rs"
+  ],
+  "run_id": "audit-26026fb3862e-20260713T215215Z",
+  "schema_version": 1,
+  "source_baseline_sha": "26507f0c380a943488a2ab0928b5eef77d1f3ca8",
+  "stop_condition": "stable"
+}

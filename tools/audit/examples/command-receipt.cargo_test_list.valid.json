@@ -1,0 +1,43 @@
+{
+  "adapter": "cargo_test_list",
+  "argv": [
+    "node",
+    "tools/audit/validate-capability-audit.mjs",
+    "schema"
+  ],
+  "attempt_id": null,
+  "cwd": ".",
+  "deterministic_projection": {
+    "adapter": "cargo_test_list",
+    "commit_sha": null,
+    "mode": "pass",
+    "summary": "cargo_test_list ok",
+    "tree_oid": null
+  },
+  "environment": {
+    "CARGO_TERM_COLOR": "never",
+    "HOME": "logical",
+    "LC_ALL": "C",
+    "NO_COLOR": "1",
+    "TZ": "UTC"
+  },
+  "exit_code": 0,
+  "phase": "collection",
+  "projection_sha256": "3d25b5160c17f83e8a37cf26404e119b442ebdd2222a901cc4c0883c14e92111",
+  "receipt_id": "cargo_test_list-receipt",
+  "receipt_sha256": "a5f04090371d7eb6ddea2fb93876ad8efad28b4100806c218cc9bf22d8392083",
+  "run_id": "audit-26026fb3862e-20260713T215215Z",
+  "schema_version": 1,
+  "source_baseline_sha": "26507f0c380a943488a2ab0928b5eef77d1f3ca8",
+  "stderr_path": "tools/audit/fixtures/cargo_test_list.stderr.txt",
+  "stderr_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "stdout_path": "tools/audit/fixtures/cargo_test_list.stdout.txt",
+  "stdout_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "tool_versions": {
+    "node": "v22.0.0"
+  },
+  "workload": {
+    "name": "cargo_test_list",
+    "purpose": "audit"
+  }
+}

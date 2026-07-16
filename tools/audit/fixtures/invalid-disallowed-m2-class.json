@@ -1,0 +1,187 @@
+{
+  "capabilities": [
+    {
+      "authoritative_state": {
+        "path": null,
+        "rationale": "observer-only",
+        "symbol": null
+      },
+      "capability_class": "validation",
+      "capability_id": "cap-space-001",
+      "carriers": [
+        "geometry"
+      ],
+      "semantic_profile": {
+        "production_reachability": "missing",
+        "resolution": {
+          "status": "missing",
+          "evidence_ids": [],
+          "rationale": "resolution evidence is missing"
+        },
+        "persistence": {
+          "status": "missing",
+          "evidence_ids": [],
+          "rationale": "persistence evidence is missing"
+        },
+        "provenance": {
+          "status": "missing",
+          "evidence_ids": [],
+          "rationale": "provenance evidence is missing"
+        },
+        "observer": {
+          "status": "partial",
+          "evidence_ids": [
+            "e-001"
+          ],
+          "rationale": "observer evidence is partial"
+        },
+        "explanation": {
+          "status": "missing",
+          "evidence_ids": [],
+          "rationale": "explanation evidence is missing"
+        },
+        "determinism": {
+          "status": "partial",
+          "evidence_ids": [
+            "e-001"
+          ],
+          "rationale": "determinism evidence is partial"
+        },
+        "performance": {
+          "status": "missing",
+          "evidence_ids": [],
+          "rationale": "performance evidence is missing"
+        },
+        "target": "M2",
+        "gaps": [
+          "production composition and persistence are not evidenced"
+        ],
+        "dependencies": [],
+        "negative_control": {
+          "status": "missing",
+          "evidence_ids": [],
+          "rationale": "no negative control is admitted"
+        }
+      },
+      "domain": "space",
+      "levels": {
+        "M0": {
+          "evidence_ids": [
+            "e-001"
+          ],
+          "rationale": "documented",
+          "status": "satisfied"
+        },
+        "M1": {
+          "evidence_ids": [
+            "e-001"
+          ],
+          "rationale": "contracted",
+          "status": "satisfied"
+        },
+        "M2": {
+          "evidence_ids": [
+            "e-001"
+          ],
+          "rationale": "synthetic disallowed M2 class",
+          "status": "satisfied"
+        },
+        "M3": {
+          "evidence_ids": [],
+          "rationale": "not yet coupled",
+          "status": "missing"
+        },
+        "M4": {
+          "evidence_ids": [],
+          "rationale": "not yet observable",
+          "status": "missing"
+        },
+        "M5": {
+          "evidence_ids": [],
+          "rationale": "not yet validated",
+          "status": "missing"
+        }
+      },
+      "mutation_owner": {
+        "path": null,
+        "rationale": "none",
+        "symbol": null
+      },
+      "representative_workload": {
+        "bounded_inputs": [
+          "chunk"
+        ],
+        "duration": 1,
+        "metrics": [
+          "coverage"
+        ],
+        "name": "space-audit",
+        "sample_count": 1,
+        "status": "present",
+        "validation_envelope": [
+          "exact_path"
+        ],
+        "warmup": null
+      },
+      "target_maturity": "M2"
+    }
+  ],
+  "domains": [
+    {
+      "capability_ids": [
+        "cap-space-001"
+      ],
+      "domain": "space"
+    }
+  ],
+  "evidence": [
+    {
+      "adapter": "production_composition",
+      "blob_oid": "0000000000000000000000000000000000000000",
+      "command": "node tools/audit/validate-capability-audit.mjs schema",
+      "evidence_id": "e-001",
+      "exit_code": 0,
+      "extensions": {},
+      "facets": [
+        "production_root_qn",
+        "mutation_owner_qn",
+        "path"
+      ],
+      "line_end": 1,
+      "line_start": 1,
+      "path": "tools/audit/examples/command-receipt.valid.json",
+      "receipt_path": "tools/audit/examples/command-receipt.valid.json",
+      "receipt_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "run_id": "audit-26026fb3862e-20260713T215215Z",
+      "source_baseline_sha": "26507f0c380a943488a2ab0928b5eef77d1f3ca8",
+      "symbol": "space",
+      "workload": {
+        "bounded_inputs": [
+          "chunk"
+        ],
+        "name": "space"
+      }
+    }
+  ],
+  "extensions": {},
+  "run_id": "audit-26026fb3862e-20260713T215215Z",
+  "schema_version": 1,
+  "source_baseline_sha": "26507f0c380a943488a2ab0928b5eef77d1f3ca8",
+  "source_reconciliation": {
+    "evidence_ids": [
+      "e-001"
+    ],
+    "rationale": "aligned",
+    "status": "present"
+  },
+  "todo_bindings": [
+    {
+      "acceptance": "contracts",
+      "clause_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "dependency_range": "1-9",
+      "goal": "inventory",
+      "heading": "Maturity audit",
+      "todo_id": "TODO-DEPTH-001"
+    }
+  ]
+}

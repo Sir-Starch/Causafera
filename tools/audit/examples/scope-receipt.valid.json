@@ -1,0 +1,20 @@
+{
+  "allowlist": [
+    "tools/audit"
+  ],
+  "attempt_id": "0001",
+  "cached": [],
+  "committed": [
+    "tools/audit/fixtures/fixture-blobs.json"
+  ],
+  "ignored": [],
+  "phase": "scope",
+  "preflight_preserved": true,
+  "receipt_sha256": "0218a1d4380118e62328aef6cbe683e42d19ff8337aa9f1509d0f27fd9d723be",
+  "run_id": "audit-26026fb3862e-20260713T215215Z",
+  "schema_version": 1,
+  "source_baseline_sha": "26507f0c380a943488a2ab0928b5eef77d1f3ca8",
+  "unstaged": [],
+  "untracked": [],
+  "verdict": "pass"
+}

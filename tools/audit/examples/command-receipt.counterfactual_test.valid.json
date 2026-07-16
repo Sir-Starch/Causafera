@@ -1,0 +1,43 @@
+{
+  "adapter": "counterfactual_test",
+  "argv": [
+    "node",
+    "tools/audit/validate-capability-audit.mjs",
+    "schema"
+  ],
+  "attempt_id": null,
+  "cwd": ".",
+  "deterministic_projection": {
+    "adapter": "counterfactual_test",
+    "commit_sha": null,
+    "mode": "pass",
+    "summary": "counterfactual_test ok",
+    "tree_oid": null
+  },
+  "environment": {
+    "CARGO_TERM_COLOR": "never",
+    "HOME": "logical",
+    "LC_ALL": "C",
+    "NO_COLOR": "1",
+    "TZ": "UTC"
+  },
+  "exit_code": 0,
+  "phase": "collection",
+  "projection_sha256": "43a6eaa3850d394ef46878c603ae9147f5cba5063351f98b2c08bdbc2e4e2c0e",
+  "receipt_id": "counterfactual_test-receipt",
+  "receipt_sha256": "c193d9790c6709432da88fa0ce8eb7673218024bbf424560e98e6fac40efea57",
+  "run_id": "audit-26026fb3862e-20260713T215215Z",
+  "schema_version": 1,
+  "source_baseline_sha": "26507f0c380a943488a2ab0928b5eef77d1f3ca8",
+  "stderr_path": "tools/audit/fixtures/counterfactual_test.stderr.txt",
+  "stderr_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "stdout_path": "tools/audit/fixtures/counterfactual_test.stdout.txt",
+  "stdout_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "tool_versions": {
+    "node": "v22.0.0"
+  },
+  "workload": {
+    "name": "counterfactual_test",
+    "purpose": "audit"
+  }
+}

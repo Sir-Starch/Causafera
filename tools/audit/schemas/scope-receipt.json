@@ -1,0 +1,57 @@
+{
+  "additional_properties": false,
+  "enums": {
+    "phase": [
+      "collection",
+      "preflight",
+      "scope"
+    ],
+    "verdict": [
+      "pass",
+      "fail"
+    ]
+  },
+  "formats": {
+    "receipt_sha256": "sha256",
+    "run_id": "run-id",
+    "schema_version": "integer",
+    "source_baseline_sha": "git-sha1"
+  },
+  "name": "scope-receipt",
+  "nested_records": [],
+  "nullable_fields": {},
+  "required_fields": {
+    "root": [
+      "schema_version",
+      "run_id",
+      "source_baseline_sha",
+      "attempt_id",
+      "phase",
+      "allowlist",
+      "committed",
+      "cached",
+      "unstaged",
+      "untracked",
+      "ignored",
+      "preflight_preserved",
+      "verdict",
+      "receipt_sha256"
+    ]
+  },
+  "root_fields": [
+    "schema_version",
+    "run_id",
+    "source_baseline_sha",
+    "attempt_id",
+    "phase",
+    "allowlist",
+    "committed",
+    "cached",
+    "unstaged",
+    "untracked",
+    "ignored",
+    "preflight_preserved",
+    "verdict",
+    "receipt_sha256"
+  ]
+}

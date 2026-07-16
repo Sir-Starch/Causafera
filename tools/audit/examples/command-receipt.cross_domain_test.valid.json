@@ -1,0 +1,43 @@
+{
+  "adapter": "cross_domain_test",
+  "argv": [
+    "node",
+    "tools/audit/validate-capability-audit.mjs",
+    "schema"
+  ],
+  "attempt_id": null,
+  "cwd": ".",
+  "deterministic_projection": {
+    "adapter": "cross_domain_test",
+    "commit_sha": null,
+    "mode": "pass",
+    "summary": "cross_domain_test ok",
+    "tree_oid": null
+  },
+  "environment": {
+    "CARGO_TERM_COLOR": "never",
+    "HOME": "logical",
+    "LC_ALL": "C",
+    "NO_COLOR": "1",
+    "TZ": "UTC"
+  },
+  "exit_code": 0,
+  "phase": "collection",
+  "projection_sha256": "f78b2bb859b3f217c31e95973c0a67d805abb5488239851f8589c9ce635603b4",
+  "receipt_id": "cross_domain_test-receipt",
+  "receipt_sha256": "56987aa68058ef2236c1dc52f1acdc07b513a146ee71550da49575304ad102b3",
+  "run_id": "audit-26026fb3862e-20260713T215215Z",
+  "schema_version": 1,
+  "source_baseline_sha": "26507f0c380a943488a2ab0928b5eef77d1f3ca8",
+  "stderr_path": "tools/audit/fixtures/cross_domain_test.stderr.txt",
+  "stderr_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "stdout_path": "tools/audit/fixtures/cross_domain_test.stdout.txt",
+  "stdout_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "tool_versions": {
+    "node": "v22.0.0"
+  },
+  "workload": {
+    "name": "cross_domain_test",
+    "purpose": "audit"
+  }
+}

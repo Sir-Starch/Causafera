@@ -1,0 +1,43 @@
+{
+  "adapter": "git_preflight",
+  "argv": [
+    "node",
+    "tools/audit/validate-capability-audit.mjs",
+    "schema"
+  ],
+  "attempt_id": null,
+  "cwd": ".",
+  "deterministic_projection": {
+    "adapter": "git_preflight",
+    "commit_sha": null,
+    "mode": "pass",
+    "summary": "git_preflight ok",
+    "tree_oid": null
+  },
+  "environment": {
+    "CARGO_TERM_COLOR": "never",
+    "HOME": "logical",
+    "LC_ALL": "C",
+    "NO_COLOR": "1",
+    "TZ": "UTC"
+  },
+  "exit_code": 0,
+  "phase": "collection",
+  "projection_sha256": "d486bee3a193a0b141a208b4a9e2ed23ecb1236834e5fc12bf8a9e205533774f",
+  "receipt_id": "git_preflight-receipt",
+  "receipt_sha256": "a63f233fb6122be3e72cdf601d5b82a66678416109a9e2eef80152b078999fa3",
+  "run_id": "audit-26026fb3862e-20260713T215215Z",
+  "schema_version": 1,
+  "source_baseline_sha": "26507f0c380a943488a2ab0928b5eef77d1f3ca8",
+  "stderr_path": "tools/audit/fixtures/git_preflight.stderr.txt",
+  "stderr_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "stdout_path": "tools/audit/fixtures/git_preflight.stdout.txt",
+  "stdout_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "tool_versions": {
+    "node": "v22.0.0"
+  },
+  "workload": {
+    "name": "git_preflight",
+    "purpose": "audit"
+  }
+}

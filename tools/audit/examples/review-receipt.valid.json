@@ -1,0 +1,18 @@
+{
+  "attempt_id": "0001",
+  "findings": [],
+  "phase": "collection",
+  "receipt_id": "review-0001",
+  "receipt_sha256": "6207e3cb842d40ce616a3ea3c978ce0ef37a67e4a27d99bb7f07a9e4a821419f",
+  "reviewed_artifact_oids": [
+    "0000000000000000000000000000000000000000"
+  ],
+  "role": "parent",
+  "run_id": "audit-26026fb3862e-20260713T215215Z",
+  "schema_version": 1,
+  "session_id": "session-001",
+  "source_baseline_sha": "26507f0c380a943488a2ab0928b5eef77d1f3ca8",
+  "staged_tree_oid": "0000000000000000000000000000000000000000",
+  "task_id": "task-03",
+  "verdict": "pass"
+}

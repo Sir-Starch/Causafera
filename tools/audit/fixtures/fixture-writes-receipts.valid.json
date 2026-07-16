@@ -1,0 +1,17 @@
+{
+  "receipt_sha256": "1e840dec85cea32b25960a96c119c8439a43849de21c8521e95ce291a5557bb9",
+  "receipts": [
+    {
+      "direction": "out",
+      "edge_type": "WRITES",
+      "store": "field",
+      "store_path": "crates/core/src/lib.rs",
+      "trace_id": "writes-001",
+      "writer": "space",
+      "writer_path": "crates/core/src/lib.rs"
+    }
+  ],
+  "run_id": "audit-26026fb3862e-20260713T215215Z",
+  "schema_version": 1,
+  "source_baseline_sha": "26507f0c380a943488a2ab0928b5eef77d1f3ca8"
+}

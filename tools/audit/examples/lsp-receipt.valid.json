@@ -1,0 +1,32 @@
+{
+  "attempt_id": null,
+  "baseline_blob_oid": "0000000000000000000000000000000000000000",
+  "complete": true,
+  "ordered_result_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "flattened_symbols_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "parameters": {
+    "include_declarations": true,
+    "limit": 1,
+    "query": "space"
+  },
+  "path": "crates/core/src/lib.rs",
+  "phase": "collection",
+  "raw_path": "tools/audit/fixtures/lsp-001.raw.json",
+  "raw_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "receipt_id": "lsp-001",
+  "receipt_sha256": "22dfec2c926cdd00277e7a40da1d679883f64687385450094df3432a0795e983",
+  "run_id": "audit-26026fb3862e-20260713T215215Z",
+  "schema_version": 1,
+  "source_baseline_sha": "26507f0c380a943488a2ab0928b5eef77d1f3ca8",
+  "symbols": [
+    {
+      "kind": "Function",
+      "name": "space",
+      "line_start": 1,
+      "line_end": 1,
+      "definition_character": 0,
+      "children": []
+    }
+  ],
+  "worktree_blob_oid": "0000000000000000000000000000000000000000"
+}

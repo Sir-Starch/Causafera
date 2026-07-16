@@ -1,0 +1,23 @@
+{
+  "entries": [
+    {
+      "byte_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "kind": "json",
+      "logical_path": "tools/audit/examples/candidate-manifest.valid.json",
+      "tracked_blob_oid": "0000000000000000000000000000000000000000",
+      "tracked_path": "tools/audit/examples/candidate-manifest.valid.json"
+    },
+    {
+      "byte_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "kind": "json",
+      "logical_path": "tools/audit/fixtures/fixture-blobs.json",
+      "tracked_blob_oid": "0000000000000000000000000000000000000000",
+      "tracked_path": "tools/audit/fixtures/fixture-blobs.json"
+    }
+  ],
+  "receipt_sha256": "cf9dc84401d7405e339aa2f99089118244294cba7eaf0ab734cb98dd2b51fa84",
+  "run_id": "audit-26026fb3862e-20260713T215215Z",
+  "schema_version": 1,
+  "source_baseline_sha": "26507f0c380a943488a2ab0928b5eef77d1f3ca8",
+  "tree_oid": "0000000000000000000000000000000000000000"
+}

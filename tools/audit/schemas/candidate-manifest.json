@@ -1,0 +1,142 @@
+{
+  "additional_properties": false,
+  "enums": {
+    "candidates[].is_exported": [
+      false,
+      true
+    ],
+    "candidates[].is_test": [
+      false,
+      true
+    ],
+    "candidates[].kind": [
+      "source",
+      "test",
+      "documentation",
+      "tooling"
+    ]
+  },
+  "formats": {
+    "run_id": "run-id",
+    "schema_version": "integer",
+    "source_baseline_sha": "git-sha1"
+  },
+  "name": "candidate-manifest",
+  "nested_records": [
+    {
+      "fields": [
+        "query_id",
+        "edge_type",
+        "query",
+        "result_count"
+      ],
+      "kind": "array",
+      "path": "graph_queries[]"
+    },
+    {
+      "fields": [
+        "candidate_key",
+        "kind",
+        "path",
+        "blob_oid",
+        "line_start",
+        "line_end",
+        "definition_character",
+        "symbol",
+        "graph_receipt_ids",
+        "lsp_receipt_ids",
+        "is_test",
+        "is_exported",
+        "bindings",
+        "exclusion_id",
+        "failure_cases"
+      ],
+      "kind": "array",
+      "path": "candidates[]"
+    },
+    {
+      "fields": [
+        "binding_id",
+        "capability_id",
+        "role",
+        "lifecycle_boundary"
+      ],
+      "kind": "array",
+      "path": "candidates[].bindings[]"
+    },
+    {
+      "fields": [
+        "exclusion_id",
+        "candidate_keys",
+        "reason",
+        "evidence_ids",
+        "rationale"
+      ],
+      "kind": "array",
+      "path": "exclusions[]"
+    }
+  ],
+  "nullable_fields": {
+    "candidates[]": [
+      "exclusion_id"
+    ]
+  },
+  "required_fields": {
+    "candidates[]": [
+      "candidate_key",
+      "kind",
+      "path",
+      "blob_oid",
+      "line_start",
+      "line_end",
+      "definition_character",
+      "symbol",
+      "graph_receipt_ids",
+      "lsp_receipt_ids",
+      "is_test",
+      "is_exported",
+      "bindings",
+      "exclusion_id",
+      "failure_cases"
+    ],
+    "candidates[].bindings[]": [
+      "binding_id",
+      "capability_id",
+      "role",
+      "lifecycle_boundary"
+    ],
+    "exclusions[]": [
+      "exclusion_id",
+      "candidate_keys",
+      "reason",
+      "evidence_ids",
+      "rationale"
+    ],
+    "graph_queries[]": [
+      "query_id",
+      "edge_type",
+      "query",
+      "result_count"
+    ],
+    "root": [
+      "schema_version",
+      "run_id",
+      "source_baseline_sha",
+      "tree_files",
+      "graph_queries",
+      "candidates",
+      "exclusions",
+      "extensions"
+    ]
+  },
+  "root_fields": [
+    "schema_version",
+    "run_id",
+    "source_baseline_sha",
+    "tree_files",
+    "graph_queries",
+    "candidates",
+    "exclusions",
+    "extensions"
+  ]
+}

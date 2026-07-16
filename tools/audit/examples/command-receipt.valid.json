@@ -1,0 +1,43 @@
+{
+  "adapter": "source_definition",
+  "argv": [
+    "node",
+    "tools/audit/validate-capability-audit.mjs",
+    "schema"
+  ],
+  "attempt_id": null,
+  "cwd": ".",
+  "deterministic_projection": {
+    "adapter": "source_definition",
+    "commit_sha": null,
+    "mode": "pass",
+    "summary": "source_definition ok",
+    "tree_oid": null
+  },
+  "environment": {
+    "CARGO_TERM_COLOR": "never",
+    "HOME": "logical",
+    "LC_ALL": "C",
+    "NO_COLOR": "1",
+    "TZ": "UTC"
+  },
+  "exit_code": 0,
+  "phase": "collection",
+  "projection_sha256": "4d81cedceb3dea87939ab9bbca4b8ca0661438c6704107be88cc2869d0fb15d0",
+  "receipt_id": "source_definition-receipt",
+  "receipt_sha256": "555f48a71a11d179feb4a29c5070cbc82f4de2c4214e1ef7bd4263ec83679299",
+  "run_id": "audit-26026fb3862e-20260713T215215Z",
+  "schema_version": 1,
+  "source_baseline_sha": "26507f0c380a943488a2ab0928b5eef77d1f3ca8",
+  "stderr_path": "tools/audit/fixtures/source_definition.stderr.txt",
+  "stderr_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "stdout_path": "tools/audit/fixtures/source_definition.stdout.txt",
+  "stdout_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "tool_versions": {
+    "node": "v22.0.0"
+  },
+  "workload": {
+    "name": "source_definition",
+    "purpose": "audit"
+  }
+}

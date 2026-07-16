@@ -1,0 +1,43 @@
+{
+  "adapter": "confirmed_violation",
+  "argv": [
+    "node",
+    "tools/audit/validate-capability-audit.mjs",
+    "schema"
+  ],
+  "attempt_id": null,
+  "cwd": ".",
+  "deterministic_projection": {
+    "adapter": "confirmed_violation",
+    "commit_sha": null,
+    "mode": "pass",
+    "summary": "confirmed_violation ok",
+    "tree_oid": null
+  },
+  "environment": {
+    "CARGO_TERM_COLOR": "never",
+    "HOME": "logical",
+    "LC_ALL": "C",
+    "NO_COLOR": "1",
+    "TZ": "UTC"
+  },
+  "exit_code": 0,
+  "phase": "collection",
+  "projection_sha256": "55506d1a82d83365560598a20f662f16891bb28aaa4870db692fdb522a493ddb",
+  "receipt_id": "confirmed_violation-receipt",
+  "receipt_sha256": "d4971983db9fbd06caa4df9aa55709884586857725e465977e228d2aa1eaa0d3",
+  "run_id": "audit-26026fb3862e-20260713T215215Z",
+  "schema_version": 1,
+  "source_baseline_sha": "26507f0c380a943488a2ab0928b5eef77d1f3ca8",
+  "stderr_path": "tools/audit/fixtures/confirmed_violation.stderr.txt",
+  "stderr_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "stdout_path": "tools/audit/fixtures/confirmed_violation.stdout.txt",
+  "stdout_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "tool_versions": {
+    "node": "v22.0.0"
+  },
+  "workload": {
+    "name": "confirmed_violation",
+    "purpose": "audit"
+  }
+}

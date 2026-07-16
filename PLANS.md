@@ -47,7 +47,9 @@ Progress
 
 ## Active Plans
 
-None.
+- `plans/detailed-development-maturity-audit.md` — active bounded evidence audit for the frozen
+  `26026fb3862e` baseline; records 30-domain capability maturity, four deep blocker families,
+  deterministic sequencing, and one downstream Draft ExecPlan without product implementation.
 
 ## Draft Plans
 

@@ -1,0 +1,43 @@
+{
+  "adapter": "git_diff_check",
+  "argv": [
+    "node",
+    "tools/audit/validate-capability-audit.mjs",
+    "schema"
+  ],
+  "attempt_id": null,
+  "cwd": ".",
+  "deterministic_projection": {
+    "adapter": "git_diff_check",
+    "commit_sha": null,
+    "mode": "pass",
+    "summary": "git_diff_check ok",
+    "tree_oid": null
+  },
+  "environment": {
+    "CARGO_TERM_COLOR": "never",
+    "HOME": "logical",
+    "LC_ALL": "C",
+    "NO_COLOR": "1",
+    "TZ": "UTC"
+  },
+  "exit_code": 0,
+  "phase": "collection",
+  "projection_sha256": "eda3f3538064dace578c3dc42c70858ae74185202191f5e9040049b6ba2b46c3",
+  "receipt_id": "git_diff_check-receipt",
+  "receipt_sha256": "0fe6b5998d43c100d01e48bfe851964f29f0b4a010859ae1387f3dc09f1f6a8e",
+  "run_id": "audit-26026fb3862e-20260713T215215Z",
+  "schema_version": 1,
+  "source_baseline_sha": "26507f0c380a943488a2ab0928b5eef77d1f3ca8",
+  "stderr_path": "tools/audit/fixtures/git_diff_check.stderr.txt",
+  "stderr_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "stdout_path": "tools/audit/fixtures/git_diff_check.stdout.txt",
+  "stdout_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "tool_versions": {
+    "node": "v22.0.0"
+  },
+  "workload": {
+    "name": "git_diff_check",
+    "purpose": "audit"
+  }
+}

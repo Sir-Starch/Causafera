@@ -1,0 +1,22 @@
+{
+  "attempt_id": "0001",
+  "dispatches": [
+    {
+      "artifact_oids": [
+        "0000000000000000000000000000000000000000"
+      ],
+      "role": "parent",
+      "session_id": "session-001",
+      "task_id": "task-03"
+    }
+  ],
+  "phase": "preclosure",
+  "previous_dispatch_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "receipt_sha256": "7683e0bb4c0e8699cdc1079c715bbf491634ed3b56fc8616f5685de7929a7bcb",
+  "reviewed_artifact_oids": [
+    "0000000000000000000000000000000000000000"
+  ],
+  "run_id": "audit-26026fb3862e-20260713T215215Z",
+  "schema_version": 1,
+  "source_baseline_sha": "26507f0c380a943488a2ab0928b5eef77d1f3ca8"
+}

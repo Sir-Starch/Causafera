@@ -1,0 +1,43 @@
+{
+  "adapter": "production_composition",
+  "argv": [
+    "node",
+    "tools/audit/validate-capability-audit.mjs",
+    "schema"
+  ],
+  "attempt_id": null,
+  "cwd": ".",
+  "deterministic_projection": {
+    "adapter": "production_composition",
+    "commit_sha": null,
+    "mode": "pass",
+    "summary": "production_composition ok",
+    "tree_oid": null
+  },
+  "environment": {
+    "CARGO_TERM_COLOR": "never",
+    "HOME": "logical",
+    "LC_ALL": "C",
+    "NO_COLOR": "1",
+    "TZ": "UTC"
+  },
+  "exit_code": 0,
+  "phase": "collection",
+  "projection_sha256": "a1d801aff021541fb84420e811e4d714db3602c95da2ab2e7fedcee160a09250",
+  "receipt_id": "production_composition-receipt",
+  "receipt_sha256": "7d6a85d9c18f6ad8cd90d9842886f4825c4681aeea8904e9acb0e9b18b1629e5",
+  "run_id": "audit-26026fb3862e-20260713T215215Z",
+  "schema_version": 1,
+  "source_baseline_sha": "26507f0c380a943488a2ab0928b5eef77d1f3ca8",
+  "stderr_path": "tools/audit/fixtures/production_composition.stderr.txt",
+  "stderr_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "stdout_path": "tools/audit/fixtures/production_composition.stdout.txt",
+  "stdout_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "tool_versions": {
+    "node": "v22.0.0"
+  },
+  "workload": {
+    "name": "production_composition",
+    "purpose": "audit"
+  }
+}

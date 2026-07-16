@@ -1,0 +1,24 @@
+{
+  "attempt_id": "0001",
+  "checks": [
+    "recovery-ok"
+  ],
+  "closure_commit_sha": "26507f0c380a943488a2ab0928b5eef77d1f3ca8",
+  "failed_closure_sha": "26507f0c380a943488a2ab0928b5eef77d1f3ca8",
+  "failed_command_receipt_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "failed_finalize_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "failure_phase": "audit",
+  "invalidated_authorization_nonce": "nonce-001",
+  "preclosure_tree_oid": "0000000000000000000000000000000000000000",
+  "previous_manifest_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "receipt_sha256": "24360c98a356a1e50c7633519448ba98b0e9c7d6ec3585fb7a5b786d6db303dd",
+  "revert_commit_sha": "26507f0c380a943488a2ab0928b5eef77d1f3ca8",
+  "run_id": "audit-26026fb3862e-20260713T215215Z",
+  "schema_version": 1,
+  "source_baseline_sha": "26507f0c380a943488a2ab0928b5eef77d1f3ca8",
+  "staged_tree_oid": "0000000000000000000000000000000000000000",
+  "superseded_receipt_ids": [
+    "rcpt-001"
+  ],
+  "verdict": "pass"
+}

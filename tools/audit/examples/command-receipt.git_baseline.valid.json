@@ -1,0 +1,43 @@
+{
+  "adapter": "git_baseline",
+  "argv": [
+    "node",
+    "tools/audit/validate-capability-audit.mjs",
+    "schema"
+  ],
+  "attempt_id": null,
+  "cwd": ".",
+  "deterministic_projection": {
+    "adapter": "git_baseline",
+    "commit_sha": "26507f0c380a943488a2ab0928b5eef77d1f3ca8",
+    "mode": "pass",
+    "summary": "git_baseline ok",
+    "tree_oid": "e9a14f9cbccc3b9873a489303d85cc8cd696dc51"
+  },
+  "environment": {
+    "CARGO_TERM_COLOR": "never",
+    "HOME": "logical",
+    "LC_ALL": "C",
+    "NO_COLOR": "1",
+    "TZ": "UTC"
+  },
+  "exit_code": 0,
+  "phase": "collection",
+  "projection_sha256": "d8645678b323bb5d3b696da7f951168baac689b5b645103fe65323dda0c84666",
+  "receipt_id": "git_baseline-receipt",
+  "receipt_sha256": "9850303a43f60d379d332e9dd72f32113874cc9f28447154d44da957ec66c5eb",
+  "run_id": "audit-26026fb3862e-20260713T215215Z",
+  "schema_version": 1,
+  "source_baseline_sha": "26507f0c380a943488a2ab0928b5eef77d1f3ca8",
+  "stderr_path": "tools/audit/fixtures/git_baseline.stderr.txt",
+  "stderr_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "stdout_path": "tools/audit/fixtures/git_baseline.stdout.txt",
+  "stdout_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "tool_versions": {
+    "node": "v22.0.0"
+  },
+  "workload": {
+    "name": "git_baseline",
+    "purpose": "audit"
+  }
+}

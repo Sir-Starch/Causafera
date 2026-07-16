@@ -1,0 +1,20 @@
+{
+  "entries": [
+    {
+      "byte_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "kind": "json",
+      "logical_path": "tools/audit/examples/capability-audit.valid.json",
+      "original_receipt_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "raw_byte_hashes": [
+        "0000000000000000000000000000000000000000000000000000000000000000"
+      ],
+      "tracked_blob_oid": "0000000000000000000000000000000000000000",
+      "tracked_path": "tools/audit/examples/capability-audit.valid.json",
+      "wrapper_receipt_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  ],
+  "receipt_sha256": "e6da46415e3a3af6a282d16be1b1c7c6ab881b2e4571ebdbf2dee55569f43981",
+  "run_id": "audit-26026fb3862e-20260713T215215Z",
+  "schema_version": 1,
+  "source_baseline_sha": "26507f0c380a943488a2ab0928b5eef77d1f3ca8"
+}

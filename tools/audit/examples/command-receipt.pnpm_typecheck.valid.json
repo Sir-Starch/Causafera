@@ -1,0 +1,43 @@
+{
+  "adapter": "pnpm_typecheck",
+  "argv": [
+    "node",
+    "tools/audit/validate-capability-audit.mjs",
+    "schema"
+  ],
+  "attempt_id": null,
+  "cwd": ".",
+  "deterministic_projection": {
+    "adapter": "pnpm_typecheck",
+    "commit_sha": null,
+    "mode": "pass",
+    "summary": "pnpm_typecheck ok",
+    "tree_oid": null
+  },
+  "environment": {
+    "CARGO_TERM_COLOR": "never",
+    "HOME": "logical",
+    "LC_ALL": "C",
+    "NO_COLOR": "1",
+    "TZ": "UTC"
+  },
+  "exit_code": 0,
+  "phase": "collection",
+  "projection_sha256": "640b8058652a1fedbb00837c2cda9739e6c0a4f65e61f6722881302c2db64cc0",
+  "receipt_id": "pnpm_typecheck-receipt",
+  "receipt_sha256": "d96de575fd4e5624198e3a486d1bc0597ff78c0116fcfe1d920078bba2c18182",
+  "run_id": "audit-26026fb3862e-20260713T215215Z",
+  "schema_version": 1,
+  "source_baseline_sha": "26507f0c380a943488a2ab0928b5eef77d1f3ca8",
+  "stderr_path": "tools/audit/fixtures/pnpm_typecheck.stderr.txt",
+  "stderr_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "stdout_path": "tools/audit/fixtures/pnpm_typecheck.stdout.txt",
+  "stdout_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "tool_versions": {
+    "node": "v22.0.0"
+  },
+  "workload": {
+    "name": "pnpm_typecheck",
+    "purpose": "audit"
+  }
+}

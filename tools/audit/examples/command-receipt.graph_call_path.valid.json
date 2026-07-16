@@ -1,0 +1,43 @@
+{
+  "adapter": "graph_call_path",
+  "argv": [
+    "node",
+    "tools/audit/validate-capability-audit.mjs",
+    "schema"
+  ],
+  "attempt_id": null,
+  "cwd": ".",
+  "deterministic_projection": {
+    "adapter": "graph_call_path",
+    "commit_sha": null,
+    "mode": "pass",
+    "summary": "graph_call_path ok",
+    "tree_oid": null
+  },
+  "environment": {
+    "CARGO_TERM_COLOR": "never",
+    "HOME": "logical",
+    "LC_ALL": "C",
+    "NO_COLOR": "1",
+    "TZ": "UTC"
+  },
+  "exit_code": 0,
+  "phase": "collection",
+  "projection_sha256": "8dcb305b64fdde8f0192d7e801d6e0f89b90070ee78882b9792d3f457d39f290",
+  "receipt_id": "graph_call_path-receipt",
+  "receipt_sha256": "4481185c24b44ee5a14db17585db281a03feab0f9cbdff307133b06f937d36ba",
+  "run_id": "audit-26026fb3862e-20260713T215215Z",
+  "schema_version": 1,
+  "source_baseline_sha": "26507f0c380a943488a2ab0928b5eef77d1f3ca8",
+  "stderr_path": "tools/audit/fixtures/graph_call_path.stderr.txt",
+  "stderr_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "stdout_path": "tools/audit/fixtures/graph_call_path.stdout.txt",
+  "stdout_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "tool_versions": {
+    "node": "v22.0.0"
+  },
+  "workload": {
+    "name": "graph_call_path",
+    "purpose": "audit"
+  }
+}

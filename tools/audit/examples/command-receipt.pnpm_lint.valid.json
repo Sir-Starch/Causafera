@@ -1,0 +1,43 @@
+{
+  "adapter": "pnpm_lint",
+  "argv": [
+    "node",
+    "tools/audit/validate-capability-audit.mjs",
+    "schema"
+  ],
+  "attempt_id": null,
+  "cwd": ".",
+  "deterministic_projection": {
+    "adapter": "pnpm_lint",
+    "commit_sha": null,
+    "mode": "pass",
+    "summary": "pnpm_lint ok",
+    "tree_oid": null
+  },
+  "environment": {
+    "CARGO_TERM_COLOR": "never",
+    "HOME": "logical",
+    "LC_ALL": "C",
+    "NO_COLOR": "1",
+    "TZ": "UTC"
+  },
+  "exit_code": 0,
+  "phase": "collection",
+  "projection_sha256": "9367d4a481299b3495e17accdf57e312a5f91b3e7b9ed03f41965248b7419bc6",
+  "receipt_id": "pnpm_lint-receipt",
+  "receipt_sha256": "ab9a9f1eb5cdc7d2081ae12e42db200608a9566fcf57bfa6f435a4dfdd5373f8",
+  "run_id": "audit-26026fb3862e-20260713T215215Z",
+  "schema_version": 1,
+  "source_baseline_sha": "26507f0c380a943488a2ab0928b5eef77d1f3ca8",
+  "stderr_path": "tools/audit/fixtures/pnpm_lint.stderr.txt",
+  "stderr_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "stdout_path": "tools/audit/fixtures/pnpm_lint.stdout.txt",
+  "stdout_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "tool_versions": {
+    "node": "v22.0.0"
+  },
+  "workload": {
+    "name": "pnpm_lint",
+    "purpose": "audit"
+  }
+}

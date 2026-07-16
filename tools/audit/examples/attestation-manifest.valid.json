@@ -1,0 +1,21 @@
+{
+  "attempt_chain_head_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "attempt_id": "0001",
+  "attestation_parent_sha": "26507f0c380a943488a2ab0928b5eef77d1f3ca8",
+  "closed_finalize_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "closure_commit_sha": "26507f0c380a943488a2ab0928b5eef77d1f3ca8",
+  "entries": [
+    {
+      "attempt_chain_head_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "attempt_id": "0001",
+      "attestation_parent_sha": "26507f0c380a943488a2ab0928b5eef77d1f3ca8",
+      "closed_finalize_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "closure_commit_sha": "26507f0c380a943488a2ab0928b5eef77d1f3ca8",
+      "receipt_id": "attest-001"
+    }
+  ],
+  "receipt_sha256": "b7a007aff7e88717c05a7b37f82778257ed0dd403e68a45454fd82dffc5943fb",
+  "run_id": "audit-26026fb3862e-20260713T215215Z",
+  "schema_version": 1,
+  "source_baseline_sha": "26507f0c380a943488a2ab0928b5eef77d1f3ca8"
+}

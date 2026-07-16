@@ -1,0 +1,43 @@
+{
+  "adapter": "cargo_metadata",
+  "argv": [
+    "node",
+    "tools/audit/validate-capability-audit.mjs",
+    "schema"
+  ],
+  "attempt_id": null,
+  "cwd": ".",
+  "deterministic_projection": {
+    "adapter": "cargo_metadata",
+    "commit_sha": null,
+    "mode": "pass",
+    "summary": "cargo_metadata ok",
+    "tree_oid": null
+  },
+  "environment": {
+    "CARGO_TERM_COLOR": "never",
+    "HOME": "logical",
+    "LC_ALL": "C",
+    "NO_COLOR": "1",
+    "TZ": "UTC"
+  },
+  "exit_code": 0,
+  "phase": "collection",
+  "projection_sha256": "e9ea25a61d0bd87615ec163a07ccfa84e0687f4a03c5ea200532c0f87f5cf61e",
+  "receipt_id": "cargo_metadata-receipt",
+  "receipt_sha256": "88c82a58eb2f06103b8783b25703960695a1784cdba77a15fbf1ad91ffc0ea89",
+  "run_id": "audit-26026fb3862e-20260713T215215Z",
+  "schema_version": 1,
+  "source_baseline_sha": "26507f0c380a943488a2ab0928b5eef77d1f3ca8",
+  "stderr_path": "tools/audit/fixtures/cargo_metadata.stderr.txt",
+  "stderr_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "stdout_path": "tools/audit/fixtures/cargo_metadata.stdout.txt",
+  "stdout_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "tool_versions": {
+    "node": "v22.0.0"
+  },
+  "workload": {
+    "name": "cargo_metadata",
+    "purpose": "audit"
+  }
+}

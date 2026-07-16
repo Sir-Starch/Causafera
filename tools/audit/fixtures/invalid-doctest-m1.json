@@ -1,0 +1,42 @@
+{
+  "completeness": {
+    "evidence_ids": [
+      "e-001"
+    ],
+    "rationale": "single mapping",
+    "status": "complete"
+  },
+  "mappings": [],
+  "receipt_sha256": "73a17cb1eb82b9e4ddfe8141213d8fdbde99fb170a9e92c4423c5423f950d418",
+  "run_id": "audit-26026fb3862e-20260713T215215Z",
+  "schema_version": 1,
+  "source_baseline_sha": "26507f0c380a943488a2ab0928b5eef77d1f3ca8",
+  "targets": [
+    {
+      "blob_oid": "0000000000000000000000000000000000000000",
+      "eligibility": "discovery_only",
+      "package": "ontopolis-audit",
+      "path": "crates/core/src/lib.rs",
+      "rationale": "doctest only",
+      "target_kind": "test",
+      "target_name": "doctest"
+    }
+  ],
+  "tests": [
+    {
+      "blob_oid": "0000000000000000000000000000000000000000",
+      "definition_character": 0,
+      "discovered_receipt_id": null,
+      "eligibility": "discovery_only",
+      "line_end": 1,
+      "line_start": 1,
+      "package": "ontopolis-audit",
+      "path": "crates/core/src/lib.rs",
+      "target_kind": "test",
+      "target_name": "doctest",
+      "test_id": "test-doctest-001",
+      "test_name": "doctest",
+      "test_root_qn": "ontopolis::doctest"
+    }
+  ]
+}

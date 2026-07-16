@@ -1,0 +1,21 @@
+{
+  "attempt_id": "0001",
+  "checks": [
+    "hashes-ok"
+  ],
+  "commands": [
+    "node tools/audit/validate-capability-audit.mjs schema"
+  ],
+  "head_sha": "26507f0c380a943488a2ab0928b5eef77d1f3ca8",
+  "head_tree_oid": "0000000000000000000000000000000000000000",
+  "index_tree_oid": "0000000000000000000000000000000000000000",
+  "input_hashes": [
+    "0000000000000000000000000000000000000000000000000000000000000000"
+  ],
+  "phase": "finalize",
+  "receipt_sha256": "f96e09e578c125be41995c046392fa62ea8db71f6bd1f01089a6acfc693a403d",
+  "run_id": "audit-26026fb3862e-20260713T215215Z",
+  "schema_version": 1,
+  "source_baseline_sha": "26507f0c380a943488a2ab0928b5eef77d1f3ca8",
+  "verdict": "pass"
+}

@@ -1,0 +1,43 @@
+{
+  "adapter": "audit_checker",
+  "argv": [
+    "node",
+    "tools/audit/validate-capability-audit.mjs",
+    "schema"
+  ],
+  "attempt_id": null,
+  "cwd": ".",
+  "deterministic_projection": {
+    "adapter": "audit_checker",
+    "commit_sha": null,
+    "mode": "pass",
+    "summary": "audit_checker ok",
+    "tree_oid": null
+  },
+  "environment": {
+    "CARGO_TERM_COLOR": "never",
+    "HOME": "logical",
+    "LC_ALL": "C",
+    "NO_COLOR": "1",
+    "TZ": "UTC"
+  },
+  "exit_code": 0,
+  "phase": "collection",
+  "projection_sha256": "64dbe2b5e4048733ed54d35598205efd61745be1b1b032725825e57282bb386e",
+  "receipt_id": "audit_checker-receipt",
+  "receipt_sha256": "527b0d7c2cb34c55bd7c2798d15dc6babc307be5f87ddd5831e14ccdd2d25d2e",
+  "run_id": "audit-26026fb3862e-20260713T215215Z",
+  "schema_version": 1,
+  "source_baseline_sha": "26507f0c380a943488a2ab0928b5eef77d1f3ca8",
+  "stderr_path": "tools/audit/fixtures/audit_checker.stderr.txt",
+  "stderr_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "stdout_path": "tools/audit/fixtures/audit_checker.stdout.txt",
+  "stdout_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "tool_versions": {
+    "node": "v22.0.0"
+  },
+  "workload": {
+    "name": "audit_checker",
+    "purpose": "audit"
+  }
+}

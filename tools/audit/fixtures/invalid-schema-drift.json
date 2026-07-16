@@ -1,0 +1,2080 @@
+{
+  "schema_version": 1,
+  "schemas": [
+    {
+      "additional_properties": false,
+      "enums": {
+        "capabilities[].capability_class": [
+          "state",
+          "mutation",
+          "bootstrap",
+          "resolution",
+          "persistence",
+          "observer",
+          "explanation",
+          "validation",
+          "policy"
+        ],
+        "capabilities[].levels.*.status": [
+          "satisfied",
+          "partial",
+          "missing",
+          "not_applicable"
+        ],
+        "capabilities[].representative_workload.status": [
+          "present",
+          "missing",
+          "deferred"
+        ],
+        "capabilities[].target_maturity": [
+          "M0",
+          "M1",
+          "M2",
+          "M3",
+          "M4",
+          "M5",
+          "deferred"
+        ],
+        "source_reconciliation.status": [
+          "present",
+          "partial",
+          "missing",
+          "not_applicable"
+        ]
+      },
+      "formats": {
+        "run_id": "run-id",
+        "schema_version": "integer",
+        "source_baseline_sha": "git-sha1"
+      },
+      "name": "capability-audit-input",
+      "nested_records": [
+        {
+          "fields": [
+            "domain",
+            "capability_ids"
+          ],
+          "kind": "array",
+          "path": "domains[]"
+        },
+        {
+          "fields": [
+            "capability_id",
+            "domain",
+            "capability_class",
+            "authoritative_state",
+            "mutation_owner",
+            "carriers",
+            "levels",
+            "target_maturity",
+            "representative_workload"
+          ],
+          "kind": "array",
+          "path": "capabilities[]"
+        },
+        {
+          "fields": [
+            "path",
+            "symbol",
+            "rationale"
+          ],
+          "kind": "object",
+          "path": "capabilities[].authoritative_state"
+        },
+        {
+          "fields": [
+            "path",
+            "symbol",
+            "rationale"
+          ],
+          "kind": "object",
+          "path": "capabilities[].mutation_owner"
+        },
+        {
+          "fields": [
+            "status",
+            "evidence_ids",
+            "rationale"
+          ],
+          "kind": "object",
+          "path": "capabilities[].levels.M0"
+        },
+        {
+          "fields": [
+            "status",
+            "name",
+            "bounded_inputs",
+            "warmup",
+            "sample_count",
+            "duration",
+            "metrics",
+            "validation_envelope"
+          ],
+          "kind": "object",
+          "path": "capabilities[].representative_workload"
+        },
+        {
+          "fields": [
+            "evidence_id",
+            "adapter",
+            "run_id",
+            "source_baseline_sha",
+            "path",
+            "blob_oid",
+            "line_start",
+            "line_end",
+            "symbol",
+            "command",
+            "exit_code",
+            "receipt_path",
+            "receipt_sha256",
+            "workload",
+            "facets"
+          ],
+          "kind": "array",
+          "path": "evidence[]"
+        },
+        {
+          "fields": [
+            "todo_id",
+            "heading",
+            "goal",
+            "acceptance",
+            "dependency_range",
+            "clause_hash"
+          ],
+          "kind": "array",
+          "path": "todo_bindings[]"
+        },
+        {
+          "fields": [
+            "status",
+            "evidence_ids",
+            "rationale"
+          ],
+          "kind": "object",
+          "path": "source_reconciliation"
+        }
+      ],
+      "nullable_fields": {
+        "capabilities[].authoritative_state": [
+          "path",
+          "symbol"
+        ],
+        "capabilities[].mutation_owner": [
+          "path",
+          "symbol"
+        ],
+        "capabilities[].representative_workload": [
+          "warmup"
+        ]
+      },
+      "required_fields": {
+        "capabilities[]": [
+          "capability_id",
+          "domain",
+          "capability_class",
+          "authoritative_state",
+          "mutation_owner",
+          "carriers",
+          "levels",
+          "target_maturity",
+          "representative_workload"
+        ],
+        "capabilities[].authoritative_state": [
+          "path",
+          "symbol",
+          "rationale"
+        ],
+        "capabilities[].levels.M0": [
+          "status",
+          "evidence_ids",
+          "rationale"
+        ],
+        "capabilities[].mutation_owner": [
+          "path",
+          "symbol",
+          "rationale"
+        ],
+        "capabilities[].representative_workload": [
+          "status",
+          "name",
+          "bounded_inputs",
+          "warmup",
+          "sample_count",
+          "duration",
+          "metrics",
+          "validation_envelope"
+        ],
+        "domains[]": [
+          "domain",
+          "capability_ids"
+        ],
+        "evidence[]": [
+          "evidence_id",
+          "adapter",
+          "run_id",
+          "source_baseline_sha",
+          "path",
+          "blob_oid",
+          "line_start",
+          "line_end",
+          "symbol",
+          "command",
+          "exit_code",
+          "receipt_path",
+          "receipt_sha256",
+          "workload",
+          "facets"
+        ],
+        "root": [
+          "schema_version",
+          "run_id",
+          "source_baseline_sha",
+          "domains",
+          "capabilities",
+          "evidence",
+          "source_reconciliation",
+          "todo_bindings",
+          "extensions"
+        ],
+        "source_reconciliation": [
+          "status",
+          "evidence_ids",
+          "rationale"
+        ],
+        "todo_bindings[]": [
+          "todo_id",
+          "heading",
+          "goal",
+          "acceptance",
+          "dependency_range",
+          "clause_hash"
+        ]
+      },
+      "root_fields": [
+        "schema_version",
+        "run_id",
+        "source_baseline_sha",
+        "domains",
+        "capabilities",
+        "evidence",
+        "source_reconciliation",
+        "todo_bindings",
+        "extensions"
+      ]
+    },
+    {
+      "additional_properties": false,
+      "enums": {
+        "capabilities[].capability_class": [
+          "state",
+          "mutation",
+          "bootstrap",
+          "resolution",
+          "persistence",
+          "observer",
+          "explanation",
+          "validation",
+          "policy"
+        ],
+        "capabilities[].derived_maturity": [
+          "M0",
+          "M1",
+          "M2",
+          "M3",
+          "M4",
+          "M5",
+          "deferred"
+        ],
+        "capabilities[].levels.*.status": [
+          "satisfied",
+          "partial",
+          "missing",
+          "not_applicable"
+        ],
+        "capabilities[].representative_workload.status": [
+          "present",
+          "missing",
+          "deferred"
+        ],
+        "capabilities[].target_maturity": [
+          "M0",
+          "M1",
+          "M2",
+          "M3",
+          "M4",
+          "M5",
+          "deferred"
+        ],
+        "source_reconciliation.status": [
+          "present",
+          "partial",
+          "missing",
+          "not_applicable"
+        ]
+      },
+      "formats": {
+        "run_id": "run-id",
+        "schema_version": "integer",
+        "source_baseline_sha": "git-sha1"
+      },
+      "name": "capability-audit",
+      "nested_records": [
+        {
+          "fields": [
+            "domain",
+            "capability_ids"
+          ],
+          "kind": "array",
+          "path": "domains[]"
+        },
+        {
+          "fields": [
+            "capability_id",
+            "domain",
+            "capability_class",
+            "authoritative_state",
+            "mutation_owner",
+            "carriers",
+            "levels",
+            "target_maturity",
+            "representative_workload",
+            "derived_maturity",
+            "derived_level_evidence_ids"
+          ],
+          "kind": "array",
+          "path": "capabilities[]"
+        },
+        {
+          "fields": [
+            "path",
+            "symbol",
+            "rationale"
+          ],
+          "kind": "object",
+          "path": "capabilities[].authoritative_state"
+        },
+        {
+          "fields": [
+            "path",
+            "symbol",
+            "rationale"
+          ],
+          "kind": "object",
+          "path": "capabilities[].mutation_owner"
+        },
+        {
+          "fields": [
+            "status",
+            "evidence_ids",
+            "rationale"
+          ],
+          "kind": "object",
+          "path": "capabilities[].levels.M0"
+        },
+        {
+          "fields": [
+            "status",
+            "name",
+            "bounded_inputs",
+            "warmup",
+            "sample_count",
+            "duration",
+            "metrics",
+            "validation_envelope"
+          ],
+          "kind": "object",
+          "path": "capabilities[].representative_workload"
+        },
+        {
+          "fields": [
+            "evidence_id",
+            "adapter",
+            "run_id",
+            "source_baseline_sha",
+            "path",
+            "blob_oid",
+            "line_start",
+            "line_end",
+            "symbol",
+            "command",
+            "exit_code",
+            "receipt_path",
+            "receipt_sha256",
+            "workload",
+            "facets"
+          ],
+          "kind": "array",
+          "path": "evidence[]"
+        },
+        {
+          "fields": [
+            "todo_id",
+            "heading",
+            "goal",
+            "acceptance",
+            "dependency_range",
+            "clause_hash"
+          ],
+          "kind": "array",
+          "path": "todo_bindings[]"
+        },
+        {
+          "fields": [
+            "status",
+            "evidence_ids",
+            "rationale"
+          ],
+          "kind": "object",
+          "path": "source_reconciliation"
+        }
+      ],
+      "nullable_fields": {
+        "capabilities[].authoritative_state": [
+          "path",
+          "symbol"
+        ],
+        "capabilities[].mutation_owner": [
+          "path",
+          "symbol"
+        ],
+        "capabilities[].representative_workload": [
+          "warmup"
+        ]
+      },
+      "required_fields": {
+        "capabilities[]": [
+          "capability_id",
+          "domain",
+          "capability_class",
+          "authoritative_state",
+          "mutation_owner",
+          "carriers",
+          "levels",
+          "target_maturity",
+          "representative_workload",
+          "derived_maturity",
+          "derived_level_evidence_ids"
+        ],
+        "capabilities[].authoritative_state": [
+          "path",
+          "symbol",
+          "rationale"
+        ],
+        "capabilities[].levels.M0": [
+          "status",
+          "evidence_ids",
+          "rationale"
+        ],
+        "capabilities[].mutation_owner": [
+          "path",
+          "symbol",
+          "rationale"
+        ],
+        "capabilities[].representative_workload": [
+          "status",
+          "name",
+          "bounded_inputs",
+          "warmup",
+          "sample_count",
+          "duration",
+          "metrics",
+          "validation_envelope"
+        ],
+        "domains[]": [
+          "domain",
+          "capability_ids"
+        ],
+        "evidence[]": [
+          "evidence_id",
+          "adapter",
+          "run_id",
+          "source_baseline_sha",
+          "path",
+          "blob_oid",
+          "line_start",
+          "line_end",
+          "symbol",
+          "command",
+          "exit_code",
+          "receipt_path",
+          "receipt_sha256",
+          "workload",
+          "facets"
+        ],
+        "root": [
+          "schema_version",
+          "run_id",
+          "source_baseline_sha",
+          "domains",
+          "capabilities",
+          "evidence",
+          "source_reconciliation",
+          "todo_bindings",
+          "extensions"
+        ],
+        "source_reconciliation": [
+          "status",
+          "evidence_ids",
+          "rationale"
+        ],
+        "todo_bindings[]": [
+          "todo_id",
+          "heading",
+          "goal",
+          "acceptance",
+          "dependency_range",
+          "clause_hash"
+        ]
+      },
+      "root_fields": [
+        "schema_version",
+        "run_id",
+        "source_baseline_sha",
+        "domains",
+        "capabilities",
+        "evidence",
+        "source_reconciliation",
+        "todo_bindings",
+        "extensions"
+      ]
+    },
+    {
+      "additional_properties": false,
+      "enums": {
+        "candidates[].is_exported": [
+          "false",
+          "true"
+        ],
+        "candidates[].is_test": [
+          "false",
+          "true"
+        ],
+        "candidates[].kind": [
+          "source",
+          "test",
+          "documentation",
+          "tooling"
+        ]
+      },
+      "formats": {
+        "run_id": "run-id",
+        "schema_version": "integer",
+        "source_baseline_sha": "git-sha1"
+      },
+      "name": "candidate-manifest",
+      "nested_records": [
+        {
+          "fields": [
+            "query_id",
+            "edge_type",
+            "query",
+            "result_count"
+          ],
+          "kind": "array",
+          "path": "graph_queries[]"
+        },
+        {
+          "fields": [
+            "candidate_key",
+            "kind",
+            "path",
+            "blob_oid",
+            "line_start",
+            "line_end",
+            "definition_character",
+            "symbol",
+            "graph_receipt_ids",
+            "lsp_receipt_ids",
+            "is_test",
+            "is_exported",
+            "bindings",
+            "exclusion_id",
+            "failure_cases"
+          ],
+          "kind": "array",
+          "path": "candidates[]"
+        },
+        {
+          "fields": [
+            "exclusion_id",
+            "candidate_keys",
+            "reason",
+            "evidence_ids",
+            "rationale"
+          ],
+          "kind": "array",
+          "path": "exclusions[]"
+        }
+      ],
+      "nullable_fields": {},
+      "required_fields": {
+        "candidates[]": [
+          "candidate_key",
+          "kind",
+          "path",
+          "blob_oid",
+          "line_start",
+          "line_end",
+          "definition_character",
+          "symbol",
+          "graph_receipt_ids",
+          "lsp_receipt_ids",
+          "is_test",
+          "is_exported",
+          "bindings",
+          "exclusion_id",
+          "failure_cases"
+        ],
+        "exclusions[]": [
+          "exclusion_id",
+          "candidate_keys",
+          "reason",
+          "evidence_ids",
+          "rationale"
+        ],
+        "graph_queries[]": [
+          "query_id",
+          "edge_type",
+          "query",
+          "result_count"
+        ],
+        "root": [
+          "schema_version",
+          "run_id",
+          "source_baseline_sha",
+          "tree_files",
+          "graph_queries",
+          "candidates",
+          "exclusions",
+          "extensions"
+        ]
+      },
+      "root_fields": [
+        "schema_version",
+        "run_id",
+        "source_baseline_sha",
+        "tree_files",
+        "graph_queries",
+        "candidates",
+        "exclusions",
+        "extensions"
+      ]
+    },
+    {
+      "additional_properties": false,
+      "enums": {
+        "nodes[].status": [
+          "ready",
+          "blocked",
+          "selected"
+        ],
+        "selection.mode": [
+          "prerequisite-remediation",
+          "runtime",
+          "sim"
+        ]
+      },
+      "formats": {
+        "run_id": "run-id",
+        "schema_version": "integer",
+        "source_baseline_sha": "git-sha1"
+      },
+      "name": "sequencing",
+      "nested_records": [
+        {
+          "fields": [
+            "node_id",
+            "node_kind",
+            "status",
+            "evidence_ids"
+          ],
+          "kind": "array",
+          "path": "nodes[]"
+        },
+        {
+          "fields": [
+            "from",
+            "to",
+            "edge_type",
+            "rationale",
+            "evidence_ids"
+          ],
+          "kind": "array",
+          "path": "edges[]"
+        },
+        {
+          "fields": [
+            "candidate_id",
+            "todo_id",
+            "target_capability_ids"
+          ],
+          "kind": "array",
+          "path": "candidates[]"
+        },
+        {
+          "fields": [
+            "mode",
+            "selected_candidate_id",
+            "ready_candidate_ids",
+            "minimal_remediation_node_ids",
+            "tie_break_serialization",
+            "rationale",
+            "checker_version"
+          ],
+          "kind": "object",
+          "path": "selection"
+        }
+      ],
+      "nullable_fields": {},
+      "required_fields": {
+        "candidates[]": [
+          "candidate_id",
+          "todo_id",
+          "target_capability_ids"
+        ],
+        "edges[]": [
+          "from",
+          "to",
+          "edge_type",
+          "rationale",
+          "evidence_ids"
+        ],
+        "nodes[]": [
+          "node_id",
+          "node_kind",
+          "status",
+          "evidence_ids"
+        ],
+        "root": [
+          "schema_version",
+          "run_id",
+          "source_baseline_sha",
+          "nodes",
+          "edges",
+          "candidates",
+          "selection",
+          "extensions"
+        ],
+        "selection": [
+          "mode",
+          "selected_candidate_id",
+          "ready_candidate_ids",
+          "minimal_remediation_node_ids",
+          "tie_break_serialization",
+          "rationale",
+          "checker_version"
+        ]
+      },
+      "root_fields": [
+        "schema_version",
+        "run_id",
+        "source_baseline_sha",
+        "nodes",
+        "edges",
+        "candidates",
+        "selection",
+        "extensions"
+      ]
+    },
+    {
+      "additional_properties": false,
+      "enums": {},
+      "formats": {
+        "receipt_sha256": "sha256",
+        "run_id": "run-id",
+        "schema_version": "integer",
+        "source_baseline_sha": "git-sha1"
+      },
+      "name": "closure-manifest",
+      "nested_records": [
+        {
+          "fields": [
+            "path",
+            "preimage_oid",
+            "replacement_path",
+            "replacement_sha256",
+            "expected_blob_oid",
+            "allowed_transition",
+            "validation_commands"
+          ],
+          "kind": "array",
+          "path": "entries[]"
+        }
+      ],
+      "nullable_fields": {},
+      "required_fields": {
+        "entries[]": [
+          "path",
+          "preimage_oid",
+          "replacement_path",
+          "replacement_sha256",
+          "expected_blob_oid",
+          "allowed_transition",
+          "validation_commands"
+        ],
+        "root": [
+          "schema_version",
+          "run_id",
+          "source_baseline_sha",
+          "attempt_id",
+          "preclosure_head_sha",
+          "preclosure_tree_oid",
+          "entries",
+          "validation_commands",
+          "receipt_sha256"
+        ]
+      },
+      "root_fields": [
+        "schema_version",
+        "run_id",
+        "source_baseline_sha",
+        "attempt_id",
+        "preclosure_head_sha",
+        "preclosure_tree_oid",
+        "entries",
+        "validation_commands",
+        "receipt_sha256"
+      ]
+    },
+    {
+      "additional_properties": false,
+      "enums": {
+        "role": [
+          "parent",
+          "child",
+          "reviewer"
+        ],
+        "verdict": [
+          "pass",
+          "fail"
+        ]
+      },
+      "formats": {
+        "receipt_sha256": "sha256",
+        "run_id": "run-id",
+        "schema_version": "integer",
+        "source_baseline_sha": "git-sha1"
+      },
+      "name": "review-receipt",
+      "nested_records": [],
+      "nullable_fields": {},
+      "required_fields": {
+        "root": [
+          "schema_version",
+          "run_id",
+          "source_baseline_sha",
+          "attempt_id",
+          "receipt_id",
+          "task_id",
+          "session_id",
+          "role",
+          "phase",
+          "reviewed_artifact_oids",
+          "staged_tree_oid",
+          "verdict",
+          "findings",
+          "receipt_sha256"
+        ]
+      },
+      "root_fields": [
+        "schema_version",
+        "run_id",
+        "source_baseline_sha",
+        "attempt_id",
+        "receipt_id",
+        "task_id",
+        "session_id",
+        "role",
+        "phase",
+        "reviewed_artifact_oids",
+        "staged_tree_oid",
+        "verdict",
+        "findings",
+        "receipt_sha256"
+      ]
+    },
+    {
+      "additional_properties": false,
+      "enums": {
+        "phase": [
+          "collection",
+          "preclosure",
+          "closure"
+        ],
+        "role": [
+          "parent",
+          "child",
+          "reviewer"
+        ]
+      },
+      "formats": {
+        "receipt_sha256": "sha256",
+        "run_id": "run-id",
+        "schema_version": "integer",
+        "source_baseline_sha": "git-sha1"
+      },
+      "name": "reviewer-dispatch",
+      "nested_records": [
+        {
+          "fields": [
+            "task_id",
+            "session_id",
+            "role",
+            "artifact_oids"
+          ],
+          "kind": "array",
+          "path": "dispatches[]"
+        }
+      ],
+      "nullable_fields": {},
+      "required_fields": {
+        "dispatches[]": [
+          "task_id",
+          "session_id",
+          "role",
+          "artifact_oids"
+        ],
+        "root": [
+          "schema_version",
+          "run_id",
+          "source_baseline_sha",
+          "attempt_id",
+          "phase",
+          "previous_dispatch_sha256",
+          "dispatches",
+          "reviewed_artifact_oids",
+          "receipt_sha256"
+        ]
+      },
+      "root_fields": [
+        "schema_version",
+        "run_id",
+        "source_baseline_sha",
+        "attempt_id",
+        "phase",
+        "previous_dispatch_sha256",
+        "dispatches",
+        "reviewed_artifact_oids",
+        "receipt_sha256"
+      ]
+    },
+    {
+      "additional_properties": false,
+      "enums": {},
+      "formats": {
+        "receipt_sha256": "sha256",
+        "schema_version": "integer"
+      },
+      "name": "fixture-manifest",
+      "nested_records": [],
+      "nullable_fields": {},
+      "required_fields": {
+        "root": [
+          "schema_version",
+          "files",
+          "receipt_sha256"
+        ]
+      },
+      "root_fields": [
+        "schema_version",
+        "files",
+        "receipt_sha256"
+      ]
+    },
+    {
+      "additional_properties": false,
+      "enums": {},
+      "formats": {
+        "receipt_sha256": "sha256",
+        "run_id": "run-id",
+        "schema_version": "integer",
+        "source_baseline_sha": "git-sha1"
+      },
+      "name": "run-manifest",
+      "nested_records": [
+        {
+          "fields": [
+            "receipt_id",
+            "path",
+            "phase",
+            "presence",
+            "adapter",
+            "producer_role",
+            "producer_session_id",
+            "command",
+            "cwd",
+            "environment",
+            "intent_path",
+            "intent_sha256",
+            "dependencies"
+          ],
+          "kind": "array",
+          "path": "expected_receipts[]"
+        },
+        {
+          "fields": [
+            "producer_role",
+            "producer_session_id",
+            "adapter"
+          ],
+          "kind": "array",
+          "path": "producers[]"
+        }
+      ],
+      "nullable_fields": {},
+      "required_fields": {
+        "expected_receipts[]": [
+          "receipt_id",
+          "path",
+          "phase",
+          "presence",
+          "adapter",
+          "producer_role",
+          "producer_session_id",
+          "command",
+          "cwd",
+          "environment",
+          "intent_path",
+          "intent_sha256",
+          "dependencies"
+        ],
+        "producers[]": [
+          "producer_role",
+          "producer_session_id",
+          "adapter"
+        ],
+        "root": [
+          "schema_version",
+          "run_id",
+          "source_baseline_sha",
+          "attempt_id",
+          "phase",
+          "previous_manifest_sha256",
+          "expected_receipts",
+          "producers",
+          "receipt_sha256"
+        ]
+      },
+      "root_fields": [
+        "schema_version",
+        "run_id",
+        "source_baseline_sha",
+        "attempt_id",
+        "phase",
+        "previous_manifest_sha256",
+        "expected_receipts",
+        "producers",
+        "receipt_sha256"
+      ]
+    },
+    {
+      "additional_properties": false,
+      "enums": {},
+      "formats": {
+        "receipt_sha256": "sha256",
+        "run_id": "run-id",
+        "schema_version": "integer",
+        "source_baseline_sha": "git-sha1"
+      },
+      "name": "source-blobs",
+      "nested_records": [
+        {
+          "fields": [
+            "logical_path",
+            "tracked_path",
+            "tracked_blob_oid",
+            "byte_sha256",
+            "kind"
+          ],
+          "kind": "array",
+          "path": "entries[]"
+        }
+      ],
+      "nullable_fields": {},
+      "required_fields": {
+        "entries[]": [
+          "logical_path",
+          "tracked_path",
+          "tracked_blob_oid",
+          "byte_sha256",
+          "kind"
+        ],
+        "root": [
+          "schema_version",
+          "run_id",
+          "source_baseline_sha",
+          "tree_oid",
+          "entries",
+          "receipt_sha256"
+        ]
+      },
+      "root_fields": [
+        "schema_version",
+        "run_id",
+        "source_baseline_sha",
+        "tree_oid",
+        "entries",
+        "receipt_sha256"
+      ]
+    },
+    {
+      "additional_properties": false,
+      "enums": {},
+      "formats": {
+        "graph_schema_sha256": "sha256",
+        "index_sha": "git-sha1",
+        "ordered_result_sha256": "sha256",
+        "raw_sha256": "sha256",
+        "receipt_sha256": "sha256",
+        "run_id": "run-id",
+        "schema_version": "integer",
+        "source_baseline_sha": "git-sha1"
+      },
+      "name": "graph-receipt",
+      "nested_records": [
+        {
+          "fields": [
+            "query_id",
+            "edge_type",
+            "limit"
+          ],
+          "kind": "object",
+          "path": "parameters"
+        }
+      ],
+      "nullable_fields": {},
+      "required_fields": {
+        "parameters": [
+          "query_id",
+          "edge_type",
+          "limit"
+        ],
+        "root": [
+          "schema_version",
+          "run_id",
+          "source_baseline_sha",
+          "attempt_id",
+          "receipt_id",
+          "phase",
+          "index_sha",
+          "graph_schema_sha256",
+          "operation",
+          "parameters",
+          "query",
+          "total",
+          "returned",
+          "ordered_result_sha256",
+          "raw_path",
+          "raw_sha256",
+          "receipt_sha256"
+        ]
+      },
+      "root_fields": [
+        "schema_version",
+        "run_id",
+        "source_baseline_sha",
+        "attempt_id",
+        "receipt_id",
+        "phase",
+        "index_sha",
+        "graph_schema_sha256",
+        "operation",
+        "parameters",
+        "query",
+        "total",
+        "returned",
+        "ordered_result_sha256",
+        "raw_path",
+        "raw_sha256",
+        "receipt_sha256"
+      ]
+    },
+    {
+      "additional_properties": false,
+      "enums": {},
+      "formats": {
+        "baseline_blob_oid": "git-oid",
+        "ordered_result_sha256": "sha256",
+        "raw_sha256": "sha256",
+        "receipt_sha256": "sha256",
+        "run_id": "run-id",
+        "schema_version": "integer",
+        "source_baseline_sha": "git-sha1",
+        "worktree_blob_oid": "git-oid"
+      },
+      "name": "lsp-receipt",
+      "nested_records": [
+        {
+          "fields": [
+            "query",
+            "include_declarations",
+            "limit"
+          ],
+          "kind": "object",
+          "path": "parameters"
+        }
+      ],
+      "nullable_fields": {},
+      "required_fields": {
+        "parameters": [
+          "query",
+          "include_declarations",
+          "limit"
+        ],
+        "root": [
+          "schema_version",
+          "run_id",
+          "source_baseline_sha",
+          "attempt_id",
+          "receipt_id",
+          "phase",
+          "path",
+          "baseline_blob_oid",
+          "worktree_blob_oid",
+          "parameters",
+          "complete",
+          "symbols",
+          "raw_path",
+          "raw_sha256",
+          "ordered_result_sha256",
+          "receipt_sha256"
+        ]
+      },
+      "root_fields": [
+        "schema_version",
+        "run_id",
+        "source_baseline_sha",
+        "attempt_id",
+        "receipt_id",
+        "phase",
+        "path",
+        "baseline_blob_oid",
+        "worktree_blob_oid",
+        "parameters",
+        "complete",
+        "symbols",
+        "raw_path",
+        "raw_sha256",
+        "ordered_result_sha256",
+        "receipt_sha256"
+      ]
+    },
+    {
+      "additional_properties": false,
+      "enums": {
+        "cwd": [
+          "."
+        ],
+        "phase": [
+          "collection",
+          "preflight",
+          "execute",
+          "bundle",
+          "audit"
+        ]
+      },
+      "formats": {
+        "receipt_sha256": "sha256",
+        "run_id": "run-id",
+        "schema_version": "integer",
+        "source_baseline_sha": "git-sha1"
+      },
+      "name": "command-intent",
+      "nested_records": [],
+      "nullable_fields": {},
+      "required_fields": {
+        "root": [
+          "schema_version",
+          "run_id",
+          "source_baseline_sha",
+          "attempt_id",
+          "receipt_id",
+          "phase",
+          "adapter",
+          "argv",
+          "cwd",
+          "environment",
+          "tool_versions",
+          "stdout_path",
+          "stderr_path",
+          "receipt_path",
+          "workload",
+          "receipt_sha256"
+        ]
+      },
+      "root_fields": [
+        "schema_version",
+        "run_id",
+        "source_baseline_sha",
+        "attempt_id",
+        "receipt_id",
+        "phase",
+        "adapter",
+        "argv",
+        "cwd",
+        "environment",
+        "tool_versions",
+        "stdout_path",
+        "stderr_path",
+        "receipt_path",
+        "workload",
+        "receipt_sha256"
+      ]
+    },
+    {
+      "additional_properties": false,
+      "enums": {
+        "cwd": [
+          "."
+        ],
+        "phase": [
+          "collection",
+          "preflight",
+          "execute",
+          "bundle",
+          "audit"
+        ]
+      },
+      "formats": {
+        "projection_sha256": "sha256",
+        "receipt_sha256": "sha256",
+        "run_id": "run-id",
+        "schema_version": "integer",
+        "source_baseline_sha": "git-sha1",
+        "stderr_sha256": "sha256",
+        "stdout_sha256": "sha256"
+      },
+      "name": "command-receipt",
+      "nested_records": [
+        {
+          "fields": [
+            "mode",
+            "summary",
+            "adapter"
+          ],
+          "kind": "object",
+          "path": "deterministic_projection"
+        }
+      ],
+      "nullable_fields": {},
+      "required_fields": {
+        "deterministic_projection": [
+          "mode",
+          "summary",
+          "adapter"
+        ],
+        "root": [
+          "schema_version",
+          "run_id",
+          "source_baseline_sha",
+          "attempt_id",
+          "receipt_id",
+          "phase",
+          "adapter",
+          "argv",
+          "cwd",
+          "environment",
+          "tool_versions",
+          "exit_code",
+          "stdout_path",
+          "stdout_sha256",
+          "stderr_path",
+          "stderr_sha256",
+          "deterministic_projection",
+          "projection_sha256",
+          "workload",
+          "receipt_sha256"
+        ]
+      },
+      "root_fields": [
+        "schema_version",
+        "run_id",
+        "source_baseline_sha",
+        "attempt_id",
+        "receipt_id",
+        "phase",
+        "adapter",
+        "argv",
+        "cwd",
+        "environment",
+        "tool_versions",
+        "exit_code",
+        "stdout_path",
+        "stdout_sha256",
+        "stderr_path",
+        "stderr_sha256",
+        "deterministic_projection",
+        "projection_sha256",
+        "workload",
+        "receipt_sha256"
+      ]
+    },
+    {
+      "additional_properties": false,
+      "enums": {},
+      "formats": {
+        "run_id": "run-id",
+        "schema_version": "integer",
+        "source_baseline_sha": "git-sha1"
+      },
+      "name": "deep-audit-fragment",
+      "nested_records": [],
+      "nullable_fields": {},
+      "required_fields": {
+        "root": [
+          "schema_version",
+          "run_id",
+          "source_baseline_sha",
+          "family",
+          "qualified_roots",
+          "capability_ids",
+          "candidate_keys",
+          "evidence_ids",
+          "findings",
+          "stop_condition",
+          "extensions"
+        ]
+      },
+      "root_fields": [
+        "schema_version",
+        "run_id",
+        "source_baseline_sha",
+        "family",
+        "qualified_roots",
+        "capability_ids",
+        "candidate_keys",
+        "evidence_ids",
+        "findings",
+        "stop_condition",
+        "extensions"
+      ]
+    },
+    {
+      "additional_properties": false,
+      "enums": {
+        "phase": [
+          "collection",
+          "preflight",
+          "scope"
+        ],
+        "verdict": [
+          "pass",
+          "fail"
+        ]
+      },
+      "formats": {
+        "receipt_sha256": "sha256",
+        "run_id": "run-id",
+        "schema_version": "integer",
+        "source_baseline_sha": "git-sha1"
+      },
+      "name": "scope-receipt",
+      "nested_records": [],
+      "nullable_fields": {},
+      "required_fields": {
+        "root": [
+          "schema_version",
+          "run_id",
+          "source_baseline_sha",
+          "attempt_id",
+          "phase",
+          "allowlist",
+          "committed",
+          "cached",
+          "unstaged",
+          "untracked",
+          "ignored",
+          "preflight_preserved",
+          "verdict",
+          "receipt_sha256"
+        ]
+      },
+      "root_fields": [
+        "schema_version",
+        "run_id",
+        "source_baseline_sha",
+        "attempt_id",
+        "phase",
+        "allowlist",
+        "committed",
+        "cached",
+        "unstaged",
+        "untracked",
+        "ignored",
+        "preflight_preserved",
+        "verdict",
+        "receipt_sha256"
+      ]
+    },
+    {
+      "additional_properties": false,
+      "enums": {},
+      "formats": {
+        "preclosure_finalize_sha256": "sha256",
+        "receipt_sha256": "sha256",
+        "request_sha256": "sha256",
+        "run_id": "run-id",
+        "schema_version": "integer",
+        "source_baseline_sha": "git-sha1",
+        "triggering_user_message_sha256": "sha256"
+      },
+      "name": "authorization-receipt",
+      "nested_records": [],
+      "nullable_fields": {},
+      "required_fields": {
+        "root": [
+          "schema_version",
+          "run_id",
+          "source_baseline_sha",
+          "attempt_id",
+          "request_sha256",
+          "triggering_user_message_sha256",
+          "approval_line",
+          "preclosure_finalize_sha256",
+          "authorized_action",
+          "timestamp_utc",
+          "nonce",
+          "receipt_sha256"
+        ]
+      },
+      "root_fields": [
+        "schema_version",
+        "run_id",
+        "source_baseline_sha",
+        "attempt_id",
+        "request_sha256",
+        "triggering_user_message_sha256",
+        "approval_line",
+        "preclosure_finalize_sha256",
+        "authorized_action",
+        "timestamp_utc",
+        "nonce",
+        "receipt_sha256"
+      ]
+    },
+    {
+      "additional_properties": false,
+      "enums": {
+        "phase": [
+          "collection",
+          "preclosure",
+          "finalize"
+        ],
+        "verdict": [
+          "pass",
+          "fail"
+        ]
+      },
+      "formats": {
+        "head_sha": "git-sha1",
+        "head_tree_oid": "git-oid",
+        "index_tree_oid": "git-oid",
+        "receipt_sha256": "sha256",
+        "run_id": "run-id",
+        "schema_version": "integer",
+        "source_baseline_sha": "git-sha1"
+      },
+      "name": "finalize-receipt",
+      "nested_records": [],
+      "nullable_fields": {},
+      "required_fields": {
+        "root": [
+          "schema_version",
+          "run_id",
+          "source_baseline_sha",
+          "attempt_id",
+          "phase",
+          "input_hashes",
+          "commands",
+          "checks",
+          "head_sha",
+          "head_tree_oid",
+          "index_tree_oid",
+          "verdict",
+          "receipt_sha256"
+        ]
+      },
+      "root_fields": [
+        "schema_version",
+        "run_id",
+        "source_baseline_sha",
+        "attempt_id",
+        "phase",
+        "input_hashes",
+        "commands",
+        "checks",
+        "head_sha",
+        "head_tree_oid",
+        "index_tree_oid",
+        "verdict",
+        "receipt_sha256"
+      ]
+    },
+    {
+      "additional_properties": false,
+      "enums": {
+        "verdict": [
+          "pass",
+          "fail"
+        ]
+      },
+      "formats": {
+        "closure_commit_sha": "git-sha1",
+        "failed_closure_sha": "git-sha1",
+        "failed_command_receipt_sha256": "sha256",
+        "failed_finalize_sha256": "sha256",
+        "preclosure_tree_oid": "git-oid",
+        "previous_manifest_sha256": "sha256",
+        "receipt_sha256": "sha256",
+        "revert_commit_sha": "git-sha1",
+        "run_id": "run-id",
+        "schema_version": "integer",
+        "source_baseline_sha": "git-sha1",
+        "staged_tree_oid": "git-oid"
+      },
+      "name": "recovery-receipt",
+      "nested_records": [],
+      "nullable_fields": {},
+      "required_fields": {
+        "root": [
+          "schema_version",
+          "run_id",
+          "source_baseline_sha",
+          "attempt_id",
+          "failure_phase",
+          "failed_command_receipt_sha256",
+          "failed_finalize_sha256",
+          "failed_closure_sha",
+          "revert_commit_sha",
+          "preclosure_tree_oid",
+          "staged_tree_oid",
+          "closure_commit_sha",
+          "superseded_receipt_ids",
+          "previous_manifest_sha256",
+          "invalidated_authorization_nonce",
+          "checks",
+          "verdict",
+          "receipt_sha256"
+        ]
+      },
+      "root_fields": [
+        "schema_version",
+        "run_id",
+        "source_baseline_sha",
+        "attempt_id",
+        "failure_phase",
+        "failed_command_receipt_sha256",
+        "failed_finalize_sha256",
+        "failed_closure_sha",
+        "revert_commit_sha",
+        "preclosure_tree_oid",
+        "staged_tree_oid",
+        "closure_commit_sha",
+        "superseded_receipt_ids",
+        "previous_manifest_sha256",
+        "invalidated_authorization_nonce",
+        "checks",
+        "verdict",
+        "receipt_sha256"
+      ]
+    },
+    {
+      "additional_properties": false,
+      "enums": {},
+      "formats": {
+        "receipt_sha256": "sha256",
+        "run_id": "run-id",
+        "schema_version": "integer",
+        "source_baseline_sha": "git-sha1"
+      },
+      "name": "bundle-manifest",
+      "nested_records": [
+        {
+          "fields": [
+            "logical_path",
+            "tracked_path",
+            "tracked_blob_oid",
+            "byte_sha256",
+            "wrapper_receipt_sha256",
+            "original_receipt_sha256",
+            "raw_byte_hashes",
+            "kind"
+          ],
+          "kind": "array",
+          "path": "entries[]"
+        }
+      ],
+      "nullable_fields": {},
+      "required_fields": {
+        "entries[]": [
+          "logical_path",
+          "tracked_path",
+          "tracked_blob_oid",
+          "byte_sha256",
+          "wrapper_receipt_sha256",
+          "original_receipt_sha256",
+          "raw_byte_hashes",
+          "kind"
+        ],
+        "root": [
+          "schema_version",
+          "run_id",
+          "source_baseline_sha",
+          "entries",
+          "receipt_sha256"
+        ]
+      },
+      "root_fields": [
+        "schema_version",
+        "run_id",
+        "source_baseline_sha",
+        "entries",
+        "receipt_sha256"
+      ]
+    },
+    {
+      "additional_properties": false,
+      "enums": {},
+      "formats": {
+        "original_payload_sha256": "sha256",
+        "original_receipt_sha256": "sha256",
+        "portable_payload_sha256": "sha256",
+        "projection_sha256": "sha256",
+        "receipt_sha256": "sha256",
+        "run_id": "run-id",
+        "schema_version": "integer",
+        "source_baseline_sha": "git-sha1"
+      },
+      "name": "bundle-wrapper",
+      "nested_records": [
+        {
+          "fields": [
+            "logical_path",
+            "tracked_path",
+            "tracked_blob_oid",
+            "byte_sha256"
+          ],
+          "kind": "array",
+          "path": "mappings[]"
+        }
+      ],
+      "nullable_fields": {},
+      "required_fields": {
+        "mappings[]": [
+          "logical_path",
+          "tracked_path",
+          "tracked_blob_oid",
+          "byte_sha256"
+        ],
+        "root": [
+          "schema_version",
+          "run_id",
+          "source_baseline_sha",
+          "mappings",
+          "original_receipt_sha256",
+          "original_payload_sha256",
+          "portable_payload_path",
+          "portable_payload_sha256",
+          "raw_byte_hashes",
+          "deterministic_projection",
+          "projection_sha256",
+          "receipt_sha256"
+        ]
+      },
+      "root_fields": [
+        "schema_version",
+        "run_id",
+        "source_baseline_sha",
+        "mappings",
+        "original_receipt_sha256",
+        "original_payload_sha256",
+        "portable_payload_path",
+        "portable_payload_sha256",
+        "raw_byte_hashes",
+        "deterministic_projection",
+        "projection_sha256",
+        "receipt_sha256"
+      ]
+    },
+    {
+      "additional_properties": false,
+      "enums": {},
+      "formats": {
+        "receipt_sha256": "sha256",
+        "run_id": "run-id",
+        "schema_version": "integer",
+        "source_baseline_sha": "git-sha1"
+      },
+      "name": "evidence-execution-manifest",
+      "nested_records": [
+        {
+          "fields": [
+            "capability_id",
+            "binding_id",
+            "adapter",
+            "argv",
+            "baseline_target",
+            "facets",
+            "receipt_id"
+          ],
+          "kind": "array",
+          "path": "claims[]"
+        }
+      ],
+      "nullable_fields": {},
+      "required_fields": {
+        "claims[]": [
+          "capability_id",
+          "binding_id",
+          "adapter",
+          "argv",
+          "baseline_target",
+          "facets",
+          "receipt_id"
+        ],
+        "root": [
+          "schema_version",
+          "run_id",
+          "source_baseline_sha",
+          "claims",
+          "receipt_sha256"
+        ]
+      },
+      "root_fields": [
+        "schema_version",
+        "run_id",
+        "source_baseline_sha",
+        "claims",
+        "receipt_sha256"
+      ]
+    },
+    {
+      "additional_properties": false,
+      "enums": {},
+      "formats": {
+        "attempt_chain_head_sha256": "sha256",
+        "attestation_parent_sha": "git-sha1",
+        "closed_finalize_sha256": "sha256",
+        "closure_commit_sha": "git-sha1",
+        "receipt_sha256": "sha256",
+        "run_id": "run-id",
+        "schema_version": "integer",
+        "source_baseline_sha": "git-sha1"
+      },
+      "name": "attestation-manifest",
+      "nested_records": [
+        {
+          "fields": [
+            "receipt_id",
+            "attempt_id",
+            "closure_commit_sha",
+            "attestation_parent_sha",
+            "closed_finalize_sha256",
+            "attempt_chain_head_sha256"
+          ],
+          "kind": "array",
+          "path": "entries[]"
+        }
+      ],
+      "nullable_fields": {},
+      "required_fields": {
+        "entries[]": [
+          "receipt_id",
+          "attempt_id",
+          "closure_commit_sha",
+          "attestation_parent_sha",
+          "closed_finalize_sha256",
+          "attempt_chain_head_sha256"
+        ],
+        "root": [
+          "schema_version",
+          "run_id",
+          "source_baseline_sha",
+          "attempt_id",
+          "closure_commit_sha",
+          "attestation_parent_sha",
+          "closed_finalize_sha256",
+          "attempt_chain_head_sha256",
+          "entries",
+          "receipt_sha256"
+        ]
+      },
+      "root_fields": [
+        "schema_version",
+        "run_id",
+        "source_baseline_sha",
+        "attempt_id",
+        "closure_commit_sha",
+        "attestation_parent_sha",
+        "closed_finalize_sha256",
+        "attempt_chain_head_sha256",
+        "entries",
+        "receipt_sha256"
+      ]
+    },
+    {
+      "additional_properties": false,
+      "enums": {
+        "completeness.status": [
+          "complete",
+          "partial",
+          "missing"
+        ],
+        "mappings[].relation": [
+          "tests_edge",
+          "usage_edge",
+          "call_path",
+          "lsp_reference"
+        ],
+        "targets[].eligibility": [
+          "exact_test",
+          "discovery_only",
+          "non_testable_target"
+        ],
+        "tests[].eligibility": [
+          "exact_test",
+          "discovery_only",
+          "non_testable_target"
+        ]
+      },
+      "formats": {
+        "receipt_sha256": "sha256",
+        "run_id": "run-id",
+        "schema_version": "integer",
+        "source_baseline_sha": "git-sha1"
+      },
+      "name": "test-reconciliation",
+      "nested_records": [
+        {
+          "fields": [
+            "package",
+            "target_kind",
+            "target_name",
+            "path",
+            "blob_oid",
+            "eligibility",
+            "rationale"
+          ],
+          "kind": "array",
+          "path": "targets[]"
+        },
+        {
+          "fields": [
+            "test_id",
+            "package",
+            "target_kind",
+            "target_name",
+            "test_name",
+            "path",
+            "blob_oid",
+            "line_start",
+            "line_end",
+            "definition_character",
+            "test_root_qn",
+            "eligibility",
+            "discovered_receipt_id"
+          ],
+          "kind": "array",
+          "path": "tests[]"
+        },
+        {
+          "fields": [
+            "test_id",
+            "candidate_key",
+            "binding_id",
+            "relation",
+            "evidence_receipt_ids"
+          ],
+          "kind": "array",
+          "path": "mappings[]"
+        },
+        {
+          "fields": [
+            "status",
+            "evidence_ids",
+            "rationale"
+          ],
+          "kind": "object",
+          "path": "completeness"
+        }
+      ],
+      "nullable_fields": {
+        "tests[].discovered_receipt_id": [
+          "discovered_receipt_id"
+        ]
+      },
+      "required_fields": {
+        "completeness": [
+          "status",
+          "evidence_ids",
+          "rationale"
+        ],
+        "mappings[]": [
+          "test_id",
+          "candidate_key",
+          "binding_id",
+          "relation",
+          "evidence_receipt_ids"
+        ],
+        "root": [
+          "schema_version",
+          "run_id",
+          "source_baseline_sha",
+          "targets",
+          "tests",
+          "mappings",
+          "completeness",
+          "receipt_sha256"
+        ],
+        "targets[]": [
+          "package",
+          "target_kind",
+          "target_name",
+          "path",
+          "blob_oid",
+          "eligibility",
+          "rationale"
+        ],
+        "tests[]": [
+          "test_id",
+          "package",
+          "target_kind",
+          "target_name",
+          "test_name",
+          "path",
+          "blob_oid",
+          "line_start",
+          "line_end",
+          "definition_character",
+          "test_root_qn",
+          "eligibility",
+          "discovered_receipt_id"
+        ]
+      },
+      "root_fields": [
+        "schema_version",
+        "run_id",
+        "source_baseline_sha",
+        "targets",
+        "tests",
+        "mappings",
+        "completeness",
+        "receipt_sha256"
+      ]
+    },
+    {
+      "additional_properties": true,
+      "enums": {},
+      "formats": {},
+      "name": "drifted",
+      "nested_records": [],
+      "nullable_fields": {},
+      "required_fields": {
+        "root": []
+      },
+      "root_fields": []
+    }
+  ]
+}

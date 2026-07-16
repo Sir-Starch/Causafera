@@ -1,0 +1,43 @@
+{
+  "adapter": "independent_review",
+  "argv": [
+    "node",
+    "tools/audit/validate-capability-audit.mjs",
+    "schema"
+  ],
+  "attempt_id": null,
+  "cwd": ".",
+  "deterministic_projection": {
+    "adapter": "independent_review",
+    "commit_sha": null,
+    "mode": "pass",
+    "summary": "independent_review ok",
+    "tree_oid": null
+  },
+  "environment": {
+    "CARGO_TERM_COLOR": "never",
+    "HOME": "logical",
+    "LC_ALL": "C",
+    "NO_COLOR": "1",
+    "TZ": "UTC"
+  },
+  "exit_code": 0,
+  "phase": "collection",
+  "projection_sha256": "9cb5955c20851efc489f1cd845071cc646ebd4e5fd3b1fb6ebcd8fa025f8c62f",
+  "receipt_id": "independent_review-receipt",
+  "receipt_sha256": "2cc8caafc33519afea18425e9067f518391c030c1db505e9c36b59413cdcbe6e",
+  "run_id": "audit-26026fb3862e-20260713T215215Z",
+  "schema_version": 1,
+  "source_baseline_sha": "26507f0c380a943488a2ab0928b5eef77d1f3ca8",
+  "stderr_path": "tools/audit/fixtures/independent_review.stderr.txt",
+  "stderr_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "stdout_path": "tools/audit/fixtures/independent_review.stdout.txt",
+  "stdout_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "tool_versions": {
+    "node": "v22.0.0"
+  },
+  "workload": {
+    "name": "independent_review",
+    "purpose": "audit"
+  }
+}

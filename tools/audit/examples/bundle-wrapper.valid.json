@@ -1,0 +1,28 @@
+{
+  "deterministic_projection": {
+    "logical_paths": [
+      "tools/audit/examples/capability-audit.valid.json"
+    ],
+    "portable": true
+  },
+  "mappings": [
+    {
+      "byte_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "logical_path": "tools/audit/examples/capability-audit.valid.json",
+      "tracked_blob_oid": "0000000000000000000000000000000000000000",
+      "tracked_path": "tools/audit/examples/capability-audit.valid.json"
+    }
+  ],
+  "original_payload_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "original_receipt_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "portable_payload_path": "docs/evidence/maturity-audit/26026fb3862e/bundle/payload.json",
+  "portable_payload_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "projection_sha256": "a6858fa4a97c1c1a0fcd32e037dfe01a5f7587d93305479ba7fc41f52b494595",
+  "raw_byte_hashes": [
+    "0000000000000000000000000000000000000000000000000000000000000000"
+  ],
+  "receipt_sha256": "1988233472c72c6591b5dd256cd664a8958b182f19b17b65db420a2d2da0334f",
+  "run_id": "audit-26026fb3862e-20260713T215215Z",
+  "schema_version": 1,
+  "source_baseline_sha": "26507f0c380a943488a2ab0928b5eef77d1f3ca8"
+}

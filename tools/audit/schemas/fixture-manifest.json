@@ -1,0 +1,23 @@
+{
+  "additional_properties": false,
+  "enums": {},
+  "formats": {
+    "receipt_sha256": "sha256",
+    "schema_version": "integer"
+  },
+  "name": "fixture-manifest",
+  "nested_records": [],
+  "nullable_fields": {},
+  "required_fields": {
+    "root": [
+      "schema_version",
+      "files",
+      "receipt_sha256"
+    ]
+  },
+  "root_fields": [
+    "schema_version",
+    "files",
+    "receipt_sha256"
+  ]
+}

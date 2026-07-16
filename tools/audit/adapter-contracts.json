@@ -1,0 +1,519 @@
+{
+  "adapters": [
+    {
+      "allowed_levels": [
+        "M0",
+        "M1"
+      ],
+      "argv_grammar": "capture --adapter audit_checker",
+      "evidence_class": "operational_check",
+      "name": "audit_checker",
+      "projection_schema": "command-receipt",
+      "replay_policy": "deterministic-projection",
+      "required_facets": [
+        "schema_contract",
+        "fixture_manifest"
+      ],
+      "state_anchor_policy": "baseline"
+    },
+    {
+      "allowed_levels": [
+        "M0",
+        "M1",
+        "M2",
+        "M3",
+        "M4"
+      ],
+      "argv_grammar": "capture --adapter benchmark_diagnostic",
+      "evidence_class": "benchmark_diagnostic",
+      "name": "benchmark_diagnostic",
+      "projection_schema": "command-receipt",
+      "replay_policy": "deterministic-projection",
+      "required_facets": [
+        "workload",
+        "validation_envelope"
+      ],
+      "state_anchor_policy": "baseline"
+    },
+    {
+      "allowed_levels": [
+        "M0",
+        "M1"
+      ],
+      "argv_grammar": "capture --adapter cargo_metadata",
+      "evidence_class": "documentation_contract",
+      "name": "cargo_metadata",
+      "projection_schema": "command-receipt",
+      "replay_policy": "deterministic-projection",
+      "required_facets": [
+        "package",
+        "target_kind",
+        "target_name",
+        "path",
+        "blob_oid"
+      ],
+      "state_anchor_policy": "baseline"
+    },
+    {
+      "allowed_levels": [
+        "M0",
+        "M1"
+      ],
+      "argv_grammar": "capture --adapter cargo_test_list",
+      "evidence_class": "operational_check",
+      "name": "cargo_test_list",
+      "projection_schema": "command-receipt",
+      "replay_policy": "deterministic-projection",
+      "required_facets": [
+        "package",
+        "target_kind",
+        "target_name",
+        "path",
+        "blob_oid",
+        "eligibility"
+      ],
+      "state_anchor_policy": "baseline"
+    },
+    {
+      "allowed_levels": [
+        "M0",
+        "M1"
+      ],
+      "argv_grammar": "capture --adapter confirmed_violation",
+      "evidence_class": "confirmed_violation",
+      "name": "confirmed_violation",
+      "projection_schema": "command-receipt",
+      "replay_policy": "deterministic-projection",
+      "required_facets": [
+        "negative_control"
+      ],
+      "state_anchor_policy": "receipt"
+    },
+    {
+      "allowed_levels": [
+        "M0",
+        "M1",
+        "M2",
+        "M3",
+        "M4",
+        "M5"
+      ],
+      "argv_grammar": "capture --adapter counterfactual_test",
+      "evidence_class": "executed_test",
+      "name": "counterfactual_test",
+      "projection_schema": "command-receipt",
+      "replay_policy": "deterministic-projection",
+      "required_facets": [
+        "control_id",
+        "intervention_id",
+        "expected_relation",
+        "observed_relation"
+      ],
+      "state_anchor_policy": "baseline"
+    },
+    {
+      "allowed_levels": [
+        "M0",
+        "M1",
+        "M2",
+        "M3",
+        "M4",
+        "M5"
+      ],
+      "argv_grammar": "capture --adapter cross_domain_test",
+      "evidence_class": "executed_test",
+      "name": "cross_domain_test",
+      "projection_schema": "command-receipt",
+      "replay_policy": "deterministic-projection",
+      "required_facets": [
+        "domains",
+        "input_carriers",
+        "output_carriers"
+      ],
+      "state_anchor_policy": "baseline"
+    },
+    {
+      "allowed_levels": [
+        "M0",
+        "M1"
+      ],
+      "argv_grammar": "capture --adapter documentation_contract",
+      "evidence_class": "documentation_contract",
+      "name": "documentation_contract",
+      "projection_schema": "command-receipt",
+      "replay_policy": "deterministic-projection",
+      "required_facets": [
+        "intent",
+        "primitive_boundary",
+        "carriers",
+        "risks"
+      ],
+      "state_anchor_policy": "baseline"
+    },
+    {
+      "allowed_levels": [
+        "M0",
+        "M1",
+        "M2",
+        "M3",
+        "M4",
+        "M5"
+      ],
+      "argv_grammar": "capture --adapter exact_test",
+      "evidence_class": "executed_test",
+      "name": "exact_test",
+      "projection_schema": "command-receipt",
+      "replay_policy": "deterministic-projection",
+      "required_facets": [
+        "package",
+        "target_kind",
+        "target_name",
+        "path",
+        "blob_oid",
+        "eligibility",
+        "test_id"
+      ],
+      "state_anchor_policy": "baseline"
+    },
+    {
+      "allowed_levels": [
+        "M0",
+        "M1",
+        "M2",
+        "M3",
+        "M4"
+      ],
+      "argv_grammar": "capture --adapter explanation_metric",
+      "evidence_class": "explanation_metric",
+      "name": "explanation_metric",
+      "projection_schema": "command-receipt",
+      "replay_policy": "deterministic-projection",
+      "required_facets": [
+        "lineage_id",
+        "checkpoint_id",
+        "metric_id"
+      ],
+      "state_anchor_policy": "baseline"
+    },
+    {
+      "allowed_levels": [
+        "M0",
+        "M1"
+      ],
+      "argv_grammar": "capture --adapter git_baseline",
+      "evidence_class": "source_definition",
+      "name": "git_baseline",
+      "projection_schema": "command-receipt",
+      "replay_policy": "deterministic-projection",
+      "required_facets": [
+        "git_oid",
+        "baseline"
+      ],
+      "state_anchor_policy": "baseline"
+    },
+    {
+      "allowed_levels": [
+        "M0",
+        "M1"
+      ],
+      "argv_grammar": "capture --adapter git_diff_check",
+      "evidence_class": "operational_check",
+      "name": "git_diff_check",
+      "projection_schema": "command-receipt",
+      "replay_policy": "deterministic-projection",
+      "required_facets": [
+        "diff",
+        "cwd"
+      ],
+      "state_anchor_policy": "diff"
+    },
+    {
+      "allowed_levels": [
+        "M0",
+        "M1",
+        "M2"
+      ],
+      "argv_grammar": "capture --adapter git_mutation",
+      "evidence_class": "production_call_path",
+      "name": "git_mutation",
+      "projection_schema": "command-receipt",
+      "replay_policy": "deterministic-projection",
+      "required_facets": [
+        "mutation",
+        "git_oid"
+      ],
+      "state_anchor_policy": "baseline"
+    },
+    {
+      "allowed_levels": [
+        "M0",
+        "M1"
+      ],
+      "argv_grammar": "capture --adapter git_preflight",
+      "evidence_class": "operational_check",
+      "name": "git_preflight",
+      "projection_schema": "command-receipt",
+      "replay_policy": "deterministic-projection",
+      "required_facets": [
+        "git_oid",
+        "cwd"
+      ],
+      "state_anchor_policy": "tree"
+    },
+    {
+      "allowed_levels": [
+        "M0",
+        "M1"
+      ],
+      "argv_grammar": "capture --adapter git_scope",
+      "evidence_class": "operational_check",
+      "name": "git_scope",
+      "projection_schema": "scope-receipt",
+      "replay_policy": "deterministic-projection",
+      "required_facets": [
+        "allowlist",
+        "cwd"
+      ],
+      "state_anchor_policy": "scope"
+    },
+    {
+      "allowed_levels": [
+        "M0",
+        "M1"
+      ],
+      "argv_grammar": "capture --adapter git_tree",
+      "evidence_class": "source_definition",
+      "name": "git_tree",
+      "projection_schema": "command-receipt",
+      "replay_policy": "deterministic-projection",
+      "required_facets": [
+        "tree_oid"
+      ],
+      "state_anchor_policy": "tree"
+    },
+    {
+      "allowed_levels": [
+        "M0",
+        "M1",
+        "M2"
+      ],
+      "argv_grammar": "capture --adapter graph_call_path",
+      "evidence_class": "production_call_path",
+      "name": "graph_call_path",
+      "projection_schema": "command-receipt",
+      "replay_policy": "deterministic-projection",
+      "required_facets": [
+        "call_path"
+      ],
+      "state_anchor_policy": "graph"
+    },
+    {
+      "allowed_levels": [
+        "M0",
+        "M1"
+      ],
+      "argv_grammar": "capture --adapter independent_review",
+      "evidence_class": "documentation_contract",
+      "name": "independent_review",
+      "projection_schema": "review-receipt",
+      "replay_policy": "deterministic-projection",
+      "required_facets": [
+        "reviewed_artifact_oids",
+        "findings"
+      ],
+      "state_anchor_policy": "receipt"
+    },
+    {
+      "allowed_levels": [
+        "M0",
+        "M1",
+        "M2",
+        "M3",
+        "M4"
+      ],
+      "argv_grammar": "capture --adapter observer_projection",
+      "evidence_class": "observer_projection",
+      "name": "observer_projection",
+      "projection_schema": "command-receipt",
+      "replay_policy": "deterministic-projection",
+      "required_facets": [
+        "lineage_id",
+        "checkpoint_id",
+        "read_only"
+      ],
+      "state_anchor_policy": "baseline"
+    },
+    {
+      "allowed_levels": [
+        "M0",
+        "M1",
+        "M2",
+        "M3",
+        "M4",
+        "M5"
+      ],
+      "argv_grammar": "capture --adapter persistence_test",
+      "evidence_class": "persistence_roundtrip",
+      "name": "persistence_test",
+      "projection_schema": "command-receipt",
+      "replay_policy": "deterministic-projection",
+      "required_facets": [
+        "save_receipt_id",
+        "resume_receipt_id",
+        "equivalent"
+      ],
+      "state_anchor_policy": "baseline"
+    },
+    {
+      "allowed_levels": [
+        "M0",
+        "M1"
+      ],
+      "argv_grammar": "capture --adapter pnpm_build",
+      "evidence_class": "operational_check",
+      "name": "pnpm_build",
+      "projection_schema": "command-receipt",
+      "replay_policy": "deterministic-projection",
+      "required_facets": [
+        "tool_name"
+      ],
+      "state_anchor_policy": "baseline"
+    },
+    {
+      "allowed_levels": [
+        "M0",
+        "M1"
+      ],
+      "argv_grammar": "capture --adapter pnpm_install",
+      "evidence_class": "operational_check",
+      "name": "pnpm_install",
+      "projection_schema": "command-receipt",
+      "replay_policy": "deterministic-projection",
+      "required_facets": [
+        "lockfile"
+      ],
+      "state_anchor_policy": "baseline"
+    },
+    {
+      "allowed_levels": [
+        "M0",
+        "M1"
+      ],
+      "argv_grammar": "capture --adapter pnpm_lint",
+      "evidence_class": "operational_check",
+      "name": "pnpm_lint",
+      "projection_schema": "command-receipt",
+      "replay_policy": "deterministic-projection",
+      "required_facets": [
+        "tool_name"
+      ],
+      "state_anchor_policy": "baseline"
+    },
+    {
+      "allowed_levels": [
+        "M0",
+        "M1"
+      ],
+      "argv_grammar": "capture --adapter pnpm_typecheck",
+      "evidence_class": "operational_check",
+      "name": "pnpm_typecheck",
+      "projection_schema": "command-receipt",
+      "replay_policy": "deterministic-projection",
+      "required_facets": [
+        "tool_name"
+      ],
+      "state_anchor_policy": "baseline"
+    },
+    {
+      "allowed_levels": [
+        "M0",
+        "M1",
+        "M2",
+        "M3"
+      ],
+      "argv_grammar": "capture --adapter production_composition",
+      "evidence_class": "production_call_path",
+      "name": "production_composition",
+      "projection_schema": "command-receipt",
+      "replay_policy": "deterministic-projection",
+      "required_facets": [
+        "production_root_qn",
+        "mutation_owner_qn",
+        "path"
+      ],
+      "state_anchor_policy": "tree"
+    },
+    {
+      "allowed_levels": [
+        "M0",
+        "M1",
+        "M2",
+        "M3",
+        "M4",
+        "M5"
+      ],
+      "argv_grammar": "capture --adapter replay_test",
+      "evidence_class": "executed_test",
+      "name": "replay_test",
+      "projection_schema": "command-receipt",
+      "replay_policy": "deterministic-projection",
+      "required_facets": [
+        "lineage_id",
+        "checkpoint_id",
+        "equivalent"
+      ],
+      "state_anchor_policy": "baseline"
+    },
+    {
+      "allowed_levels": [
+        "M0",
+        "M1",
+        "M2",
+        "M3",
+        "M4",
+        "M5"
+      ],
+      "argv_grammar": "capture --adapter representative_benchmark",
+      "evidence_class": "representative_benchmark",
+      "name": "representative_benchmark",
+      "projection_schema": "command-receipt",
+      "replay_policy": "deterministic-projection",
+      "required_facets": [
+        "workload_id",
+        "validation_envelope"
+      ],
+      "state_anchor_policy": "baseline"
+    },
+    {
+      "allowed_levels": [
+        "M0",
+        "M1"
+      ],
+      "argv_grammar": "capture --adapter rust_ci",
+      "evidence_class": "regression_check",
+      "name": "rust_ci",
+      "projection_schema": "command-receipt",
+      "replay_policy": "deterministic-projection",
+      "required_facets": [
+        "ci_sentinel"
+      ],
+      "state_anchor_policy": "baseline"
+    },
+    {
+      "allowed_levels": [
+        "M0",
+        "M1"
+      ],
+      "argv_grammar": "capture --adapter source_definition",
+      "evidence_class": "source_definition",
+      "name": "source_definition",
+      "projection_schema": "command-receipt",
+      "replay_policy": "deterministic-projection",
+      "required_facets": [
+        "primitive_boundary"
+      ],
+      "state_anchor_policy": "baseline"
+    }
+  ],
+  "schema_version": 1
+}
