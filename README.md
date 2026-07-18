@@ -1,8 +1,9 @@
 # Causafera
 
-Causafera is an experimental causal world-simulation engine for studying how physical processes,
-bounded subjective agents, language, institutions, and an information-sensitive mana field can
-co-evolve into reconstructable history.
+Causafera is an experimental causal world-simulation engine intended to model a persistent
+fantasy world with rare arrivals from other worlds (isekai). It studies how physical processes,
+bounded subjective agents, language, institutions, history, and an information-sensitive mana
+field interact to produce traceable, reconstructable outcomes.
 
 > **Status: Experimental pre-alpha.** This repository is public source, not a product, binary
 > distribution, production service, or scientific-model release. The Foundation Era contracts and
@@ -15,8 +16,14 @@ Causafera explores a specific question: can a persistent world produce surprisin
 linguistic, biological, geographic, and magic-like outcomes from lower-level causes — while
 retaining enough provenance to explain what happened?
 
-The long-term direction is a coherent persistent fantasy world whose societies, languages, magic,
-and history emerge from interacting causal domains rather than preset narrative.
+The intended setting is a coherent fantasy world rather than a generic real-world model. Magic,
+cultures, languages, institutions, technologies, and history should arise through the same causal
+framework rather than preset narrative or semantic rules.
+
+Rare isekai arrivals — individuals displaced from other worlds — are part of the world model.
+They are physical and historical events within the simulation, not protagonists exempt from its
+rules. Memories and outside knowledge do not automatically grant capabilities, technologies,
+authority, skills, or immunity from local causality.
 
 World state persists independently of any observer or inhabitant. Agents do not read that
 authoritative state directly. They receive bounded physical signals and construct subjective
