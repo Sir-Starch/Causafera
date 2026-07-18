@@ -7,6 +7,15 @@ export const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname)
 export const AUDIT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
 export const ZERO_SHA = '0'.repeat(64);
 export const ZERO_OID = '0'.repeat(40);
+
+// LEGACY BASELINE 26026fb COMPATIBILITY
+// These identifiers describe the immutable historical baseline commit 26026fb.
+// They are not active Causafera package or protocol names.
+// They must remain exactly as defined here to successfully validate historical receipts and fixtures.
+export const LEGACY_BASELINE_MACHINE_DATA_MARKER = 'ontopolis-machine-data';
+export const LEGACY_BASELINE_TYPES_PACKAGE = 'ontopolis-types';
+export const LEGACY_BASELINE_COORDS_PATH = 'crates/ontopolis-types/tests/coords.rs';
+
 const REPO_ROOT = ROOT;
 const M2_PLUS_LEVELS = ['M2', 'M3', 'M4', 'M5'];
 const M2_PLUS_CAPABILITY_CLASSES = ['state', 'mutation', 'bootstrap', 'resolution'];
@@ -185,7 +194,8 @@ export function isPlainObject(value) {
 }
 
 export function parseMachineData(text) {
-  const match = text.match(/<!--\s*ontopolis-machine-data:[^>]+-->\s*```json\n([\s\S]*?)\n```\s*<!--\s*\/ontopolis-machine-data\s*-->/);
+  const regex = new RegExp(`<!--\\s*${LEGACY_BASELINE_MACHINE_DATA_MARKER}:[^>]+-->\\s*\`\`\`json\\n([\\s\\S]*?)\\n\`\`\`\\s*<!--\\s*\\/${LEGACY_BASELINE_MACHINE_DATA_MARKER}\\s*-->`);
+  const match = text.match(regex);
   return match ? JSON.parse(match[1]) : null;
 }
 export function resolveRepoArtifact(candidate, { baseDir = REPO_ROOT, label = 'path', mustExist = true, regularFile = true } = {}) {
@@ -223,7 +233,7 @@ function readArtifactResolved(filePath) {
   const text = fs.readFileSync(filePath, 'utf8');
   if (filePath.endsWith('.json')) return { text, value: JSON.parse(text) };
   const value = parseMachineData(text);
-  if (value === null && /^\s*[{[]/.test(text)) die('bare JSON Markdown artifact requires ontopolis-machine-data envelope');
+  if (value === null && /^\s*[{[]/.test(text)) die(`bare JSON Markdown artifact requires ${LEGACY_BASELINE_MACHINE_DATA_MARKER} envelope`);
   return { text, value: value ?? {}, machine: value !== null };
 }
 
@@ -1796,9 +1806,9 @@ export function inventoryMode(args = {}) {
     commandReceipt(testResults, 'exact_test');
     if (testList.exit_code !== 0 || !testList.argv.includes('--list')) die('inventory test-list receipt did not complete discovery');
     if (testResults.exit_code !== 0 || testResults.argv.includes('--list')) die('inventory test-results receipt did not complete execution');
-    const target = reconciliation.targets.find((entry) => entry.package === 'ontopolis-types' && entry.target_kind === 'integration-test' && entry.target_name === 'coords');
-    if (!target || target.path !== 'crates/ontopolis-types/tests/coords.rs' || target.blob_oid !== baselineBlob(inventory.value.source_baseline_sha, target.path, 'inventory integration target')) die('inventory target metadata is not bound to the baseline coords integration test');
-    if (!testList.argv.includes('-p') || !testList.argv.includes('ontopolis-types') || !testList.argv.includes('--test') || !testList.argv.includes('coords') || !testResults.argv.includes('--test') || !testResults.argv.includes('coords')) die('inventory cargo receipts are not bound to the coords integration target');
+    const target = reconciliation.targets.find((entry) => entry.package === LEGACY_BASELINE_TYPES_PACKAGE && entry.target_kind === 'integration-test' && entry.target_name === 'coords');
+    if (!target || target.path !== LEGACY_BASELINE_COORDS_PATH || target.blob_oid !== baselineBlob(inventory.value.source_baseline_sha, target.path, 'inventory integration target')) die('inventory target metadata is not bound to the baseline coords integration test');
+    if (!testList.argv.includes('-p') || !testList.argv.includes(LEGACY_BASELINE_TYPES_PACKAGE) || !testList.argv.includes('--test') || !testList.argv.includes('coords') || !testResults.argv.includes('--test') || !testResults.argv.includes('coords')) die('inventory cargo receipts are not bound to the coords integration target');
     for (const test of reconciliation.tests) if (test.target_name === 'coords' && (test.path !== target.path || test.blob_oid !== target.blob_oid)) die(`inventory test metadata does not match coords target: ${test.test_id}`);
     sameIdentity([inventory.value, candidates, blobs, testList, testResults, reconciliation, execution], 'inventory');
     same(inventory.value.run_id, args['--run-id'], 'inventory run_id');
