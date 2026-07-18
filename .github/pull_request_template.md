@@ -25,7 +25,8 @@ Use `Not applicable` only when the change genuinely cannot affect that boundary.
 
 - [ ] I read the required project documents in `CONTRIBUTING.md`.
 - [ ] The change has an accepted ExecPlan if it is multi-stage or architectural.
-- [ ] No semantic enum, human-language label, fixture/demo runtime path, or digest-distance shortcut was introduced.
+- [ ] No semantic enum or human-language label is treated as authoritative simulation Ground Truth; ordinary UI labels, diagnostics, protocol discriminants, implementation enums, internal state machines, and non-authoritative explanation text remain allowed.
+- [ ] No fixture/demo runtime path or digest-distance shortcut was introduced.
 - [ ] Relevant Rust, frontend, audit, documentation, determinism, persistence, and benchmark checks passed.
 - [ ] Documentation, TODOs, ADRs, RFCs, roadmap, and maturity evidence were updated where required.
 - [ ] No credential, private data, generated build output, or unrelated change is included.

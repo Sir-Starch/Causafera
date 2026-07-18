@@ -99,7 +99,9 @@ pnpm build
 Audit-tool tests and dependency advisory check:
 
 ```bash
-node --test tools/audit/test-*.mjs
+node tools/audit/check-entry-points.mjs
+node tools/audit/run-source-tests.mjs
+node tools/audit/validate-capability-audit.mjs links --paths README.md,CONTRIBUTING.md,SECURITY.md,SUPPORT.md,CODE_OF_CONDUCT.md
 pnpm audit --audit-level high
 git diff --check
 ```
@@ -129,8 +131,9 @@ The CLA:
 - does not transfer contributor copyright;
 - grants the maintainer additional rights, including other commercial or proprietary outbound
   terms;
-- requires accepted public source contributions to remain available under AGPL-3.0-only and
-  accepted documentation or other non-code contributions under CC BY-SA 4.0.
+- requires accepted functional software material, including source, scripts, schemas, manifests,
+  CI, and machine-readable software configuration, to remain available under AGPL-3.0-only, and
+  accepted prose or non-functional explanatory documentation under CC BY-SA 4.0.
 
 The CLA supplements those public licenses; it does not replace them. The CLA itself calls for legal
 review before external contributions are accepted.

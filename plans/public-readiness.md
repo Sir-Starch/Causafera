@@ -1,6 +1,6 @@
 # Causafera Public Readiness
 
-**Status:** Completed
+**Status:** Completed for public source visibility; not a product or binary release
 
 **Starting commit:** `6af6e808c3e3cb3f7b5a6107a547a18010fb103b`
 
@@ -108,7 +108,9 @@ fantasy categories as possible emergent outcomes rather than authoritative primi
 - `pnpm lint`
 - `pnpm typecheck`
 - `pnpm build`
-- `node --test tools/audit/test-*.mjs`
+- `node tools/audit/check-entry-points.mjs`
+- `node tools/audit/run-source-tests.mjs`
+- `node tools/audit/validate-capability-audit.mjs links --paths README.md,CONTRIBUTING.md,SECURITY.md,SUPPORT.md,CODE_OF_CONDUCT.md`
 - `pnpm audit --audit-level high`
 - Redacted full-history secret/privacy scan, license check, Markdown-link check, exact legacy-name
   search, repository-hygiene check, and clean-clone replay of all README commands.
@@ -194,8 +196,11 @@ in the final report rather than assigned simulation phase numbers.
 
 The public entry point and useful community files are present, source and documentation licensing
 are stated consistently, JavaScript metadata matches the Cargo workspace, known frontend
-advisories are remediated, CI uses read-only permissions and immutable action pins, and every
-documented command has passed in a clone without inherited dependency or build directories.
+advisories are remediated, CI uses read-only permissions and immutable action pins, and the
+documented public setup commands passed in a clone without inherited dependency or build
+directories. This outcome concerns public source visibility only. Known Rust observer advisories
+and persistence limitations remain documented pre-alpha constraints before supported binary
+distribution, untrusted input, or production use.
 
 No simulation architecture, authoritative state, observer protocol, or UI behaviour changed. The
 repository was not pushed, merged, renamed externally, made public, or subjected to history

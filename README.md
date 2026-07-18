@@ -4,8 +4,9 @@ Causafera is an experimental causal world-simulation engine for studying how phy
 bounded subjective agents, language, institutions, and an information-sensitive mana field can
 co-evolve into reconstructable history.
 
-> **Status: Experimental pre-alpha.** Causafera is not a finished game, a production-ready
-> simulator, or a completed scientific model. Its Foundation Era contracts and a bounded causal
+> **Status: Experimental pre-alpha.** This repository is prepared for public source visibility,
+> not a product, binary, production-service, or scientific-model release. Causafera is not a
+> finished game or production-ready simulator. Its Foundation Era contracts and a bounded causal
 > loop are implemented, but simulation depth is uneven and many domains remain incomplete.
 
 ## What Causafera is
@@ -122,7 +123,8 @@ The repository and CI currently pin or verify:
 
 - Git;
 - Rust 1.85.0 with `rustfmt` and Clippy, from `rust-toolchain.toml`;
-- Node.js 20.x;
+- Node.js 20.x or 22.x and newer (Node.js 21.x is outside the locked Vite toolchain's supported
+  engine range);
 - pnpm 9.15.9.
 
 Building the desktop observer on Linux additionally requires GTK 3, WebKitGTK 4.1, Ayatana
@@ -165,12 +167,20 @@ pnpm typecheck
 pnpm build
 ```
 
-Audit-tool regression tests and dependency advisory check:
+Source-only audit regression tests, public-document link validation, and frontend dependency
+advisory check:
 
 ```bash
-node --test tools/audit/test-*.mjs
+node tools/audit/check-entry-points.mjs
+node tools/audit/run-source-tests.mjs
+node tools/audit/validate-capability-audit.mjs links --paths README.md,CONTRIBUTING.md,SECURITY.md,SUPPORT.md,CODE_OF_CONDUCT.md
 pnpm audit --audit-level high
 ```
+
+Four additional TODO 4 tests consume the ignored, run-local frozen-baseline evidence directory.
+They remain available as `test-artifact-modes.mjs`, `test-task4-evidence-hardening.mjs`,
+`test-task4-lsp-attempts.mjs`, and `test-tooling-and-endpoints.mjs`, each invoked with that evidence
+root. The source-only command does not regenerate or pretend to replace that historical evidence.
 
 Before committing, also run:
 
@@ -179,7 +189,10 @@ git diff --check
 ```
 
 The GitHub workflow runs equivalent Rust and frontend gates. `cargo-audit`, `cargo-deny`, and
-gitleaks are useful additional checks but are not bundled with this repository.
+gitleaks are useful additional checks but are not bundled with this repository. The locked Rust
+observer stack has known dependency advisories; these and the current persistence threat-model
+limitations are documented in [the security policy](SECURITY.md). No advisory-free, supported
+binary, or production-security claim is made.
 
 ## Desktop observer
 
@@ -232,11 +245,12 @@ configured. Issues and evidence-backed design discussion remain welcome.
 
 ## Licenses
 
-- Software source and software configuration are licensed under
+- Functional software material, including Rust, JavaScript, TypeScript, scripts, schemas,
+  manifests, CI configuration, and machine-readable software configuration, is licensed under
   [GNU AGPL v3.0 only](LICENSE) (`AGPL-3.0-only`).
-- Documentation and other non-code project materials are licensed under
+- Prose and non-functional explanatory documentation are licensed under
   [Creative Commons Attribution-ShareAlike 4.0 International](LICENSE-CC-BY-SA-4.0)
   (`CC BY-SA 4.0`), unless a file states otherwise.
 - Third-party dependencies retain their own licenses.
-- Contributions are additionally governed by the [CLA](CLA.md). The CLA does not replace the
-  public outbound licenses or transfer contributor copyright.
+- Contributions are governed by the existing [CLA](CLA.md) plus the applicable public outbound
+  license. The CLA does not replace those licenses or transfer contributor copyright.

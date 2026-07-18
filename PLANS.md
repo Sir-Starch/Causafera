@@ -59,8 +59,8 @@ Progress
 
 - `plans/public-readiness.md` — prepared factual public documentation and community policy, aligned
   package licensing metadata, pinned least-privilege CI, remediated known frontend advisories, and
-  verified the documented commands in a clean clone without publishing or external mutation on
-  2026-07-18.
+  verified the documented commands in a clean clone for public source visibility, not a product or
+  binary release, without publishing or external mutation on 2026-07-18.
 - `plans/detailed-development-rebaseline.md` — closed the Phase 0–26 Foundation Era and established
   the open-ended Detailed Development Program, M0–M5 capability maturity gates, simulation-first
   priorities, continuous Explanation support, batched UI work, digest/fixture corrections, and an

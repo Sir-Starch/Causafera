@@ -3,8 +3,25 @@
 ## Supported versions
 
 Causafera is experimental pre-alpha software. There is no stable or production-supported release
-line. Security fixes are applied to the current `main` branch when maintainers accept them; older
-commits and local forks are not supported versions.
+line, supported binary distribution, or operated production service. Security fixes are applied to
+the current `main` branch when maintainers accept them; older commits and local forks are not
+supported versions.
+
+## Known pre-alpha limitations
+
+The locked desktop-observer dependency graph currently includes known advisories in
+`quick-xml 0.38.4` (RUSTSEC-2026-0194 and RUSTSEC-2026-0195 denial-of-service cases),
+`time 0.3.45` (RUSTSEC-2026-0009 stack exhaustion), `serde_with 3.17.0`
+(GHSA-7gcf-g7xr-8hxj serialization panic), and `glib 0.18.5` (RUSTSEC-2024-0429
+unsoundness), plus unmaintained transitive packages. These are non-blocking for source visibility
+because no supported binary is distributed. They should be resolved before a supported binary
+distribution and reassessed before production use.
+
+Snapshot persistence currently reads the input file before applying the decoder's 256 MiB bound,
+and its predictable sibling temporary filename can follow a pre-existing symlink. Public source
+visibility does not expose a running persistence service, but untrusted snapshot input and shared
+write directories are outside the current threat model. Bound the pre-decode read and use a
+no-follow, exclusive temporary-file strategy before untrusted or production use.
 
 ## Reporting a vulnerability
 
