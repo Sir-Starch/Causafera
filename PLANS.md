@@ -50,10 +50,11 @@ Progress
 ## Active Planning
 
 - [`plans/biological-mana-coupling.md`](plans/biological-mana-coupling.md) — accepted architecture with pending implementation stages for physical biological mana coupling and its downstream validation.
+- [`plans/actor-material-mana-loop.md`](plans/actor-material-mana-loop.md) — Active, decision-complete first implementation tranche for a production actor/material/mana causal loop.
 
 ## Draft Plans
 
-- [`plans/actor-material-mana-loop.md`](plans/actor-material-mana-loop.md) — Draft first implementation tranche: a production actor action produces a durable local material pattern that couples through mana and back into bounded perception and behaviour.
+No current Draft ExecPlans.
 
 ## Paused Audit and Evidence Material
 

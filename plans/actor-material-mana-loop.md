@@ -1,6 +1,6 @@
 # Actor Material Mana Loop ExecPlan
 
-**Status:** Draft
+**Status:** Active
 
 ## Goal
 
@@ -52,14 +52,42 @@ changes. Runtime snapshots already include authoritative runtime state and resum
 
 ## Proposed architecture
 
-Introduce one bounded, chart-qualified local material-surface state owned by the runtime's
-production bootstrap and lifecycle/action paths. An actor's physically valid local contact changes
-that state by canonical proposal/commit. Its repeated state transitions emit non-semantic pattern
-samples to mana. Above a fixed threshold, mana changes the same material state through a separate,
-traced physical proposal rather than a counter. The changed state produces range-limited physical
-signals; the existing feature-to-scene path selects a subjective target and the existing action
-path can later act in response. The read model exposes only a bounded before/after material delta,
-numeric field context, and trace anchors.
+Introduce `RuntimeState::material_surfaces: BTreeMap<MaterialSurfaceId, MaterialSurface>` as the
+sole authoritative store. `MaterialSurfaceId` is exactly `(ChartChunkCoord, u16 cell_index)` and
+`MaterialSurface` contains `condition: i64`, `contact_count: u64`, and `last_transition: TraceId`.
+The bootstrap owner is `MaterialSurfaceBootstrapStage::bootstrap`, added to
+`HistoricalBootstrapPlan`; it creates one site for each causally bootstrapped active chunk and
+commits `MATERIAL_SURFACE_BOOTSTRAP_EVENT_KIND` before any actor can access it.
+
+`ActorActionSystem::execute` remains the only Action-phase owner of actor contact. After a valid
+`ActionProposal`, it resolves an authoritative contact site from the actor's physical position and
+the selected surface's chart/cell address, constructs `MaterialSurfaceContactProposal`, and calls
+`commit_material_surface_contact_events`. That helper commits actor-body and surface-condition
+effects together through `CausalTraceStore::commit_batch(Phase::Action)` under
+`MATERIAL_SURFACE_CONTACT_EVENT_KIND`; its causes include the bootstrap/site transition and the
+valid action trace. Cognition never receives `MaterialSurfaceId`, chart identity, cell index, or
+trace identity.
+
+`PhysicalPatternSystem::execute` becomes the Physics-phase pattern owner: it reads only changed
+`material_surfaces`, calls `MaterialSurfaceCarrierAdapter::emit_samples`, and appends its bounded,
+canonical `PhysicalPatternSample` values to `pending_samples` and `pattern_history`. The adapter
+fingerprint and magnitude derive only from chart-local cell geometry and `condition` history.
+`ManaRuntimeSystem::execute` remains the Mana-phase field proposal/commit owner.
+`ManaEffectsSystem::execute` replaces `physical_mana_effect_boost` with
+`ManaMaterialSurfaceEffectProposal` and `commit_mana_material_surface_effect_events`; each effect
+changes a concrete `MaterialSurface.condition` through
+`CausalTraceStore::commit_batch(Phase::Mana)` under `MATERIAL_SURFACE_MANA_EVENT_KIND` and cites
+the committed mana-cell trace.
+
+`material_surface_physical_signals` extends the existing physical-signal boundary with
+range-limited signals sourced from changed surfaces. Existing generic feature extraction and
+`ActorCognitionSystem::execute` map these into agent-local cues and a subjective scene; the next
+`ActorActionSystem::execute` may act only from that scene. The bounded observer projection is
+`MaterialSurfaceDelta`, added to the existing `ObserverQuery::world_chunks` /
+`WorldChunkSnapshot` request-response path, and contains chart/chunk, cell ordinal, typed
+before/after `condition`, mana context, and trace anchors. `MaterialSurfaceLoopClaim` is the
+matching deterministic Explanation input; it reports values, window, controls, and insufficiency,
+never purpose or ritual meaning.
 
 ## Primitive vs emergent review
 
@@ -75,24 +103,37 @@ milestone, or M5-scale claim.
 
 ## Implementation stages
 
-1. Replace the counter stand-in with a bounded persistent local material-surface record and a
-   causal bootstrap receipt; remove the counter from the accepted loop.
-2. Commit actor contact/action changes and repeated material-pattern samples in canonical phase
-   order, preserving existing subjective-scene boundaries.
-3. Commit a thresholded mana-to-material response with typed before/after values and no semantic
-   input; prove no-field and no-repetition controls leave material unchanged.
-4. Emit physically accessible signals from the changed material state, route them through the
-   existing perception/scene/action path, and persist all new authoritative state.
-5. Add one bounded observer/Explanation projection and an end-to-end replay, save/resume, and
-   causal-reconstruction scenario.
+1. Add `MaterialSurfaceId`, `MaterialSurface`, `RuntimeState::material_surfaces`, and
+   `MaterialSurfaceBootstrapStage::bootstrap`; remove `physical_counter` and
+   `physical_mana_effect_boost` from the accepted loop.
+2. Implement `MaterialSurfaceContactProposal` and
+   `commit_material_surface_contact_events` inside `ActorActionSystem::execute` with one
+   Action-phase atomic batch for actor/body and material effects.
+3. Implement `MaterialSurfaceCarrierAdapter::emit_samples` in
+   `PhysicalPatternSystem::execute`, then replace the counter feedback in
+   `ManaEffectsSystem::execute` with `ManaMaterialSurfaceEffectProposal` and
+   `commit_mana_material_surface_effect_events` in Phase::Mana.
+4. Implement `material_surface_physical_signals`, preserving the existing perception → subjective
+   scene → action separation and inaccessible Ground Truth correspondence.
+5. Add `MATERIAL_SURFACE_SECTION_ID`, `encode_material_surface_section`,
+   `decode_material_surface_section`, and `RuntimeSnapshotData::material_surfaces`; add bounded
+   `MaterialSurfaceDelta` / `MaterialSurfaceLoopClaim` projection support.
+6. Add the required integration and control tests, benchmark the bounded envelope, and update
+   subsystem documentation only with observed implementation evidence.
 
 ## Verification
 
-Run the production runtime from the causal bootstrap, not a fixture: actor contact changes a local
-material value; repeated transitions change mana; mana changes that value; a later bounded signal
-reaches a subjective scene and a later action; every transition has parent-before-child traces.
-Prove same-seed replay, save/resume equivalence, batch-order invariance, no-repetition, no-mana,
-and observer-cadence/locale controls.
+The required production-path tests are
+`actor_contact_material_surface_commits_causal_transition`,
+`repeated_material_surface_transitions_drive_mana`,
+`mana_material_surface_effect_changes_later_accessible_signal`,
+`actor_material_surface_loop_replays_and_resumes_exactly`, and
+`material_surface_loop_controls_reject_counter_fixture_and_observer_paths`.
+They must run from `HistoricalBootstrapPlan`, not a fixture/demo constructor, and prove actor
+contact changes a local material value; repeated transitions change mana; mana changes that value;
+a later bounded signal reaches a subjective scene and a later action; and every transition has
+parent-before-child traces. The final test contains no-repetition, no-mana, no-field-effect,
+fixture-exclusion, observer-cadence, locale, and batch-order controls.
 
 ## Benchmark plan
 
@@ -114,9 +155,10 @@ snapshot sections.
 
 ## Observer impact
 
-Add a versioned bounded read-only material delta/query sufficient to inspect one site, its field
-context, and trace anchors. Do not add a panel unless this read model cannot be inspected through
-the existing observer workflow.
+Extend the existing versioned `ObserverQuery::world_chunks` / `WorldChunkSnapshot` response with
+bounded `MaterialSurfaceDelta` values. Each value exposes only chart/chunk, cell ordinal, typed
+before/after condition, field context, and trace anchors. Do not add a panel unless the existing
+observer workflow cannot inspect this read model.
 
 ## Explanation impact
 
@@ -126,9 +168,10 @@ semantic meaning from the loop.
 
 ## Persistence impact
 
-Snapshot the material-surface state, bounded history needed by mana, causal ancestry, and any
-actor-visible signal source. An uninterrupted run and save/load/resume run must have equal
-canonical state and history digests.
+`MATERIAL_SURFACE_SECTION_ID` owns `RuntimeSnapshotData::material_surfaces`; its codecs are
+`encode_material_surface_section` and `decode_material_surface_section`. It stores the bounded
+surface records, last transition traces, and required bounded history. An uninterrupted run and
+save/load/resume run must have equal canonical state and history digests.
 
 ## Cross-domain effects
 
@@ -159,7 +202,10 @@ Advance the accepted slice of `TODO-SIM-001`; update `TODO-RUNTIME-001`, `TODO-O
   exercises Causafera's thesis.
 - 2026-07-18: Reuse the current scheduler, causal bootstrap, snapshot, perception, subjective
   scene, action, and observer foundations; defer new biology, broad material economy, and UI work.
+- 2026-07-18: Decision-completeness review fixed the authoritative store, bootstrap and phase
+  owners, proposal/commit operations, provenance event identities, snapshot section, observer and
+  Explanation projections, and named integration/control tests. The plan is ready to implement.
 
 ## Progress
 
-Draft only. No product implementation has begun.
+READY FOR IMPLEMENTATION. No product implementation has begun.

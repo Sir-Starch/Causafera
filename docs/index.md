@@ -215,6 +215,7 @@ Later documents supersede conflicting initialization-spec sections **only when t
 - `docs/development/codebase-memory.md` - Codebase knowledge graph
 - `docs/development/contributing.md` - Contributing
 - `docs/development/changelog.md` - Changelog
+- `docs/development/maturity-audit-groundwork.md` - Preserved frozen-audit Todos 1–4 groundwork
 
 ## Roadmap
 
