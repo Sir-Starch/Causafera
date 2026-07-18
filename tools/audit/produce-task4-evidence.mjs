@@ -13,30 +13,36 @@ import {
   LEGACY_BASELINE_TYPES_SOURCE_PATH,
 } from './lib/validate-capability-audit-core.mjs';
 
-const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..', '..');
+const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
+const ROOT = path.resolve(SCRIPT_DIR, '..', '..');
 const CATALOG = path.join(ROOT, 'tools/audit/capability-catalog.json');
 const CANDIDATE_PATH = /^(?:crates\/.*\.rs|apps\/observer\/(?:src\/.*\.(?:ts|tsx)|vite\.config\.ts)|packages\/observer-protocol\/src\/index\.ts|proto\/.*\.proto)$/;
 const RUST_PATH = /^crates\/.*\.rs$/;
 const BASELINE = /^[0-9a-f]{40}$/;
-const GRAPH_CLI = '/home/lorfit/.local/bin/codebase-memory-mcp';
+const GRAPH_CLI = 'codebase-memory-mcp';
 const GRAPH_PROJECT = LEGACY_BASELINE_GRAPH_PROJECT;
-const OMO_CACHE = '/home/lorfit/.codex/plugins/cache/sisyphuslabs/omo';
 const usage = 'usage: node tools/audit/produce-task4-evidence.mjs --run-id <run-id> --source-baseline <40-hex-sha> --out <.omo/evidence/run-id>\n       node tools/audit/produce-task4-evidence.mjs --lsp-lifecycle-smoke\n';
 
 function fail(message) { throw new Error(message); }
-function compareVersions(left, right) {
-  const leftParts = left.split('.').map(Number), rightParts = right.split('.').map(Number);
-  for (let index = 0; index < 3; index++) if (leftParts[index] !== rightParts[index]) return rightParts[index] - leftParts[index];
-  return 0;
+function executableOnPath(name) {
+  for (const entry of (process.env.PATH ?? '').split(path.delimiter)) {
+    if (!entry || !path.isAbsolute(entry)) continue;
+    const candidate = path.join(entry, name);
+    try {
+      fs.accessSync(candidate, fs.constants.X_OK);
+      if (fs.statSync(candidate).isFile()) return fs.realpathSync(candidate);
+    } catch {}
+  }
+  fail(`${name} is not available on PATH`);
 }
 function discoverLspProvider() {
-  let versions;
-  try { versions = fs.readdirSync(OMO_CACHE, { withFileTypes: true }).filter((entry) => entry.isDirectory() && /^\d+\.\d+\.\d+$/.test(entry.name)).map((entry) => entry.name); }
-  catch { fail('no OMO cache is available for LSP collection'); }
-  const candidates = versions.map((version) => ({ version, path: path.join(OMO_CACHE, version, 'components/lsp-daemon/dist/cli.js') })).filter((candidate) => fs.existsSync(candidate.path) && fs.statSync(candidate.path).isFile()).sort((left, right) => compareVersions(left.version, right.version));
-  if (!candidates.length) fail('no validated OMO LSP CLI is installed');
-  const provider = candidates[0];
-  if (candidates.filter((candidate) => candidate.version === provider.version).length !== 1) fail(`ambiguous newest OMO LSP CLI version: ${provider.version}`);
+  const packageRoot = path.resolve(path.dirname(executableOnPath('omo')), '..');
+  const metadataPath = path.join(packageRoot, 'package.json');
+  const providerPath = path.join(packageRoot, 'packages/lsp-daemon/dist/cli.js');
+  if (!fs.existsSync(metadataPath) || !fs.existsSync(providerPath) || !fs.statSync(providerPath).isFile()) fail('no validated OMO LSP CLI is installed');
+  const metadata = JSON.parse(fs.readFileSync(metadataPath, 'utf8'));
+  if (!/^\d+\.\d+\.\d+$/.test(metadata.version)) fail('installed OMO LSP CLI has an invalid version');
+  const provider = { version: metadata.version, path: providerPath };
   return { ...provider, sha256: crypto.createHash('sha256').update(fs.readFileSync(provider.path)).digest('hex') };
 }
 const LSP_PROVIDER = discoverLspProvider();

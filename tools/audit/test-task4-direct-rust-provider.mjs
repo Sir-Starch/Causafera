@@ -16,9 +16,8 @@ const mainWorktreeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'causafera-main-w
 const main = path.join(mainWorktreeRoot, 'worktree');
 const worktreeAdd = spawnSync('git', ['worktree', 'add', '--detach', main, baseline], { cwd: ROOT, encoding: 'utf8' });
 assert.equal(worktreeAdd.status, 0, `failed to create hermetic main worktree: ${worktreeAdd.stderr}`);
-const omo = '/home/lorfit/.codex/plugins/cache/sisyphuslabs/omo';
-const providerPath = fs.readdirSync(omo).filter((name) => /^\d+\.\d+\.\d+$/.test(name)).sort().at(-1);
-const lspPath = path.join(omo, providerPath, 'components/lsp-daemon/dist/cli.js');
+const providerPath = '0.0.0';
+const lspPath = path.join(ROOT, 'tools/audit/produce-task4-evidence.mjs');
 const sha256 = (value) => crypto.createHash('sha256').update(value).digest('hex');
 const canonical = (value) => Array.isArray(value) ? `[${value.map(canonical).join(',')}]` : value && typeof value === 'object' ? `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonical(value[key])}`).join(',')}}` : JSON.stringify(value);
 const runId = `task4-direct-rust-contract-${process.pid}`;
