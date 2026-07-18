@@ -47,9 +47,6 @@ Progress
 
 ## Active Plans
 
-- `plans/public-readiness.md` — prepares factual public documentation, community policy, license
-  metadata, repository hardening, and reproducibility evidence without publishing or externally
-  mutating the repository.
 - `plans/detailed-development-maturity-audit.md` — active bounded evidence audit for the frozen
   `26026fb3862e` baseline; records 30-domain capability maturity, four deep blocker families,
   deterministic sequencing, and one downstream Draft ExecPlan without product implementation.
@@ -60,6 +57,10 @@ Progress
 
 ## Completed Plans
 
+- `plans/public-readiness.md` — prepared factual public documentation and community policy, aligned
+  package licensing metadata, pinned least-privilege CI, remediated known frontend advisories, and
+  verified the documented commands in a clean clone without publishing or external mutation on
+  2026-07-18.
 - `plans/detailed-development-rebaseline.md` — closed the Phase 0–26 Foundation Era and established
   the open-ended Detailed Development Program, M0–M5 capability maturity gates, simulation-first
   priorities, continuous Explanation support, batched UI work, digest/fixture corrections, and an

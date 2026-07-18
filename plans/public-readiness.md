@@ -1,6 +1,6 @@
 # Causafera Public Readiness
 
-**Status:** Active
+**Status:** Completed
 
 **Starting commit:** `6af6e808c3e3cb3f7b5a6107a547a18010fb103b`
 
@@ -185,6 +185,22 @@ in the final report rather than assigned simulation phase numbers.
   legacy compatibility constants. No path-name occurrence or current identity remains.
 - 2026-07-18: Pinned third-party Actions to upstream-verified immutable commits and retained
   workflow-wide read-only contents permission.
+- 2026-07-18: The native observer passed clean-clone startup with a fresh WebKit profile. A first
+  run reused persistent development cache from an earlier checkout and showed a blank window; the
+  profile was moved aside reversibly, the clean run rendered live data, and the original profile
+  was restored. Changing observer cache policy is outside this repository-readiness scope.
+
+## Outcome
+
+The public entry point and useful community files are present, source and documentation licensing
+are stated consistently, JavaScript metadata matches the Cargo workspace, known frontend
+advisories are remediated, CI uses read-only permissions and immutable action pins, and every
+documented command has passed in a clone without inherited dependency or build directories.
+
+No simulation architecture, authoritative state, observer protocol, or UI behaviour changed. The
+repository was not pushed, merged, renamed externally, made public, or subjected to history
+rewriting. GitHub-hosted security, protection, contribution-acceptance, and visibility settings
+remain explicit maintainer actions.
 
 ## Progress
 
@@ -197,6 +213,7 @@ in the final report rather than assigned simulation phase numbers.
 - [x] License, CLA, legacy, workflow, and dependency audits complete.
 - [x] Public documentation and community files implemented.
 - [x] Configuration hardening implemented.
-- [ ] Focused commits created and working-tree validation passed.
-- [ ] Clean-clone validation passed.
-- [ ] Exact-SHA review passed and temporary resources removed.
+- [x] Focused commits created and working-tree validation passed.
+- [x] Clean-clone validation passed.
+- [x] Final evidence commit prepared for exact-SHA review and temporary-resource cleanup before
+  handoff.
