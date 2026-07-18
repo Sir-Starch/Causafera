@@ -14,7 +14,7 @@ importers:
 
   apps/observer:
     dependencies:
-      '@ontopolis/observer-protocol':
+      '@causafera/observer-protocol':
         specifier: workspace:*
         version: link:../../packages/observer-protocol
       react:

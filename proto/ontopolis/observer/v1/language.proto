@@ -1,9 +1,0 @@
-syntax = "proto3";
-package ontopolis.observer.v1;
-
-message LexemeSummary {
-  uint64 lexeme_id = 1;
-  repeated uint64 phonological_unit_ids = 2;
-  repeated SubjectiveAssociation associations = 3;
-}
-message SubjectiveAssociation { uint64 subjective_pattern_id = 1; sint64 weight = 2; }

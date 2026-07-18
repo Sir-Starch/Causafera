@@ -6,7 +6,7 @@ Complete `TODO-BIO-002` by defining compact, validated, label-free pathogen line
 
 ## Context
 
-Phase 5 already established immutable biological structure. The backlog also assigns pathogen primitives to Phase 5, but `ontopolis-biology` has no pathogen module. Phase 6 causal provenance is not yet implemented, so this work can safely establish only immutable authoritative inputs and causally referenced transmission observations. Live infections, pathogen evolution, and host-state mutation remain downstream proposal/reduce/commit systems.
+Phase 5 already established immutable biological structure. The backlog also assigns pathogen primitives to Phase 5, but `causafera-biology` has no pathogen module. Phase 6 causal provenance is not yet implemented, so this work can safely establish only immutable authoritative inputs and causally referenced transmission observations. Live infections, pathogen evolution, and host-state mutation remain downstream proposal/reduce/commit systems.
 
 ## Relevant invariants
 
@@ -52,7 +52,7 @@ Phase 5 already established immutable biological structure. The backlog also ass
 
 ## Current state
 
-`ontopolis-types` supplies typed `PathogenId`, `PopulationLineageId`, `BodyId`, `TraceId`, and `SimulationTime` values. `ontopolis-biology` has structural morphology plus placeholder physiology and population types, but no pathogen representation. The pathogen document currently sketches semantic pathogen and route enums that conflict with the repository rule against convenience domain taxonomies.
+`causafera-types` supplies typed `PathogenId`, `PopulationLineageId`, `BodyId`, `TraceId`, and `SimulationTime` values. `causafera-biology` has structural morphology plus placeholder physiology and population types, but no pathogen representation. The pathogen document currently sketches semantic pathogen and route enums that conflict with the repository rule against convenience domain taxonomies.
 
 ## Proposed architecture
 
@@ -84,7 +84,7 @@ Pathogen lineage identity, ancestry, exposure dose, timing, bounded physical rat
 ## Verification
 
 - `cargo fmt --all -- --check`
-- `cargo test -p ontopolis-biology --all-targets`
+- `cargo test -p causafera-biology --all-targets`
 - `cargo test --workspace --all-targets`
 - `cargo clippy --workspace --all-targets -- -D warnings`
 - `git diff --check`

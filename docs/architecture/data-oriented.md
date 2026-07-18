@@ -1,6 +1,6 @@
 # Data-Oriented Storage
 
-Ontopolis prefers data-oriented storage patterns that optimize for cache locality, dense iteration, and deterministic batch execution.
+Causafera prefers data-oriented storage patterns that optimize for cache locality, dense iteration, and deterministic batch execution.
 
 ## Preferred Patterns
 

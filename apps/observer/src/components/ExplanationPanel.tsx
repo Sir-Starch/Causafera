@@ -2,7 +2,7 @@ import {
   Assessment,
   EvidenceState,
   type ExplanationReport,
-} from "@ontopolis/observer-protocol";
+} from "@causafera/observer-protocol";
 
 import type { Copy } from "../i18n";
 import type { ObserverLocale } from "../useObserverSession";

@@ -1,6 +1,6 @@
 # Historical Arrivals
 
-Cross-world transfer is not a one-time event. It has a history within Ontopolis, with arrivals at different times, places, and scales, each with different consequences.
+Cross-world transfer is not a one-time event. It has a history within Causafera, with arrivals at different times, places, and scales, each with different consequences.
 
 ## Arrival as Historical Event
 
@@ -27,7 +27,7 @@ Historical arrival patterns may include:
 
 ## Consequences of Arrival History
 
-The history of arrivals shapes Ontopolis:
+The history of arrivals shapes Causafera:
 
 - Languages may contain loanwords from multiple source worlds
 - Technologies may show hybrid influences from different origins

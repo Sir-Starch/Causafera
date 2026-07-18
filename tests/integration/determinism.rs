@@ -1,4 +1,4 @@
-use ontopolis_core::deterministic::DeterministicConfig;
+use causafera_core::deterministic::DeterministicConfig;
 
 #[test]
 fn deterministic_config_serde() {

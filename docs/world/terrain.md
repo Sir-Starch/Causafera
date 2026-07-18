@@ -120,7 +120,7 @@ Terrain data may be large. Strategies:
 
 ## Phase 4 Implementation
 
-`ontopolis-geography` now defines the terrain generation contract:
+`causafera-geography` now defines the terrain generation contract:
 
 - `ElevationMm`, `RoughnessMm`, and `TerrainCell` provide fixed-point physical values without semantic terrain categories.
 - `TerrainChunk` stores elevation, `MaterialId`, and roughness in three contiguous vectors using deterministic row-major indexing.

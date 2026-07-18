@@ -1,5 +1,5 @@
 {
-  "name": "ontopolis-observer",
+  "name": "causafera-observer",
   "private": true,
   "version": "0.1.0",
   "type": "module",
@@ -14,7 +14,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@ontopolis/observer-protocol": "workspace:*",
+    "@causafera/observer-protocol": "workspace:*",
     "react": "^18.3.0",
     "react-dom": "^18.3.0"
   },

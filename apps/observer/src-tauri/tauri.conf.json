@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Ontopolis Observer",
+  "productName": "Causafera Observer",
   "version": "0.1.0",
-  "identifier": "com.ontopolis.observer",
+  "identifier": "com.causafera.observer",
   "build": {
     "beforeDevCommand": "npm run dev",
     "beforeBuildCommand": "npm run build",
@@ -15,7 +15,7 @@
       {
         "fullscreen": false,
         "resizable": true,
-        "title": "Ontopolis Observer",
+        "title": "Causafera Observer",
         "width": 1360,
         "height": 860,
         "minWidth": 960,

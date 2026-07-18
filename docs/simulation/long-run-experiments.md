@@ -1,6 +1,6 @@
 # Long-Run Experiments
 
-Phase 24 provides the first executable deterministic Ontopolis simulation path. It is deliberately a small causal field experiment rather than a fabricated city or population.
+Phase 24 provides the first executable deterministic Causafera simulation path. It is deliberately a small causal field experiment rather than a fabricated city or population.
 
 ## Executable loop
 
@@ -29,9 +29,9 @@ The suite requires the intervention to change the final canonical trajectory. Th
 ## Commands
 
 ```text
-cargo run -p ontopolis-cli -- doctor
-cargo run -p ontopolis-cli -- run --seed 42 --ticks 1000
-cargo run -p ontopolis-cli -- lab long-run --seed 42 --ticks 1000 \
+cargo run -p causafera-cli -- doctor
+cargo run -p causafera-cli -- run --seed 42 --ticks 1000
+cargo run -p causafera-cli -- lab long-run --seed 42 --ticks 1000 \
   --checkpoint-interval 100 --suppression-from 400 --suppression-through 600
 ```
 

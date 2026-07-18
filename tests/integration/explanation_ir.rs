@@ -1,5 +1,5 @@
-use ontopolis_explanation::ir::PhenomenonExplanation;
-use ontopolis_types::ConceptId;
+use causafera_explanation::ir::PhenomenonExplanation;
+use causafera_types::ConceptId;
 
 #[test]
 fn explanation_ir_can_be_constructed() {

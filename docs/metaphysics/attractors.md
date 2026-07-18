@@ -4,7 +4,7 @@ Attractors are stable patterns in the mana field or in distributed information s
 
 ## What Is an Attractor?
 
-In dynamical systems, an attractor is a set of states toward which a system tends to evolve. In Ontopolis, attractors are candidate mechanisms for how repeated physical and informational patterns might create stable, persistent structures that interact with the world.
+In dynamical systems, an attractor is a set of states toward which a system tends to evolve. In Causafera, attractors are candidate mechanisms for how repeated physical and informational patterns might create stable, persistent structures that interact with the world.
 
 ## Candidate Attractor Types
 

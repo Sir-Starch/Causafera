@@ -1,6 +1,6 @@
 # Ground Truth Events and Causal Provenance
 
-Every accepted authoritative property transition is represented by a committed causal event. The Phase 6 implementation lives in `ontopolis-core::provenance` and follows:
+Every accepted authoritative property transition is represented by a committed causal event. The Phase 6 implementation lives in `causafera-core::provenance` and follows:
 
 ```text
 READ

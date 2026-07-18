@@ -1,6 +1,6 @@
 # Performance Metrics
 
-This document defines the specific metrics used to measure Ontopolis performance.
+This document defines the specific metrics used to measure Causafera performance.
 
 ## Simulation Throughput
 

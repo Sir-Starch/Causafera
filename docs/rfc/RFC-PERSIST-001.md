@@ -23,7 +23,7 @@ The post-Phase-24 implementation now includes:
 - population aggregates and concrete historical bootstrap receipts;
 - experiment manifests and read-only Explanation IR/analytics.
 
-`ontopolis-persistence::Snapshot` currently stores only `version` and `world_seed`. It is disconnected from runtime state and cannot restore a simulation. Serializing Rust object memory or derived observer data would be incorrect. Persistence needs a canonical logical-state boundary, explicit schema revisions, bounded allocation, validated reconstruction, and exact post-load digest verification.
+`causafera-persistence::Snapshot` currently stores only `version` and `world_seed`. It is disconnected from runtime state and cannot restore a simulation. Serializing Rust object memory or derived observer data would be incorrect. Persistence needs a canonical logical-state boundary, explicit schema revisions, bounded allocation, validated reconstruction, and exact post-load digest verification.
 
 ## Design
 
@@ -37,9 +37,9 @@ Mid-phase snapshots are rejected and remain out of scope.
 
 Avoid a persistence/runtime dependency cycle:
 
-- `ontopolis-persistence` owns the generic envelope, section directory, canonical primitive codec, validation errors, integrity checks, and file I/O;
+- `causafera-persistence` owns the generic envelope, section directory, canonical primitive codec, validation errors, integrity checks, and file I/O;
 - runtime and domain crates expose stable logical export/reconstruction data or validated constructors;
-- `ontopolis-runtime`, which already depends on persistence, assembles registered sections and reconstructs the scheduler/runtime recipe;
+- `causafera-runtime`, which already depends on persistence, assembles registered sections and reconstructs the scheduler/runtime recipe;
 - persistence never imports or understands semantic runtime systems, actors, mana, or populations.
 
 ### Sectioned binary format

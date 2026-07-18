@@ -4,7 +4,7 @@
 
 ## Summary
 
-Ontopolis uses full three-dimensional Euclidean physical geometry inside bounded local frames, a charted two-dimensional geographic surface with fixed-point elevation at world scale, layered depth for coarse subsurface state, and selectively promoted volumetric 3D for causally relevant underground or constructed spaces.
+Causafera uses full three-dimensional Euclidean physical geometry inside bounded local frames, a charted two-dimensional geographic surface with fixed-point elevation at world scale, layered depth for coarse subsurface state, and selectively promoted volumetric 3D for causally relevant underground or constructed spaces.
 
 Spatial containment, geometry, and causal resolution are separate systems.
 
@@ -16,7 +16,7 @@ The existing architecture implemented 3D lattice coordinates, surface terrain, c
 
 ### Global world topology
 
-The default Ontopolis world is a finite closed planetary surface represented by a versioned atlas of overlapping two-dimensional charts. It has no physical map edge. Exact planetary shape, metric coefficients, chart seams, and adjacency transforms belong to an opaque `WorldGeometrySchemaId` registry contract rather than a semantic sphere/plane enum in hot state.
+The default Causafera world is a finite closed planetary surface represented by a versioned atlas of overlapping two-dimensional charts. It has no physical map edge. Exact planetary shape, metric coefficients, chart seams, and adjacency transforms belong to an opaque `WorldGeometrySchemaId` registry contract rather than a semantic sphere/plane enum in hot state.
 
 Alternative world topologies require an explicit accepted geometry schema. They may not silently reuse Cartesian wraparound or UI map boundaries.
 

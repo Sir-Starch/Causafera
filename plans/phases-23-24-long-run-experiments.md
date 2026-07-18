@@ -4,7 +4,7 @@
 Provide metaphysically neutral research contracts and a real deterministic headless simulation path that can execute bounded long-run control/intervention experiments without runtime errors.
 
 ## Context
-Phase 22 completed cross-world transfer bookkeeping, but `ontopolis-metaphysics`, `ontopolis-runtime`, `ontopolis-lab`, and the CLI are placeholders. The accepted mana, causal provenance, resolution, and scheduler foundations are not yet integrated into an executable loop. During implementation, the user identified that 3D lattice coordinates, 2D terrain, containment, and resolution existed without an accepted global spatial geometry model; this foundational gap is part of the plan.
+Phase 22 completed cross-world transfer bookkeeping, but `causafera-metaphysics`, `causafera-runtime`, `causafera-lab`, and the CLI are placeholders. The accepted mana, causal provenance, resolution, and scheduler foundations are not yet integrated into an executable loop. During implementation, the user identified that 3D lattice coordinates, 2D terrain, containment, and resolution existed without an accepted global spatial geometry model; this foundational gap is part of the plan.
 
 ## Relevant invariants
 INV-003 through INV-007, INV-010 through INV-019, INV-023, INV-025 through INV-027, and INV-030.

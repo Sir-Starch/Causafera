@@ -6,11 +6,11 @@
 
 Phases 1 through 5 were audited:
 
-- **Phase 1:** Deterministic simulation kernel (`ontopolis-core` — scheduler, phases, random streams, deterministic config)
-- **Phase 2:** Ontology primitives and generic feature representation (`ontopolis-types` — coordinates, physics, features, IDs)
-- **Phase 3:** Spatial world skeleton (`ontopolis-world` — hierarchy, spatial containment)
-- **Phase 4:** Minimal causal geography (`ontopolis-geography` — terrain contracts, generation, provenance)
-- **Phase 5:** Biological structural model (`ontopolis-biology` — body segments, joints, lengths, orientations)
+- **Phase 1:** Deterministic simulation kernel (`causafera-core` — scheduler, phases, random streams, deterministic config)
+- **Phase 2:** Ontology primitives and generic feature representation (`causafera-types` — coordinates, physics, features, IDs)
+- **Phase 3:** Spatial world skeleton (`causafera-world` — hierarchy, spatial containment)
+- **Phase 4:** Minimal causal geography (`causafera-geography` — terrain contracts, generation, provenance)
+- **Phase 5:** Biological structural model (`causafera-biology` — body segments, joints, lengths, orientations)
 
 ## 2. Were Phases 1–5 preserved as completed?
 
@@ -73,9 +73,9 @@ RFC-COG-001 (`docs/rfc/RFC-COG-001.md`) leaves ten explicit unresolved questions
 
 No existing code in Phases 1–5 directly violates the new invariants because no agent cognition has been implemented yet. The audit found:
 
-- `Feature.target_id: EntityId` in `ontopolis-types` creates a **future risk** — if future cognition consumes `Feature` directly, it would receive authoritative entity identity. However, no code currently consumes `Feature` in the cognition crate.
-- `BodyStructure` with `BodySegmentId` is not imported by `ontopolis-cognition`.
-- `SpatialHierarchy` with `PlaceId`/`ChunkId` is not imported by `ontopolis-cognition`.
+- `Feature.target_id: EntityId` in `causafera-types` creates a **future risk** — if future cognition consumes `Feature` directly, it would receive authoritative entity identity. However, no code currently consumes `Feature` in the cognition crate.
+- `BodyStructure` with `BodySegmentId` is not imported by `causafera-cognition`.
+- `SpatialHierarchy` with `PlaceId`/`ChunkId` is not imported by `causafera-cognition`.
 - No semantic shortcuts (`Finger`, `Tremor`, `Disease`, etc.) exist in the generic feature layer.
 
 ## 8. If code changed, what exact incompatibility required it?
@@ -100,8 +100,8 @@ Yes. The architecture explicitly requires this separation:
 Yes. The separation is architecturally enforced:
 
 - **INV-034** explicitly separates objective body state from subjective body schema.
-- `ontopolis-biology` stores `BodyStructure` with `BodySegmentId`, length, orientation, and joint limits.
-- `ontopolis-cognition` does not currently import `ontopolis-biology`.
+- `causafera-biology` stores `BodyStructure` with `BodySegmentId`, length, orientation, and joint limits.
+- `causafera-cognition` does not currently import `causafera-biology`.
 - **RFC-COG-001** defines `BodySchemaState` as constructed from proprioception, pain, balance, and learned boundaries — not from a complete `BodyStructure` dump.
 - **TODO-SCENE-003** is dedicated to designing the body-schema mapping.
 

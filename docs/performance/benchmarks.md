@@ -1,6 +1,6 @@
 # Benchmarks
 
-This document defines benchmark methodology and requirements for Ontopolis.
+This document defines benchmark methodology and requirements for Causafera.
 
 ## Benchmark Requirements
 
@@ -69,7 +69,7 @@ The headless runtime and lab report wall-clock duration for bounded runs and num
 
 ## Observer Transport Diagnostic
 
-Run `cargo run --release -p ontopolis-runtime --example observer_overhead`. The bounded harness
+Run `cargo run --release -p causafera-runtime --example observer_overhead`. The bounded harness
 warms up for 16 ticks and measures 128 ticks in headless, idle, normal (one query/tick), and heavy
 (32 queries/tick) modes. A 2026-07-13 local run measured 357–368 ms across the four modes and
 encoded 0, 0, 18,198, and 582,336 bytes respectively. These are environment-specific diagnostics,

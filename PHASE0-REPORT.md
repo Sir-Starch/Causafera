@@ -1,4 +1,4 @@
-# Ontopolis Phase 0 Completion Report
+# Causafera Phase 0 Completion Report
 
 **Date:** 2026-07-12
 **Status:** Phase 0 Foundation Complete
@@ -48,7 +48,7 @@
 
 ## Phase 0 Review Questions
 
-### 1. Which files preserve the unique Ontopolis thesis?
+### 1. Which files preserve the unique Causafera thesis?
 
 - `docs/vision/project-thesis.md` — Core thesis: societies construct subjective causal models which alter behaviour, producing physical structures that mana responds to
 - `docs/vision/uniqueness.md` — Key differentiators: causal reconstructability, no semantic shortcuts, language is physical, observation is not Ground Truth, geography is causal
@@ -208,7 +208,7 @@ From `docs/ontology/primitive-vs-emergent.md`:
   - Pipeline: Explanation IR → validated fact packet → LLM wording → UI prose
   - Every LLM output remains associated with its source fact packet
   - UI can expose structured source data
-  - LLM use is optional; Ontopolis must work without it
+  - LLM use is optional; Causafera must work without it
 
 ### 19. Which invariant prevents LLM explanations from becoming history?
 
@@ -321,28 +321,28 @@ The following RFCs must be accepted before their respective domains can be imple
 ### 29. What code currently exists?
 
 - **22 Rust crates** with Cargo.toml and lib.rs:
-  - `ontopolis-types`: Typed IDs (AgentId, ConceptId, etc.), SimulationTime
-  - `ontopolis-core`: Scheduler, Phase enum, DeterministicConfig
-  - `ontopolis-world`: World hierarchy stub
-  - `ontopolis-geography`: TerrainCell, GeologyLayer, HydrologyCell, ClimateCell stubs
-  - `ontopolis-biology`: BodySegment, PhysiologyState, PopulationLineage stubs
-  - `ontopolis-cognition`: AttentionState, MemoryStore, Belief stubs
-  - `ontopolis-language`: AgentLexiconEntry, PhonemeInventory, GrammarFrame stubs
-  - `ontopolis-epistemics`: Measurement, Document stubs
-  - `ontopolis-isekai`: TransferConfig, TransferType
-  - `ontopolis-metaphysics`: IdentityState stub
-  - `ontopolis-resolution`: ResolutionConfig stub
-  - `ontopolis-domains`: EconomyNode, Practice, ManaField stubs
-  - `ontopolis-accelerate`: Accelerator trait
-  - `ontopolis-accelerate-cuda`: CudaAccelerator stub
-  - `ontopolis-persistence`: Snapshot serde type
-  - `ontopolis-analytics`: SimulationMetrics stub
-  - `ontopolis-explanation`: PhenomenonExplanation, AnalyticalClassification stubs
-  - `ontopolis-observer-api`: ObserverQuery, ObserverStream stubs
-  - `ontopolis-observer-wire`: ProtocolHandler stub
-  - `ontopolis-runtime`: Runtime composition root
-  - `ontopolis-lab`: ExperimentConfig stub
-  - `ontopolis-cli`: CLI with doctor, lab, run commands
+  - `causafera-types`: Typed IDs (AgentId, ConceptId, etc.), SimulationTime
+  - `causafera-core`: Scheduler, Phase enum, DeterministicConfig
+  - `causafera-world`: World hierarchy stub
+  - `causafera-geography`: TerrainCell, GeologyLayer, HydrologyCell, ClimateCell stubs
+  - `causafera-biology`: BodySegment, PhysiologyState, PopulationLineage stubs
+  - `causafera-cognition`: AttentionState, MemoryStore, Belief stubs
+  - `causafera-language`: AgentLexiconEntry, PhonemeInventory, GrammarFrame stubs
+  - `causafera-epistemics`: Measurement, Document stubs
+  - `causafera-isekai`: TransferConfig, TransferType
+  - `causafera-metaphysics`: IdentityState stub
+  - `causafera-resolution`: ResolutionConfig stub
+  - `causafera-domains`: EconomyNode, Practice, ManaField stubs
+  - `causafera-accelerate`: Accelerator trait
+  - `causafera-accelerate-cuda`: CudaAccelerator stub
+  - `causafera-persistence`: Snapshot serde type
+  - `causafera-analytics`: SimulationMetrics stub
+  - `causafera-explanation`: PhenomenonExplanation, AnalyticalClassification stubs
+  - `causafera-observer-api`: ObserverQuery, ObserverStream stubs
+  - `causafera-observer-wire`: ProtocolHandler stub
+  - `causafera-runtime`: Runtime composition root
+  - `causafera-lab`: ExperimentConfig stub
+  - `causafera-cli`: CLI with doctor, lab, run commands
 - **10 `.proto` files** for observer protocol v1
 - **Tauri observer shell** with React components (ConnectionStatus, SimulationControls, WorldViewport, InspectorPanel, TimelinePanel, ExplanationPanel)
 - **xtask** CI runner
@@ -371,7 +371,7 @@ Per specification section 81 and 85, the following were explicitly excluded from
 - Fake cities
 - Placeholder magical schools, classes, races, diseases, religions, social categories
 
-### 31. Does Ontopolis currently make any unverified performance or emergence claims?
+### 31. Does Causafera currently make any unverified performance or emergence claims?
 
 No. The project contains only documented target emergent phenomena (not claims that they currently occur) and explicit performance metrics to be measured once the relevant systems exist. No benchmarks have been run that would produce claims. The performance philosophy states that "a million inert agents are not success" but does not claim any specific current performance.
 

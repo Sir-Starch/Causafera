@@ -1,6 +1,6 @@
 # Epistemic Architecture
 
-The epistemic infrastructure lives in the `ontopolis-epistemics` crate. It simulates not only what agents believe but the mechanisms societies use to improve, preserve, and transmit beliefs.
+The epistemic infrastructure lives in the `causafera-epistemics` crate. It simulates not only what agents believe but the mechanisms societies use to improve, preserve, and transmit beliefs.
 
 ## Core Principle
 

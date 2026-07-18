@@ -1,0 +1,14 @@
+syntax = "proto3";
+package causafera.observer.v1;
+import "causafera/observer/v1/common.proto";
+
+message ConnectRequest {
+  repeated uint32 supported_protocol_versions = 1;
+  string observer_locale = 2;
+}
+message ConnectResponse {
+  uint32 selected_protocol_version = 1;
+  SimulationTime current_time = 2;
+  repeated uint32 capabilities = 3;
+}
+message DisconnectRequest { uint32 reason_code = 1; }

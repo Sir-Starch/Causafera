@@ -1,6 +1,6 @@
 # Unresolved Assumptions
 
-Ontopolis contains deliberate research hypotheses and explicitly unresolved questions. This document records them so they are not accidentally hardcoded as decided architecture.
+Causafera contains deliberate research hypotheses and explicitly unresolved questions. This document records them so they are not accidentally hardcoded as decided architecture.
 
 ## Metaphysics
 

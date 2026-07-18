@@ -1,4 +1,4 @@
-# Ontopolis Documentation Index
+# Causafera Documentation Index
 
 ## Specification Provenance
 
@@ -19,7 +19,7 @@ Later documents supersede conflicting initialization-spec sections **only when t
 - `docs/vision/project-thesis.md` - Central project thesis and mana semantics
 - `docs/vision/core-loop.md` - Fundamental causal loop
 - `docs/vision/isekai-targets.md` - Target emergent phenomena
-- `docs/vision/uniqueness.md` - What distinguishes Ontopolis
+- `docs/vision/uniqueness.md` - What distinguishes Causafera
 
 ## Ontology
 

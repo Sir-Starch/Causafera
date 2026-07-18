@@ -1,6 +1,6 @@
 # Performance Philosophy
 
-Ontopolis optimizes simulated causal complexity per wall-clock second.
+Causafera optimizes simulated causal complexity per wall-clock second.
 
 ## Success Criteria
 

@@ -1,4 +1,4 @@
-import type { ExplanationClaim, NumericClaimValue } from "@ontopolis/observer-protocol";
+import type { ExplanationClaim, NumericClaimValue } from "@causafera/observer-protocol";
 
 import type { Copy } from "../i18n";
 

@@ -1,6 +1,6 @@
 # Causal Contamination
 
-Causal contamination is the process by which foreign concepts, practices, and patterns introduced by isekai arrivals alter local causal chains in Ontopolis. It is not merely cultural influence. It is a physical process by which imported information changes behaviour, which changes physical structures, which may alter mana responses.
+Causal contamination is the process by which foreign concepts, practices, and patterns introduced by isekai arrivals alter local causal chains in Causafera. It is not merely cultural influence. It is a physical process by which imported information changes behaviour, which changes physical structures, which may alter mana responses.
 
 ## The Contamination Chain
 

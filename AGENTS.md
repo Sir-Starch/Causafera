@@ -1,6 +1,6 @@
-# Ontopolis Agent Guidelines
+# Causafera Agent Guidelines
 
-All AI agents working on Ontopolis must follow these rules.
+All AI agents working on Causafera must follow these rules.
 
 ## Required Reading Order
 

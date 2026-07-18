@@ -1,6 +1,6 @@
 # Imported Priors
 
-Imported priors are the conceptual frameworks, beliefs, and expectations that transferred agents bring from their origin world. They are not technologies. They are ways of thinking that may dramatically alter causal inference and search behavior in Ontopolis.
+Imported priors are the conceptual frameworks, beliefs, and expectations that transferred agents bring from their origin world. They are not technologies. They are ways of thinking that may dramatically alter causal inference and search behavior in Causafera.
 
 ## Knowledge Is Not Technology
 

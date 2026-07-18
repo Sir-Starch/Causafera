@@ -1,0 +1,16 @@
+[package]
+name = "causafera-observer-wire"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+causafera-types = { workspace = true }
+causafera-observer-api = { workspace = true }
+causafera-explanation = { workspace = true }
+protobuf = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]

@@ -1,6 +1,6 @@
 # Identity
 
-Identity is the property by which an entity remains the same entity over time despite change. In Ontopolis, identity is a research question, not a primitive engine feature. Phase 23 implements a criterion-comparison research boundary without selecting a final answer.
+Identity is the property by which an entity remains the same entity over time despite change. In Causafera, identity is a research question, not a primitive engine feature. Phase 23 implements a criterion-comparison research boundary without selecting a final answer.
 
 ## No Primitive Soul Object
 
@@ -30,7 +30,7 @@ These are research hypotheses, not decided architecture.
 
 ## Implemented Research Boundary
 
-`ontopolis-metaphysics::IdentityContinuityExperiment` stores bounded trace-backed observations over opaque evidence channels. Explicit `ContinuityCriterion` values may weight the same observations differently. Evaluation returns separate fixed-point scores and supporting traces, never an authoritative same-person boolean.
+`causafera-metaphysics::IdentityContinuityExperiment` stores bounded trace-backed observations over opaque evidence channels. Explicit `ContinuityCriterion` values may weight the same observations differently. Evaluation returns separate fixed-point scores and supporting traces, never an authoritative same-person boolean.
 
 The records contain no `AgentId`, `SoulId`, English continuity category, or agent belief. Concrete evidence adapters remain future research.
 
@@ -50,7 +50,7 @@ At what point does change become discontinuity? This is a metaphysical question 
 
 Cross-world transfer raises acute identity questions:
 
-- If a body stays in Earth and a copy appears in Ontopolis, is it the same person?
+- If a body stays in Earth and a copy appears in Causafera, is it the same person?
 - If memories are partial, is the resulting entity a continuation or a new person?
 - If multiple identity patterns bind to one body, how many persons are present?
 - If an identity pattern binds to a fetus, does the resulting adult have two identities?

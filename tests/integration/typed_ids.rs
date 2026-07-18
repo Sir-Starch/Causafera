@@ -1,4 +1,4 @@
-use ontopolis_types::{AgentId, ConceptId, SimulationTime};
+use causafera_types::{AgentId, ConceptId, SimulationTime};
 
 #[test]
 fn typed_ids_are_distinct() {

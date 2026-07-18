@@ -19,7 +19,7 @@ Abstract phonological units, ordered forms, lexeme lineages, utterance-form obse
 `docs/language/*`, `docs/cognition/strategic-communication.md`, `docs/architecture/invariants.md`, `docs/architecture/determinism.md`, RFC-LANG-001, and RFC-LANG-002.
 
 ## Current state
-`ontopolis-language` exposes only a `Vec<String>` phoneme inventory, a `HashMap<ConceptId, f32>` lexicon entry, and a string grammar field. It has no bootstrap, communication boundary, innovation, or history.
+`causafera-language` exposes only a `Vec<String>` phoneme inventory, a `HashMap<ConceptId, f32>` lexicon entry, and a string grammar field. It has no bootstrap, communication boundary, innovation, or history.
 
 ## Proposed architecture
 Use bounded fixed-point records and opaque typed IDs. A language lineage owns a bounded abstract phoneme inventory and phonotactic constraints. Bootstrap derives canonical lineage and inherited form records from an explicit seed. Lexemes contain form lineage and use history but no meaning. Each subjective lexicon separately stores weighted concept associations. Communication emits an ordered physical form record; decoding receives only the observed form plus listener context. Repeated unmet concept-reference demand accumulates pressure and may deterministically coin a form. Exposure revises familiarity and semantic hypotheses; repeated adoption creates transmission records.

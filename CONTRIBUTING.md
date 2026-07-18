@@ -1,6 +1,6 @@
-# Contributing to Ontopolis
+# Contributing to Causafera
 
-Thank you for your interest in Ontopolis. This project has strict architectural and philosophical requirements. Please read this document carefully before contributing.
+Thank you for your interest in Causafera. This project has strict architectural and philosophical requirements. Please read this document carefully before contributing.
 
 ## Required Reading
 
@@ -64,7 +64,7 @@ Open an issue for discussion before major architectural changes.
 
 All source code is licensed under **AGPL-3.0-only**. All documentation is licensed under **CC BY-SA 4.0**.
 
-> **Current contribution status:** Ontopolis is a personal hobby and research project. External code contributions are not currently accepted. They may be accepted after the CLA acceptance workflow is configured. Issues, discussion, and feedback remain welcome.
+> **Current contribution status:** Causafera is a personal hobby and research project. External code contributions are not currently accepted. They may be accepted after the CLA acceptance workflow is configured. Issues, discussion, and feedback remain welcome.
 
 Before a contribution can be accepted, the contributor must separately accept the [Contributor License Agreement (CLA)](CLA.md) through the designated CLA service or electronic-signature process. Opening a pull request does not by itself constitute acceptance. The acceptance record must identify the contributor's verified identity, CLA version, timestamp, and an associated pull request or commit.
 

@@ -1,6 +1,6 @@
 # Hard Invariants
 
-These invariants are non-negotiable architectural constraints. Violating any invariant means the system is no longer Ontopolis.
+These invariants are non-negotiable architectural constraints. Violating any invariant means the system is no longer Causafera.
 
 ## INV-001: No omniscient agents
 

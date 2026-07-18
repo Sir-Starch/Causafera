@@ -1,6 +1,6 @@
 # Bibliography
 
-This document collects references and influences relevant to the Ontopolis project.
+This document collects references and influences relevant to the Causafera project.
 
 ## Simulation and Emergence
 

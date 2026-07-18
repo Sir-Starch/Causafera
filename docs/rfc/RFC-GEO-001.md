@@ -60,7 +60,7 @@ Descriptions shown to developers or users are downstream explanations. They are 
 
 ### Implementation Boundary
 
-Phase 4 implements the terrain state and generation contracts in `ontopolis-geography`. It does not implement tectonics, geological columns, erosion, hydrology, climate, ecology, extraction, or a terrain synthesis algorithm.
+Phase 4 implements the terrain state and generation contracts in `causafera-geography`. It does not implement tectonics, geological columns, erosion, hydrology, climate, ecology, extraction, or a terrain synthesis algorithm.
 
 ## Determinism
 

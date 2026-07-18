@@ -1,0 +1,9 @@
+syntax = "proto3";
+package causafera.observer.v1;
+
+message CausalEventSummary {
+  uint64 trace_id = 1;
+  uint64 simulation_ticks = 2;
+  repeated uint64 parent_trace_ids = 3;
+  uint64 opaque_event_kind_id = 4;
+}

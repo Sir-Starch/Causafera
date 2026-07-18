@@ -8,7 +8,7 @@ Mana is a local fixed-point physical field which responds to measurable recurren
 
 ## Motivation
 
-Ontopolis needs a causal substrate from which magic-like effects may eventually emerge without implementing “belief changes reality”. The previous `Vec<f32>` placeholder had no spatial contract, deterministic evolution rule, provenance boundary, or semantic exclusion.
+Causafera needs a causal substrate from which magic-like effects may eventually emerge without implementing “belief changes reality”. The previous `Vec<f32>` placeholder had no spatial contract, deterministic evolution rule, provenance boundary, or semantic exclusion.
 
 ## Accepted Phase 17 model
 

@@ -1,6 +1,6 @@
 # Codebase Knowledge Graph
 
-All developers and AI agents working on Ontopolis must utilize the `codebase-memory-mcp` toolset to maintain and query a semantic knowledge graph of the codebase.
+All developers and AI agents working on Causafera must utilize the `codebase-memory-mcp` toolset to maintain and query a semantic knowledge graph of the codebase.
 
 ## Priority Order
 

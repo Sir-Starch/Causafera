@@ -16,7 +16,7 @@ import {
   type ExplanationReport,
   type RuntimeSummary,
   type WorldChunkSnapshot,
-} from "@ontopolis/observer-protocol";
+} from "@causafera/observer-protocol";
 
 declare global {
   interface Window {

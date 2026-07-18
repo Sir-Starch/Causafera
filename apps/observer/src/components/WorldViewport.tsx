@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react";
-import type { SpatialChunkSummary, WorldChunkSnapshot } from "@ontopolis/observer-protocol";
+import type { SpatialChunkSummary, WorldChunkSnapshot } from "@causafera/observer-protocol";
 
 import type { Copy } from "../i18n";
 import { chunkKey } from "../useObserverSession";

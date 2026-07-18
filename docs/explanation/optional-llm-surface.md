@@ -50,7 +50,7 @@ Every LLM-generated explanation must remain associated with its source fact pack
 
 ## Optional Nature
 
-LLM use is optional. Ontopolis must remain fully understandable without it. All core functionality must work with deterministic rendering alone.
+LLM use is optional. Causafera must remain fully understandable without it. All core functionality must work with deterministic rendering alone.
 
 ## Non-Authoritative
 

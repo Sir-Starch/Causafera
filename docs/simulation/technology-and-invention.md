@@ -1,6 +1,6 @@
 # Technology and Invention
 
-Ontopolis has no predefined technology tree. Technical capabilities emerge from the intersection of multiple independent requirements.
+Causafera has no predefined technology tree. Technical capabilities emerge from the intersection of multiple independent requirements.
 
 ## Requirements for New Technology
 

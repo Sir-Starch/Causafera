@@ -1,6 +1,6 @@
 # Core Causal Loop
 
-The central loop of Ontopolis is:
+The central loop of Causafera is:
 
 ```text
 GROUND TRUTH

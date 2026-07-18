@@ -45,7 +45,7 @@ Phase 1 established deterministic time, scheduling, random streams, and coordina
 
 ## Current state
 
-`ontopolis-world` contains only a placeholder `World` holding a root `ChunkId`. Coordinate primitives and `PlaceId`/`ChunkId` already exist in `ontopolis-types`. No spatial hierarchy, validation, or traversal API exists.
+`causafera-world` contains only a placeholder `World` holding a root `ChunkId`. Coordinate primitives and `PlaceId`/`ChunkId` already exist in `causafera-types`. No spatial hierarchy, validation, or traversal API exists.
 
 ## Proposed architecture
 

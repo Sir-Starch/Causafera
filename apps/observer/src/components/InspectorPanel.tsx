@@ -1,4 +1,4 @@
-import type { SpatialChunkSummary } from "@ontopolis/observer-protocol";
+import type { SpatialChunkSummary } from "@causafera/observer-protocol";
 
 import type { Copy } from "../i18n";
 import { DefinitionRow } from "./DefinitionRow";

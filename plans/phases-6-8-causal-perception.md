@@ -51,7 +51,7 @@ Phases 3–5 established causal geography, biological structure, and immutable p
 
 1. Add opaque typed schema IDs for event kinds, state targets, signal channels, sensors, acquisitions, and subjective attention targets.
 2. Add a core structure-of-arrays causal event store. Proposals are ordered by stable numeric proposal keys, causes must already be committed, effects are property-level before/after fingerprints, and commits receive monotonic event/trace IDs.
-3. Add `ontopolis-perception`. Phase 7 acquisition filters physical signals by channel, range, magnitude threshold, and time, then emits canonically ordered relative samples retaining input traces.
+3. Add `causafera-perception`. Phase 7 acquisition filters physical signals by channel, range, magnitude threshold, and time, then emits canonically ordered relative samples retaining input traces.
 4. Phase 8 extraction consumes only acquired samples and emits generic magnitude/change features plus flattened causal input spans.
 5. Replace the cognition placeholder with fixed-capacity attention state keyed only by subjective `AttentionTargetId`. Candidate ranking is deterministic and continuity is numeric rather than semantic.
 
@@ -111,7 +111,7 @@ No snapshot schema is defined. New types derive only the traits required by curr
 
 ## Cross-domain effects
 
-Terrain, biology, physics, and future domain systems may use the core event store. Only `ontopolis-perception` bridges Ground Truth samples into extractor input. Cognition receives subjective attention targets, not acquired samples or authoritative entity identities.
+Terrain, biology, physics, and future domain systems may use the core event store. Only `causafera-perception` bridges Ground Truth samples into extractor input. Cognition receives subjective attention targets, not acquired samples or authoritative entity identities.
 
 ## Risks
 

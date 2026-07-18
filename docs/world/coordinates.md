@@ -1,6 +1,6 @@
 # Coordinates
 
-Ontopolis uses multiple explicit coordinate spaces. There is no single infinite Cartesian coordinate system that losslessly embeds the entire planetary world.
+Causafera uses multiple explicit coordinate spaces. There is no single infinite Cartesian coordinate system that losslessly embeds the entire planetary world.
 
 ## Global Geometry
 

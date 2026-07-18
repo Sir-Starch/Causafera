@@ -1,8 +1,8 @@
-# 🌌 Ontopolis
+# 🌌 Causafera
 
 > **A city whose inhabitants do not receive reality in a form they can understand.**
 
-Ontopolis is a high-performance experimental simulation of a geographically coherent fantasy / isekai world with extreme causal depth concentrated around a living city.
+Causafera is a high-performance experimental simulation of a geographically coherent fantasy / isekai world with extreme causal depth concentrated around a living city.
 
 It attempts to simulate the bottom-up co-evolution of:
 
@@ -22,7 +22,7 @@ The city is not generated as a collection of lore, modifiers, scripted events, o
 
 It gradually becomes a physical, social, linguistic, and magical product of its own history.
 
-> **The central goal of Ontopolis is to produce surprising situations which nobody authored, while preserving enough causal provenance to explain exactly how they happened.**
+> **The central goal of Causafera is to produce surprising situations which nobody authored, while preserving enough causal provenance to explain exactly how they happened.**
 
 ---
 
@@ -51,7 +51,7 @@ It gradually becomes a physical, social, linguistic, and magical product of its 
 * [🧾 Causal Provenance](#-causal-provenance-is-first-class)
 * [🔍 The Explanation Engine](#-the-explanation-engine)
 * [🤖 LLM Boundaries](#-llms-are-non-authoritative)
-* [🚫 What Ontopolis Is Not](#-what-ontopolis-is-not)
+* [🚫 What Causafera Is Not](#-what-causafera-is-not)
 * [📜 Project Invariants](#-project-invariants)
 * [🗺️ Roadmap and Current Status](#️-roadmap-and-current-status)
 * [📂 Project Structure](#-project-structure)
@@ -65,7 +65,7 @@ It gradually becomes a physical, social, linguistic, and magical product of its 
 
 # 🧩 The Core Thesis
 
-Ontopolis is built around a specific simulation thesis.
+Causafera is built around a specific simulation thesis.
 
 ## 1️⃣ Reality exists independently of its inhabitants
 
@@ -125,7 +125,7 @@ An agent does not live inside the authoritative world model.
 
 ## 3️⃣ Agents construct subjective situations
 
-Ontopolis does not intend agents to behave as feature vectors connected directly to decision functions.
+Causafera does not intend agents to behave as feature vectors connected directly to decision functions.
 
 An agent constructs a **Subjective Scene**.
 
@@ -261,7 +261,7 @@ The observer UI may display the English gloss:
 
 The simulation itself never required `Furniture::Table`.
 
-Ontopolis distinguishes:
+Causafera distinguishes:
 
 > **what exists**
 
@@ -277,7 +277,7 @@ and from:
 
 # 🔁 The Ontological Feedback Loop
 
-The central historical loop of Ontopolis is:
+The central historical loop of Causafera is:
 
 ```text
 HIDDEN CAUSALITY
@@ -380,7 +380,7 @@ Those physical patterns may interact with the local mana field.
 
 Geography is not decorative map data.
 
-Ontopolis treats the world as a hierarchy of physical spatial systems:
+Causafera treats the world as a hierarchy of physical spatial systems:
 
 ```text
 World
@@ -512,7 +512,7 @@ The inhabitants may explain the decline through:
 
 The actual causal history may lead through phonological change.
 
-> Ontopolis is specifically designed to allow this kind of cross-domain causal chain.
+> Causafera is specifically designed to allow this kind of cross-domain causal chain.
 
 ---
 
@@ -520,7 +520,7 @@ The actual causal history may lead through phonological change.
 
 Knowing that a technology is possible does not make it available.
 
-Ontopolis distinguishes:
+Causafera distinguishes:
 
 * 📚 declarative knowledge;
 * 🔧 procedural knowledge;
@@ -573,7 +573,7 @@ SOCIAL TRANSMISSION
 
 # 🌀 Isekai Is a Causal Contamination Process
 
-Ontopolis treats cross-world arrival as more than a narrative excuse to give a protagonist modern knowledge.
+Causafera treats cross-world arrival as more than a narrative excuse to give a protagonist modern knowledge.
 
 Isekai arrivals introduce **foreign priors**.
 
@@ -613,7 +613,7 @@ A society trying to understand the phrase **thinking loom** might discover compu
 
 # ⚔️ Familiar Fantasy Systems Are Target Emergent Outcomes
 
-Ontopolis may eventually produce systems resembling:
+Causafera may eventually produce systems resembling:
 
 * 🪟 Status Windows;
 * 📈 levels;
@@ -700,7 +700,7 @@ If it becomes socially prestigious and widely repeated, it may eventually create
 
 # 🧬 Biology Does Not Define Social Categories
 
-Ontopolis models objective biological structure and population lineages.
+Causafera models objective biological structure and population lineages.
 
 It does not require Ground Truth enums such as:
 
@@ -745,7 +745,7 @@ A population living for centuries should affect:
 
 # 🦠 Disease Is a Causal Process, Not an Event
 
-Ontopolis does not intend to trigger:
+Causafera does not intend to trigger:
 
 ```text
 SpawnPlagueEvent
@@ -797,7 +797,7 @@ Persistent history is not continuously active thought.
 
 An agent may have decades of autobiographical experience while only a small active context participates in the current cognitive step.
 
-Ontopolis distinguishes:
+Causafera distinguishes:
 
 * persistent memory;
 * working context;
@@ -839,13 +839,13 @@ Unexpected outcomes may change:
 * concepts;
 * causal hypotheses.
 
-> **A large portion of Ontopolis history should begin with some agent noticing: "Something is wrong with what I expected."**
+> **A large portion of Causafera history should begin with some agent noticing: "Something is wrong with what I expected."**
 
 ---
 
 # 📡 Causal Resolution, Not Distance-Based LOD
 
-Ontopolis does not simulate the entire world at identical detail.
+Causafera does not simulate the entire world at identical detail.
 
 Simulation resolution depends on causal relevance.
 
@@ -883,7 +883,7 @@ without controlled aggregation semantics.
 
 # 🧾 Causal Provenance Is First-Class
 
-Ontopolis should be able to explain its own history.
+Causafera should be able to explain its own history.
 
 A phenomenon might have a causal lineage such as:
 
@@ -919,7 +919,7 @@ A user should eventually be able to ask:
 
 and inspect the actual historical chain.
 
-> **Surprise without provenance is random noise. Ontopolis is interested in causal surprise.**
+> **Surprise without provenance is random noise. Causafera is interested in causal surprise.**
 
 ---
 
@@ -939,7 +939,7 @@ TraceId(...)
 
 Users should not be forced to stare at this and develop Stockholm syndrome toward debug output.
 
-Ontopolis therefore contains a separate, non-authoritative **Explanation Engine**.
+Causafera therefore contains a separate, non-authoritative **Explanation Engine**.
 
 ```text
 AUTHORITATIVE SIMULATION
@@ -1004,7 +1004,7 @@ A compressed human-readable explanation of the known causal structure.
 
 # 🤖 LLMs Are Non-Authoritative
 
-Ontopolis is not an LLM-driven simulation.
+Causafera is not an LLM-driven simulation.
 
 LLMs do not:
 
@@ -1033,7 +1033,7 @@ The LLM is allowed to make an explanation less unpleasant to read.
 
 > **It is not allowed to decide what happened.**
 
-Ontopolis must remain fully understandable and operational without an LLM.
+Causafera must remain fully understandable and operational without an LLM.
 
 The final number of simulation-development phases is unknown. LLM integration is the last possible
 presentation step after validated simulation depth, causal Explanation, inspectable source packets,
@@ -1041,7 +1041,7 @@ persistence, determinism, provenance, and performance—not the next feature aft
 
 ---
 
-# 🚫 What Ontopolis Is Not
+# 🚫 What Causafera Is Not
 
 ### 🏛️ Not a generic civilization simulator
 
@@ -1058,7 +1058,7 @@ High-level phenomena must arise from lower-level processes.
 
 ### ⛏️ Not a Dwarf Fortress clone
 
-Ontopolis is not primarily a fortress-management simulation.
+Causafera is not primarily a fortress-management simulation.
 
 Its focus is causal, epistemic, cognitive, linguistic, geographic, and magical co-evolution.
 
@@ -1082,7 +1082,7 @@ A feature called `FingerTremor`, a primitive `Disease`, or an enum of fantasy `C
 
 ### 🧠 Not a consciousness claim
 
-Ontopolis does not claim to create conscious beings.
+Causafera does not claim to create conscious beings.
 
 It does aim to construct agents with increasingly rich forms of functional subjectivity:
 
@@ -1135,7 +1135,7 @@ Core invariants include:
 
 # 🗺️ Roadmap and Current Status
 
-Ontopolis completed the dependency-ordered **Foundation Era, Phases 0–26**. It now has deterministic
+Causafera completed the dependency-ordered **Foundation Era, Phases 0–26**. It now has deterministic
 execution, domain contracts, causal provenance, persistence/resume, a bounded executable long-run
 harness, typed Explanation IR, observer protocol, and a real desktop UI.
 
@@ -1168,28 +1168,28 @@ See `docs/architecture/detailed-development-rebaseline.md` for maturity and sequ
 
 # 📂 Project Structure
 
-Ontopolis is organized as a Rust workspace with strict domain boundaries, a separate observer application, and versioned protocol definitions.
+Causafera is organized as a Rust workspace with strict domain boundaries, a separate observer application, and versioned protocol definitions.
 
 | Component                 | Responsibility                                                  |
 | ------------------------- | --------------------------------------------------------------- |
-| `ontopolis-core`          | Deterministic scheduling, phases, random streams                |
-| `ontopolis-types`         | IDs, coordinates, units, physical primitives, generic features  |
-| `ontopolis-world`         | Authoritative world hierarchy and spatial ownership             |
-| `ontopolis-geography`     | Terrain, geology, hydrology, climate, provenance                |
-| `ontopolis-biology`       | Structural biology, bodies, lineages, pathogen contracts        |
-| `ontopolis-perception`    | Physical accessibility, sensory acquisition, feature extraction |
-| `ontopolis-cognition`     | Attention and future subjective cognition                       |
-| `ontopolis-language`      | Lexicon, phonology, grammar, communication, language change     |
-| `ontopolis-epistemics`    | Measurement, documents, experiments, knowledge systems          |
-| `ontopolis-isekai`        | Cross-world transfer and imported priors                        |
-| `ontopolis-metaphysics`   | Identity persistence and mana-attractor research                |
-| `ontopolis-resolution`    | Causal Resolution Field and aggregation                         |
-| `ontopolis-explanation`   | Analytical classification and Explanation IR                    |
-| `ontopolis-observer-api`  | Read-only observer contracts                                    |
-| `ontopolis-observer-wire` | Versioned protocol and transport boundaries                     |
-| `ontopolis-runtime`       | Runtime composition root                                        |
-| `ontopolis-lab`           | Experiments and causal inspection                               |
-| `ontopolis-cli`           | Developer CLI                                                   |
+| `causafera-core`          | Deterministic scheduling, phases, random streams                |
+| `causafera-types`         | IDs, coordinates, units, physical primitives, generic features  |
+| `causafera-world`         | Authoritative world hierarchy and spatial ownership             |
+| `causafera-geography`     | Terrain, geology, hydrology, climate, provenance                |
+| `causafera-biology`       | Structural biology, bodies, lineages, pathogen contracts        |
+| `causafera-perception`    | Physical accessibility, sensory acquisition, feature extraction |
+| `causafera-cognition`     | Attention and future subjective cognition                       |
+| `causafera-language`      | Lexicon, phonology, grammar, communication, language change     |
+| `causafera-epistemics`    | Measurement, documents, experiments, knowledge systems          |
+| `causafera-isekai`        | Cross-world transfer and imported priors                        |
+| `causafera-metaphysics`   | Identity persistence and mana-attractor research                |
+| `causafera-resolution`    | Causal Resolution Field and aggregation                         |
+| `causafera-explanation`   | Analytical classification and Explanation IR                    |
+| `causafera-observer-api`  | Read-only observer contracts                                    |
+| `causafera-observer-wire` | Versioned protocol and transport boundaries                     |
+| `causafera-runtime`       | Runtime composition root                                        |
+| `causafera-lab`           | Experiments and causal inspection                               |
+| `causafera-cli`           | Developer CLI                                                   |
 | `apps/observer`           | Tauri / React / WebGPU observer application                     |
 
 📚 Documentation entry point: `docs/index.md`
@@ -1198,7 +1198,7 @@ Ontopolis is organized as a Rust workspace with strict domain boundaries, a sepa
 
 # ⚡ Development Philosophy
 
-Ontopolis optimizes:
+Causafera optimizes:
 
 > **simulated causal complexity per wall-clock second**
 
@@ -1263,7 +1263,7 @@ just doctor
 or:
 
 ```bash
-cargo run --bin ontopolis -- doctor
+cargo run --bin causafera -- doctor
 ```
 
 ---
@@ -1316,7 +1316,7 @@ Contribution policy and CLA requirements are documented in `CONTRIBUTING.md`.
 
 # 🎯 The Intended Result
 
-A successful Ontopolis run should not merely report:
+A successful Causafera run should not merely report:
 
 > *A religious conflict occurred.*
 
@@ -1334,6 +1334,6 @@ Or:
 
 Nobody writes these histories in advance.
 
-> **Ontopolis exists to discover whether a sufficiently coherent system of physical constraints, subjective minds, cultural transmission, language, geography, and strange local magic can produce them on its own.**
+> **Causafera exists to discover whether a sufficiently coherent system of physical constraints, subjective minds, cultural transmission, language, geography, and strange local magic can produce them on its own.**
 >
 > **And then explain why.**

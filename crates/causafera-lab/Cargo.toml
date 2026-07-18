@@ -1,0 +1,18 @@
+[package]
+name = "causafera-lab"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+causafera-types = { workspace = true }
+causafera-core = { workspace = true }
+causafera-runtime = { workspace = true }
+causafera-metaphysics = { workspace = true }
+causafera-analytics = { workspace = true }
+causafera-explanation = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]

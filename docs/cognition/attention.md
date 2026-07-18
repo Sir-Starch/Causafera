@@ -4,7 +4,7 @@ Attention is the mechanism that selects which information an agent processes. Co
 
 ## Implemented Phase 7 foundation
 
-`ontopolis-cognition::attention` implements the minimum bounded attention state accepted by RFC-PERCEPT-001:
+`causafera-cognition::attention` implements the minimum bounded attention state accepted by RFC-PERCEPT-001:
 
 - at most eight active foci and 64 candidates per update;
 - fixed-point salience threshold and continuity bonus;

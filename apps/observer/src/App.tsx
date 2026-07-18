@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { digestHex, type SpatialChunkSummary } from "@ontopolis/observer-protocol";
+import { digestHex, type SpatialChunkSummary } from "@causafera/observer-protocol";
 
 import { CausalFlow } from "./components/CausalFlow";
 import { ConnectionStatus } from "./components/ConnectionStatus";

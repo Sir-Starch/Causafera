@@ -1,4 +1,4 @@
-import type { RuntimeSummary } from "@ontopolis/observer-protocol";
+import type { RuntimeSummary } from "@causafera/observer-protocol";
 
 import type { Copy } from "../i18n";
 

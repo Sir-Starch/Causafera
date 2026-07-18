@@ -30,7 +30,7 @@ Terrain and language have independent deterministic generation contracts. No cro
 
 ## Proposed architecture
 
-Add `HistoricalBootstrapPlan` to `ontopolis-world`. It canonically orders bounded `HistoricalStage` records containing opaque process identity, a non-empty time span, numeric detail ordinal, target chunks, prior-stage dependencies, external trace causes, and parameter fingerprint. A domain-separated seed is derived per stage. `HistoricalStageReceipt` records committed result fingerprint and trace; plan validation requires one receipt per stage and exact dependency-trace continuation.
+Add `HistoricalBootstrapPlan` to `causafera-world`. It canonically orders bounded `HistoricalStage` records containing opaque process identity, a non-empty time span, numeric detail ordinal, target chunks, prior-stage dependencies, external trace causes, and parameter fingerprint. A domain-separated seed is derived per stage. `HistoricalStageReceipt` records committed result fingerprint and trace; plan validation requires one receipt per stage and exact dependency-trace continuation.
 
 ## Primitive vs emergent review
 

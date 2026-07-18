@@ -334,6 +334,258 @@ dependencies = [
 ]
 
 [[package]]
+name = "causafera-accelerate"
+version = "0.1.0"
+dependencies = [
+ "causafera-types",
+]
+
+[[package]]
+name = "causafera-accelerate-cuda"
+version = "0.1.0"
+dependencies = [
+ "causafera-accelerate",
+ "causafera-types",
+]
+
+[[package]]
+name = "causafera-analytics"
+version = "0.1.0"
+dependencies = [
+ "causafera-core",
+ "causafera-explanation",
+ "causafera-types",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "causafera-biology"
+version = "0.1.0"
+dependencies = [
+ "causafera-core",
+ "causafera-types",
+ "causafera-world",
+]
+
+[[package]]
+name = "causafera-cli"
+version = "0.1.0"
+dependencies = [
+ "causafera-core",
+ "causafera-explanation",
+ "causafera-lab",
+ "causafera-persistence",
+ "causafera-runtime",
+ "causafera-types",
+ "clap",
+ "thiserror 2.0.18",
+ "tracing",
+]
+
+[[package]]
+name = "causafera-cognition"
+version = "0.1.0"
+dependencies = [
+ "causafera-types",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "causafera-core"
+version = "0.1.0"
+dependencies = [
+ "causafera-types",
+ "rand",
+ "serde",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "causafera-domains"
+version = "0.1.0"
+dependencies = [
+ "causafera-biology",
+ "causafera-cognition",
+ "causafera-core",
+ "causafera-geography",
+ "causafera-language",
+ "causafera-types",
+ "causafera-world",
+]
+
+[[package]]
+name = "causafera-epistemics"
+version = "0.1.0"
+dependencies = [
+ "causafera-types",
+]
+
+[[package]]
+name = "causafera-explanation"
+version = "0.1.0"
+dependencies = [
+ "causafera-core",
+ "causafera-types",
+ "serde",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "causafera-geography"
+version = "0.1.0"
+dependencies = [
+ "causafera-core",
+ "causafera-types",
+ "causafera-world",
+]
+
+[[package]]
+name = "causafera-isekai"
+version = "0.1.0"
+dependencies = [
+ "causafera-cognition",
+ "causafera-core",
+ "causafera-types",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "causafera-lab"
+version = "0.1.0"
+dependencies = [
+ "causafera-analytics",
+ "causafera-core",
+ "causafera-explanation",
+ "causafera-metaphysics",
+ "causafera-runtime",
+ "causafera-types",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "causafera-language"
+version = "0.1.0"
+dependencies = [
+ "causafera-types",
+]
+
+[[package]]
+name = "causafera-metaphysics"
+version = "0.1.0"
+dependencies = [
+ "causafera-core",
+ "causafera-types",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "causafera-observer"
+version = "0.1.0"
+dependencies = [
+ "causafera-lab",
+ "causafera-observer-api",
+ "causafera-observer-wire",
+ "causafera-runtime",
+ "causafera-types",
+ "tauri",
+ "tauri-build",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "causafera-observer-api"
+version = "0.1.0"
+dependencies = [
+ "causafera-types",
+ "serde",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "causafera-observer-wire"
+version = "0.1.0"
+dependencies = [
+ "causafera-explanation",
+ "causafera-observer-api",
+ "causafera-types",
+ "protobuf",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "causafera-perception"
+version = "0.1.0"
+dependencies = [
+ "causafera-types",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "causafera-persistence"
+version = "0.1.0"
+dependencies = [
+ "blake3",
+ "causafera-core",
+ "causafera-types",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "causafera-resolution"
+version = "0.1.0"
+dependencies = [
+ "causafera-core",
+ "causafera-types",
+ "causafera-world",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "causafera-runtime"
+version = "0.1.0"
+dependencies = [
+ "causafera-analytics",
+ "causafera-biology",
+ "causafera-cognition",
+ "causafera-core",
+ "causafera-domains",
+ "causafera-epistemics",
+ "causafera-explanation",
+ "causafera-geography",
+ "causafera-isekai",
+ "causafera-language",
+ "causafera-metaphysics",
+ "causafera-observer-api",
+ "causafera-observer-wire",
+ "causafera-perception",
+ "causafera-persistence",
+ "causafera-resolution",
+ "causafera-types",
+ "causafera-world",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "causafera-types"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "causafera-world"
+version = "0.1.0"
+dependencies = [
+ "causafera-core",
+ "causafera-types",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "cc"
 version = "1.2.67"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2150,258 +2402,6 @@ name = "once_cell_polyfill"
 version = "1.70.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
-
-[[package]]
-name = "ontopolis-accelerate"
-version = "0.1.0"
-dependencies = [
- "ontopolis-types",
-]
-
-[[package]]
-name = "ontopolis-accelerate-cuda"
-version = "0.1.0"
-dependencies = [
- "ontopolis-accelerate",
- "ontopolis-types",
-]
-
-[[package]]
-name = "ontopolis-analytics"
-version = "0.1.0"
-dependencies = [
- "ontopolis-core",
- "ontopolis-explanation",
- "ontopolis-types",
- "thiserror 2.0.18",
-]
-
-[[package]]
-name = "ontopolis-biology"
-version = "0.1.0"
-dependencies = [
- "ontopolis-core",
- "ontopolis-types",
- "ontopolis-world",
-]
-
-[[package]]
-name = "ontopolis-cli"
-version = "0.1.0"
-dependencies = [
- "clap",
- "ontopolis-core",
- "ontopolis-explanation",
- "ontopolis-lab",
- "ontopolis-persistence",
- "ontopolis-runtime",
- "ontopolis-types",
- "thiserror 2.0.18",
- "tracing",
-]
-
-[[package]]
-name = "ontopolis-cognition"
-version = "0.1.0"
-dependencies = [
- "ontopolis-types",
- "thiserror 2.0.18",
-]
-
-[[package]]
-name = "ontopolis-core"
-version = "0.1.0"
-dependencies = [
- "ontopolis-types",
- "rand",
- "serde",
- "thiserror 2.0.18",
-]
-
-[[package]]
-name = "ontopolis-domains"
-version = "0.1.0"
-dependencies = [
- "ontopolis-biology",
- "ontopolis-cognition",
- "ontopolis-core",
- "ontopolis-geography",
- "ontopolis-language",
- "ontopolis-types",
- "ontopolis-world",
-]
-
-[[package]]
-name = "ontopolis-epistemics"
-version = "0.1.0"
-dependencies = [
- "ontopolis-types",
-]
-
-[[package]]
-name = "ontopolis-explanation"
-version = "0.1.0"
-dependencies = [
- "ontopolis-core",
- "ontopolis-types",
- "serde",
- "thiserror 2.0.18",
-]
-
-[[package]]
-name = "ontopolis-geography"
-version = "0.1.0"
-dependencies = [
- "ontopolis-core",
- "ontopolis-types",
- "ontopolis-world",
-]
-
-[[package]]
-name = "ontopolis-isekai"
-version = "0.1.0"
-dependencies = [
- "ontopolis-cognition",
- "ontopolis-core",
- "ontopolis-types",
- "thiserror 2.0.18",
-]
-
-[[package]]
-name = "ontopolis-lab"
-version = "0.1.0"
-dependencies = [
- "ontopolis-analytics",
- "ontopolis-core",
- "ontopolis-explanation",
- "ontopolis-metaphysics",
- "ontopolis-runtime",
- "ontopolis-types",
- "thiserror 2.0.18",
-]
-
-[[package]]
-name = "ontopolis-language"
-version = "0.1.0"
-dependencies = [
- "ontopolis-types",
-]
-
-[[package]]
-name = "ontopolis-metaphysics"
-version = "0.1.0"
-dependencies = [
- "ontopolis-core",
- "ontopolis-types",
- "thiserror 2.0.18",
-]
-
-[[package]]
-name = "ontopolis-observer"
-version = "0.1.0"
-dependencies = [
- "ontopolis-lab",
- "ontopolis-observer-api",
- "ontopolis-observer-wire",
- "ontopolis-runtime",
- "ontopolis-types",
- "tauri",
- "tauri-build",
- "thiserror 2.0.18",
-]
-
-[[package]]
-name = "ontopolis-observer-api"
-version = "0.1.0"
-dependencies = [
- "ontopolis-types",
- "serde",
- "thiserror 2.0.18",
-]
-
-[[package]]
-name = "ontopolis-observer-wire"
-version = "0.1.0"
-dependencies = [
- "ontopolis-explanation",
- "ontopolis-observer-api",
- "ontopolis-types",
- "protobuf",
- "thiserror 2.0.18",
-]
-
-[[package]]
-name = "ontopolis-perception"
-version = "0.1.0"
-dependencies = [
- "ontopolis-types",
- "thiserror 2.0.18",
-]
-
-[[package]]
-name = "ontopolis-persistence"
-version = "0.1.0"
-dependencies = [
- "blake3",
- "ontopolis-core",
- "ontopolis-types",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
-]
-
-[[package]]
-name = "ontopolis-resolution"
-version = "0.1.0"
-dependencies = [
- "ontopolis-core",
- "ontopolis-types",
- "ontopolis-world",
- "thiserror 2.0.18",
-]
-
-[[package]]
-name = "ontopolis-runtime"
-version = "0.1.0"
-dependencies = [
- "ontopolis-analytics",
- "ontopolis-biology",
- "ontopolis-cognition",
- "ontopolis-core",
- "ontopolis-domains",
- "ontopolis-epistemics",
- "ontopolis-explanation",
- "ontopolis-geography",
- "ontopolis-isekai",
- "ontopolis-language",
- "ontopolis-metaphysics",
- "ontopolis-observer-api",
- "ontopolis-observer-wire",
- "ontopolis-perception",
- "ontopolis-persistence",
- "ontopolis-resolution",
- "ontopolis-types",
- "ontopolis-world",
- "thiserror 2.0.18",
-]
-
-[[package]]
-name = "ontopolis-types"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
- "thiserror 2.0.18",
-]
-
-[[package]]
-name = "ontopolis-world"
-version = "0.1.0"
-dependencies = [
- "ontopolis-core",
- "ontopolis-types",
- "thiserror 2.0.18",
-]
 
 [[package]]
 name = "option-ext"

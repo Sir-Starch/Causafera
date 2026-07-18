@@ -7,7 +7,7 @@ The observer protocol uses Protocol Buffers for structured communication between
 Version schemas under:
 
 ```text
-proto/ontopolis/observer/v1/
+proto/causafera/observer/v1/
 ```
 
 ## Initial Protocol Categories

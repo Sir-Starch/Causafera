@@ -1,0 +1,30 @@
+[package]
+name = "causafera-runtime"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+causafera-types = { workspace = true }
+causafera-core = { workspace = true }
+causafera-world = { workspace = true }
+causafera-geography = { workspace = true }
+causafera-biology = { workspace = true }
+causafera-perception = { workspace = true }
+causafera-cognition = { workspace = true }
+causafera-language = { workspace = true }
+causafera-epistemics = { workspace = true }
+causafera-isekai = { workspace = true }
+causafera-metaphysics = { workspace = true }
+causafera-resolution = { workspace = true }
+causafera-domains = { workspace = true }
+causafera-persistence = { workspace = true }
+causafera-analytics = { workspace = true }
+causafera-explanation = { workspace = true }
+causafera-observer-api = { workspace = true }
+causafera-observer-wire = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]

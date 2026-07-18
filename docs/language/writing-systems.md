@@ -62,4 +62,4 @@ Mass-distributed symbols may interact with mana. Repeated glyph patterns, especi
 
 ## Phase 16 Foundation Status
 
-Opaque `WritingSystemId` and `GlyphId` values now identify physical conventions and marks without assigning objective sound or meaning. Documents and deterministic copy edits live in `ontopolis-epistemics`. Glyph-to-language interpretation, inventories, orthographic learning, and reading remain future work.
+Opaque `WritingSystemId` and `GlyphId` values now identify physical conventions and marks without assigning objective sound or meaning. Documents and deterministic copy edits live in `causafera-epistemics`. Glyph-to-language interpretation, inventories, orthographic learning, and reading remain future work.

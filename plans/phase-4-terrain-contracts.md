@@ -53,7 +53,7 @@ Phase 3 established deterministic spatial containment. Phase 4 begins minimal ca
 
 ## Current state
 
-`ontopolis-geography` contains placeholder `TerrainCell`, `GeologyLayer`, `HydrologyCell`, and `ClimateCell` structs. `TerrainCell` stores only an unqualified `f32` elevation. There is no terrain chunk layout, generation request, provenance record, validation, or batch contract.
+`causafera-geography` contains placeholder `TerrainCell`, `GeologyLayer`, `HydrologyCell`, and `ClimateCell` structs. `TerrainCell` stores only an unqualified `f32` elevation. There is no terrain chunk layout, generation request, provenance record, validation, or batch contract.
 
 ## Proposed architecture
 

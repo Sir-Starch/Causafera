@@ -1,6 +1,6 @@
 # Language Architecture
 
-The language subsystem lives in the `ontopolis-language` crate. It simulates how agents construct, transmit, and decode meaning through physical utterances and written forms.
+The language subsystem lives in the `causafera-language` crate. It simulates how agents construct, transmit, and decode meaning through physical utterances and written forms.
 
 ## Core Principle
 
@@ -50,7 +50,7 @@ Languages are not global objects. They exist as patterns of shared practice with
 
 ## Phase 13–14 implementation
 
-The foundation is implemented with bounded integer state in `ontopolis-language`:
+The foundation is implemented with bounded integer state in `causafera-language`:
 
 - `LanguageBootstrap` creates seed-deterministic language and lexeme ancestry;
 - `PhonemeInventory` stores opaque units and validates/generates ordered forms;

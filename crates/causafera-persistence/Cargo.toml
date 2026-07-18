@@ -1,0 +1,17 @@
+[package]
+name = "causafera-persistence"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+causafera-types = { workspace = true }
+causafera-core = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+blake3 = "1"
+thiserror = { workspace = true }
+
+[dev-dependencies]

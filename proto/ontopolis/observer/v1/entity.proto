@@ -1,8 +1,0 @@
-syntax = "proto3";
-package ontopolis.observer.v1;
-
-message EntitySummary {
-  uint64 observer_record_id = 1;
-  repeated NumericComponent components = 2;
-}
-message NumericComponent { uint64 schema_id = 1; sint64 value = 2; }

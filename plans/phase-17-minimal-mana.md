@@ -26,7 +26,7 @@ Local fixed-point field state, opaque physical pattern fingerprints, sampled act
 
 ## Current state
 
-`ontopolis-domains::mana` contains only an unbounded `Vec<f32>` initialized to zero. It has no spatial identity, bounds, pattern inputs, deterministic evolution, diffusion, saturation, or provenance output.
+`causafera-domains::mana` contains only an unbounded `Vec<f32>` initialized to zero. It has no spatial identity, bounds, pattern inputs, deterministic evolution, diffusion, saturation, or provenance output.
 
 ## Proposed architecture
 

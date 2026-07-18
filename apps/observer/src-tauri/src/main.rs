@@ -74,5 +74,5 @@ fn main() {
             observer_reset,
         ])
         .run(tauri::generate_context!())
-        .expect("failed to run Ontopolis Observer");
+        .expect("failed to run Causafera Observer");
 }

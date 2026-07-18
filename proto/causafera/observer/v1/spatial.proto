@@ -1,0 +1,18 @@
+syntax = "proto3";
+package causafera.observer.v1;
+
+message SpatialChunkSummary {
+  uint64 chart_id = 1;
+  sint64 chunk_x = 2;
+  sint64 chunk_y = 3;
+  sint64 chunk_z = 4;
+  sint64 minimum_elevation_mm = 5;
+  sint64 maximum_elevation_mm = 6;
+  uint32 mean_roughness_mm = 7;
+  sint64 mana_total = 8;
+  sint64 resolution_relevance = 9;
+  uint32 resolution_level = 10;
+  uint64 population_total = 11;
+  uint64 causal_event_count = 12;
+  uint64 latest_trace_id = 13;
+}

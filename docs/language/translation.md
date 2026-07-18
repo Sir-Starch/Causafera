@@ -48,7 +48,7 @@ Translations may create:
 
 ## Isekai Translation
 
-This is especially important for isekai arrivals. An Earth-native arriving in Ontopolis brings conceptual priors from a radically different technological and cultural context. Their attempts to explain Earth concepts may:
+This is especially important for isekai arrivals. An Earth-native arriving in Causafera brings conceptual priors from a radically different technological and cultural context. Their attempts to explain Earth concepts may:
 
 - Introduce entirely new conceptual distinctions
 - Be misunderstood in locally predictable ways

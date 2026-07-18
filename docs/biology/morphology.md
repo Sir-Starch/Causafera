@@ -1,6 +1,6 @@
 # Morphology
 
-Morphology is the study of biological form and structure. In Ontopolis, it describes the physical configuration of organisms.
+Morphology is the study of biological form and structure. In Causafera, it describes the physical configuration of organisms.
 
 ## Morphological Representation
 

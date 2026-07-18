@@ -5,7 +5,7 @@ const useCompatibilityProfile =
   process.platform === "linux" &&
   Boolean(env.WAYLAND_DISPLAY) &&
   Boolean(env.DISPLAY) &&
-  env.ONTOPOLIS_NATIVE_WAYLAND !== "1";
+  env.CAUSAFERA_NATIVE_WAYLAND !== "1";
 
 if (useCompatibilityProfile) {
   // WebKitGTK can terminate the entire Tauri process with GDK protocol error 71
@@ -17,10 +17,10 @@ if (useCompatibilityProfile) {
   env.LIBGL_ALWAYS_SOFTWARE = "1";
 
   console.info(
-    "Ontopolis Observer: Wayland detected; using the WebKitGTK compatibility profile.",
+    "Causafera Observer: Wayland detected; using the WebKitGTK compatibility profile.",
   );
   console.info(
-    "Set ONTOPOLIS_NATIVE_WAYLAND=1 or run desktop:raw to test native Wayland.",
+    "Set CAUSAFERA_NATIVE_WAYLAND=1 or run desktop:raw to test native Wayland.",
   );
 }
 

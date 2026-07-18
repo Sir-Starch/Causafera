@@ -19,4 +19,4 @@ fmt:
     cargo fmt --all
 
 doctor:
-    cargo run --bin ontopolis -- doctor
+    cargo run --bin causafera -- doctor

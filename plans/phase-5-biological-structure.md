@@ -49,7 +49,7 @@ Phase 5 implements `TODO-BIO-001` after the spatial and terrain foundations. The
 
 ## Current state
 
-`ontopolis-types` already supplies `BodySegmentId` and the generic physical `Orientation` primitive. `ontopolis-biology::morphology` contains a public three-field placeholder with no orientation, joint, compact body store, validation, deterministic order, or tests. `RFC-BIO-001` leaves structural representation unresolved.
+`causafera-types` already supplies `BodySegmentId` and the generic physical `Orientation` primitive. `causafera-biology::morphology` contains a public three-field placeholder with no orientation, joint, compact body store, validation, deterministic order, or tests. `RFC-BIO-001` leaves structural representation unresolved.
 
 ## Proposed architecture
 

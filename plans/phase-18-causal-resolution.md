@@ -6,7 +6,7 @@ Implement a bounded deterministic field that assigns simulation detail from trac
 
 ## Context
 
-Phase 17 completed the minimal mana field. `ontopolis-resolution` still contains only an unchecked chunk/byte pair, while Phase 19 depends on an explicit resolution contract.
+Phase 17 completed the minimal mana field. `causafera-resolution` still contains only an unchecked chunk/byte pair, while Phase 19 depends on an explicit resolution contract.
 
 ## Relevant invariants
 

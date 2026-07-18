@@ -1,6 +1,6 @@
 # Determinism Requirements
 
-Ontopolis requires explicit deterministic execution for testing, replay, causal analysis, and reference experiments.
+Causafera requires explicit deterministic execution for testing, replay, causal analysis, and reference experiments.
 
 ## Deterministic Random Streams
 

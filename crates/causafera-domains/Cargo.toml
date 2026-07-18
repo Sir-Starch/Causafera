@@ -1,0 +1,18 @@
+[package]
+name = "causafera-domains"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+causafera-types = { workspace = true }
+causafera-core = { workspace = true }
+causafera-world = { workspace = true }
+causafera-biology = { workspace = true }
+causafera-cognition = { workspace = true }
+causafera-language = { workspace = true }
+causafera-geography = { workspace = true }
+
+[dev-dependencies]

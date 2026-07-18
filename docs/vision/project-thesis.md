@@ -1,10 +1,10 @@
 # Project Thesis
 
-Ontopolis simulates societies which continuously construct subjective models of causality. Those models alter behaviour. Repeated behaviour produces persistent physical and informational structures. The local magical substrate responds to real structures rather than semantic meaning. Geography, biology, language, institutions, and history therefore participate in modifying the future causality societies later attempt to understand.
+Causafera simulates societies which continuously construct subjective models of causality. Those models alter behaviour. Repeated behaviour produces persistent physical and informational structures. The local magical substrate responds to real structures rather than semantic meaning. Geography, biology, language, institutions, and history therefore participate in modifying the future causality societies later attempt to understand.
 
-## What Ontopolis Is Not
+## What Causafera Is Not
 
-Ontopolis is not a "belief changes reality" simulation.
+Causafera is not a "belief changes reality" simulation.
 
 Mana cannot inspect belief state.
 

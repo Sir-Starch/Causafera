@@ -14,7 +14,7 @@ INV-006, INV-014, INV-015, INV-016, INV-017, INV-019, INV-024, INV-027, and INV-
 
 ## Proposed architecture
 
-Add a bounded, canonically ordered `SocialState` in `ontopolis-domains`. Store each carrier as an independent trace-backed record: directed agent relations, role assignments, communication links, authority grants, property claims, institutional rules, practice associations, and attested agreements. Opaque schema/scope/channel IDs carry no built-in meaning. Construction validates references and canonicalizes input. No aggregate object decides, believes, perceives, or acts.
+Add a bounded, canonically ordered `SocialState` in `causafera-domains`. Store each carrier as an independent trace-backed record: directed agent relations, role assignments, communication links, authority grants, property claims, institutional rules, practice associations, and attested agreements. Opaque schema/scope/channel IDs carry no built-in meaning. Construction validates references and canonicalizes input. No aggregate object decides, believes, perceives, or acts.
 
 Rules and agreements are records of social claims: rule records reference physical documents and authority grants; agreements reference a physical document and opaque parties. Neither record makes a law universally active, guarantees interpretation, or enforces an outcome.
 

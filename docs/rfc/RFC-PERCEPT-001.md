@@ -61,7 +61,7 @@ No wire or explanation schema changes. Future observer adapters may expose deriv
 
 ## Decision log
 
-- **Accepted:** Create `ontopolis-perception` as the explicit authoritative acquisition/extraction boundary.
+- **Accepted:** Create `causafera-perception` as the explicit authoritative acquisition/extraction boundary.
 - **Accepted:** Acquisition uses minimal integer channel/range/threshold filtering and relative samples.
 - **Accepted:** Extractors accept only acquired samples and retain causal input traces.
 - **Accepted:** Authoritative source identity may exist through extraction but must be mapped before cognition.

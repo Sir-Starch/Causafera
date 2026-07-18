@@ -20,7 +20,7 @@ PathogenProperties:
     infectious: TickDuration
 ```
 
-`ontopolis-biology` implements these immutable Phase 5 extension contracts in `pathogens.rs`. Fractions are bounded integer parts per million and durations are positive simulation ticks. `PathogenLineages` validates a unique, parent-before-child ancestry forest and preserves canonical structure-of-arrays iteration order.
+`causafera-biology` implements these immutable Phase 5 extension contracts in `pathogens.rs`. Fractions are bounded integer parts per million and durations are positive simulation ticks. `PathogenLineages` validates a unique, parent-before-child ancestry forest and preserves canonical structure-of-arrays iteration order.
 
 Phase 6 now provides the generic `CausalTraceStore` and proposal/reduce/commit event contracts that future infection systems may use. No infection establishment, host mutation, shedding process, recovery, immunity, or epidemic scheduler has been implemented merely by adding that generic infrastructure.
 

@@ -1,16 +1,16 @@
-# Ontopolis Contributor License Agreement
+# Causafera Contributor License Agreement
 
 **Version 1.0** — Effective Date: 2026-07-12
 
 ## Preamble
 
-Ontopolis is a long-term research project. Its integrity depends on clear provenance of all intellectual property. This Contributor License Agreement (CLA) establishes the legal framework under which the project can accept and use contributions while respecting contributor rights.
+Causafera is a long-term research project. Its integrity depends on clear provenance of all intellectual property. This Contributor License Agreement (CLA) establishes the legal framework under which the project can accept and use contributions while respecting contributor rights.
 
 **You retain copyright on your contributions.** This CLA does not transfer ownership. It grants the project the rights necessary to operate, distribute, and defend the codebase.
 
 ## 1. Definitions
 
-- **"Project"** means the Ontopolis codebase, documentation, and all associated materials maintained under the `ontopolis` organization or repository.
+- **"Project"** means the Causafera codebase, documentation, and all associated materials maintained under the `causafera` organization or repository.
 - **"Project Maintainer"** means the person or legal entity identified as the accepting party in the CLA acceptance record.
 - **"Public Project License"** means AGPL-3.0-only for source code and CC BY-SA 4.0 for documentation and other non-code materials, as applicable to the Contribution when it is submitted.
 - **"You"** means the individual or legal entity making a contribution.
@@ -37,7 +37,7 @@ If any entity institutes patent litigation against You or any other entity (incl
 
 The Project Maintainer may use, license, and sublicense Your Contributions, and derivative works of them, under any license terms the Project Maintainer chooses. This permission expressly includes proprietary and commercial licenses and is not limited to licenses compatible with, approved by, or preserving the freedoms of the Public Project License.
 
-As a condition of this grant, each Contribution incorporated into the public Ontopolis codebase will also remain available from the Project Maintainer under the Public Project License applicable to that Contribution when it was submitted: **AGPL-3.0-only** for source code and **CC BY-SA 4.0** for documentation and other non-code materials. Commercial or proprietary outbound licensing does not withdraw or replace that continuing public availability.
+As a condition of this grant, each Contribution incorporated into the public Causafera codebase will also remain available from the Project Maintainer under the Public Project License applicable to that Contribution when it was submitted: **AGPL-3.0-only** for source code and **CC BY-SA 4.0** for documentation and other non-code materials. Commercial or proprietary outbound licensing does not withdraw or replace that continuing public availability.
 
 This section governs the Project Maintainer's outbound licensing of Contributions; it does not transfer ownership of Your copyright.
 

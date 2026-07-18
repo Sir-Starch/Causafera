@@ -1,17 +1,17 @@
 [package]
-name = "ontopolis-observer"
+name = "causafera-observer"
 version.workspace = true
-description = "Ontopolis Observer Desktop Shell"
+description = "Causafera Observer Desktop Shell"
 edition.workspace = true
 license.workspace = true
 
 [dependencies]
 tauri = { version = "2", features = [] }
-ontopolis-lab.workspace = true
-ontopolis-observer-api.workspace = true
-ontopolis-observer-wire.workspace = true
-ontopolis-runtime.workspace = true
-ontopolis-types.workspace = true
+causafera-lab.workspace = true
+causafera-observer-api.workspace = true
+causafera-observer-wire.workspace = true
+causafera-runtime.workspace = true
+causafera-types.workspace = true
 thiserror.workspace = true
 
 [build-dependencies]

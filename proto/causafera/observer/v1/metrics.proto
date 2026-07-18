@@ -1,0 +1,10 @@
+syntax = "proto3";
+package causafera.observer.v1;
+
+message PerformanceMetrics {
+  uint64 measurement_window_nanos = 1;
+  uint64 ticks_completed = 2;
+  uint64 active_updates = 3;
+  uint64 resident_bytes = 4;
+  uint64 observer_projection_nanos = 5;
+}

@@ -1,0 +1,24 @@
+[package]
+name = "causafera-cli"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "causafera"
+path = "src/main.rs"
+
+[dependencies]
+causafera-types = { workspace = true }
+causafera-core = { workspace = true }
+causafera-runtime = { workspace = true }
+causafera-lab = { workspace = true }
+causafera-explanation = { workspace = true }
+causafera-persistence = { workspace = true }
+clap = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]

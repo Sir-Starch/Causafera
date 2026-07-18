@@ -26,7 +26,7 @@ Imitated practices, measurement records, calibration ancestry, glyph sequences, 
 
 ## Current state
 
-`ontopolis-domains::practices` stores an unbounded vector and English action strings. `ontopolis-epistemics` stores floating-point measurements with string units and documents with string media. Neither placeholder validates ancestry or bounds memory.
+`causafera-domains::practices` stores an unbounded vector and English action strings. `causafera-epistemics` stores floating-point measurements with string units and documents with string media. Neither placeholder validates ancestry or bounds memory.
 
 ## Proposed architecture
 

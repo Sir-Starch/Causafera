@@ -13,7 +13,7 @@ Phases 0–26 form the completed **Foundation Era**. They established minimum va
 first executable, replayable, persistent, observable causal loop. They do not assert that every
 domain is deeply simulated or that semantic emergence has been demonstrated.
 
-Ontopolis is now in the **Detailed Development Program**. The program has no predetermined number
+Causafera is now in the **Detailed Development Program**. The program has no predetermined number
 of phases and no reserved final phase. Future numbered phases are created only by accepted
 ExecPlans for bounded, evidence-bearing work. The absence of a fixed endpoint is deliberate: the
 required depth must be discovered through integration, long-run experiments, explanation quality,

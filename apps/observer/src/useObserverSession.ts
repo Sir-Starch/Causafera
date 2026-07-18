@@ -4,7 +4,7 @@ import type {
   RuntimeSummary,
   SpatialChunkSummary,
   WorldChunkSnapshot,
-} from "@ontopolis/observer-protocol";
+} from "@causafera/observer-protocol";
 
 import { ObserverClient, hasTauriTransport, type RuntimeUpdate } from "./observerClient";
 

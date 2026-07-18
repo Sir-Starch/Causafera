@@ -1,13 +1,13 @@
-use ontopolis_lab::{ExperimentError, ExperimentRunner};
-use ontopolis_observer_api::{
+use causafera_lab::{ExperimentError, ExperimentRunner};
+use causafera_observer_api::{
     DeliveryPolicy, ObserverStreamHub, StreamError, StreamKind, StreamScope,
 };
-use ontopolis_observer_wire::{
+use causafera_observer_wire::{
     ProtocolHandler, WireError, decode_connect_request, encode_connect_response,
     encode_observer_snapshot, encode_stream_envelope,
 };
-use ontopolis_runtime::{Runtime, RuntimeConfig, RuntimeError};
-use ontopolis_types::SimulationTime;
+use causafera_runtime::{Runtime, RuntimeConfig, RuntimeError};
+use causafera_types::SimulationTime;
 use thiserror::Error;
 
 const RUNTIME_STREAM_ID: u64 = 1;
@@ -148,8 +148,8 @@ pub enum SessionError {
 
 #[cfg(test)]
 mod tests {
-    use ontopolis_observer_api::{OBSERVER_PROTOCOL_V1, ObserverQuery, QueryKind, QueryStatus};
-    use ontopolis_observer_wire::{
+    use causafera_observer_api::{OBSERVER_PROTOCOL_V1, ObserverQuery, QueryKind, QueryStatus};
+    use causafera_observer_wire::{
         ConnectRequest, decode_connect_response, decode_observer_snapshot, decode_response,
         decode_stream_envelope, decode_world_snapshot, encode_connect_request, encode_query,
     };

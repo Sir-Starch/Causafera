@@ -1,0 +1,15 @@
+[package]
+name = "causafera-isekai"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+causafera-types = { workspace = true }
+causafera-core = { workspace = true }
+causafera-cognition = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]

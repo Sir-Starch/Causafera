@@ -2,7 +2,7 @@ import type { ObserverLocale } from "./useObserverSession";
 
 const translations = {
   "ru-RU": {
-    product: "Ontopolis",
+    product: "Causafera",
     observer: "Наблюдение",
     world: "Мир",
     causality: "Причинность",
@@ -70,7 +70,7 @@ const translations = {
     projectionNotice: "Показана числовая observer-проекция, а не знание агентов и не глобальная карта планеты.",
   },
   "en-US": {
-    product: "Ontopolis",
+    product: "Causafera",
     observer: "Observer",
     world: "World",
     causality: "Causality",

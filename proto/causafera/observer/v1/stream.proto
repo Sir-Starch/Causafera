@@ -1,0 +1,41 @@
+syntax = "proto3";
+package causafera.observer.v1;
+import "causafera/observer/v1/common.proto";
+
+enum StreamKind {
+  STREAM_KIND_UNSPECIFIED = 0;
+  STREAM_KIND_RUNTIME_SUMMARY = 1;
+  STREAM_KIND_EXPLANATION = 2;
+  STREAM_KIND_METRICS = 3;
+}
+enum DeliveryPolicy {
+  DELIVERY_POLICY_UNSPECIFIED = 0;
+  DELIVERY_POLICY_RELIABLE_ORDERED = 1;
+  DELIVERY_POLICY_LATEST_STATE_WINS = 2;
+  DELIVERY_POLICY_COALESCED = 3;
+  DELIVERY_POLICY_SAMPLED = 4;
+  DELIVERY_POLICY_REQUEST_RESPONSE = 5;
+}
+message SubscribeRequest {
+  uint64 stream_id = 1;
+  StreamKind kind = 2;
+  ChunkScope scope = 3;
+  DeliveryPolicy policy = 4;
+  uint32 capacity = 5;
+  uint64 sample_every_ticks = 6;
+}
+message StreamHeader {
+  uint64 stream_id = 1;
+  uint32 schema_version = 2;
+  uint64 sequence_number = 3;
+  SimulationTime simulation_time = 4;
+  Digest physical_digest = 5;
+  Digest history_digest = 6;
+  bool is_snapshot = 7;
+}
+message StreamEnvelope {
+  StreamHeader header = 1;
+  StreamKind kind = 2;
+  ChunkScope scope = 3;
+  bytes payload = 4;
+}

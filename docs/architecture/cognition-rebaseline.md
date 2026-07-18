@@ -248,7 +248,7 @@ The kernel supports transient per-agent active state through the existing `Syste
 
 `FeatureRelation` remains genuinely generic. No semantic shortcuts were found in the generic feature layer.
 
-`Feature.target_id` references `EntityId`. This is acceptable at the extractor level because `ontopolis-perception` operates on Ground Truth samples admitted through physical access. The subjective scene construction layer must map these authoritative references to perceived identities before cognition consumes them. The implemented attention primitive accepts only agent-local `AttentionTargetId` and therefore does not cross this boundary.
+`Feature.target_id` references `EntityId`. This is acceptable at the extractor level because `causafera-perception` operates on Ground Truth samples admitted through physical access. The subjective scene construction layer must map these authoritative references to perceived identities before cognition consumes them. The implemented attention primitive accepts only agent-local `AttentionTargetId` and therefore does not cross this boundary.
 
 ### Phase 3: Spatial World
 
@@ -262,7 +262,7 @@ Geography exposes physical state through property-based contracts (`ElevationMm`
 
 ### Phase 5: Biological Structural Model
 
-`BodyStructure` contains authoritative `BodySegmentId`, length, orientation, and joint limits. Objective body state remains separate from future subjective body schema. The cognition crate does not currently import `ontopolis-biology`. No direct omniscient cognitive access exists. No changes required.
+`BodyStructure` contains authoritative `BodySegmentId`, length, orientation, and joint limits. Objective body state remains separate from future subjective body schema. The cognition crate does not currently import `causafera-biology`. No direct omniscient cognitive access exists. No changes required.
 
 ---
 
@@ -345,6 +345,6 @@ Later documents supersede conflicting initialization-spec sections **only when t
 
 ## Phase 9–10 Implementation Status
 
-`ontopolis-cognition` now implements the accepted boundary. `PerceptualCue` is the only generic scene input and cannot carry authoritative entity, feature, place, body-segment, sensor, or trace identity. `SceneContinuityState` maintains fallible agent-local object hypotheses and reconstructs an attention-gated transient scene.
+`causafera-cognition` now implements the accepted boundary. `PerceptualCue` is the only generic scene input and cannot carry authoritative entity, feature, place, body-segment, sensor, or trace identity. `SceneContinuityState` maintains fallible agent-local object hypotheses and reconstructs an attention-gated transient scene.
 
 Active cognition is explicitly bounded: working context decays independently of capped episodic storage; sparse predictions emit numeric errors; agency is an opaque learned association; and a short temporal envelope retains only recent subjective frames. Phases 11–12 now add attention-fed subjective prototypes, fixed-point belief inertia, subjective source trust, and fallible causal pattern hypotheses without crossing the Ground Truth identity boundary.

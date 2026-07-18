@@ -9,7 +9,7 @@ The protocol uses Protocol Buffers for schema definition and serialization.
 Schema versions are maintained under:
 
 ```text
-proto/ontopolis/observer/v1/
+proto/causafera/observer/v1/
 ```
 
 ## Initial Protocol Categories
@@ -107,7 +107,7 @@ No unbounded observer queues. The protocol must drop or coalesce data rather tha
 Protocol schemas are versioned. Breaking changes require a new version directory:
 
 ```text
-proto/ontopolis/observer/v2/
+proto/causafera/observer/v2/
 ```
 
 The simulation and UI negotiate supported versions at connection time.

@@ -1,6 +1,6 @@
 # Belief Inertia
 
-Belief inertia is the resistance to changing beliefs in the face of new evidence. Stable mistakes are essential to Ontopolis.
+Belief inertia is the resistance to changing beliefs in the face of new evidence. Stable mistakes are essential to Causafera.
 
 ## Belief Inertia Representation
 

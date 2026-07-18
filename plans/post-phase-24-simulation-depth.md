@@ -10,7 +10,7 @@
 
 ## Goal
 
-Turn the Phase 24 executable causal field laboratory into the first genuinely coupled Ontopolis world simulation by completing eight ordered milestones:
+Turn the Phase 24 executable causal field laboratory into the first genuinely coupled Causafera world simulation by completing eight ordered milestones:
 
 ```text
 separate state/history identity
@@ -98,7 +98,7 @@ Determinism, provenance, analytics, explanation, experiment design, physical pat
 
 ## Current state
 
-`ontopolis-runtime` owns a centralized synchronized state and registers physical, mana, and resolution systems. A fixed physical source emits three same-fingerprint samples in adjacent cells every tick. The mana field reaches a driven fixed point by approximately tick 256. Temporary source suppression causes decay and later return to the same field state after forcing resumes.
+`causafera-runtime` owns a centralized synchronized state and registers physical, mana, and resolution systems. A fixed physical source emits three same-fingerprint samples in adjacent cells every tick. The mana field reaches a driven fixed point by approximately tick 256. Temporary source suppression causes decay and later return to the same field state after forcing resumes.
 
 `RuntimeSnapshot::canonical_state` hashes current state and the complete trace store together. The experiment therefore detects different histories but cannot by itself distinguish current-state divergence from provenance divergence.
 
@@ -210,9 +210,9 @@ Acceptance gate:
 
 Likely code:
 
-- `ontopolis-runtime` snapshots/digest registry;
-- `ontopolis-core` canonical hashing/version contracts if reuse is needed;
-- `ontopolis-lab` replay/counterfactual assertions.
+- `causafera-runtime` snapshots/digest registry;
+- `causafera-core` canonical hashing/version contracts if reuse is needed;
+- `causafera-lab` replay/counterfactual assertions.
 
 ### 2. Make checkpoints and interventions causally interpretable
 
@@ -234,9 +234,9 @@ Acceptance gate:
 
 Likely code:
 
-- `ontopolis-explanation` IR and causal query layer;
-- `ontopolis-analytics` deterministic metrics;
-- `ontopolis-lab` matched checkpoint analysis;
+- `causafera-explanation` IR and causal query layer;
+- `causafera-analytics` deterministic metrics;
+- `causafera-lab` matched checkpoint analysis;
 - CLI uses the read-only IR renderer.
 
 ### 3. Add bounded cross-tick physical-pattern history
@@ -260,8 +260,8 @@ Acceptance gate:
 Likely code:
 
 - new RFC amendment or RFC for temporal pattern retention;
-- `ontopolis-domains::mana` input analysis;
-- `ontopolis-runtime` carrier staging;
+- `causafera-domains::mana` input analysis;
+- `causafera-runtime` carrier staging;
 - targeted Criterion benchmarks.
 
 ### 4. Close the mana → physics feedback loop
@@ -286,8 +286,8 @@ Acceptance gate:
 Likely code:
 
 - new mana-effects RFC;
-- `ontopolis-domains` effect proposals;
-- `ontopolis-runtime` physics reducer/commit integration;
+- `causafera-domains` effect proposals;
+- `causafera-runtime` physics reducer/commit integration;
 - provenance target-schema registry.
 
 ### 5. Replace fixture samples with real physical carrier adapters
@@ -337,9 +337,9 @@ Acceptance gate:
 
 Likely code:
 
-- `ontopolis-resolution` domain adapter interfaces;
-- `ontopolis-domains::mana` multi-field boundary exchange;
-- `ontopolis-geography` chart-qualified terrain migration;
+- `causafera-resolution` domain adapter interfaces;
+- `causafera-domains::mana` multi-field boundary exchange;
+- `causafera-geography` chart-qualified terrain migration;
 - runtime active-set and chunk registry.
 
 ### 7. Integrate the minimal biological actor causal loop

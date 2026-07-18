@@ -1,4 +1,4 @@
-# Ontopolis Roadmap
+# Causafera Roadmap
 
 ## Phase 0
 
@@ -178,14 +178,14 @@ views remain incremental observer work.
 
 ## Foundation Era boundary
 
-Phase 26 is the last preallocated Foundation Era phase. Completion of Phases 0–26 means Ontopolis
+Phase 26 is the last preallocated Foundation Era phase. Completion of Phases 0–26 means Causafera
 has minimum valid domain contracts, deterministic execution, causal provenance, persistence, a
 bounded long-run harness, Explanation IR transport, and a real observer UI. It does not mean that
 the domains have reached full causal depth or that semantic emergence has been demonstrated.
 
 ## Detailed Development Program — current
 
-Ontopolis is now in open-ended detailed development. The final number of phases is deliberately
+Causafera is now in open-ended detailed development. The final number of phases is deliberately
 unknown. New numbered phases or implementation batches are allocated only when bounded ExecPlans
 are accepted; the roadmap does not reserve a terminal phase in advance.
 

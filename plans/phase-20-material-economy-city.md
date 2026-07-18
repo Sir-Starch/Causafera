@@ -26,7 +26,7 @@ The project thesis, hard invariants, ontology coverage documents, settlement and
 
 ## Current state
 
-`ontopolis-domains::economy` contains only raw integer endpoints, a raw material number, and `f64` quantity. City infrastructure has documentation but no authoritative contracts.
+`causafera-domains::economy` contains only raw integer endpoints, a raw material number, and `f64` quantity. City infrastructure has documentation but no authoritative contracts.
 
 ## Proposed architecture
 

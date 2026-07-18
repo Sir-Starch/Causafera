@@ -1,4 +1,4 @@
-/** Canonical observer v1 client codec. Field numbers come from proto/ontopolis/observer/v1. */
+/** Canonical observer v1 client codec. Field numbers come from proto/causafera/observer/v1. */
 export const OBSERVER_PROTOCOL_V1 = 1;
 
 export interface ConnectRequest {

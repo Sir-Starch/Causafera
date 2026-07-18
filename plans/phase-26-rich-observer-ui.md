@@ -9,7 +9,7 @@
 
 ## Goal
 
-Deliver a visually polished, usable Tauri + React observer that runs the real bounded Ontopolis runtime, negotiates observer protocol v1, receives runtime and world data only as versioned Protocol Buffer payloads, consumes bounded stream envelopes, and renders typed Explanation IR without introducing a UI mutation path into authoritative state.
+Deliver a visually polished, usable Tauri + React observer that runs the real bounded Causafera runtime, negotiates observer protocol v1, receives runtime and world data only as versioned Protocol Buffer payloads, consumes bounded stream envelopes, and renders typed Explanation IR without introducing a UI mutation path into authoritative state.
 
 ## Context
 

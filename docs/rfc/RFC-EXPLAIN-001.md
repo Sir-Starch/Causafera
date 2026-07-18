@@ -8,7 +8,7 @@ The Explanation IR is a read-only, deterministic structure for observer-side ana
 
 ## Motivation
 
-Ontopolis needs causal explanations that are inspectable, reproducible, and honest about uncertainty. A checkpoint or intervention result must not be rendered as an emergent phenomenon merely because a metric exists. Each explanation claim therefore carries:
+Causafera needs causal explanations that are inspectable, reproducible, and honest about uncertainty. A checkpoint or intervention result must not be rendered as an emergent phenomenon merely because a metric exists. Each explanation claim therefore carries:
 
 - an opaque typed schema ID;
 - a typed numeric value or numeric range;

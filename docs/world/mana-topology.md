@@ -4,7 +4,7 @@ Mana is a local information-sensitive physical field. Phase 17 establishes its m
 
 ## Authoritative state
 
-`ontopolis-domains::mana::ManaField` stores a chunk coordinate, a cubic extent of at most `CHUNK_SIZE`, row-major fixed-point intensity, the last committed causal trace per cell, and the latest incorporated simulation tick. Human names and classifications are absent.
+`causafera-domains::mana::ManaField` stores a chunk coordinate, a cubic extent of at most `CHUNK_SIZE`, row-major fixed-point intensity, the last committed causal trace per cell, and the latest incorporated simulation tick. Human names and classifications are absent.
 
 ## Physical inputs
 

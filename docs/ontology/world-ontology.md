@@ -1,6 +1,6 @@
 # World Ontology
 
-Ontopolis requires an explicit ontology to prevent entire domains from being forgotten or implemented as semantic shortcuts. The ontology system ensures every fundamental domain is consciously designed before entering implementation.
+Causafera requires an explicit ontology to prevent entire domains from being forgotten or implemented as semantic shortcuts. The ontology system ensures every fundamental domain is consciously designed before entering implementation.
 
 ## Ontology Documentation
 

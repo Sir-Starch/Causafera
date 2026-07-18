@@ -1,6 +1,6 @@
 # Glossary
 
-This glossary defines terms used throughout the Ontopolis documentation.
+This glossary defines terms used throughout the Causafera documentation.
 
 ## A
 

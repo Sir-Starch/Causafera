@@ -53,5 +53,5 @@ Native Wayland remains available for platform testing:
 ```text
 pnpm --dir apps/observer desktop:raw
 # or
-ONTOPOLIS_NATIVE_WAYLAND=1 pnpm --dir apps/observer desktop
+CAUSAFERA_NATIVE_WAYLAND=1 pnpm --dir apps/observer desktop
 ```

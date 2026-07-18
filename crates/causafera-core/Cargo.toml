@@ -1,0 +1,15 @@
+[package]
+name = "causafera-core"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+causafera-types = { workspace = true }
+thiserror = { workspace = true }
+serde = { workspace = true }
+rand = { workspace = true }
+
+[dev-dependencies]

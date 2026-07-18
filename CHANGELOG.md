@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to Ontopolis are documented in this file.
+All notable changes to Causafera are documented in this file.
 
 ## Format
 
@@ -97,7 +97,7 @@ This project follows a structured changelog format. Each entry includes:
 
 #### CORE
 
-- Implemented generic perceptual feature types in `ontopolis-types/src/features.rs`;
+- Implemented generic perceptual feature types in `causafera-types/src/features.rs`;
 - Added `FeatureRelation` (Change, Magnitude, Direction, Variance, Periodicity, Synchrony, Recurrence, Duration, SpatialRelation, TemporalRelation, CoOccurrence, StructuralSimilarity, RelativeDifference, SequenceSimilarity);
 - Added `FeatureValue` (Scalar, Direction, FrequencyBand, MagnitudeBand);
 - Added `Persistence` (Fleeting, Brief, Moderate, Persistent, High);
@@ -105,7 +105,7 @@ This project follows a structured changelog format. Each entry includes:
 
 #### WORLD
 
-- Implemented primitive physical state types in `ontopolis-types/src/physics.rs`;
+- Implemented primitive physical state types in `causafera-types/src/physics.rs`;
 - Added `Temperature` (Kelvin, with Celsius conversion);
 - Added `Orientation` (yaw, pitch, roll);
 - Added `Velocity`, `AngularVelocity`, and `Motion`;
@@ -114,7 +114,7 @@ This project follows a structured changelog format. Each entry includes:
 
 #### Types
 
-- Added `EntityId` and `SubstanceId` typed IDs to `ontopolis-types/src/ids.rs`;
+- Added `EntityId` and `SubstanceId` typed IDs to `causafera-types/src/ids.rs`;
 - Added `serde_json` dev-dependency for serde roundtrip tests.
 
 #### Testing

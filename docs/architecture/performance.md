@@ -1,6 +1,6 @@
 # Performance Philosophy
 
-Ontopolis optimizes simulated causal complexity per wall-clock second.
+Causafera optimizes simulated causal complexity per wall-clock second.
 
 A million inert agents are not success. A smaller number of agents with genuine perceptual processing, concept formation, causal inference, language decoding, and practice execution is the target.
 

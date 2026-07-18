@@ -12,7 +12,7 @@ A distant site whose practices, documents, material flows, or mana patterns affe
 
 ## Authoritative state
 
-`ontopolis-resolution::ResolutionField` is a bounded structure-of-arrays store ordered by authoritative `ChunkId`. Each entry contains fixed-point relevance, a numeric detail level, and the `TraceId` of its last committed change. Levels are computational ordinals, not semantic geographic classifications. Chunk identity remains Ground Truth bookkeeping and is never agent cognition.
+`causafera-resolution::ResolutionField` is a bounded structure-of-arrays store ordered by authoritative `ChunkId`. Each entry contains fixed-point relevance, a numeric detail level, and the `TraceId` of its last committed change. Levels are computational ordinals, not semantic geographic classifications. Chunk identity remains Ground Truth bookkeeping and is never agent cognition.
 
 ## Relevance carriers
 

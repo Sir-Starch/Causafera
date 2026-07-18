@@ -1,6 +1,6 @@
 # Geography Philosophy
 
-Geography in Ontopolis is not a decorative backdrop. It is causal state.
+Geography in Causafera is not a decorative backdrop. It is causal state.
 
 ## Principle
 

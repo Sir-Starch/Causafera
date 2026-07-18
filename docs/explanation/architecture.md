@@ -22,7 +22,7 @@ UI
 
 ## Crate
 
-`ontopolis-explanation`
+`causafera-explanation`
 
 ## Core Responsibilities
 

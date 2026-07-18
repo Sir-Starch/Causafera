@@ -1,6 +1,6 @@
 # Practice Architecture
 
-`ontopolis-domains::practices` represents practices as bounded, evolvable control-flow structures. A practice is not a skill score, job, ritual label, recipe string, or explanation.
+`causafera-domains::practices` represents practices as bounded, evolvable control-flow structures. A practice is not a skill score, job, ritual label, recipe string, or explanation.
 
 Programs contain opaque operations and learned action-pattern references, integer durations and tolerances, subjective numeric conditions, branches, bounded repeats, waits, and halt instructions. Validation prevents invalid control flow; execution has hard work and output budgets.
 

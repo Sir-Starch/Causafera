@@ -4,7 +4,7 @@ The engine must not use a huge predefined list of semantically meaningful observ
 
 ## Implemented Phase 7–8 boundary
 
-`ontopolis-perception` now provides the first executable path into this layer. `acquire_signals` filters property-based physical signals through opaque channel identity, matching simulation time, integer range, and magnitude threshold. It emits relative `SensorySample` records with causal trace support. The generic extractor accepts only those samples and emits canonical `Magnitude` and consecutive `Change` features with flattened ordered input-trace spans.
+`causafera-perception` now provides the first executable path into this layer. `acquire_signals` filters property-based physical signals through opaque channel identity, matching simulation time, integer range, and magnitude threshold. It emits relative `SensorySample` records with causal trace support. The generic extractor accepts only those samples and emits canonical `Magnitude` and consecutive `Change` features with flattened ordered input-trace spans.
 
 The remaining generic relations below are accepted primitives but do not yet have extraction algorithms. This implementation is deliberately not a realistic optical, acoustic, chemical, or neural model. Authoritative `Feature.target_id` remains legal only in the Ground Truth extractor layer and must be mapped to subjective identity during Phase 9 scene construction.
 

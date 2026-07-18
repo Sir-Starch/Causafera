@@ -1,6 +1,6 @@
 # Spatial Hierarchy
 
-Ontopolis organizes places into a nested containment hierarchy. This hierarchy is not a geometric embedding, metric, boundary model, or ownership system.
+Causafera organizes places into a nested containment hierarchy. This hierarchy is not a geometric embedding, metric, boundary model, or ownership system.
 
 ## Geographic Hierarchy
 
@@ -71,7 +71,7 @@ Two contained places need not be geometrically adjacent. Two geometrically overl
 
 ## Phase 3 Implementation
 
-The authoritative containment skeleton is implemented in `ontopolis-world` as an immutable `SpatialHierarchy`:
+The authoritative containment skeleton is implemented in `causafera-world` as an immutable `SpatialHierarchy`:
 
 - `PlaceId` values are dense, stable indexes assigned in deterministic insertion order.
 - `SpatialHierarchyBuilder` accepts only direct transitions in the documented hierarchy.
@@ -79,7 +79,7 @@ The authoritative containment skeleton is implemented in `ontopolis-world` as an
 - hierarchy construction retains the explicit world seed as minimal generation provenance.
 - chunk nodes convert to and from `ChunkId` only after their structural level is validated.
 
-The hierarchy does not itself generate geography. Phase 4 terrain chunks can attach deterministic surface fields and generation provenance to chunk coordinates through the separate `ontopolis-geography` contract. Phase 18 causal resolution is a separate traced overlay and does not alter containment. Geological state, hydrology, climate, ecology, parcels, structures, interiors, and domain-specific aggregation remain future work. Political claims remain separate overlays.
+The hierarchy does not itself generate geography. Phase 4 terrain chunks can attach deterministic surface fields and generation provenance to chunk coordinates through the separate `causafera-geography` contract. Phase 18 causal resolution is a separate traced overlay and does not alter containment. Geological state, hydrology, climate, ecology, parcels, structures, interiors, and domain-specific aggregation remain future work. Political claims remain separate overlays.
 
 ## Ownership and Jurisdiction
 

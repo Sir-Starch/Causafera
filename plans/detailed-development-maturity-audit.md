@@ -8,7 +8,7 @@
 
 ## Goal
 
-Produce an evidence-backed capability maturity audit for every domain in Ontopolis, deepen the
+Produce an evidence-backed capability maturity audit for every domain in Causafera, deepen the
 analysis only for the four blockers identified by the Detailed Development rebaseline, derive an
 acyclic next-work sequence, and write one decision-complete downstream ExecPlan. This plan governs
 audit, evidence, and documentation work only; it does not implement product behavior.

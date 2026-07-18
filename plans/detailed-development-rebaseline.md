@@ -4,7 +4,7 @@
 
 ## Goal
 
-End the fixed foundation-era roadmap after Phase 26 and move Ontopolis into an open-ended detailed
+End the fixed foundation-era roadmap after Phase 26 and move Causafera into an open-ended detailed
 development program. The program deepens every authoritative domain until it participates in
 meaningful, reproducible, causally reconstructable long runs. Simulation work has first priority,
 Explanation evolves alongside it, observer contracts follow inspection needs, and UI work is
