@@ -1,1339 +1,242 @@
-# 🌌 Causafera
+# Causafera
 
-> **A city whose inhabitants do not receive reality in a form they can understand.**
+Causafera is an experimental causal world-simulation engine for studying how physical processes,
+bounded subjective agents, language, institutions, and an information-sensitive mana field can
+co-evolve into reconstructable history.
 
-Causafera is a high-performance experimental simulation of a geographically coherent fantasy / isekai world with extreme causal depth concentrated around a living city.
+> **Status: Experimental pre-alpha.** Causafera is not a finished game, a production-ready
+> simulator, or a completed scientific model. Its Foundation Era contracts and a bounded causal
+> loop are implemented, but simulation depth is uneven and many domains remain incomplete.
 
-It attempts to simulate the bottom-up co-evolution of:
+## What Causafera is
 
-* 🌍 physical reality and geography;
-* 🧬 biology and disease;
-* 👁️ perception and subjective experience;
-* 🧠 memory, prediction, and self-models;
-* 💭 concepts and causal beliefs;
-* 🗣️ language and semantic change;
-* 📚 knowledge and epistemic systems;
-* 🔁 practices and institutions;
-* ⚙️ technology and material production;
-* ✨ information-sensitive magic;
-* 🕰️ historical path dependence.
+Causafera exists to explore a specific question: can a persistent world produce surprising social,
+linguistic, biological, geographic, and magic-like outcomes from lower-level causes while retaining
+enough provenance to explain what happened?
 
-The city is not generated as a collection of lore, modifiers, scripted events, or predefined fantasy systems.
+The world state persists independently of any observer or inhabitant. Agents do not read that
+authoritative state. They receive bounded, physically accessible signals and construct subjective
+scenes, memories, concepts, beliefs, and causal hypotheses that may be incomplete or wrong. Their
+interpretations influence behaviour; repeated behaviour creates real physical and informational
+patterns; those patterns may affect later world state.
 
-It gradually becomes a physical, social, linguistic, and magical product of its own history.
-
-> **The central goal of Causafera is to produce surprising situations which nobody authored, while preserving enough causal provenance to explain exactly how they happened.**
-
----
-
-## 📖 Contents
-
-* [🧩 The Core Thesis](#-the-core-thesis)
-
-  * [Reality exists independently of its inhabitants](#1️⃣-reality-exists-independently-of-its-inhabitants)
-  * [Agents never receive Ground Truth](#2️⃣-agents-never-receive-ground-truth)
-  * [Agents construct subjective situations](#3️⃣-agents-construct-subjective-situations)
-  * [Situations may exceed source-code semantics](#4️⃣-situations-may-be-richer-than-explicit-source-code-categories)
-  * [Human concepts are not engine primitives](#5️⃣-human-concepts-are-not-engine-primitives)
-* [🔁 The Ontological Feedback Loop](#-the-ontological-feedback-loop)
-* [✨ Magic Is Physical, Not Semantic](#-magic-is-physical-not-semantic)
-* [🌍 Geography Is Causal](#-geography-is-causal)
-* [🗣️ Language Is a Historical Process](#️-language-is-a-simulated-historical-process)
-* [🔊 Language Can Change Magic](#-language-can-change-magic)
-* [🧠 Knowledge Is Not Capability](#-knowledge-is-not-capability)
-* [🌀 Isekai as Causal Contamination](#-isekai-is-a-causal-contamination-process)
-* [⚔️ Emergent Fantasy Systems](#️-familiar-fantasy-systems-are-target-emergent-outcomes)
-* [🔁 Practices Evolve](#-practices-evolve)
-* [🧬 Biology and Social Categories](#-biology-does-not-define-social-categories)
-* [🦠 Disease as a Causal Process](#-disease-is-a-causal-process-not-an-event)
-* [🧠 Memory, Prediction, and the Self](#-memory-prediction-and-the-self)
-* [📡 Causal Resolution](#-causal-resolution-not-distance-based-lod)
-* [🧾 Causal Provenance](#-causal-provenance-is-first-class)
-* [🔍 The Explanation Engine](#-the-explanation-engine)
-* [🤖 LLM Boundaries](#-llms-are-non-authoritative)
-* [🚫 What Causafera Is Not](#-what-causafera-is-not)
-* [📜 Project Invariants](#-project-invariants)
-* [🗺️ Roadmap and Current Status](#️-roadmap-and-current-status)
-* [📂 Project Structure](#-project-structure)
-* [⚡ Development Philosophy](#-development-philosophy)
-* [🛠️ Getting Started](#️-getting-started)
-* [📐 Development Rules](#-development-rules)
-* [⚖️ License](#️-license)
-* [🎯 The Intended Result](#-the-intended-result)
-
----
-
-# 🧩 The Core Thesis
-
-Causafera is built around a specific simulation thesis.
-
-## 1️⃣ Reality exists independently of its inhabitants
-
-The simulation maintains authoritative physical and biological state.
-
-Objects, organisms, materials, pathogens, terrain, and fields may continue to exist and produce consequences regardless of what any agent believes about them.
-
-A stone does not become harmless because nobody understands geology.
-
-A pathogen does not stop spreading because a society believes illness is caused by moral corruption.
-
-> **Reality can disagree with its inhabitants.**
-
-That disagreement is one of the primary engines of history.
-
----
-
-## 2️⃣ Agents never receive Ground Truth
-
-An inhabitant does not inspect simulation state.
-
-Agents cannot directly access:
-
-* authoritative entity identities;
-* exact material composition;
-* true pathogen lineages;
-* causal provenance graphs;
-* objective biological state;
-* the real intentions of other agents;
-* developer-defined analytical labels.
-
-Their access to reality is mediated through physical accessibility and bounded sensory processes.
+The central causal loop is:
 
 ```text
-GROUND TRUTH
-    ↓
-PHYSICAL ACCESS
-    ↓
-SENSORY ACQUISITION
-    ↓
-GENERIC FEATURE EXTRACTION
-    ↓
-SUBJECTIVE SCENE CONSTRUCTION
-    ↓
-CONCEPTS, MEMORY, PREDICTION
-    ↓
-BELIEFS AND CAUSAL HYPOTHESES
-    ↓
-DECISION AND ACTION
+persistent world state
+    -> bounded physical access and perception
+    -> subjective interpretation and causal hypotheses
+    -> behaviour and repeated practices
+    -> durable physical or informational patterns
+    -> cross-domain effects, including mana response
+    -> changed observations and future beliefs
 ```
 
-An agent does not live inside the authoritative world model.
+Mana is an information-sensitive physical simulation substrate. It may respond to measurable
+recurrence, timing, synchronization, geometry, frequency, and persistent structure. It does not
+understand prayer, law, professions, words, beliefs, classes, skills, or other semantic labels.
 
-> **It lives inside a continuously reconstructed, incomplete, and potentially incorrect model of its current situation.**
+## Design principles
 
----
+- **Persistent, observer-independent state.** The authoritative world continues to exist and change
+  regardless of what agents or users know about it.
+- **Bounded subjective perception.** Agents never receive Ground Truth identities or complete world
+  state. Perception, subjective scene construction, and belief remain structurally separate.
+- **Cross-domain causality.** Geography, biology, material processes, cognition, language, society,
+  history, and mana exchange physical or informational causal carriers rather than semantic
+  shortcuts.
+- **Deterministic and reproducible execution.** Explicit random streams, stable proposal ordering,
+  canonical state representations, and replay checks support reproducible experiments.
+- **Causal provenance and explanation.** Significant authoritative changes retain traceable causes.
+  The Explanation Engine renders typed, evidence-bearing interpretations without mutating the
+  simulation.
+- **Non-authoritative observation.** The observer protocol, desktop UI, classifications, locale, and
+  visual presentation are read-only derived tooling and cannot become simulation truth.
+- **Evidence before scale or emergence claims.** Digests prove equality or divergence, not physical
+  distance. Performance and emergence claims require representative reproducible evidence.
 
-## 3️⃣ Agents construct subjective situations
+The non-negotiable rules are maintained in the [architecture invariants](docs/architecture/invariants.md).
 
-Causafera does not intend agents to behave as feature vectors connected directly to decision functions.
+## Implemented now
 
-An agent constructs a **Subjective Scene**.
+The completed Foundation Era provides minimum validated contracts and selected executable paths:
 
-The scene may contain:
+- a Rust 2024 workspace with deterministic scheduler phases and explicit random-stream rules;
+- append-only causal events and provenance, canonical state digests, replay checks, and deterministic
+  snapshot save/resume;
+- bounded contracts for physical space, geography, biology, perception, subjective scenes,
+  cognition, language, practices, epistemics, social records, economy, city infrastructure,
+  historical bootstrap, isekai transfer, and metaphysical experiments;
+- a fixed-point mana field responding to non-semantic recurrence, synchronization, timing, and
+  spatial pattern structure, with traced coupling in a limited executable path;
+- causal-resolution, long-run experiment, Explanation IR, observer protocol, and bounded observer
+  overhead paths;
+- a Tauri 2 and React desktop observer that consumes versioned Protocol Buffer data rather than
+  direct runtime storage.
 
-* 👤 a perceived self;
-* 🫀 a subjective body schema;
-* 🪑 believed object identities;
-* 📍 believed locations;
-* 🧑‍🤝‍🧑 perceived people;
-* 🔗 active relationships;
-* 🎯 currently relevant goals;
-* 🧠 reactivated memories;
-* 💭 active concepts;
-* 🔮 near-future predictions;
-* 👁️ attention;
-* ❓ uncertainty.
+Foundation completion does not mean every broad domain is mature. The conservative current levels
+and gaps are listed in the [domain coverage matrix](docs/ontology/domain-coverage-matrix.md), and the
+[maturity audit plan](plans/detailed-development-maturity-audit.md) remains active.
 
-Authoritative identity and perceived identity are different.
+## Incomplete work
 
-The world may contain:
+Major gaps include:
+
+- durable geology, hydrology, climate, ecology, materials, energy, and multiscale geographic
+  processes;
+- deeply integrated morphology, physiology, development, heredity, reproduction, disease,
+  demography, and population conservation;
+- long-lived cognition, grounded learning, conversation, language diffusion, institutions,
+  production, maintenance, governance, and historical synthesis;
+- validated cross-domain mana effects over representative physical carriers;
+- production bootstrap and detail-promotion paths free of fixture/demo construction throughout;
+- domain-valid recovery metrics, counterfactuals, causal queries, uncertainty reporting, and
+  observer inspection coverage;
+- representative long runs, performance envelopes, provenance-growth measurements, and evidence
+  for nontrivial emergence.
+
+Optional LLM wording is not implemented or scheduled. It remains behind a terminal maturity gate
+and would be removable, non-authoritative, and downstream of deterministic Explanation.
+
+## Architecture
 
 ```text
-EntityId(718)
+domain state and physical carriers
+    -> deterministic READ / PROPOSE / REDUCE / COMMIT scheduler
+    -> authoritative world state plus causal provenance
+    -> persistence, replay, experiments, and typed analytics
+    -> bounded observer read model and Explanation IR
+    -> versioned Protocol Buffer transport
+    -> non-authoritative Tauri / React observer
 ```
 
-An agent may instead maintain a subjective hypothesis equivalent to:
+The workspace is split into domain crates. `causafera-types`, `causafera-core`, and the domain crates
+define validated primitives and operations; `causafera-runtime` composes authoritative execution;
+`causafera-persistence`, `causafera-lab`, `causafera-explanation`, and the observer crates provide
+save/resume, experiments, interpretation, and read-only inspection. See the
+[documentation index](docs/index.md) and [Detailed Development rebaseline](docs/architecture/detailed-development-rebaseline.md).
 
-```text
-PerceivedObjectIdentity(19)
-```
+## Prerequisites
 
-The agent may:
+The repository and CI currently pin or verify:
 
-* believe two different objects are the same object;
-* believe the same object seen twice is two different objects;
-* lose track of an object;
-* incorrectly infer replacement, movement, destruction, or theft.
+- Git;
+- Rust 1.85.0 with `rustfmt` and Clippy, from `rust-toolchain.toml`;
+- Node.js 20.x;
+- pnpm 9.15.9.
 
-The same principle applies to the body and the self.
+Building the desktop observer on Linux additionally requires GTK 3, WebKitGTK 4.1, Ayatana
+AppIndicator 3, and librsvg development packages. Other platforms require the normal
+[Tauri 2 prerequisites](https://v2.tauri.app/start/prerequisites/).
 
-> Objective biological state is not identical to subjective body experience.
+## Quick start
 
-> The authoritative agent is not identical to the agent's self-model.
-
----
-
-## 4️⃣ Situations may be richer than explicit source-code categories
-
-The engine does not need a semantic event such as:
-
-```text
-RememberDeadFatherMoment
-```
-
-A situation may emerge from:
-
-```text
-current perceived movement
-    ↓
-similarity to an episodic memory
-    ↓
-memory reactivation
-    ↓
-association with a known person
-    ↓
-attention shift
-    ↓
-change in the current subjective scene
-```
-
-The resulting situation may be understandable to a human as:
-
-> *An apprentice holds a tool exactly like the agent's dead father once did.*
-
-No developer authored that scene.
-
-No semantic enum describes it.
-
-Its content exists because runtime state and accumulated personal history interacted.
-
-> **Emergence may reorganize and combine available information into structures much richer than explicit semantic categories in the source code.**
-
-It may not create information from complete absence.
-
-If smell is not represented at any causally relevant level, an agent cannot suddenly smell bread.
-
-Subjective detail must remain causally grounded.
-
----
-
-## 5️⃣ Human concepts are not engine primitives
-
-The authoritative simulation should not begin with a taxonomy of the human world.
-
-There is no requirement for primitive engine categories such as:
-
-```text
-Table
-Disease
-Race
-Profession
-Class
-Skill
-Monster
-SacredStone
-Criminal
-```
-
-The engine defines lower-level physical, structural, biological, and relational properties.
-
-For example, Ground Truth may contain:
-
-```text
-material structures
-attachments
-geometry
-orientation
-movement
-support relations
-thermal state
-biological segments
-field state
-```
-
-An agent may repeatedly perceive a stable elevated surface supported from below and form a subjective concept around similar objects.
-
-A local language may associate a lexeme with that concept.
-
-The observer UI may display the English gloss:
-
-> **table**
-
-The simulation itself never required `Furniture::Table`.
-
-Causafera distinguishes:
-
-> **what exists**
-
-from:
-
-> **how agents divide existence into concepts**
-
-and from:
-
-> **how the observer explains those concepts to a human user**
-
----
-
-# 🔁 The Ontological Feedback Loop
-
-The central historical loop of Causafera is:
-
-```text
-HIDDEN CAUSALITY
-    ↓
-INCOMPLETE OBSERVATION
-    ↓
-SUBJECTIVE INTERPRETATION
-    ↓
-CAUSAL HYPOTHESIS
-    ↓
-BEHAVIOUR
-    ↓
-PRACTICE
-    ↓
-REPETITION AND STANDARDIZATION
-    ↓
-PERSISTENT PHYSICAL / INFORMATIONAL PATTERN
-    ↓
-MANA RESPONSE
-    ↓
-CHANGED PHYSICAL EFFECT
-    ↓
-APPARENT CONFIRMATION
-    ↓
-REINFORCED BELIEF
-```
-
-A false explanation may therefore become practically predictive.
-
-Not because belief directly changes reality.
-
-Because belief changes behaviour.
-
-Behaviour creates repeated real structures.
-
-Mana reacts to those structures.
-
-The resulting physical effect appears to confirm the original explanation.
-
-> **A mistaken theory can slowly construct the conditions under which it begins to work.**
-
----
-
-# ✨ Magic Is Physical, Not Semantic
-
-Mana is an information-sensitive physical substrate.
-
-It does **not** understand human meaning.
-
-Mana has no concept of:
-
-* gods;
-* prayer;
-* marriage;
-* ethnicity;
-* guilt;
-* law;
-* professions;
-* classes;
-* skills;
-* levels.
-
-It cannot inspect an agent's belief state.
-
-Mana may respond to real patterns such as:
-
-* 🔁 periodicity;
-* 🎵 frequency;
-* 🌊 phase relations;
-* 👥 synchronization;
-* 🔷 spatial symmetry;
-* 🔂 recurring sequences;
-* 🧩 information density;
-* 🏛️ persistent geometry;
-* 🕰️ long-lived repeated structures.
-
-Consider a ritual performed every morning.
-
-The inhabitants may believe:
-
-> *An unmarried woman must pray beside a copper bell.*
-
-Mana does not understand unmarried women, prayer, or copper symbolism.
-
-But the associated practice may consistently produce:
-
-* a particular spatial arrangement;
-* a repeated vocal sequence;
-* synchronized movement;
-* a stable acoustic frequency;
-* the same timing every morning.
-
-Those physical patterns may interact with the local mana field.
-
-> **The local theory may be metaphysically wrong and operationally useful.**
-
----
-
-# 🌍 Geography Is Causal
-
-Geography is not decorative map data.
-
-Causafera treats the world as a hierarchy of physical spatial systems:
-
-```text
-World
-└── Landmass
-    └── Geographic Basin
-        └── Landscape Region
-            └── Local Territory
-                └── Spatial Chunk
-                    └── Parcel / Site
-                        └── Structure
-                            └── Interior Space
-```
-
-Terrain, geology, hydrology, climate, material distribution, and mana topology participate in causal history.
-
-A material may retain provenance through:
-
-```text
-geological formation
-    ↓
-deposit
-    ↓
-quarry
-    ↓
-extraction lot
-    ↓
-transport batch
-    ↓
-merchant inventory
-    ↓
-workshop
-    ↓
-building component
-```
-
-A phenomenon occurring in a bakery two centuries later may ultimately depend on a particular geological formation.
-
-The simulation should be capable of reconstructing that chain.
-
-Rivers, valleys, resources, roads, settlement locations, and city morphology should create conditions from which history develops.
-
-> **A city is not placed on a map. Its location has consequences.**
-
----
-
-# 🗣️ Language Is a Simulated Historical Process
-
-Simulated inhabitants do not know English.
-
-The authoritative simulation contains no privileged human interface language.
-
-> Changing the observer UI from English to Russian must not change the canonical simulation state hash.
-
-Language is separated into:
-
-```text
-SUBJECTIVE CONCEPT
-    ↕
-LEXICAL ASSOCIATION
-    ↕
-PHONOLOGICAL FORM
-    ↕
-MORPHOLOGY AND GRAMMAR
-    ↕
-PHYSICAL UTTERANCE
-```
-
-A word does not contain one objective meaning.
-
-Different agents may associate the same lexeme with different concepts.
-
-New words may emerge because speakers repeatedly need to communicate a distinction for which no established lexeme exists.
-
-Possible lexical strategies include:
-
-* description;
-* composition;
-* derivation;
-* metonymy;
-* geographic naming;
-* occupational naming;
-* borrowing;
-* novel root creation.
-
-Listeners do not directly receive the speaker's concept.
-
-They hear a physical utterance and reconstruct possible meaning from:
-
-* known lexical associations;
-* current context;
-* perceived referents;
-* previous uses;
-* source trust.
-
-Misunderstanding is normal.
-
-Semantic drift is expected.
-
-A term may begin as a label for a recurring physiological pattern, later become associated with a profession, then a district, and eventually an inherited social identity.
-
-> **No developer needs to author that semantic history.**
-
----
-
-# 🔊 Language Can Change Magic
-
-Speech is physical.
-
-It produces acoustic and temporal patterns.
-
-Therefore language change may have physical magical consequences.
-
-```text
-historical vowel shift
-    ↓
-changed acoustic profile
-    ↓
-changed mana coupling
-    ↓
-spell instability
-```
-
-The inhabitants may explain the decline through:
-
-* lost discipline;
-* moral decay;
-* corrupted teaching;
-* divine anger.
-
-The actual causal history may lead through phonological change.
-
-> Causafera is specifically designed to allow this kind of cross-domain causal chain.
-
----
-
-# 🧠 Knowledge Is Not Capability
-
-Knowing that a technology is possible does not make it available.
-
-Causafera distinguishes:
-
-* 📚 declarative knowledge;
-* 🔧 procedural knowledge;
-* 👁️ perceptual expertise;
-* ✋ motor skill.
-
-An isekai arrival may know:
-
-> *Microorganisms can cause disease.*
-
-That does not automatically provide:
-
-* suitable lenses;
-* pure glass;
-* precision tools;
-* sterile procedures;
-* experimental institutions;
-* social credibility.
-
-Likewise, understanding the principle of an internal combustion engine does not produce:
-
-* appropriate steel;
-* precision machining;
-* seals;
-* lubricants;
-* fuel infrastructure;
-* ignition systems.
-
-Technology emerges from combinations of:
-
-```text
-CONCEPT
-+
-MATERIAL
-+
-TOOL
-+
-MEASUREMENT
-+
-PROCEDURAL KNOWLEDGE
-+
-SKILL
-+
-SOCIAL TRANSMISSION
-```
-
-> **There is no technology tree.**
-
----
-
-# 🌀 Isekai Is a Causal Contamination Process
-
-Causafera treats cross-world arrival as more than a narrative excuse to give a protagonist modern knowledge.
-
-Isekai arrivals introduce **foreign priors**.
-
-Possible transfer phenomena may eventually include:
-
-* complete physical transfer;
-* identity-pattern transfer;
-* reincarnation-like binding;
-* partial autobiographical memory transfer;
-* informational echoes;
-* transferred artifacts;
-* overlapping identity structures.
-
-The exact metaphysics remain an open research problem.
-
-An arrival from Earth may remember a concept which has no equivalent in the local conceptual system.
-
-Translation therefore becomes approximate concept mapping.
-
-For example:
-
-```text
-computer
-≈ thinking mechanism
-≈ calculation device
-≈ memory machine
-≈ thinking loom
-```
-
-A poor translation may redirect an entire technological history.
-
-A society trying to understand the phrase **thinking loom** might discover computation through textile machinery rather than mathematics.
-
-> **The isekai arrival did not unlock a technology. They contaminated the world's epistemic trajectory.**
-
----
-
-# ⚔️ Familiar Fantasy Systems Are Target Emergent Outcomes
-
-Causafera may eventually produce systems resembling:
-
-* 🪟 Status Windows;
-* 📈 levels;
-* 🌀 skills;
-* ⚔️ classes;
-* 🔥 magical schools;
-* 📜 adventurer guilds;
-* 👹 monster taxonomies;
-* 🕳️ dungeons;
-* 🤝 magical contracts;
-* 🗡️ artifacts;
-* 👻 spirits;
-* 🙏 gods;
-* 📖 sacred languages.
-
-These are not normally primitive engine features.
-
-A class-like phenomenon may develop through:
-
-```text
-social category
-    ↓
-standardized training
-    ↓
-shared equipment
-    ↓
-repeated synchronized practices
-    ↓
-local mana coupling
-    ↓
-characteristic physical effects
-    ↓
-institutional classification
-```
-
-Centuries later, a historically evolved Status-like system may label the group as a `Class`.
-
-The class became causally meaningful because society first created and standardized the distinction.
-
-> **The engine did not start with `enum Class`.**
-
----
-
-# 🔁 Practices Evolve
-
-A practice is an executable behavioural structure, not a prose description.
-
-Future practice representations may contain:
-
-* ordered operations;
-* timing;
-* repetitions;
-* conditions;
-* branches;
-* materials;
-* actor roles;
-* locations;
-* synchronization;
-* tolerances.
-
-Practice behaviour and practice explanation are separate.
-
-A society may preserve an action while forgetting why it began.
-
-It may preserve an explanation while gradually changing the action.
-
-Practices may:
-
-* mutate;
-* combine;
-* simplify;
-* accumulate copying errors;
-* become standardized by institutions.
-
-A copying mistake in a manuscript may change a ritual from three repetitions to eight.
-
-The modified practice may initially be objectively worse.
-
-If it becomes socially prestigious and widely repeated, it may eventually create a different stable mana pattern.
-
-> **The error may become physically effective.**
-
----
-
-# 🧬 Biology Does Not Define Social Categories
-
-Causafera models objective biological structure and population lineages.
-
-It does not require Ground Truth enums such as:
-
-```text
-Human
-Elf
-HalfElf
-Demon
-```
-
-Biological populations may differ statistically in:
-
-* morphology;
-* lifespan;
-* fertility;
-* development;
-* sensory ranges;
-* metabolism;
-* mana coupling.
-
-Societies may construct categories such as **elf** or **demon**.
-
-Their social boundaries may not correspond cleanly to biological population structure.
-
-The same objective biological continuum may be classified differently by different societies.
-
-Long lifespan is also not merely a stat bonus.
-
-A population living for centuries should affect:
-
-* property ownership;
-* inheritance;
-* institutional memory;
-* political turnover;
-* professional access;
-* innovation;
-* intergenerational conflict.
-
-> **Biology participates in history.**
-
----
-
-# 🦠 Disease Is a Causal Process, Not an Event
-
-Causafera does not intend to trigger:
-
-```text
-SpawnPlagueEvent
-```
-
-Ground Truth may contain pathogen lineages and host interactions.
-
-Agents perceive physiological patterns.
-
-Societies construct illness concepts.
-
-Different medical traditions may classify the same pathogen differently.
-
-Disease may interact with:
-
-* 💧 water systems;
-* 🌍 geography;
-* 🚶 migration;
-* 👶 demography;
-* 🔁 social practices;
-* 🩺 medical theories;
-* 🏛️ institutions.
-
-An epidemic may reduce one generation of children.
-
-Decades later:
-
-```text
-small cohort
-    ↓
-labour shortage
-    ↓
-wage growth
-    ↓
-military recruitment failure
-    ↓
-inheritance concentration
-    ↓
-political conflict
-```
-
-> **History should contain delayed consequences.**
-
----
-
-# 🧠 Memory, Prediction, and the Self
-
-Persistent history is not continuously active thought.
-
-An agent may have decades of autobiographical experience while only a small active context participates in the current cognitive step.
-
-Causafera distinguishes:
-
-* persistent memory;
-* working context;
-* active memories;
-* active concepts;
-* current predictions.
-
-Perception may reactivate old episodes through partial similarity.
-
-A familiar movement, sound, object, or place may acquire enormous subjective significance because of prior experience.
-
-Agents also construct subjective self-models.
-
-A self-model may include beliefs equivalent to:
-
-* *I can do this.*
-* *I usually fail at this.*
-* *This is my body.*
-* *I was here before.*
-* *I trust this person.*
-* *People see me this way.*
-* *I caused that outcome.*
-
-The self-model may be wrong.
-
-An agent may sincerely believe they are an excellent physician while historical outcomes suggest otherwise.
-
-Ground Truth does not automatically correct self-understanding.
-
-Prediction error is a first-class cognitive driver.
-
-Agents form bounded expectations about active situations.
-
-Unexpected outcomes may change:
-
-* attention;
-* salience;
-* memory encoding;
-* concepts;
-* causal hypotheses.
-
-> **A large portion of Causafera history should begin with some agent noticing: "Something is wrong with what I expected."**
-
----
-
-# 📡 Causal Resolution, Not Distance-Based LOD
-
-Causafera does not simulate the entire world at identical detail.
-
-Simulation resolution depends on causal relevance.
-
-Candidate relevance dimensions include:
-
-* physical proximity;
-* trade connectivity;
-* migration;
-* information flow;
-* social connectivity;
-* political influence;
-* material dependency;
-* mana coupling;
-* historical importance.
-
-A village five kilometres from the city may remain aggregated.
-
-A monastery six hundred kilometres away may require greater detail because half the city copies its rituals.
-
-A researcher on another continent may become causally important because their book is being imported.
-
-> **Distance is only one component of resolution.**
-
-Promotion and demotion between simulation resolutions must preserve historically significant identity and provenance.
-
-Detailed people cannot simply disappear into:
-
-```text
-population += 541
-```
-
-without controlled aggregation semantics.
-
----
-
-# 🧾 Causal Provenance Is First-Class
-
-Causafera should be able to explain its own history.
-
-A phenomenon might have a causal lineage such as:
-
-```text
-geological formation
-    ↓
-stone extraction
-    ↓
-bakery oven construction
-    ↓
-fermentation anomaly
-    ↓
-incorrect prayer hypothesis
-    ↓
-ritual standardization
-    ↓
-copper bell adoption
-    ↓
-stable rhythmic pattern
-    ↓
-mana response
-    ↓
-medical diagnostic practice
-    ↓
-guild authority
-    ↓
-district regulation
-```
-
-A user should eventually be able to ask:
-
-> **Why does this district prohibit bells after sunset?**
-
-and inspect the actual historical chain.
-
-> **Surprise without provenance is random noise. Causafera is interested in causal surprise.**
-
----
-
-# 🔍 The Explanation Engine
-
-The authoritative simulation is not shaped for human readability.
-
-Internally, the world may contain:
-
-```text
-ConceptId(8172)
-FeaturePattern(...)
-LexemeId(4412)
-BodySegmentId(...)
-TraceId(...)
-```
-
-Users should not be forced to stare at this and develop Stockholm syndrome toward debug output.
-
-Causafera therefore contains a separate, non-authoritative **Explanation Engine**.
-
-```text
-AUTHORITATIVE SIMULATION
-    ↓
-CAUSAL / ANALYTICAL QUERY
-    ↓
-OBSERVER ANALYTICAL CLASSIFICATION
-    ↓
-EXPLANATION IR
-    ↓
-DETERMINISTIC LOCALIZED RENDERING
-    ↓
-OPTIONAL LLM SURFACE REALIZATION (TERMINAL GATE; NOT SCHEDULED)
-    ↓
-UI
-```
-
-The observer analytical layer may contain human-designed classifications such as:
-
-* finger-like structure;
-* tremor-like motion;
-* disease-like cluster;
-* occupational category.
-
-These are human-facing interpretations.
-
-They never become agent knowledge or authoritative simulation state.
-
-Explanations preserve:
-
-* evidence;
-* causal provenance;
-* confidence;
-* alternative interpretations;
-* perspective.
-
-The UI may separately show:
-
-### 🔬 Objective analytical view
-
-What observer analytics infer from Ground Truth.
-
-### 🏘️ Local understanding
-
-What a community currently believes.
-
-### 🕰️ Historical view
-
-How a concept or practice developed.
-
-### 👤 Selected agent view
-
-What one particular inhabitant believes.
-
-### 💡 Plain explanation
-
-A compressed human-readable explanation of the known causal structure.
-
-> **These perspectives must not be silently mixed.**
-
----
-
-# 🤖 LLMs Are Non-Authoritative
-
-Causafera is not an LLM-driven simulation.
-
-LLMs do not:
-
-* control inhabitants;
-* decide world state;
-* invent history;
-* discover authoritative causal relationships;
-* modify beliefs;
-* generate simulation events.
-
-Only after the simulation and deterministic Explanation Engine satisfy the terminal readiness gate
-may an optional LLM eventually receive a validated structured fact packet and improve the wording
-of a paragraph. This work has no phase number and is not currently scheduled.
-
-```text
-Explanation IR
-    ↓
-validated fact packet
-    ↓
-LLM
-    ↓
-readable prose
-```
-
-The LLM is allowed to make an explanation less unpleasant to read.
-
-> **It is not allowed to decide what happened.**
-
-Causafera must remain fully understandable and operational without an LLM.
-
-The final number of simulation-development phases is unknown. LLM integration is the last possible
-presentation step after validated simulation depth, causal Explanation, inspectable source packets,
-persistence, determinism, provenance, and performance—not the next feature after the first UI.
-
----
-
-# 🚫 What Causafera Is Not
-
-### 🏛️ Not a generic civilization simulator
-
-There are no high-level history buttons such as:
-
-```text
-spawn war
-spawn plague
-create religion
-advance technology
-```
-
-High-level phenomena must arise from lower-level processes.
-
-### ⛏️ Not a Dwarf Fortress clone
-
-Causafera is not primarily a fortress-management simulation.
-
-Its focus is causal, epistemic, cognitive, linguistic, geographic, and magical co-evolution.
-
-### 🤖 Not an LLM agent town
-
-Agent minds do not run as chatbots.
-
-Natural-language fluency is not a substitute for persistent structured cognition.
-
-### 📖 Not a procedural story generator
-
-Stories are downstream interpretations of actually simulated history.
-
-The simulation does not choose a narrative arc and manufacture supporting events.
-
-### 🏷️ Not a collection of semantic enums
-
-Convenient developer categories must not silently replace emergence.
-
-A feature called `FingerTremor`, a primitive `Disease`, or an enum of fantasy `Classes` would undermine the central architecture unless explicitly justified as observer-side analytics.
-
-### 🧠 Not a consciousness claim
-
-Causafera does not claim to create conscious beings.
-
-It does aim to construct agents with increasingly rich forms of functional subjectivity:
-
-* subjective scenes;
-* self-models;
-* body schemas;
-* autobiographical continuity;
-* prediction;
-* bounded attention;
-* private perceptual states.
-
-Whether such systems possess phenomenal experience is not assumed or claimed.
-
----
-
-# 📜 Project Invariants
-
-The full invariant set is documented in `docs/architecture/invariants.md`.
-
-Core invariants include:
-
-* 👁️ **No omniscient agents.**
-* 🌍 **Observation is not Ground Truth.**
-* ✨ **Belief is not magic.**
-* 🧩 **Mana cannot inspect semantic concepts.**
-* 🏷️ **Developer analytical labels are not agent concepts.**
-* 🌐 **The simulation has no privileged human UI language.**
-* 🗣️ **Language decoding does not directly transfer concepts.**
-* 🗺️ **Geography is causal state.**
-* 📡 **Distance is not simulation resolution.**
-* 🤖 **LLMs are non-authoritative.**
-* 🔍 **Explanation systems are non-authoritative.**
-* 🧾 **Provenance is first-class.**
-* 🔒 **Authoritative mutation is phase controlled.**
-* 🔬 **Emergence must be inspectable.**
-* 📖 **Narrative is downstream.**
-* 🖥️ **The UI is an observer.**
-* 🆔 **Agents do not directly perceive authoritative entity identity.**
-* ❓ **Perceived object identity is a subjective hypothesis.**
-* 🧠 **Agents act on a constructed subjective scene.**
-* 🚧 **Subjective detail cannot introduce inaccessible information.**
-* 🗄️ **Persistent autobiographical memory is not continuously active context.**
-* 👤 **The self-model is subjective.**
-* 🫀 **Objective body state and subjective body schema are distinct.**
-* ⚠️ **Prediction error is a first-class cognitive driver.**
-* 🧮 **State digests are identities, not physical distance metrics.**
-* 🌱 **Production state requires causal initialization, never fixtures.**
-
----
-
-# 🗺️ Roadmap and Current Status
-
-Causafera completed the dependency-ordered **Foundation Era, Phases 0–26**. It now has deterministic
-execution, domain contracts, causal provenance, persistence/resume, a bounded executable long-run
-harness, typed Explanation IR, observer protocol, and a real desktop UI.
-
-Foundation completion means the minimum acceptance scope of those phases passed. It does not mean
-that every domain is deeply simulated or that semantic emergence has been demonstrated.
-
-> **Current status: open-ended Detailed Development. Simulation → Explanation → observer support → batched UI.**
-
-The final number of phases is deliberately unknown. New phase numbers are allocated only through
-accepted bounded ExecPlans. Current work deepens capabilities from documented and contracted
-foundations into executable, coupled, observable, and long-run validated systems.
-
-Immediate priorities:
-
-* durable physical state and real cross-domain effects;
-* production causal bootstrap without fixture residents or demo history;
-* deep geography, biology, cognition, language, practices, epistemics, society, economy, city,
-  historical, isekai, and metaphysical integration;
-* domain-valid analytics and causal explanations kept current with simulation work;
-* bounded causal/domain inspection before additional UI polish;
-* representative performance, memory, provenance, persistence, and determinism validation.
-
-Optional LLM wording is an unnumbered terminal gate after the simulation and deterministic
-Explanation system are mature. It is not current roadmap work.
-
-See `docs/roadmap/roadmap.md` for the authoritative roadmap.
-See `docs/architecture/detailed-development-rebaseline.md` for maturity and sequencing rules.
-
----
-
-# 📂 Project Structure
-
-Causafera is organized as a Rust workspace with strict domain boundaries, a separate observer application, and versioned protocol definitions.
-
-| Component                 | Responsibility                                                  |
-| ------------------------- | --------------------------------------------------------------- |
-| `causafera-core`          | Deterministic scheduling, phases, random streams                |
-| `causafera-types`         | IDs, coordinates, units, physical primitives, generic features  |
-| `causafera-world`         | Authoritative world hierarchy and spatial ownership             |
-| `causafera-geography`     | Terrain, geology, hydrology, climate, provenance                |
-| `causafera-biology`       | Structural biology, bodies, lineages, pathogen contracts        |
-| `causafera-perception`    | Physical accessibility, sensory acquisition, feature extraction |
-| `causafera-cognition`     | Attention and future subjective cognition                       |
-| `causafera-language`      | Lexicon, phonology, grammar, communication, language change     |
-| `causafera-epistemics`    | Measurement, documents, experiments, knowledge systems          |
-| `causafera-isekai`        | Cross-world transfer and imported priors                        |
-| `causafera-metaphysics`   | Identity persistence and mana-attractor research                |
-| `causafera-resolution`    | Causal Resolution Field and aggregation                         |
-| `causafera-explanation`   | Analytical classification and Explanation IR                    |
-| `causafera-observer-api`  | Read-only observer contracts                                    |
-| `causafera-observer-wire` | Versioned protocol and transport boundaries                     |
-| `causafera-runtime`       | Runtime composition root                                        |
-| `causafera-lab`           | Experiments and causal inspection                               |
-| `causafera-cli`           | Developer CLI                                                   |
-| `apps/observer`           | Tauri / React / WebGPU observer application                     |
-
-📚 Documentation entry point: `docs/index.md`
-
----
-
-# ⚡ Development Philosophy
-
-Causafera optimizes:
-
-> **simulated causal complexity per wall-clock second**
-
-Raw entity count is not the goal.
-
-One million inert agents are less interesting than a smaller population capable of producing deep, reconstructable, cross-domain history.
-
-The architecture therefore emphasizes:
-
-* dense, data-oriented storage;
-* sparse active state;
-* active sets;
-* multi-rate simulation;
-* deterministic parallel execution;
-* causal-resolution transitions;
-* bounded observer overhead.
-
-Persistent identity does not imply full-resolution cognition on every simulation tick.
-
-A person may have sixty years of history without loading sixty years of autobiographical memory into active state every update.
-
----
-
-# 🛠️ Getting Started
-
-## 📦 Prerequisites
-
-* stable Rust toolchain configured by `rust-toolchain.toml`;
-* [`just`](https://github.com/casey/just), recommended;
-* pnpm for observer development.
-
-## 🧪 Build and test
+From the repository root:
 
 ```bash
-just test
-```
-
-Equivalent Rust command:
-
-```bash
-cargo test --workspace --all-features
-```
-
-Run the canonical CI workflow:
-
-```bash
-just ci
-```
-
-or:
-
-```bash
-cargo xtask ci
-```
-
-## 🩺 Diagnostics
-
-```bash
-just doctor
-```
-
-or:
-
-```bash
+cargo metadata --format-version 1 --no-deps
 cargo run --bin causafera -- doctor
+cargo test --workspace --all-features
+pnpm install --frozen-lockfile
+pnpm build
 ```
 
----
+The doctor command verifies core runtime identities and determinism prerequisites. The test suite
+is substantial; the repository is experimental and does not install a playable game.
 
-# 📐 Development Rules
+## Validation
 
-All contributors and AI coding agents must follow `AGENTS.md`.
+Rust formatting, linting, feature coverage, and the repository CI command:
 
-In particular:
+```bash
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo test --workspace --all-features
+cargo test --workspace --no-default-features
+cargo run -p xtask -- ci
+```
 
-* 🔒 preserve deterministic execution;
-* 👁️ preserve Ground Truth / perception / subjective scene separation;
-* 🆔 never expose authoritative identity as agent knowledge;
-* 🌐 never use human-language labels as authoritative simulation meaning;
-* 🚫 never introduce semantic situation enums as shortcuts for subjective scene construction;
-* 🫀 keep objective body state separate from subjective body schema;
-* 🧠 keep persistent memory separate from active working context;
-* 🌍 treat geography and biology as causal state;
-* 🧾 preserve causal provenance;
-* 🔍 do not let the Explanation Engine or observer mutate authoritative state;
-* 🤖 do not place LLMs in the simulation loop;
-* ⚡ benchmark performance claims;
-* 📜 use the project's RFC and architecture-rebaseline process for foundational changes.
+Frontend installation and validation:
 
-Use the codebase memory graph tools documented by the project for code discovery and navigation where available.
+```bash
+pnpm install --frozen-lockfile
+pnpm lint
+pnpm typecheck
+pnpm build
+```
 
----
+Audit-tool regression tests and dependency advisory check:
 
-# ⚖️ License
+```bash
+node --test tools/audit/test-*.mjs
+pnpm audit --audit-level high
+```
 
-### 💻 Software
+Before committing, also run:
 
-Licensed under the **GNU Affero General Public License v3.0 only**:
+```bash
+git diff --check
+```
 
-`AGPL-3.0-only`
+The GitHub workflow runs equivalent Rust and frontend gates. `cargo-audit`, `cargo-deny`, and
+gitleaks are useful additional checks but are not bundled with this repository.
 
-See `LICENSE`.
+## Desktop observer
 
-### 📚 Documentation and architectural texts
+After installing dependencies and the platform prerequisites, start the native observer with:
 
-Licensed under the **Creative Commons Attribution-ShareAlike 4.0 International** license:
+```bash
+pnpm --dir apps/observer desktop
+```
 
-`CC BY-SA 4.0`
+The process is long-running; stop it with `Ctrl+C`. Browser-only Vite mode intentionally cannot
+replace the Tauri transport with demonstration data. See the
+[observer application guide](docs/ui/observer-application.md) for data-flow and platform details.
 
-See `LICENSE-CC-BY-SA-4.0`.
+## Repository structure
 
-Contribution policy and CLA requirements are documented in `CONTRIBUTING.md`.
+| Path | Purpose |
+| --- | --- |
+| `crates/` | Authoritative Rust types, domain contracts, runtime, persistence, analytics, CLI, and lab |
+| `apps/observer/` | Tauri 2 and React desktop observer |
+| `packages/observer-protocol/` | TypeScript Protocol Buffer decoding and observer protocol types |
+| `proto/` | Versioned observer Protocol Buffer schemas |
+| `tests/` | Cross-crate architecture and determinism tests |
+| `tools/xtask/` | Canonical Rust CI orchestration |
+| `tools/audit/` | Reproducible maturity-audit schemas, fixtures, and regression tests |
+| `docs/` | Vision, invariants, architecture, ontology, subsystem, roadmap, ADR, and RFC documentation |
+| `plans/` | Accepted, active, draft, and completed ExecPlans |
 
----
+## Roadmap
 
-# 🎯 The Intended Result
+Causafera is in the open-ended Detailed Development Program. Work is sequenced by accepted bounded
+ExecPlans rather than a promised final phase number:
 
-A successful Causafera run should not merely report:
+1. deepen authoritative simulation and real cross-domain coupling;
+2. keep Explanation and analytics causally inspectable as capabilities mature;
+3. add bounded observer read models required for validation;
+4. batch coherent UI milestones after read models stabilize;
+5. consider optional LLM surface wording only after the terminal maturity gate.
 
-> *A religious conflict occurred.*
+See the [roadmap](docs/roadmap/roadmap.md) for the authoritative status.
 
-It should be capable of producing and reconstructing something closer to:
+## Contributing, support, and security
 
-> **184 years earlier, a cross-world arrival introduced a concept roughly translated as "level." A monastery adopted numerical evaluation of novices. Repeated standardized measurement created a stable social practice and eventually a local mana pattern. Mercenary companies copied the system. The state later used the measurements for professional taxation. A persistent measurement bias against one population produced economic exclusion. The excluded population developed a competing scale. Both systems now produce locally measurable magical effects and disagree about the same person's status.**
+- [Contributing guide](CONTRIBUTING.md)
+- [Security policy](SECURITY.md)
+- [Support guidance](SUPPORT.md)
+- [Contributor License Agreement](CLA.md)
 
-Or:
+External code contributions are not currently accepted until the CLA acceptance workflow is
+configured. Issues and evidence-backed design discussion remain welcome.
 
-> **A copying error changed a healing practice from three repetitions to eight. The slower variant became associated with wealthy physicians and gained prestige. It spread widely enough to create a stable repeated mana pattern. Ninety years later, the originally incorrect version became physically more effective than the text it was copied from.**
+## Licenses
 
-Or:
-
-> **A translated Earth concept for "computer" was rendered as "thinking loom." Textile workshops began experimenting with encoded pattern storage. Local mana was unusually sensitive to recurring binary spatial structures. The world's first computational architecture emerged from carpet manufacturing.**
-
-Nobody writes these histories in advance.
-
-> **Causafera exists to discover whether a sufficiently coherent system of physical constraints, subjective minds, cultural transmission, language, geography, and strange local magic can produce them on its own.**
->
-> **And then explain why.**
+- Software source and software configuration are licensed under
+  [GNU AGPL v3.0 only](LICENSE) (`AGPL-3.0-only`).
+- Documentation and other non-code project materials are licensed under
+  [Creative Commons Attribution-ShareAlike 4.0 International](LICENSE-CC-BY-SA-4.0)
+  (`CC BY-SA 4.0`), unless a file states otherwise.
+- Third-party dependencies retain their own licenses.
+- Contributions are additionally governed by the [CLA](CLA.md). The CLA does not replace the
+  public outbound licenses or transfer contributor copyright.

@@ -1,0 +1,19 @@
+cff-version: 1.2.0
+message: "If you use Causafera in research, cite the repository and the exact commit or release used."
+type: software
+title: "Causafera"
+abstract: >-
+  An experimental causal world-simulation engine for reconstructable cross-domain history,
+  bounded subjective agents, and an information-sensitive physical mana substrate.
+authors:
+  - family-names: "Starch"
+    given-names: "Sir"
+repository-code: "https://github.com/Sir-Starch/Causafera"
+license: "AGPL-3.0-only"
+version: "0.1.0"
+keywords:
+  - causal simulation
+  - agent cognition
+  - deterministic simulation
+  - provenance
+  - world simulation

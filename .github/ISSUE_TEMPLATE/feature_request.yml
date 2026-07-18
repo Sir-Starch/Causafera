@@ -1,0 +1,53 @@
+name: Capability proposal
+description: Propose a bounded capability or repository improvement consistent with Causafera's invariants.
+title: "[Proposal]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Causafera does not add high-level gameplay systems or semantic simulation shortcuts.
+        Architectural work requires an accepted ExecPlan before implementation.
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Preflight
+      options:
+        - label: I searched existing issues, plans, ADRs, RFCs, and the roadmap.
+          required: true
+        - label: This proposal does not make an unverified maturity, performance, or emergence claim.
+          required: true
+        - label: This proposal preserves Ground Truth, subjective cognition, Explanation, and observer boundaries.
+          required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or evidence gap
+      description: Describe the concrete missing capability, defect, or evidence gap rather than a desired story outcome.
+    validations:
+      required: true
+  - type: textarea
+    id: current
+    attributes:
+      label: Current repository evidence
+      description: Link relevant source, tests, invariant, ADR, RFC, roadmap, maturity, or benchmark evidence.
+    validations:
+      required: true
+  - type: textarea
+    id: boundary
+    attributes:
+      label: Proposed boundary
+      description: Identify authoritative state, mutation phase, physical/informational carriers, provenance, and non-goals.
+    validations:
+      required: true
+  - type: textarea
+    id: validation
+    attributes:
+      label: Acceptance evidence
+      description: Name deterministic tests, negative controls, persistence checks, observer needs, and representative benchmarks.
+    validations:
+      required: true
+  - type: textarea
+    id: risks
+    attributes:
+      label: Risks and alternatives
+      description: Include semantic-shortcut, Ground Truth leakage, determinism, performance, and scope risks.

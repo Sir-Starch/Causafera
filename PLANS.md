@@ -47,6 +47,9 @@ Progress
 
 ## Active Plans
 
+- `plans/public-readiness.md` — prepares factual public documentation, community policy, license
+  metadata, repository hardening, and reproducibility evidence without publishing or externally
+  mutating the repository.
 - `plans/detailed-development-maturity-audit.md` — active bounded evidence audit for the frozen
   `26026fb3862e` baseline; records 30-domain capability maturity, four deep blocker families,
   deterministic sequencing, and one downstream Draft ExecPlan without product implementation.
