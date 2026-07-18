@@ -13,8 +13,11 @@ export const ZERO_OID = '0'.repeat(40);
 // They are not active Causafera package or protocol names.
 // They must remain exactly as defined here to successfully validate historical receipts and fixtures.
 export const LEGACY_BASELINE_MACHINE_DATA_MARKER = 'ontopolis-machine-data';
+export const LEGACY_BASELINE_GRAPH_PROJECT = 'ontopolis-baseline-26026fb';
 export const LEGACY_BASELINE_TYPES_PACKAGE = 'ontopolis-types';
+export const LEGACY_BASELINE_TYPES_SOURCE_PATH = 'crates/ontopolis-types/src/coords.rs';
 export const LEGACY_BASELINE_COORDS_PATH = 'crates/ontopolis-types/tests/coords.rs';
+export const LEGACY_BASELINE_ANALYTICS_METRICS_PATH = 'crates/ontopolis-analytics/src/metrics.rs';
 
 const REPO_ROOT = ROOT;
 const M2_PLUS_LEVELS = ['M2', 'M3', 'M4', 'M5'];

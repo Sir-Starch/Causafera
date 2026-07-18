@@ -23,6 +23,7 @@ jobs:
         with:
           node-version: '20'
           cache: 'pnpm'
+      - run: node tools/audit/check-entry-points.mjs
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
       - uses: dtolnay/rust-toolchain@8641a17e25bf5b40c118d48fe0f81e8655731839 # 1.85.0
