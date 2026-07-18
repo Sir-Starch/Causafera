@@ -1,5 +1,7 @@
 # Phase 5 Biological Structural Model ExecPlan
 
+> **Historical record.** This completed ExecPlan describes a Foundation Era project stage. Its implementation status and terminology may be outdated; use [the documentation index](../../docs/index.md), [roadmap](../../docs/roadmap/roadmap.md), and [active plans](../../PLANS.md) for current guidance.
+
 ## Goal
 
 Define a compact, validated, label-free representation of biological body-segment structure containing typed identity, parent connection, physical joint constraints, length, and relative orientation, without implementing physiology or semantic anatomy.

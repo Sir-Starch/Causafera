@@ -1,5 +1,7 @@
 # Phase 22 Isekai Transfer and Imported Priors
 
+> **Historical record.** This completed ExecPlan describes a Foundation Era project stage. Its implementation status and terminology may be outdated; use [the documentation index](../../docs/index.md), [roadmap](../../docs/roadmap/roadmap.md), and [active plans](../../PLANS.md) for current guidance.
+
 ## Goal
 Implement a bounded, deterministic, metaphysically neutral cross-world transfer contract and keep imported subjective priors structurally separate from locally evidenced capability.
 

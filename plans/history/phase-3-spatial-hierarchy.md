@@ -1,5 +1,7 @@
 # Phase 3 Spatial Hierarchy ExecPlan
 
+> **Historical record.** This completed ExecPlan describes a Foundation Era project stage. Its implementation status and terminology may be outdated; use [the documentation index](../../docs/index.md), [roadmap](../../docs/roadmap/roadmap.md), and [active plans](../../PLANS.md) for current guidance.
+
 ## Goal
 
 Implement the authoritative spatial containment skeleton from world through interior space, with deterministic construction and efficient parent/child traversal, without generating terrain, settlements, political regions, or fictional content.

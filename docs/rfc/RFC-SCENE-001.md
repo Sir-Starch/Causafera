@@ -69,7 +69,7 @@ Phase 11 can consume situated patterns from scenes and working context instead o
 - `docs/rfc/RFC-COG-001.md`
 - `docs/architecture/cognition-rebaseline.md`
 - `docs/architecture/invariants.md`
-- `plans/phases-9-10-subjective-continuity.md`
+- `plans/history/phases-9-10-subjective-continuity.md` (completed plan)
 
 ## Decision log
 

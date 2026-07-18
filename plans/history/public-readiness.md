@@ -1,5 +1,7 @@
 # Causafera Public Readiness
 
+> **Historical record.** This completed 2026 public-source-readiness plan records an audit and implementation snapshot, not current repository status. Its environment-specific evidence may be outdated; use [the documentation index](../../docs/index.md), [README.md](../../README.md), and [active plans](../../PLANS.md) for current guidance.
+
 **Status:** Completed for public source visibility; not a product or binary release
 
 **Starting commit:** `6af6e808c3e3cb3f7b5a6107a547a18010fb103b`

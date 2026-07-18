@@ -205,8 +205,8 @@ without fixtures, domain-valid recovery and phenomenon metrics, causal/domain in
 complete maturity audit that sequences deeper geography, biology, cognition, language, practices,
 epistemics, society, economy, city, history, isekai, and metaphysics work.
 
-See `docs/architecture/detailed-development-rebaseline.md` and
-`plans/detailed-development-rebaseline.md`.
+See `docs/architecture/detailed-development-rebaseline.md`; the completed planning record is in
+`plans/history/detailed-development-rebaseline.md`.
 
 ## Optional LLM surface — terminal gate, unnumbered
 

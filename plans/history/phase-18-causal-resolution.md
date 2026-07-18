@@ -1,5 +1,7 @@
 # Phase 18 Causal Resolution Field
 
+> **Historical record.** This completed ExecPlan describes a Foundation Era project stage. Its implementation status and terminology may be outdated; use [the documentation index](../../docs/index.md), [roadmap](../../docs/roadmap/roadmap.md), and [active plans](../../PLANS.md) for current guidance.
+
 ## Goal
 
 Implement a bounded deterministic field that assigns simulation detail from trace-backed causal relevance rather than physical distance alone.

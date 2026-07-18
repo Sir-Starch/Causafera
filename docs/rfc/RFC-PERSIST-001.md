@@ -327,7 +327,7 @@ Failure leaves the prior completed snapshot intact. Temporary-file cleanup is be
 
 ## Cross-references
 
-- `plans/persistence-roundtrip.md` — implementation plan
+- `plans/history/persistence-roundtrip.md` — completed implementation plan
 - `docs/architecture/invariants.md` — INV-006, INV-007, INV-011 through INV-023, INV-027 through INV-037
 - `docs/architecture/determinism.md` — deterministic execution contracts
 - `docs/architecture/provenance.md` — causal provenance requirements

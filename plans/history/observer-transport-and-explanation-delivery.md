@@ -1,5 +1,7 @@
 # Observer Transport and Explanation Delivery ExecPlan
 
+> **Historical record.** This completed ExecPlan describes a Foundation Era project stage. Its implementation status and terminology may be outdated; use [the documentation index](../../docs/index.md), [roadmap](../../docs/roadmap/roadmap.md), and [active plans](../../PLANS.md) for current guidance.
+
 ## Goal
 
 Deliver a bounded, versioned, read-only observer transport from runtime snapshots and Explanation IR through deterministic Protocol Buffer bytes, with scoped snapshot/delta streams, explicit overflow policies, locale-independent authoritative digests, and end-to-end verification.

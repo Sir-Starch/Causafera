@@ -1,5 +1,7 @@
 # Phase 17 Minimal Information-Sensitive Mana
 
+> **Historical record.** This completed ExecPlan describes a Foundation Era project stage. Its implementation status and terminology may be outdated; use [the documentation index](../../docs/index.md), [roadmap](../../docs/roadmap/roadmap.md), and [active plans](../../PLANS.md) for current guidance.
+
 ## Goal
 
 Implement a bounded deterministic local mana field which responds to physically grounded recurrence, periodicity, synchronization, and spatial repetition without inspecting semantic meaning.

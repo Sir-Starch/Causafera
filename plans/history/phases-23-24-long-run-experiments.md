@@ -1,5 +1,7 @@
 # Phases 23–24 Metaphysical Research and Long-Run Experiments
 
+> **Historical record.** This completed ExecPlan describes a Foundation Era project stage. Its implementation status and terminology may be outdated; use [the documentation index](../../docs/index.md), [roadmap](../../docs/roadmap/roadmap.md), and [active plans](../../PLANS.md) for current guidance.
+
 ## Goal
 Provide metaphysically neutral research contracts and a real deterministic headless simulation path that can execute bounded long-run control/intervention experiments without runtime errors.
 

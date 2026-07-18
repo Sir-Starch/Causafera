@@ -1,5 +1,7 @@
 # Phases 9–10 Subjective Scene and Cognitive Continuity
 
+> **Historical record.** This completed ExecPlan describes a Foundation Era project stage. Its implementation status and terminology may be outdated; use [the documentation index](../../docs/index.md), [roadmap](../../docs/roadmap/roadmap.md), and [active plans](../../PLANS.md) for current guidance.
+
 ## Goal
 
 Implement the adjacent Phase 9–10 cognitive foundation as one bounded deterministic pipeline: identity-free perceptual cues, subjective object persistence and scene reconstruction, subjective body/self state, working context, sparse prediction/error, episodic reactivation, agency attribution, and a short temporal envelope.

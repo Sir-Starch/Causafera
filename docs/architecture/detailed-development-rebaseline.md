@@ -164,7 +164,7 @@ non-authoritative, removable, and downstream of validated fact packets.
 
 ## Related documents
 
-- `plans/detailed-development-rebaseline.md`
+- `plans/history/detailed-development-rebaseline.md` (completed planning record)
 - `docs/roadmap/roadmap.md`
 - `docs/ontology/domain-coverage-matrix.md`
 - `docs/development/todo-backlog.md`

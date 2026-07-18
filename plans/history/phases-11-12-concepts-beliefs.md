@@ -1,5 +1,7 @@
 # Phases 11–12 Sparse Concepts and Subjective Beliefs
 
+> **Historical record.** This completed ExecPlan describes a Foundation Era project stage. Its implementation status and terminology may be outdated; use [the documentation index](../../docs/index.md), [roadmap](../../docs/roadmap/roadmap.md), and [active plans](../../PLANS.md) for current guidance.
+
 ## Goal
 
 Implement adjacent Phases 11–12 as a bounded deterministic cognitive learning layer over subjective scenes: sparse prototype formation, concept activation and revision, belief inertia, subjective source trust, and fallible causal hypotheses.

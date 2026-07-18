@@ -69,7 +69,7 @@ receipts. A capability cannot claim coupling merely because a type or crate exis
 
 - `AGENTS.md`
 - `PLANS.md`
-- `plans/detailed-development-rebaseline.md`
+- `plans/history/detailed-development-rebaseline.md` (completed planning record)
 - `docs/vision/project-thesis.md`
 - `docs/vision/uniqueness.md`
 - `docs/architecture/invariants.md`

@@ -1,5 +1,7 @@
 # Phase 21 Historical Bootstrap
 
+> **Historical record.** This completed ExecPlan describes a Foundation Era project stage. Its implementation status and terminology may be outdated; use [the documentation index](../../docs/index.md), [roadmap](../../docs/roadmap/roadmap.md), and [active plans](../../PLANS.md) for current guidance.
+
 ## Goal
 
 Implement a bounded deterministic orchestration and provenance contract for causally constrained deep/recent historical synthesis without generating fake history or semantic high-level events.

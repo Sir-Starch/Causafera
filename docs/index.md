@@ -14,6 +14,15 @@ Post-initialization architectural discoveries, refinements, and course correctio
 
 Later documents supersede conflicting initialization-spec sections **only when they explicitly say so**.
 
+## Current Documentation Guide
+
+- **Project overview** — [README.md](../README.md), the [project thesis](vision/project-thesis.md), and [what distinguishes Causafera](vision/uniqueness.md).
+- **Architecture and concepts** — the [invariants](architecture/invariants.md), [Detailed Development rebaseline](architecture/detailed-development-rebaseline.md), [domain coverage matrix](ontology/domain-coverage-matrix.md), and the subsystem sections below.
+- **Development and contribution** — [CONTRIBUTING.md](../CONTRIBUTING.md), [development notes](development/), and [CHANGELOG.md](../CHANGELOG.md).
+- **Active plans** — [PLANS.md](../PLANS.md) lists the pending biological mana-coupling plan.
+- **Historical records** — completed ExecPlans and public-source-readiness provenance are retained in [historical plans and records](../plans/history/README.md); they are not current implementation guidance.
+- **Audit and maturity material** — [the active maturity audit](../plans/detailed-development-maturity-audit.md) is internal validation material, not a public project-status claim.
+
 ## Vision
 
 - `docs/vision/project-thesis.md` - Central project thesis and mana semantics

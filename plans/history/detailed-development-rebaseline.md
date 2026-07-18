@@ -1,5 +1,7 @@
 # Detailed Development Rebaseline
 
+> **Historical record.** This completed ExecPlan documents the 2026-07-13 transition from the Foundation Era to Detailed Development. Its implementation snapshot may use outdated terminology; use [the documentation index](../../docs/index.md), [current rebaseline](../../docs/architecture/detailed-development-rebaseline.md), and [active plans](../../PLANS.md) for current guidance.
+
 **Status:** Completed and verified on 2026-07-13
 
 ## Goal

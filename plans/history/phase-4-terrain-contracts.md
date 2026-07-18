@@ -1,5 +1,7 @@
 # Phase 4 Terrain Generation Contracts ExecPlan
 
+> **Historical record.** This completed ExecPlan describes a Foundation Era project stage. Its implementation status and terminology may be outdated; use [the documentation index](../../docs/index.md), [roadmap](../../docs/roadmap/roadmap.md), and [active plans](../../PLANS.md) for current guidance.
+
 ## Goal
 
 Define deterministic, batch-oriented contracts for causal terrain state containing elevation, surface material identity, and roughness per surface cell, without implementing a terrain synthesis algorithm or fictional geography.

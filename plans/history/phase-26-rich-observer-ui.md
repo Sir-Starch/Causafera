@@ -1,5 +1,7 @@
 # Phase 26 — Rich Observer UI
 
+> **Historical record.** This completed ExecPlan describes a Foundation Era project stage. Its implementation status and terminology may be outdated; use [the documentation index](../../docs/index.md), [roadmap](../../docs/roadmap/roadmap.md), and [active plans](../../PLANS.md) for current guidance.
+
 > Detailed Development audit note (2026-07-13): the observer connection and absence of fabricated
 > React fallback data remain valid, but the default runtime session configures initial actors through
 > the production-visible `fixture_actors` helper rather than deriving all of them from aggregate

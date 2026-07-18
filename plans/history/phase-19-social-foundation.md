@@ -1,5 +1,7 @@
 # Phase 19 Social Networks and Organizations
 
+> **Historical record.** This completed ExecPlan describes a Foundation Era project stage. Its implementation status and terminology may be outdated; use [the documentation index](../../docs/index.md), [roadmap](../../docs/roadmap/roadmap.md), and [active plans](../../PLANS.md) for current guidance.
+
 ## Goal
 
 Implement bounded, deterministic, trace-backed social-network and collective-record contracts without creating an organization brain or treating organization, law, or contract semantics as objective truth.

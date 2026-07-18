@@ -1,5 +1,7 @@
 # Phases 6–8 Causal Perception Foundation
 
+> **Historical record.** This completed ExecPlan describes a Foundation Era project stage. Its implementation status and terminology may be outdated; use [the documentation index](../../docs/index.md), [roadmap](../../docs/roadmap/roadmap.md), and [active plans](../../PLANS.md) for current guidance.
+
 ## Goal
 
 Complete the adjacent Phase 6–8 foundation as one coherent batch: deterministic Ground Truth event provenance, physically bounded sensory acquisition, generic feature extraction, and the minimal bounded attention primitive required by `TODO-COG-001`.

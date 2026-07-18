@@ -1,5 +1,7 @@
 # Phase 20 Material Economy and City Infrastructure
 
+> **Historical record.** This completed ExecPlan describes a Foundation Era project stage. Its implementation status and terminology may be outdated; use [the documentation index](../../docs/index.md), [roadmap](../../docs/roadmap/roadmap.md), and [active plans](../../PLANS.md) for current guidance.
+
 ## Goal
 
 Implement the adjacent Phase 20 foundations as one bounded package: trace-backed physical inventories, transfers, transformations and labour records, plus parcel/building/infrastructure topology that consumes those material carriers.
