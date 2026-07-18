@@ -21,6 +21,10 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
       - uses: dtolnay/rust-toolchain@stable
+      - name: Install Tauri OS dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev
       - run: cargo fmt --check
       - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
       - run: cargo test --workspace --all-features
