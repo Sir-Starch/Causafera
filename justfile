@@ -6,8 +6,8 @@ default:
     @echo "  just fmt        - Format code"
     @echo "  just doctor     - Run doctor"
 
- ci:
-    cargo xtask ci
+ci:
+    cargo run -p xtask -- ci
 
 build:
     cargo build --workspace --all-features
