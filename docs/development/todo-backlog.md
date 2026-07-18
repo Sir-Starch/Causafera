@@ -588,6 +588,10 @@
 **Explanation Implications:** No capability may target M4/M5 without typed metrics, uncertainty, traces, and counterfactual/negative-control strategy
 **Out of Scope:** Implementing every domain in one batch, fixed final phase count, optional LLM integration
 
+**Current note:** The frozen `26026fb3862e` audit is paused after completed Todos 1–4. Its
+unfinished deep audit is not a prerequisite for the bounded actor/material/mana implementation
+slice; future maturity claims require current-HEAD evidence.
+
 ## TODO-SIM-001: Durable Physical State and Cross-Domain Coupling
 **Status:** Pending
 **Phase:** Detailed Development — Simulation Core

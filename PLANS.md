@@ -51,9 +51,13 @@ Progress
 
 - [`plans/biological-mana-coupling.md`](plans/biological-mana-coupling.md) — accepted architecture with pending implementation stages for physical biological mana coupling and its downstream validation.
 
-## Active Audit and Evidence Material
+## Draft Plans
 
-- [`plans/detailed-development-maturity-audit.md`](plans/detailed-development-maturity-audit.md) — active, bounded evidence audit for the frozen `26026fb3862e` baseline. It records capability maturity and sequencing; it is not implemented product functionality.
+- [`plans/actor-material-mana-loop.md`](plans/actor-material-mana-loop.md) — Draft first implementation tranche: a production actor action produces a durable local material pattern that couples through mana and back into bounded perception and behaviour.
+
+## Paused Audit and Evidence Material
+
+- [`plans/detailed-development-maturity-audit.md`](plans/detailed-development-maturity-audit.md) — intentionally paused evidence audit for the frozen `26026fb3862e` baseline. Completed Todos 1–4 remain diagnostic groundwork; unfinished deep audit work is not implementation guidance or a prerequisite.
 
 ## Historical Plans and Records
 
