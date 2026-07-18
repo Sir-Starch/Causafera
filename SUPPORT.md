@@ -1,7 +1,8 @@
 # Support
 
-Causafera is experimental pre-alpha research software. It has no support SLA, stable public API,
-save-format compatibility promise beyond documented contracts, hosted service, or playable release.
+Causafera is an experimental causal world-simulation engine (**Experimental pre-alpha**). It has
+no support SLA, stable public API, save-format compatibility promise beyond documented contracts,
+hosted service, or playable release.
 
 Use the GitHub issue templates for:
 
@@ -14,8 +15,8 @@ toolchain versions, commands run, expected result, actual result, and a minimal 
 credentials, personal data, local paths, and private logs.
 
 Questions that require design work may be closed or redirected until an accepted ExecPlan exists.
-General gameplay requests and high-level scripted-world features are outside the current Detailed
-Development priorities.
+As Causafera is an engine rather than a consumer game, end-user gameplay suggestions and high-level
+scripted-world features fall outside current priorities, though active engine development continues.
 
 Security vulnerabilities and accidental secret exposure must not be reported publicly. Follow
 [`SECURITY.md`](SECURITY.md).

@@ -4,24 +4,27 @@ Causafera is an experimental causal world-simulation engine for studying how phy
 bounded subjective agents, language, institutions, and an information-sensitive mana field can
 co-evolve into reconstructable history.
 
-> **Status: Experimental pre-alpha.** This repository is prepared for public source visibility,
-> not a product, binary, production-service, or scientific-model release. Causafera is not a
-> finished game or production-ready simulator. Its Foundation Era contracts and a bounded causal
-> loop are implemented, but simulation depth is uneven and many domains remain incomplete.
+> **Status: Experimental pre-alpha.** This repository is public source, not a product, binary
+> distribution, production service, or scientific-model release. The Foundation Era contracts and
+> a bounded causal loop are implemented; simulation depth is uneven and many domains remain
+> incomplete.
 
 ## What Causafera is
 
-Causafera exists to explore a specific question: can a persistent world produce surprising social,
-linguistic, biological, geographic, and magic-like outcomes from lower-level causes while retaining
-enough provenance to explain what happened?
+Causafera explores a specific question: can a persistent world produce surprising social,
+linguistic, biological, geographic, and magic-like outcomes from lower-level causes — while
+retaining enough provenance to explain what happened?
 
-The world state persists independently of any observer or inhabitant. Agents do not read that
-authoritative state. They receive bounded, physically accessible signals and construct subjective
-scenes, memories, concepts, beliefs, and causal hypotheses that may be incomplete or wrong. Their
-interpretations influence behaviour; repeated behaviour creates real physical and informational
-patterns; those patterns may affect later world state.
+The long-term direction is a coherent persistent fantasy world whose societies, languages, magic,
+and history emerge from interacting causal domains rather than preset narrative.
 
-The central causal loop is:
+World state persists independently of any observer or inhabitant. Agents do not read that
+authoritative state directly. They receive bounded physical signals and construct subjective
+scenes, memories, concepts, beliefs, and causal hypotheses that may be incomplete or wrong.
+Their interpretations influence behaviour; repeated behaviour creates physical and informational
+patterns; those patterns feed back into later world state.
+
+The central causal loop:
 
 ```text
 persistent world state
@@ -33,14 +36,26 @@ persistent world state
     -> changed observations and future beliefs
 ```
 
-Mana is an information-sensitive physical simulation substrate. It may respond to measurable
-recurrence, timing, synchronization, geometry, frequency, and persistent structure. It does not
-understand prayer, law, professions, words, beliefs, classes, skills, or other semantic labels.
+Mana is an information-sensitive physical substrate. It responds to measurable recurrence, timing,
+synchronization, geometry, frequency, and persistent structure — not to prayer, law, professions,
+words, beliefs, classes, skills, or other semantic labels.
+
+## Why causal depth matters
+
+When a simulation routes effects through semantic shortcuts — "the blacksmith has Smithing 5, so
+the sword gets +2 quality" — outcomes are predetermined by the label vocabulary. Causafera
+replaces that pipeline with layered physical, cognitive, and informational causation where each
+domain carries its own state and communicates through causal carriers rather than labels.
+
+This makes outcomes reconstructable. When something unexpected happens, the provenance chain
+traces back through perception, belief formation, behavioural decisions, material processes, and
+geographic conditions to specific prior causes — including causes the agents themselves
+misunderstood.
 
 ## Design principles
 
-- **Persistent, observer-independent state.** The authoritative world continues to exist and change
-  regardless of what agents or users know about it.
+- **Persistent, observer-independent state.** The authoritative world exists and changes regardless
+  of what agents or users know about it.
 - **Bounded subjective perception.** Agents never receive Ground Truth identities or complete world
   state. Perception, subjective scene construction, and belief remain structurally separate.
 - **Cross-domain causality.** Geography, biology, material processes, cognition, language, society,
@@ -51,35 +66,41 @@ understand prayer, law, professions, words, beliefs, classes, skills, or other s
 - **Causal provenance and explanation.** Significant authoritative changes retain traceable causes.
   The Explanation Engine renders typed, evidence-bearing interpretations without mutating the
   simulation.
-- **Non-authoritative observation.** The observer protocol, desktop UI, classifications, locale, and
-  visual presentation are read-only derived tooling and cannot become simulation truth.
+- **Non-authoritative observation.** The observer protocol, desktop UI, classifications, locale,
+  and visual presentation are read-only derived tooling — they cannot become simulation truth.
 - **Evidence before scale or emergence claims.** Digests prove equality or divergence, not physical
   distance. Performance and emergence claims require representative reproducible evidence.
 
-The non-negotiable rules are maintained in the [architecture invariants](docs/architecture/invariants.md).
+The non-negotiable rules are maintained in the
+[architecture invariants](docs/architecture/invariants.md).
 
-## Implemented now
+## What exists today
 
-The completed Foundation Era provides minimum validated contracts and selected executable paths:
+The completed Foundation Era (Phases 0–26) provides minimum validated contracts and selected
+executable paths. It does not represent mature simulation depth across every domain.
+
+**Working infrastructure:**
 
 - a Rust 2024 workspace with deterministic scheduler phases and explicit random-stream rules;
-- append-only causal events and provenance, canonical state digests, replay checks, and deterministic
-  snapshot save/resume;
-- bounded contracts for physical space, geography, biology, perception, subjective scenes,
-  cognition, language, practices, epistemics, social records, economy, city infrastructure,
-  historical bootstrap, isekai transfer, and metaphysical experiments;
-- a fixed-point mana field responding to non-semantic recurrence, synchronization, timing, and
-  spatial pattern structure, with traced coupling in a limited executable path;
-- causal-resolution, long-run experiment, Explanation IR, observer protocol, and bounded observer
-  overhead paths;
-- a Tauri 2 and React desktop observer that consumes versioned Protocol Buffer data rather than
+- append-only causal events and provenance, canonical state digests, replay checks, and
+  deterministic snapshot save/resume;
+- a Tauri 2 and React desktop observer consuming versioned Protocol Buffer data rather than
   direct runtime storage.
 
-Foundation completion does not mean every broad domain is mature. The conservative current levels
-and gaps are listed in the [domain coverage matrix](docs/ontology/domain-coverage-matrix.md), and the
-[maturity audit plan](plans/detailed-development-maturity-audit.md) remains active.
+**Bounded domain contracts** — minimum validated type structures, invariants, and boundaries for
+physical space, geography, biology, perception, subjective scenes, cognition, language, practices,
+epistemics, social records, economy, city infrastructure, historical bootstrap, isekai transfer,
+and metaphysical experiments. These contracts establish architectural boundaries; most do not yet
+represent deep simulation.
 
-## Incomplete work
+**Executable paths** — a fixed-point mana field responding to non-semantic recurrence,
+synchronization, timing, and spatial pattern structure; causal-resolution and long-run experiment
+infrastructure; Explanation IR; observer protocol; and bounded observer overhead measurement.
+
+Current maturity levels and gaps are listed in the
+[domain coverage matrix](docs/ontology/domain-coverage-matrix.md).
+
+## What remains incomplete
 
 Major gaps include:
 
@@ -90,7 +111,7 @@ Major gaps include:
 - long-lived cognition, grounded learning, conversation, language diffusion, institutions,
   production, maintenance, governance, and historical synthesis;
 - validated cross-domain mana effects over representative physical carriers;
-- production bootstrap and detail-promotion paths free of fixture/demo construction throughout;
+- production bootstrap paths free of fixture/demo construction;
 - domain-valid recovery metrics, counterfactuals, causal queries, uncertainty reporting, and
   observer inspection coverage;
 - representative long runs, performance envelopes, provenance-growth measurements, and evidence
@@ -111,20 +132,19 @@ domain state and physical carriers
     -> non-authoritative Tauri / React observer
 ```
 
-The workspace is split into domain crates. `causafera-types`, `causafera-core`, and the domain crates
-define validated primitives and operations; `causafera-runtime` composes authoritative execution;
-`causafera-persistence`, `causafera-lab`, `causafera-explanation`, and the observer crates provide
-save/resume, experiments, interpretation, and read-only inspection. See the
-[documentation index](docs/index.md) and [Detailed Development rebaseline](docs/architecture/detailed-development-rebaseline.md).
+The workspace is split into domain crates. `causafera-types`, `causafera-core`, and the domain
+crates define validated primitives and operations; `causafera-runtime` composes authoritative
+execution; `causafera-persistence`, `causafera-lab`, `causafera-explanation`, and the observer
+crates provide save/resume, experiments, interpretation, and read-only inspection. See the
+[documentation index](docs/index.md) and
+[Detailed Development rebaseline](docs/architecture/detailed-development-rebaseline.md).
 
 ## Prerequisites
 
-The repository and CI currently pin or verify:
-
 - Git;
 - Rust 1.85.0 with `rustfmt` and Clippy, from `rust-toolchain.toml`;
-- Node.js 20.x or 22.x and newer (Node.js 21.x is outside the locked Vite toolchain's supported
-  engine range);
+- Node.js 20.x or 22.x (Node.js 21.x is outside the locked Vite toolchain's supported engine
+  range);
 - pnpm 9.15.9.
 
 Building the desktop observer on Linux additionally requires GTK 3, WebKitGTK 4.1, Ayatana
@@ -132,8 +152,6 @@ AppIndicator 3, and librsvg development packages. Other platforms require the no
 [Tauri 2 prerequisites](https://v2.tauri.app/start/prerequisites/).
 
 ## Quick start
-
-From the repository root:
 
 ```bash
 cargo metadata --format-version 1 --no-deps
@@ -143,12 +161,24 @@ pnpm install --frozen-lockfile
 pnpm build
 ```
 
-The doctor command verifies core runtime identities and determinism prerequisites. The test suite
-is substantial; the repository is experimental and does not install a playable game.
+The `doctor` command verifies core runtime identities and determinism prerequisites. The test
+suite is substantial; the repository is experimental and does not install a playable game.
+
+## Desktop observer
+
+After installing dependencies and the platform prerequisites:
+
+```bash
+pnpm --dir apps/observer desktop
+```
+
+The process is long-running; stop it with `Ctrl+C`. Browser-only Vite mode intentionally cannot
+replace the Tauri transport with demonstration data. See the
+[observer application guide](docs/ui/observer-application.md) for data-flow and platform details.
 
 ## Validation
 
-Rust formatting, linting, feature coverage, and the repository CI command:
+Rust formatting, linting, and tests:
 
 ```bash
 cargo fmt --all -- --check
@@ -158,7 +188,7 @@ cargo test --workspace --no-default-features
 cargo run -p xtask -- ci
 ```
 
-Frontend installation and validation:
+Frontend:
 
 ```bash
 pnpm install --frozen-lockfile
@@ -167,44 +197,11 @@ pnpm typecheck
 pnpm build
 ```
 
-Source-only audit regression tests, public-document link validation, and frontend dependency
-advisory check:
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the full validation suite including audit-tool tests
+and dependency advisory checks. The GitHub workflow runs equivalent Rust and frontend gates.
 
-```bash
-node tools/audit/check-entry-points.mjs
-node tools/audit/run-source-tests.mjs
-node tools/audit/validate-capability-audit.mjs links --paths README.md,CONTRIBUTING.md,SECURITY.md,SUPPORT.md,CODE_OF_CONDUCT.md
-pnpm audit --audit-level high
-```
-
-Four additional TODO 4 tests consume the ignored, run-local frozen-baseline evidence directory.
-They remain available as `test-artifact-modes.mjs`, `test-task4-evidence-hardening.mjs`,
-`test-task4-lsp-attempts.mjs`, and `test-tooling-and-endpoints.mjs`, each invoked with that evidence
-root. The source-only command does not regenerate or pretend to replace that historical evidence.
-
-Before committing, also run:
-
-```bash
-git diff --check
-```
-
-The GitHub workflow runs equivalent Rust and frontend gates. `cargo-audit`, `cargo-deny`, and
-gitleaks are useful additional checks but are not bundled with this repository. The locked Rust
-observer stack has known dependency advisories; these and the current persistence threat-model
-limitations are documented in [the security policy](SECURITY.md). No advisory-free, supported
-binary, or production-security claim is made.
-
-## Desktop observer
-
-After installing dependencies and the platform prerequisites, start the native observer with:
-
-```bash
-pnpm --dir apps/observer desktop
-```
-
-The process is long-running; stop it with `Ctrl+C`. Browser-only Vite mode intentionally cannot
-replace the Tauri transport with demonstration data. See the
-[observer application guide](docs/ui/observer-application.md) for data-flow and platform details.
+No advisory-free, supported binary, or production-security claim is made. Known dependency
+advisories and persistence threat-model limitations are documented in [SECURITY.md](SECURITY.md).
 
 ## Repository structure
 
@@ -222,8 +219,8 @@ replace the Tauri transport with demonstration data. See the
 
 ## Roadmap
 
-Causafera is in the open-ended Detailed Development Program. Work is sequenced by accepted bounded
-ExecPlans rather than a promised final phase number:
+Causafera is in the open-ended Detailed Development Program. Work is sequenced by accepted
+bounded ExecPlans rather than a promised final phase number:
 
 1. deepen authoritative simulation and real cross-domain coupling;
 2. keep Explanation and analytics causally inspectable as capabilities mature;
@@ -231,24 +228,27 @@ ExecPlans rather than a promised final phase number:
 4. batch coherent UI milestones after read models stabilize;
 5. consider optional LLM surface wording only after the terminal maturity gate.
 
-See the [roadmap](docs/roadmap/roadmap.md) for the authoritative status.
+See the [roadmap](docs/roadmap/roadmap.md) for the authoritative status and the
+[documentation index](docs/index.md) for the full documentation tree.
 
-## Contributing, support, and security
+## Contributing
 
-- [Contributing guide](CONTRIBUTING.md)
-- [Security policy](SECURITY.md)
-- [Support guidance](SUPPORT.md)
-- [Contributor License Agreement](CLA.md)
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development workflow, architectural requirements,
+validation commands, and CLA details.
 
 External code contributions are not currently accepted until the CLA acceptance workflow is
 configured. Issues and evidence-backed design discussion remain welcome.
 
+- [Security policy](SECURITY.md) — vulnerability reporting and known limitations
+- [Support guidance](SUPPORT.md) — issue filing and scope
+- [Contributor License Agreement](CLA.md)
+
 ## Licenses
 
-- Functional software material, including Rust, JavaScript, TypeScript, scripts, schemas,
-  manifests, CI configuration, and machine-readable software configuration, is licensed under
+- Functional software material — Rust, JavaScript, TypeScript, scripts, schemas, manifests, CI
+  configuration, and machine-readable software configuration — is licensed under
   [GNU AGPL v3.0 only](LICENSE) (`AGPL-3.0-only`).
-- Prose and non-functional explanatory documentation are licensed under
+- Prose and non-functional explanatory documentation is licensed under
   [Creative Commons Attribution-ShareAlike 4.0 International](LICENSE-CC-BY-SA-4.0)
   (`CC BY-SA 4.0`), unless a file states otherwise.
 - Third-party dependencies retain their own licenses.

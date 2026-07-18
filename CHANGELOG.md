@@ -1,12 +1,13 @@
 # Changelog
 
-All notable changes to Causafera are documented in this file.
+All notable changes to Causafera are documented in this file. No formal versioned release has
+been published. This is a development changelog for an **Experimental pre-alpha** project.
 
 ## Format
 
 This project follows a structured changelog format. Each entry includes:
 
-- Phase reference (e.g., Phase 0, Phase 1);
+- Phase reference (e.g., historical Phase 0, Phase 1);
 - Category (ARCH, CORE, WORLD, BIO, etc.);
 - Change description;
 - Impact assessment;

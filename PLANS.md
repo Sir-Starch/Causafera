@@ -1,5 +1,7 @@
 # Causafera Plans
 
+ExecPlans are structured architectural proposals required before beginning implementation of major simulation subsystems. They ensure alignment with the project thesis and invariants detailed in the [README.md](README.md).
+
 ## ExecPlan Requirements
 
 The following changes require an ExecPlan:
@@ -47,8 +49,8 @@ Progress
 
 ## Active Plans
 
-- `plans/detailed-development-maturity-audit.md` — active bounded evidence audit for the frozen
-  `26026fb3862e` baseline; records 30-domain capability maturity, four deep blocker families,
+- `plans/detailed-development-maturity-audit.md` — Active bounded evidence audit for the frozen
+  `26026fb3862e` baseline. It records 30-domain capability maturity, four deep blocker families,
   deterministic sequencing, and one downstream Draft ExecPlan without product implementation.
 
 ## Draft Plans

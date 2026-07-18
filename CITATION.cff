@@ -1,5 +1,5 @@
 cff-version: 1.2.0
-message: "If you use Causafera in research, cite the repository and the exact commit or release used."
+message: "If you use Causafera in research, please cite the repository and the exact commit or release used."
 type: software
 title: "Causafera"
 abstract: >-

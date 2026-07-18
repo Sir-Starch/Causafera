@@ -1,5 +1,8 @@
 # Causafera Phase 0 Completion Report
 
+> This document is a historical record from Phase 0 completion (2026-07-12), now superseded by the
+> Detailed Development Program. Causafera is **Experimental pre-alpha** software.
+
 **Date:** 2026-07-12
 **Status:** Phase 0 Foundation Complete
 

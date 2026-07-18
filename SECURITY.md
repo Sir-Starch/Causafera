@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-Causafera is experimental pre-alpha software. There is no stable or production-supported release
+Causafera is **Experimental pre-alpha** software. There is no stable or production-supported release
 line, supported binary distribution, or operated production service. Security fixes are applied to
 the current `main` branch when maintainers accept them; older commits and local forks are not
 supported versions.
@@ -38,9 +38,10 @@ reproduce and assess the problem:
 - whether the issue is already public or actively exploited;
 - a safe way to contact you for follow-up.
 
-Reports are handled on a best-effort basis. The project does not currently promise a response or
-remediation deadline and does not operate a bug-bounty program. The maintainer will coordinate
-disclosure when practical and may request additional evidence before classifying a report.
+While active development continues, security reports are handled on a best-effort basis without
+a bug-bounty program. The project does not currently promise a specific response time or
+remediation deadline. The maintainer will coordinate disclosure when practical and may request
+additional evidence before classifying a report.
 
 ## Scope
 

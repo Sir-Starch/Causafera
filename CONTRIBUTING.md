@@ -1,7 +1,7 @@
 # Contributing to Causafera
 
-Causafera is an experimental pre-alpha research and hobby project with strict causal, deterministic,
-and provenance requirements.
+Causafera is an experimental causal world-simulation engine (**Experimental pre-alpha**) with
+strict deterministic and provenance requirements.
 
 > **Current contribution status:** external code and documentation contributions are not currently
 > accepted. They may be accepted after the CLA acceptance workflow is configured. Issues,
@@ -26,14 +26,13 @@ major architectural change in an issue before implementation.
 ## Development workflow
 
 1. Start from current `main` and keep unrelated work out of the change.
-2. Use codebase-memory graph tools for code discovery and dependency tracing where available.
-3. Capture a failing test or faithful failing scenario before fixing behaviour. Pure documentation
+2. Capture a failing test or faithful failing scenario before fixing behaviour. Pure documentation
    changes are reviewed for factual accuracy, command execution, and link validity instead.
-4. Implement the smallest change that satisfies the accepted scope.
-5. Update tests, TODOs, subsystem documentation, ADRs, RFCs, and the domain coverage matrix when the
+3. Implement the smallest change that satisfies the accepted scope.
+4. Update tests, TODOs, subsystem documentation, ADRs, RFCs, and the domain coverage matrix when the
    change affects them.
-6. Run the applicable validation commands below.
-7. Keep commits focused and explain causal, determinism, persistence, observer, and performance
+5. Run the applicable validation commands below.
+6. Keep commits focused and explain causal, determinism, persistence, observer, and performance
    effects in the pull request.
 
 Do not perform opportunistic simulation or architecture work in an unrelated contribution.
@@ -70,11 +69,12 @@ applicable:
 - causal ancestry and effect provenance;
 - resolution promotion/demotion conservation.
 
-Do not replace domain metrics with digest-byte arithmetic or explain missing evidence narratively.
+Do not substitute cryptographic hashes for domain metrics, and do not use narrative claims to
+bypass missing causal evidence.
 
 ## Validation
 
-The repository pins Rust 1.85.0 and uses Node.js 20.x with pnpm 9.15.9 in CI.
+The repository pins Rust 1.85.0 and uses Node.js 20.x or 22.x with pnpm 9.15.9 in CI.
 
 Rust checks:
 
@@ -121,22 +121,19 @@ tools or skipped commands as passing.
 
 ## Pull requests and the CLA
 
-Opening a pull request does not accept the CLA. Before any external contribution can be merged, the
-contributor must separately accept the existing [Contributor License Agreement](CLA.md) through a
+Submitting a pull request does not automatically accept the CLA. Before an external contribution
+can be merged, you must separately accept the [Contributor License Agreement](CLA.md) through a
 configured electronic-signature or CLA service. The acceptance record must identify the verified
 contributor, CLA version, timestamp, and associated pull request or commit.
 
-The CLA:
+Under the CLA you retain your copyright, but you grant the maintainer additional rights including
+other commercial or proprietary outbound terms. Accepted functional software material — source,
+scripts, schemas, manifests, CI configuration, and machine-readable software configuration —
+remains available under AGPL-3.0-only. Accepted prose and non-functional explanatory documentation
+remains available under CC BY-SA 4.0.
 
-- does not transfer contributor copyright;
-- grants the maintainer additional rights, including other commercial or proprietary outbound
-  terms;
-- requires accepted functional software material, including source, scripts, schemas, manifests,
-  CI, and machine-readable software configuration, to remain available under AGPL-3.0-only, and
-  accepted prose or non-functional explanatory documentation under CC BY-SA 4.0.
-
-The CLA supplements those public licenses; it does not replace them. The CLA itself calls for legal
-review before external contributions are accepted.
+The CLA supplements those public licenses; it does not replace them. The CLA itself calls for
+legal review before external contributions are accepted.
 
 ## Reporting security issues
 
