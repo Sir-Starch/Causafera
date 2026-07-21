@@ -53,6 +53,9 @@ Progress
 
 ## Draft Plans
 
+- [`plans/local-mana-material-surface-coupling.md`](plans/local-mana-material-surface-coupling.md) — Draft
+  bounded local mana-cell to material-surface coupling slice; not active and not a new field,
+  material, or operator system.
 - [`plans/experiment-recipe-mana-source.md`](plans/experiment-recipe-mana-source.md) — Draft
   bounded production-path experiment-recipe mana source slice; not active and not an operator API.
 
