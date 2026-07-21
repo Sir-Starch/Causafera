@@ -20,7 +20,9 @@ use crate::{
     ActionKindId, ActionProposal, ActionRejection, ActionValidationResult, ActiveChunkSnapshot,
     ActorId, ActorObjectiveSnapshot, ActorObjectiveStateSnapshot, ActorPhysicalObject,
     ActorSubjectiveSnapshot, ActorSubjectiveStateSnapshot, BootstrapReceiptRecord,
-    BootstrapReceiptSnapshot, CarrierAdapterConfig, ExperimentManifestSnapshot, GenericFeature,
+    BootstrapReceiptSnapshot, CarrierAdapterConfig, ExperimentManifestSnapshot,
+    ExperimentRecipeManaSource, ExperimentRecipeManaSourceReceiptSnapshot,
+    ExperimentRecipeManaSourceRecipe, GenericFeature, MAX_EXPERIMENT_RECIPE_MANA_SOURCES,
     MAX_MATERIAL_SURFACE_TRANSITIONS, MaterialSurface, MaterialSurfaceId,
     MaterialSurfaceRecordSnapshot, MaterialSurfaceSnapshot, MaterialSurfaceTransition,
     MinimalBodyState, PatternHistorySnapshot, PerceivedSelf, PhysicalCountersSnapshot,
@@ -41,10 +43,12 @@ pub const SECTION_POPULATION_BOOTSTRAP: u16 = 0x0009;
 pub const SECTION_CAUSAL_TRACES: u16 = 0x000A;
 pub const SECTION_EXPERIMENT_MANIFEST: u16 = 0x000B;
 pub const MATERIAL_SURFACE_SECTION_ID: u16 = 0x000C;
+pub const SECTION_EXPERIMENT_RECIPE_MANA_SOURCE_RECEIPTS: u16 = 0x000D;
 
-const RUNTIME_RECIPE_SECTION_MAJOR: u16 = 2;
+const RUNTIME_RECIPE_SECTION_MAJOR: u16 = 3;
 const PHYSICAL_COUNTERS_SECTION_MAJOR: u16 = 2;
 const MATERIAL_SURFACE_SECTION_MAJOR: u16 = 1;
+pub const EXPERIMENT_RECIPE_MANA_SOURCE_RECEIPTS_SECTION_MAJOR: u16 = 1;
 const CURRENT_SECTION_MINOR: u16 = 0;
 
 /// Encode a `CausalTraceSnapshot` into section bytes.
@@ -274,6 +278,51 @@ pub fn decode_runtime_recipe_section(
         system_registrations,
         completed_time,
     })
+}
+
+pub fn encode_experiment_recipe_mana_source_receipts_section(
+    receipts: &[ExperimentRecipeManaSourceReceiptSnapshot],
+) -> Vec<u8> {
+    let mut buf = Vec::new();
+    let mut enc = LittleEndianEncoder::new(&mut buf);
+    enc.write_u64(receipts.len() as u64);
+    for receipt in receipts {
+        enc.write_u64(receipt.source_record_id);
+        enc.write_u64(receipt.scheduled_tick);
+        enc.write_u64(receipt.executed_tick);
+        enc.write_u64(receipt.source_trace.raw());
+        enc.write_i64(receipt.before_intensity);
+        enc.write_i64(receipt.after_intensity);
+        enc.write_fixed(&receipt.recipe_hash.bytes());
+        enc.write_u64(receipt.policy_schema_id);
+    }
+    buf
+}
+
+pub fn decode_experiment_recipe_mana_source_receipts_section(
+    bytes: &[u8],
+) -> Result<Vec<ExperimentRecipeManaSourceReceiptSnapshot>, PersistenceError> {
+    let mut dec = LittleEndianDecoder::new(bytes);
+    let count = read_count(
+        &mut dec,
+        MAX_EXPERIMENT_RECIPE_MANA_SOURCES,
+        "experiment recipe mana source receipt",
+    )?;
+    let mut receipts = Vec::with_capacity(count);
+    for _ in 0..count {
+        receipts.push(ExperimentRecipeManaSourceReceiptSnapshot {
+            source_record_id: dec.read_u64()?,
+            scheduled_tick: dec.read_u64()?,
+            executed_tick: dec.read_u64()?,
+            source_trace: TraceId::new(dec.read_u64()?),
+            before_intensity: dec.read_i64()?,
+            after_intensity: dec.read_i64()?,
+            recipe_hash: causafera_core::StateFingerprint::new(*dec.read_fixed::<32>()?),
+            policy_schema_id: dec.read_u64()?,
+        });
+    }
+    require_empty(&dec)?;
+    Ok(receipts)
 }
 
 pub fn encode_spatial_section(snapshot: &SpatialChunkSnapshot) -> Vec<u8> {
@@ -909,6 +958,20 @@ fn encode_runtime_config(enc: &mut LittleEndianEncoder<'_>, config: &RuntimeConf
     enc.write_i64(config.action_bounds);
     enc.write_u64(config.bootstrap_population);
     encode_bool(enc, config.material_surface_signals_enabled);
+    enc.write_u64(
+        u64::try_from(config.experiment_recipe_mana_sources.records.len()).unwrap_or(u64::MAX),
+    );
+    for record in &config.experiment_recipe_mana_sources.records {
+        enc.write_u64(record.source_record_id);
+        encode_bool(enc, record.enabled);
+        enc.write_u64(record.scheduled_tick);
+        encode_chart_chunk(enc, record.target_chunk);
+        enc.write_u16(record.cell_index);
+        enc.write_i64(record.amount);
+        enc.write_i64(record.per_record_maximum);
+        enc.write_u64(record.policy_schema_id);
+    }
+    enc.write_i64(config.experiment_recipe_mana_sources.recipe_budget);
 }
 
 fn decode_runtime_config(
@@ -945,6 +1008,28 @@ fn decode_runtime_config(
     config.action_bounds = dec.read_i64()?;
     config.bootstrap_population = dec.read_u64()?;
     config.material_surface_signals_enabled = decode_bool(dec)?;
+    let source_count = read_count(
+        dec,
+        MAX_EXPERIMENT_RECIPE_MANA_SOURCES,
+        "experiment recipe mana source",
+    )?;
+    let mut records = Vec::with_capacity(source_count);
+    for _ in 0..source_count {
+        records.push(ExperimentRecipeManaSource {
+            source_record_id: dec.read_u64()?,
+            enabled: decode_bool(dec)?,
+            scheduled_tick: dec.read_u64()?,
+            target_chunk: decode_chart_chunk(dec)?,
+            cell_index: dec.read_u16()?,
+            amount: dec.read_i64()?,
+            per_record_maximum: dec.read_i64()?,
+            policy_schema_id: dec.read_u64()?,
+        });
+    }
+    config.experiment_recipe_mana_sources = ExperimentRecipeManaSourceRecipe {
+        records,
+        recipe_budget: dec.read_i64()?,
+    };
     Ok(config)
 }
 
@@ -2102,6 +2187,18 @@ pub fn assemble_envelope(data: &RuntimeSnapshotData) -> Result<SnapshotEnvelope,
             bytes: encode_trace_section(&data.traces),
         },
     );
+    sections.insert(
+        u64::from(SECTION_EXPERIMENT_RECIPE_MANA_SOURCE_RECEIPTS),
+        SectionPayload {
+            section_major: EXPERIMENT_RECIPE_MANA_SOURCE_RECEIPTS_SECTION_MAJOR,
+            section_minor: CURRENT_SECTION_MINOR,
+            flags: 0,
+            decoded_size_limit: 0,
+            bytes: encode_experiment_recipe_mana_source_receipts_section(
+                &data.experiment_recipe_mana_source_receipts,
+            ),
+        },
+    );
     if let Some(ref manifest) = data.experiment_manifest {
         sections.insert(
             u64::from(SECTION_EXPERIMENT_MANIFEST),
@@ -2260,6 +2357,16 @@ pub fn disassemble_envelope(
             .bytes
             .as_slice(),
     )?;
+    let experiment_recipe_mana_source_receipts =
+        decode_experiment_recipe_mana_source_receipts_section(
+            required_section(
+                envelope,
+                SECTION_EXPERIMENT_RECIPE_MANA_SOURCE_RECEIPTS,
+                EXPERIMENT_RECIPE_MANA_SOURCE_RECEIPTS_SECTION_MAJOR,
+            )?
+            .bytes
+            .as_slice(),
+        )?;
     let experiment_manifest = envelope
         .sections
         .get(&u64::from(SECTION_EXPERIMENT_MANIFEST))
@@ -2280,6 +2387,7 @@ pub fn disassemble_envelope(
         population,
         bootstrap,
         traces,
+        experiment_recipe_mana_source_receipts,
         experiment_manifest,
     })
 }
@@ -2306,7 +2414,10 @@ fn required_section(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Runtime, RuntimeState};
+    use crate::{
+        EXPERIMENT_RECIPE_MANA_SOURCE_POLICY_SCHEMA_V1, ExperimentRecipeManaSource, Runtime,
+        RuntimeConfig, RuntimeState,
+    };
     use causafera_core::Phase;
     use causafera_core::provenance::{
         CausalEffect, CausalEventProposal, CausalTarget, EventProposalKey, StateFingerprint,
@@ -2496,18 +2607,81 @@ mod tests {
     }
 
     #[test]
+    fn runtime_recipe_section_v3_roundtrips_canonical_order() {
+        // Given: equivalent valid source records supplied in reverse canonical order.
+        let mut first_config = RuntimeConfig::new(57);
+        let make_record = |source_record_id, scheduled_tick| ExperimentRecipeManaSource {
+            source_record_id,
+            enabled: true,
+            scheduled_tick,
+            target_chunk: ChartChunkCoord::new(first_config.chart_id, ChunkCoord::new(0, 0, 0)),
+            cell_index: 0,
+            amount: 2,
+            per_record_maximum: 4,
+            policy_schema_id: EXPERIMENT_RECIPE_MANA_SOURCE_POLICY_SCHEMA_V1,
+        };
+        first_config.experiment_recipe_mana_sources.records =
+            vec![make_record(20, 4), make_record(10, 2)];
+        first_config.experiment_recipe_mana_sources.recipe_budget = 8;
+        let runtime = Runtime::new(first_config).expect("recipe must validate");
+        let first_data = runtime.export_snapshot().expect("snapshot must export");
+
+        // When: the canonical V3 recipe section is encoded and decoded.
+        let encoded = encode_runtime_recipe_section(&first_data.recipe);
+        let decoded = decode_runtime_recipe_section(&encoded).expect("V3 recipe must roundtrip");
+
+        // Then: decoded configuration is canonical and re-encoding is byte-identical.
+        assert_eq!(decoded, first_data.recipe);
+        assert_eq!(encode_runtime_recipe_section(&decoded), encoded);
+        assert_eq!(
+            decoded.config.experiment_recipe_mana_sources.records[0].source_record_id,
+            10
+        );
+    }
+
+    #[test]
+    fn runtime_recipe_section_rejects_v2_and_unknown_major() {
+        // Given: a complete current snapshot envelope with a V3 recipe section.
+        let data = populated_snapshot_data();
+        let envelope = assemble_envelope(&data).expect("snapshot envelope must assemble");
+
+        // When: the recipe section is changed to an old or unknown major.
+        let mut v2 = envelope.clone();
+        v2.sections
+            .get_mut(&u64::from(SECTION_RUNTIME_RECIPE))
+            .expect("recipe section must exist")
+            .section_major = 2;
+        let mut unknown = envelope;
+        unknown
+            .sections
+            .get_mut(&u64::from(SECTION_RUNTIME_RECIPE))
+            .expect("recipe section must exist")
+            .section_major = 4;
+
+        // Then: both unsupported required majors fail closed.
+        assert!(disassemble_envelope(&v2).is_err());
+        assert!(disassemble_envelope(&unknown).is_err());
+    }
+
+    #[test]
     fn authoritative_recipe_and_material_sections_are_versioned_and_fail_closed() {
         // Given: a current authoritative snapshot envelope.
         let data = populated_snapshot_data();
         let envelope = assemble_envelope(&data).unwrap();
 
         // When: a required section declares an incompatible major version.
-        let mut incompatible_recipe = envelope.clone();
-        incompatible_recipe
+        let mut incompatible_recipe_v2 = envelope.clone();
+        incompatible_recipe_v2
             .sections
             .get_mut(&u64::from(SECTION_RUNTIME_RECIPE))
             .unwrap()
-            .section_major = 1;
+            .section_major = 2;
+        let mut incompatible_recipe_unknown = envelope.clone();
+        incompatible_recipe_unknown
+            .sections
+            .get_mut(&u64::from(SECTION_RUNTIME_RECIPE))
+            .unwrap()
+            .section_major = 4;
         let mut incompatible_material = envelope.clone();
         incompatible_material
             .sections
@@ -2518,7 +2692,7 @@ mod tests {
         // Then: current layout versions are explicit and incompatible authoritative bytes stop.
         assert_eq!(
             envelope.sections[&u64::from(SECTION_RUNTIME_RECIPE)].section_major,
-            2
+            3
         );
         assert_eq!(
             envelope.sections[&u64::from(SECTION_PHYSICAL_COUNTERS)].section_major,
@@ -2528,7 +2702,8 @@ mod tests {
             envelope.sections[&u64::from(MATERIAL_SURFACE_SECTION_ID)].section_major,
             1
         );
-        assert!(disassemble_envelope(&incompatible_recipe).is_err());
+        assert!(disassemble_envelope(&incompatible_recipe_v2).is_err());
+        assert!(disassemble_envelope(&incompatible_recipe_unknown).is_err());
         assert!(disassemble_envelope(&incompatible_material).is_err());
     }
 

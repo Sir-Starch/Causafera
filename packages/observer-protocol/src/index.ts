@@ -77,6 +77,10 @@ export interface MaterialSurfaceDelta {
   manaTotal: bigint;
   contactTraceId?: bigint;
   manaEffectTraceId?: bigint;
+  transitionTick: bigint;
+  manaTransitionTraceId?: bigint;
+  manaBefore?: bigint;
+  manaAfter?: bigint;
 }
 
 export interface SpatialChunkSummary {
@@ -353,6 +357,7 @@ function decodeMaterialSurfaceDelta(input: Uint8Array): MaterialSurfaceDelta {
   const value = requiredValue(values, "MaterialSurfaceDelta");
   const contactTraceId = values.get(9);
   const manaEffectTraceId = values.get(10);
+  const manaTransitionTraceId = values.get(12);
   return {
     chartId: value(1),
     chunkX: Number(zigzagDecode(value(2))),
@@ -364,6 +369,10 @@ function decodeMaterialSurfaceDelta(input: Uint8Array): MaterialSurfaceDelta {
     manaTotal: zigzagDecode(value(8)),
     contactTraceId,
     manaEffectTraceId,
+    transitionTick: value(11),
+    manaTransitionTraceId,
+    manaBefore: values.has(13) ? zigzagDecode(value(13)) : undefined,
+    manaAfter: values.has(14) ? zigzagDecode(value(14)) : undefined,
   };
 }
 

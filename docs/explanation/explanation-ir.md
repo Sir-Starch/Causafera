@@ -61,9 +61,12 @@ The same phenomenon may have different Explanation IR depending on perspective:
 
 The active actor/material/mana slice supplies `MaterialSurfaceLoopClaim` as a live, read-only
 Explanation input. It records typed condition bounds, field-total context, an observation window,
-the actor-contact trace, and an optional mana-effect trace. Its deterministic claims distinguish
-supported evidence from explicit insufficiency and include control/window schemas; they do not
-infer purpose, ritual, or semantic meaning from the pattern.
+the actor-contact trace, an optional mana-effect trace, and optional in-world mana transition
+values. Its deterministic claims distinguish supported evidence from explicit insufficiency and
+include control/window schemas plus `MATERIAL_SURFACE_LOOP_MANA_TRANSITION_SCHEMA` (opaque schema
+ID 14). That claim is `Supported` only when a mana-transition trace and its before/after values are
+available; otherwise it is `Unknown`. Explanation may cite source-derived in-world ancestry, but
+it never renders why an operator selected a source, its recipe identity, or its policy.
 
 The live input reads only the bounded retained material-transition window. Retention is
 deterministic and protects the newest mana-mediated transition when ordinary contacts would

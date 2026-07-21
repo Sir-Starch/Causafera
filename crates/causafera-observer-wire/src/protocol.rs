@@ -430,15 +430,25 @@ fn encode_material_surface_delta(delta: &MaterialSurfaceDelta) -> Vec<u8> {
     if let Some(trace) = delta.mana_effect_trace {
         field_varint(&mut nested, 10, trace.raw());
     }
+    field_varint(&mut nested, 11, delta.transition_tick);
+    if let Some(trace) = delta.mana_transition_trace {
+        field_varint(&mut nested, 12, trace.raw());
+    }
+    if let Some(value) = delta.mana_before {
+        field_varint(&mut nested, 13, zigzag(value));
+    }
+    if let Some(value) = delta.mana_after {
+        field_varint(&mut nested, 14, zigzag(value));
+    }
     nested
 }
 
 fn decode_material_surface_delta(bytes: &[u8]) -> Result<MaterialSurfaceDelta, WireError> {
     let mut cursor = Cursor::new(bytes);
-    let mut values = [None; 10];
+    let mut values = [None; 14];
     while !cursor.is_empty() {
         let (field, wire) = cursor.key()?;
-        if (1..=10).contains(&field) && wire == WIRE_VARINT {
+        if (1..=14).contains(&field) && wire == WIRE_VARINT {
             values[field as usize - 1] = Some(cursor.varint()?);
         } else {
             cursor.skip(wire)?;
@@ -456,6 +466,10 @@ fn decode_material_surface_delta(bytes: &[u8]) -> Result<MaterialSurfaceDelta, W
         mana_total: unzigzag(value(8)?),
         contact_trace: values[8].map(TraceId::new),
         mana_effect_trace: values[9].map(TraceId::new),
+        transition_tick: value(11)?,
+        mana_transition_trace: values[11].map(TraceId::new),
+        mana_before: values[12].map(unzigzag),
+        mana_after: values[13].map(unzigzag),
     })
 }
 
@@ -1162,7 +1176,7 @@ mod tests {
         let expected = ObserverWorldSnapshot {
             time: SimulationTime::new(8),
             chunks: Vec::new(),
-            material_surface_delta_schema_version: 1,
+            material_surface_delta_schema_version: 2,
             material_surface_deltas: vec![
                 MaterialSurfaceDelta {
                     chart_id: 5,
@@ -1175,6 +1189,10 @@ mod tests {
                     mana_total: 12,
                     contact_trace: None,
                     mana_effect_trace: None,
+                    transition_tick: 0,
+                    mana_transition_trace: None,
+                    mana_before: None,
+                    mana_after: None,
                 },
                 MaterialSurfaceDelta {
                     chart_id: 5,
@@ -1187,6 +1205,10 @@ mod tests {
                     mana_total: 12,
                     contact_trace: Some(TraceId::new(0)),
                     mana_effect_trace: Some(TraceId::new(22)),
+                    transition_tick: 8,
+                    mana_transition_trace: Some(TraceId::new(21)),
+                    mana_before: Some(0),
+                    mana_after: Some(3),
                 },
             ],
         };
@@ -1268,4 +1290,45 @@ mod tests {
         );
         assert!(!response.payload.is_empty());
     }
+}
+
+#[cfg(test)]
+#[test]
+fn world_query_roundtrips_material_delta_mana_transition_trace() {
+    // Given: a material delta with all additive mana-transition evidence fields populated.
+    let expected = ObserverWorldSnapshot {
+        time: SimulationTime::new(8),
+        chunks: Vec::new(),
+        material_surface_delta_schema_version: 2,
+        material_surface_deltas: vec![MaterialSurfaceDelta {
+            chart_id: 5,
+            chunk_x: -1,
+            chunk_y: 2,
+            chunk_z: -3,
+            cell_ordinal: 7,
+            before_condition: 4,
+            after_condition: 6,
+            mana_total: 12,
+            contact_trace: Some(TraceId::new(19)),
+            mana_effect_trace: Some(TraceId::new(22)),
+            transition_tick: 8,
+            mana_transition_trace: Some(TraceId::new(21)),
+            mana_before: Some(0),
+            mana_after: Some(3),
+        }],
+    };
+    let mut handler = ProtocolHandler::default();
+    handler.set_world_snapshot(&expected);
+
+    // When: a world-chunk query crosses the observer wire codec.
+    let response = decode_response(
+        &handler
+            .handle_query(&encode_query(&ObserverQuery::world_chunks(19)))
+            .unwrap(),
+    )
+    .unwrap();
+
+    // Then: fields 11-14 round-trip without changing the query kind or bounded shape.
+    assert_eq!(response.status, QueryStatus::Ok);
+    assert_eq!(decode_world_snapshot(&response.payload).unwrap(), expected);
 }

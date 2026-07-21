@@ -24,6 +24,8 @@ pub const MATERIAL_SURFACE_LOOP_CONTROL_SCHEMA: ExplanationClaimSchemaId =
     ExplanationClaimSchemaId::new(12);
 pub const MATERIAL_SURFACE_LOOP_MANA_SCHEMA: ExplanationClaimSchemaId =
     ExplanationClaimSchemaId::new(13);
+pub const MATERIAL_SURFACE_LOOP_MANA_TRANSITION_SCHEMA: ExplanationClaimSchemaId =
+    ExplanationClaimSchemaId::new(14);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -183,6 +185,9 @@ pub struct MaterialSurfaceLoopClaim {
     pub observation_end: SimulationTime,
     pub contact_trace: TraceId,
     pub mana_effect_trace: Option<TraceId>,
+    pub mana_transition_trace: Option<TraceId>,
+    pub mana_before: Option<i64>,
+    pub mana_after: Option<i64>,
     pub repeated_structure_observed: bool,
 }
 
@@ -238,7 +243,32 @@ impl MaterialSurfaceLoopClaim {
             ComparisonContext::None,
             ClaimEvidenceState::Supported,
         )?;
-        Ok(vec![primary, window_claim, control_claim, mana_claim])
+        let mana_transition_claim = match (
+            self.mana_transition_trace,
+            self.mana_before,
+            self.mana_after,
+        ) {
+            (Some(trace), Some(before), Some(after)) => ExplanationClaim::new(
+                MATERIAL_SURFACE_LOOP_MANA_TRANSITION_SCHEMA,
+                NumericClaimValue::range(before, after)?,
+                ClaimConfidence::ONE,
+                vec![trace],
+                ComparisonContext::None,
+                ClaimEvidenceState::Supported,
+            )?,
+            _ => ExplanationClaim::unknown(
+                MATERIAL_SURFACE_LOOP_MANA_TRANSITION_SCHEMA,
+                NumericClaimValue::scalar(self.mana_total),
+                ComparisonContext::None,
+            )?,
+        };
+        Ok(vec![
+            primary,
+            window_claim,
+            control_claim,
+            mana_claim,
+            mana_transition_claim,
+        ])
     }
 }
 
@@ -431,6 +461,9 @@ mod tests {
             observation_end: SimulationTime::new(8),
             contact_trace: TraceId::new(21),
             mana_effect_trace: Some(TraceId::new(22)),
+            mana_transition_trace: Some(TraceId::new(23)),
+            mana_before: Some(0),
+            mana_after: Some(3),
             repeated_structure_observed: true,
         };
 
@@ -438,7 +471,7 @@ mod tests {
         let claims = claim.to_explanation_claims().unwrap();
 
         // Then: typed values, window, controls, and causal anchors are available to observers.
-        assert_eq!(claims.len(), 4);
+        assert_eq!(claims.len(), 5);
         assert_eq!(claims[0].schema, MATERIAL_SURFACE_LOOP_CLAIM_SCHEMA);
         assert_eq!(claims[0].evidence_state, ClaimEvidenceState::Supported);
         assert_eq!(
@@ -454,5 +487,15 @@ mod tests {
         assert_eq!(claims[2].value, NumericClaimValue::ratio(1, 1).unwrap());
         assert_eq!(claims[3].schema, MATERIAL_SURFACE_LOOP_MANA_SCHEMA);
         assert_eq!(claims[3].value, NumericClaimValue::scalar(12));
+        assert_eq!(
+            claims[4].schema,
+            MATERIAL_SURFACE_LOOP_MANA_TRANSITION_SCHEMA
+        );
+        assert_eq!(
+            claims[4].value,
+            NumericClaimValue::Range { start: 0, end: 3 }
+        );
+        assert_eq!(claims[4].evidence_state, ClaimEvidenceState::Supported);
+        assert_eq!(claims[4].evidence_traces, vec![TraceId::new(23)]);
     }
 }

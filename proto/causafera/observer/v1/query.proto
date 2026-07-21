@@ -67,4 +67,8 @@ message MaterialSurfaceDelta {
   sint64 mana_total = 8;
   optional uint64 contact_trace_id = 9;
   optional uint64 mana_effect_trace_id = 10;
+  uint64 transition_tick = 11;
+  optional uint64 mana_transition_trace_id = 12;
+  optional sint64 mana_before = 13;
+  optional sint64 mana_after = 14;
 }

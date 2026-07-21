@@ -18,7 +18,7 @@ use causafera_explanation::{
     MATERIAL_SURFACE_LOOP_CLAIM_SCHEMA, MaterialSurfaceLoopClaim, NumericClaimValue,
 };
 use causafera_observer_api::{
-    MATERIAL_SURFACE_DELTA_SCHEMA_V1, MAX_MATERIAL_SURFACE_DELTAS, MaterialSurfaceDelta,
+    MATERIAL_SURFACE_DELTA_SCHEMA_V2, MAX_MATERIAL_SURFACE_DELTAS, MaterialSurfaceDelta,
     ObserverChunkSummary, ObserverSnapshot, ObserverWorldSnapshot,
 };
 use causafera_perception::{PhysicalSignal, SignalMagnitude};
@@ -48,10 +48,13 @@ pub const MAX_RUNTIME_TICKS: u64 = 1_000_000;
 pub const MAX_PATTERN_HISTORY_ENTRIES: usize = 512;
 pub const MAX_PATTERN_HISTORY_PER_PATTERN: usize = 128;
 pub const MANA_PATTERN_HISTORY_TICKS: u64 = 8;
+pub const MAX_EXPERIMENT_RECIPE_MANA_SOURCES: usize = 16;
+pub const EXPERIMENT_RECIPE_MANA_SOURCE_POLICY_SCHEMA_V1: u64 = 1;
 
-pub const CURRENT_DIGEST_SCHEMA_VERSION: DigestSchemaVersion = DigestSchemaVersion::new(2);
+pub const CURRENT_DIGEST_SCHEMA_VERSION: DigestSchemaVersion = DigestSchemaVersion::new(3);
 
 const PHYSICAL_SYSTEM_ID: u64 = 10;
+pub const EXPERIMENT_RECIPE_MANA_SOURCE_SYSTEM_ID: u64 = 19;
 const MANA_SYSTEM_ID: u64 = 20;
 const MANA_EFFECTS_SYSTEM_ID: u64 = 21;
 const RESOLUTION_SYSTEM_ID: u64 = 30;
@@ -72,6 +75,7 @@ const MATERIAL_SURFACE_BOOTSTRAP_EVENT_KIND: u64 = 13;
 const MATERIAL_SURFACE_CONTACT_EVENT_KIND: u64 = 14;
 const MATERIAL_SURFACE_MANA_EVENT_KIND: u64 = 15;
 const MANA_EFFECT_ACTIVITY_EVENT_KIND: u64 = 16;
+pub const EXPERIMENT_RECIPE_MANA_SOURCE_EVENT_KIND: u64 = 17;
 const RUNTIME_OBJECT_KIND: u64 = 1;
 const PHYSICAL_OBJECT_KIND: u64 = 2;
 const MANA_OBJECT_KIND: u64 = 3;
@@ -80,6 +84,7 @@ const ACTOR_OBJECT_KIND: u64 = 5;
 const POPULATION_OBJECT_KIND: u64 = 6;
 const MATERIAL_OBJECT_KIND: u64 = 7;
 const MATERIAL_SURFACE_OBJECT_KIND: u64 = 8;
+pub const EXPERIMENT_RECIPE_MANA_SOURCE_OBJECT_KIND: u64 = 9;
 const ROOT_PROPERTY: u64 = 1;
 const PHYSICAL_PROPERTY: u64 = 2;
 const MANA_PROPERTY: u64 = 3;
@@ -91,6 +96,7 @@ const ACTOR_PROMOTION_PROPERTY: u64 = 9;
 const MATERIAL_FLOW_PROPERTY: u64 = 10;
 const MATERIAL_SURFACE_CONDITION_PROPERTY: u64 = 11;
 const MANA_EFFECT_ACTIVITY_PROPERTY: u64 = 12;
+pub const EXPERIMENT_RECIPE_MANA_SOURCE_PROPERTY: u64 = 13;
 const RESOLUTION_CHANNEL: u64 = 1;
 const MATERIAL_SURFACE_MANA_EFFECT_SCHEMA: u64 = 1;
 const PHYSICAL_DIGEST_DOMAIN: u64 = 0x5048_5953_4943_414C;
@@ -201,6 +207,78 @@ impl PhysicalPatternSchedule {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ExperimentRecipeManaSource {
+    pub source_record_id: u64,
+    pub enabled: bool,
+    pub scheduled_tick: u64,
+    pub target_chunk: ChartChunkCoord,
+    pub cell_index: u16,
+    pub amount: i64,
+    pub per_record_maximum: i64,
+    pub policy_schema_id: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ExperimentRecipeManaSourceRecipe {
+    pub records: Vec<ExperimentRecipeManaSource>,
+    pub recipe_budget: i64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ExperimentRecipeManaSourceReceipt {
+    pub source_record_id: u64,
+    pub scheduled_tick: u64,
+    pub executed_tick: u64,
+    pub source_trace: TraceId,
+    pub before_intensity: i64,
+    pub after_intensity: i64,
+    pub recipe_hash: StateFingerprint,
+    pub policy_schema_id: u64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ExperimentRecipeManaSourceReceiptSnapshot {
+    pub source_record_id: u64,
+    pub scheduled_tick: u64,
+    pub executed_tick: u64,
+    pub source_trace: TraceId,
+    pub before_intensity: i64,
+    pub after_intensity: i64,
+    pub recipe_hash: StateFingerprint,
+    pub policy_schema_id: u64,
+}
+
+impl ExperimentRecipeManaSourceRecipe {
+    pub fn recipe_hash(&self) -> StateFingerprint {
+        let mut digest = CanonicalDigest::new();
+        digest.write(u64::try_from(self.records.len()).unwrap_or(u64::MAX));
+        let mut records = self.records.clone();
+        records.sort_unstable_by_key(|record| (record.scheduled_tick, record.source_record_id));
+        for record in records {
+            digest.write(record.source_record_id);
+            digest.write(u64::from(record.enabled));
+            digest.write(record.scheduled_tick);
+            digest.write(record.target_chunk.chart.raw());
+            digest.write(u64::from_le_bytes(
+                i64::from(record.target_chunk.chunk.x).to_le_bytes(),
+            ));
+            digest.write(u64::from_le_bytes(
+                i64::from(record.target_chunk.chunk.y).to_le_bytes(),
+            ));
+            digest.write(u64::from_le_bytes(
+                i64::from(record.target_chunk.chunk.z).to_le_bytes(),
+            ));
+            digest.write(u64::from(record.cell_index));
+            digest.write(u64::from_le_bytes(record.amount.to_le_bytes()));
+            digest.write(u64::from_le_bytes(record.per_record_maximum.to_le_bytes()));
+            digest.write(record.policy_schema_id);
+        }
+        digest.write(u64::from_le_bytes(self.recipe_budget.to_le_bytes()));
+        digest.finish()
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RuntimeConfig {
     pub deterministic: DeterministicConfig,
     pub chunk_extent: u8,
@@ -214,6 +292,7 @@ pub struct RuntimeConfig {
     pub action_bounds: i64,
     pub bootstrap_population: u64,
     pub material_surface_signals_enabled: bool,
+    pub experiment_recipe_mana_sources: ExperimentRecipeManaSourceRecipe,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -253,10 +332,14 @@ impl RuntimeConfig {
             action_bounds: 8,
             bootstrap_population: 0,
             material_surface_signals_enabled: true,
+            experiment_recipe_mana_sources: ExperimentRecipeManaSourceRecipe {
+                records: Vec::new(),
+                recipe_budget: 0,
+            },
         }
     }
 
-    fn validate(self) -> Result<Self, RuntimeError> {
+    fn validate(mut self) -> Result<Self, RuntimeError> {
         if self.chunk_extent < 3 {
             return Err(RuntimeError::InvalidFieldExtent);
         }
@@ -272,6 +355,102 @@ impl RuntimeConfig {
         {
             return Err(RuntimeError::InvalidActorConfig);
         }
+        if self.experiment_recipe_mana_sources.records.len() > MAX_EXPERIMENT_RECIPE_MANA_SOURCES {
+            return Err(RuntimeError::ExperimentRecipeSourceCountExceeded {
+                count: self.experiment_recipe_mana_sources.records.len(),
+            });
+        }
+        if self.experiment_recipe_mana_sources.recipe_budget < 0 {
+            return Err(RuntimeError::InvalidExperimentRecipeBudget {
+                budget: self.experiment_recipe_mana_sources.recipe_budget,
+            });
+        }
+        let active_chunks = active_chunk_keys(self.chart_id, self.active_chunk_radius);
+        let active_chunks = active_chunks.into_iter().collect::<BTreeSet<_>>();
+        let mut source_ids = BTreeSet::new();
+        let mut canonical_keys = BTreeSet::new();
+        let mut enabled_amount = 0_i128;
+        let cells_per_extent = u32::from(self.chunk_extent).pow(3);
+        for record in &self.experiment_recipe_mana_sources.records {
+            if record.source_record_id == 0 {
+                return Err(RuntimeError::InvalidExperimentRecipeSourceId {
+                    source_record_id: record.source_record_id,
+                });
+            }
+            if !source_ids.insert(record.source_record_id) {
+                return Err(RuntimeError::DuplicateExperimentRecipeSourceId {
+                    source_record_id: record.source_record_id,
+                });
+            }
+            if !(1..=MAX_RUNTIME_TICKS).contains(&record.scheduled_tick) {
+                return Err(RuntimeError::InvalidExperimentRecipeScheduledTick {
+                    scheduled_tick: record.scheduled_tick,
+                });
+            }
+            if !canonical_keys.insert((
+                record.scheduled_tick,
+                record.target_chunk,
+                record.cell_index,
+            )) {
+                return Err(RuntimeError::DuplicateExperimentRecipeCanonicalKey {
+                    scheduled_tick: record.scheduled_tick,
+                    target_chunk: record.target_chunk,
+                    cell_index: record.cell_index,
+                });
+            }
+            if record.amount < 0 {
+                return Err(RuntimeError::InvalidExperimentRecipeAmount {
+                    amount: record.amount,
+                });
+            }
+            if record.per_record_maximum < 0 {
+                return Err(RuntimeError::InvalidExperimentRecipeMaximum {
+                    maximum: record.per_record_maximum,
+                });
+            }
+            if record.amount > record.per_record_maximum {
+                return Err(RuntimeError::ExperimentRecipeAmountExceedsMaximum {
+                    amount: record.amount,
+                    maximum: record.per_record_maximum,
+                });
+            }
+            if record.policy_schema_id != EXPERIMENT_RECIPE_MANA_SOURCE_POLICY_SCHEMA_V1 {
+                return Err(RuntimeError::InvalidExperimentRecipePolicySchema {
+                    policy_schema_id: record.policy_schema_id,
+                });
+            }
+            if record.target_chunk.chart != self.chart_id {
+                return Err(RuntimeError::InvalidExperimentRecipeTargetChart {
+                    source_record_id: record.source_record_id,
+                    chart: record.target_chunk.chart.raw(),
+                });
+            }
+            if !active_chunks.contains(&record.target_chunk) {
+                return Err(RuntimeError::InactiveExperimentRecipeTargetChunk {
+                    source_record_id: record.source_record_id,
+                    target_chunk: record.target_chunk,
+                });
+            }
+            if u32::from(record.cell_index) >= cells_per_extent {
+                return Err(RuntimeError::InvalidExperimentRecipeCellIndex {
+                    source_record_id: record.source_record_id,
+                    cell_index: record.cell_index,
+                    cell_count: cells_per_extent,
+                });
+            }
+            if record.enabled && record.amount != 0 {
+                enabled_amount += i128::from(record.amount);
+            }
+        }
+        if enabled_amount > i128::from(self.experiment_recipe_mana_sources.recipe_budget) {
+            return Err(RuntimeError::ExperimentRecipeBudgetExceeded {
+                enabled_amount,
+                recipe_budget: self.experiment_recipe_mana_sources.recipe_budget,
+            });
+        }
+        self.experiment_recipe_mana_sources
+            .records
+            .sort_unstable_by_key(|record| (record.scheduled_tick, record.source_record_id));
         Ok(self)
     }
 }
@@ -357,6 +536,7 @@ pub struct RuntimeSnapshotData {
     pub population: PopulationAggregateSnapshot,
     pub bootstrap: BootstrapReceiptSnapshot,
     pub traces: CausalTraceSnapshot,
+    pub experiment_recipe_mana_source_receipts: Vec<ExperimentRecipeManaSourceReceiptSnapshot>,
     pub experiment_manifest: Option<ExperimentManifestSnapshot>,
 }
 
@@ -484,6 +664,10 @@ impl Runtime {
         );
         scheduler.register_system(
             Phase::Mana,
+            Box::new(ExperimentRecipeManaSourceSystem::new(Arc::clone(&state))),
+        );
+        scheduler.register_system(
+            Phase::Mana,
             Box::new(ManaRuntimeSystem::new(
                 Arc::clone(&state),
                 config.mana_parameters,
@@ -590,6 +774,16 @@ impl Runtime {
         Ok(state.export_snapshot())
     }
 
+    pub fn executed_experiment_recipe_mana_sources(
+        &self,
+    ) -> Result<Vec<ExperimentRecipeManaSourceReceipt>, RuntimeError> {
+        let state = self.lock_state()?;
+        if let Some(error) = state.failure.clone() {
+            return Err(error);
+        }
+        Ok(state.executed_experiment_recipe_mana_sources.clone())
+    }
+
     /// Reconstruct a full `Runtime` from a completed-tick snapshot.
     pub fn from_snapshot(data: RuntimeSnapshotData) -> Result<Self, RuntimeError> {
         let config = data.recipe.config.clone();
@@ -630,6 +824,60 @@ pub enum RuntimeError {
     InvalidPatternSchedule,
     #[error("actor runtime configuration is invalid")]
     InvalidActorConfig,
+    #[error(
+        "experiment recipe contains {count} mana sources, maximum is {MAX_EXPERIMENT_RECIPE_MANA_SOURCES}"
+    )]
+    ExperimentRecipeSourceCountExceeded { count: usize },
+    #[error("experiment recipe source record ID must be nonzero: {source_record_id}")]
+    InvalidExperimentRecipeSourceId { source_record_id: u64 },
+    #[error("experiment recipe source record ID is duplicated: {source_record_id}")]
+    DuplicateExperimentRecipeSourceId { source_record_id: u64 },
+    #[error(
+        "experiment recipe canonical key is duplicated at tick {scheduled_tick}, chunk {target_chunk:?}, cell {cell_index}"
+    )]
+    DuplicateExperimentRecipeCanonicalKey {
+        scheduled_tick: u64,
+        target_chunk: ChartChunkCoord,
+        cell_index: u16,
+    },
+    #[error("experiment recipe source scheduled tick is invalid: {scheduled_tick}")]
+    InvalidExperimentRecipeScheduledTick { scheduled_tick: u64 },
+    #[error("experiment recipe source amount is negative: {amount}")]
+    InvalidExperimentRecipeAmount { amount: i64 },
+    #[error("experiment recipe source amount {amount} exceeds maximum {maximum}")]
+    ExperimentRecipeAmountExceedsMaximum { amount: i64, maximum: i64 },
+    #[error("experiment recipe source maximum is negative: {maximum}")]
+    InvalidExperimentRecipeMaximum { maximum: i64 },
+    #[error("experiment recipe budget is negative: {budget}")]
+    InvalidExperimentRecipeBudget { budget: i64 },
+    #[error(
+        "enabled experiment recipe amount {enabled_amount} exceeds recipe budget {recipe_budget}"
+    )]
+    ExperimentRecipeBudgetExceeded {
+        enabled_amount: i128,
+        recipe_budget: i64,
+    },
+    #[error("experiment recipe policy schema is unsupported: {policy_schema_id}")]
+    InvalidExperimentRecipePolicySchema { policy_schema_id: u64 },
+    #[error(
+        "experiment recipe source {source_record_id} targets chart {chart} instead of configured chart"
+    )]
+    InvalidExperimentRecipeTargetChart { source_record_id: u64, chart: u64 },
+    #[error(
+        "experiment recipe source {source_record_id} targets an inactive chunk {target_chunk:?}"
+    )]
+    InactiveExperimentRecipeTargetChunk {
+        source_record_id: u64,
+        target_chunk: ChartChunkCoord,
+    },
+    #[error(
+        "experiment recipe source {source_record_id} cell {cell_index} is outside {cell_count} cells"
+    )]
+    InvalidExperimentRecipeCellIndex {
+        source_record_id: u64,
+        cell_index: u16,
+        cell_count: u32,
+    },
     #[error("population aggregate state is invalid")]
     InvalidPopulationAggregate,
     #[error("invalid runtime tick count: {ticks}")]
@@ -971,6 +1219,7 @@ pub struct RuntimeState {
     material_surface_transitions: Vec<MaterialSurfaceTransition>,
     latest_physical_trace: TraceId,
     latest_mana_trace: Option<TraceId>,
+    pub executed_experiment_recipe_mana_sources: Vec<ExperimentRecipeManaSourceReceipt>,
     advanced_through: SimulationTime,
     physical_events: u64,
     mana_cell_changes: u64,
@@ -1096,6 +1345,7 @@ impl RuntimeState {
             material_surface_transitions: Vec::new(),
             latest_physical_trace: root_trace,
             latest_mana_trace: None,
+            executed_experiment_recipe_mana_sources: Vec::new(),
             advanced_through: SimulationTime::new(0),
             physical_events: 0,
             mana_cell_changes: 0,
@@ -1233,12 +1483,29 @@ impl RuntimeState {
                 receipts: Vec::new(),
             },
             traces: self.traces.export_snapshot(),
+            experiment_recipe_mana_source_receipts: self
+                .executed_experiment_recipe_mana_sources
+                .iter()
+                .map(|receipt| ExperimentRecipeManaSourceReceiptSnapshot {
+                    source_record_id: receipt.source_record_id,
+                    scheduled_tick: receipt.scheduled_tick,
+                    executed_tick: receipt.executed_tick,
+                    source_trace: receipt.source_trace,
+                    before_intensity: receipt.before_intensity,
+                    after_intensity: receipt.after_intensity,
+                    recipe_hash: receipt.recipe_hash,
+                    policy_schema_id: receipt.policy_schema_id,
+                })
+                .collect(),
             experiment_manifest: None,
         }
     }
 
     pub fn import_snapshot(data: RuntimeSnapshotData) -> Result<Self, RuntimeError> {
         let config = data.recipe.config.validate()?;
+        let imported_receipts = import_experiment_recipe_mana_source_receipts(
+            data.experiment_recipe_mana_source_receipts,
+        )?;
         let traces = CausalTraceStore::import_snapshot(data.traces)
             .map_err(|_| RuntimeError::InvalidSnapshot("trace store failed validation"))?;
         let mana = ManaFieldSet::import_snapshot(data.mana)?;
@@ -1307,6 +1574,7 @@ impl RuntimeState {
             material_surface_transitions,
             latest_physical_trace: counters.latest_physical_trace,
             latest_mana_trace: counters.latest_mana_trace,
+            executed_experiment_recipe_mana_sources: imported_receipts,
             advanced_through: counters.advanced_through,
             physical_events: counters.physical_events,
             mana_cell_changes: counters.mana_cell_changes,
@@ -1333,6 +1601,7 @@ impl RuntimeState {
     }
 
     fn validate_snapshot_references(&self) -> Result<(), RuntimeError> {
+        self.validate_experiment_recipe_mana_source_receipts()?;
         validate_trace_exists(&self.traces, self.latest_physical_trace)?;
         if let Some(trace) = self.latest_mana_trace {
             validate_trace_exists(&self.traces, trace)?;
@@ -1386,6 +1655,78 @@ impl RuntimeState {
         for aggregate in self.population_aggregates.values() {
             for trace in &aggregate.causal_ancestry {
                 validate_trace_exists(&self.traces, *trace)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn validate_experiment_recipe_mana_source_receipts(&self) -> Result<(), RuntimeError> {
+        let recipe_hash = self.config.experiment_recipe_mana_sources.recipe_hash();
+        for receipt in &self.executed_experiment_recipe_mana_sources {
+            let record = self
+                .config
+                .experiment_recipe_mana_sources
+                .records
+                .iter()
+                .find(|record| record.source_record_id == receipt.source_record_id)
+                .ok_or(RuntimeError::InvalidSnapshot(
+                    "source receipt references unknown source record",
+                ))?;
+            if !record.enabled || record.amount <= 0 {
+                return Err(RuntimeError::InvalidSnapshot(
+                    "source receipt references disabled or zero source record",
+                ));
+            }
+            if receipt.scheduled_tick != record.scheduled_tick {
+                return Err(RuntimeError::InvalidSnapshot(
+                    "source receipt scheduled tick does not match source record",
+                ));
+            }
+            if receipt.executed_tick != receipt.scheduled_tick {
+                return Err(RuntimeError::InvalidSnapshot(
+                    "source receipt executed tick does not match scheduled tick",
+                ));
+            }
+            if receipt.recipe_hash != recipe_hash {
+                return Err(RuntimeError::InvalidSnapshot(
+                    "source receipt recipe hash does not match recipe",
+                ));
+            }
+            if receipt.policy_schema_id != record.policy_schema_id {
+                return Err(RuntimeError::InvalidSnapshot(
+                    "source receipt policy schema does not match source record",
+                ));
+            }
+            let event =
+                self.traces
+                    .event(receipt.source_trace)
+                    .ok_or(RuntimeError::InvalidSnapshot(
+                        "source receipt references unknown source trace",
+                    ))?;
+            if event.kind != EventKindId::new(EXPERIMENT_RECIPE_MANA_SOURCE_EVENT_KIND)
+                || event.phase != Phase::Mana
+                || !event.causes.is_empty()
+                || event.time != SimulationTime::new(receipt.executed_tick)
+            {
+                return Err(RuntimeError::InvalidSnapshot(
+                    "source receipt source trace is not a root source event",
+                ));
+            }
+            let expected_before = fingerprint_i64(0x0302, receipt.before_intensity);
+            let expected_after = fingerprint_i64(0x0302, receipt.after_intensity);
+            let cell_id = cell_object_id(record.target_chunk, record.cell_index);
+            if !event.effects.iter().any(|effect| {
+                effect.target().object_kind()
+                    == StateObjectKindId::new(EXPERIMENT_RECIPE_MANA_SOURCE_OBJECT_KIND)
+                    && effect.target().object_id() == cell_id
+                    && effect.target().property()
+                        == StatePropertyId::new(EXPERIMENT_RECIPE_MANA_SOURCE_PROPERTY)
+                    && effect.before() == expected_before
+                    && effect.after() == expected_after
+            }) {
+                return Err(RuntimeError::InvalidSnapshot(
+                    "source receipt source trace does not match cell transition",
+                ));
             }
         }
         Ok(())
@@ -1528,17 +1869,29 @@ impl RuntimeState {
             .sort_by_key(|transition| (transition.id, transition.transition_trace));
         let material_surface_deltas = material_surface_transitions
             .into_iter()
-            .map(|transition| MaterialSurfaceDelta {
-                chart_id: transition.id.chunk.chart.raw(),
-                chunk_x: transition.id.chunk.chunk.x,
-                chunk_y: transition.id.chunk.chunk.y,
-                chunk_z: transition.id.chunk.chunk.z,
-                cell_ordinal: transition.id.cell_index,
-                before_condition: transition.before_condition,
-                after_condition: transition.after_condition,
-                mana_total: transition.mana_total,
-                contact_trace: transition.contact_trace,
-                mana_effect_trace: transition.mana_effect_trace,
+            .map(|transition| {
+                let (mana_transition_trace, mana_before, mana_after) =
+                    material_surface_mana_transition_evidence(
+                        &self.traces,
+                        &self.executed_experiment_recipe_mana_sources,
+                        &transition,
+                    );
+                MaterialSurfaceDelta {
+                    chart_id: transition.id.chunk.chart.raw(),
+                    chunk_x: transition.id.chunk.chunk.x,
+                    chunk_y: transition.id.chunk.chunk.y,
+                    chunk_z: transition.id.chunk.chunk.z,
+                    cell_ordinal: transition.id.cell_index,
+                    before_condition: transition.before_condition,
+                    after_condition: transition.after_condition,
+                    mana_total: transition.mana_total,
+                    contact_trace: transition.contact_trace,
+                    mana_effect_trace: transition.mana_effect_trace,
+                    transition_tick: transition.occurred_at.raw(),
+                    mana_transition_trace,
+                    mana_before,
+                    mana_after,
+                }
             })
             .collect::<Vec<_>>();
         ObserverWorldSnapshot {
@@ -1547,7 +1900,7 @@ impl RuntimeState {
             material_surface_delta_schema_version: if material_surface_deltas.is_empty() {
                 0
             } else {
-                MATERIAL_SURFACE_DELTA_SCHEMA_V1
+                MATERIAL_SURFACE_DELTA_SCHEMA_V2
             },
             material_surface_deltas,
         }
@@ -1602,6 +1955,12 @@ impl RuntimeState {
                 RuntimeError::InvalidSnapshot("invalid material surface Explanation report")
             });
         };
+        let (mana_transition_trace, mana_before, mana_after) =
+            material_surface_mana_transition_evidence(
+                &self.traces,
+                &self.executed_experiment_recipe_mana_sources,
+                &transition,
+            );
         let claim = MaterialSurfaceLoopClaim {
             before_condition: transition.before_condition,
             after_condition: transition.after_condition,
@@ -1610,6 +1969,9 @@ impl RuntimeState {
             observation_end: time,
             contact_trace,
             mana_effect_trace: transition.mana_effect_trace,
+            mana_transition_trace,
+            mana_before,
+            mana_after,
             repeated_structure_observed,
         };
         let claims = claim.to_explanation_claims().map_err(|_| {
@@ -1638,6 +2000,17 @@ impl RuntimeState {
         digest.write(PHYSICAL_DIGEST_DOMAIN);
         digest.write(time.raw());
         digest.write(if self.mana_effect_active { 1 } else { 0 });
+        digest.write(self.executed_experiment_recipe_mana_sources.len() as u64);
+        for receipt in &self.executed_experiment_recipe_mana_sources {
+            digest.write(receipt.source_record_id);
+            digest.write(receipt.scheduled_tick);
+            digest.write(receipt.executed_tick);
+            digest.write(receipt.source_trace.raw());
+            digest.write(receipt.before_intensity as u64);
+            digest.write(receipt.after_intensity as u64);
+            digest.write_bytes(receipt.recipe_hash.bytes());
+            digest.write(receipt.policy_schema_id);
+        }
         digest.write(self.material_surfaces.len() as u64);
         for (id, surface) in &self.material_surfaces {
             write_chart_chunk(&mut digest, id.chunk);
@@ -1802,45 +2175,51 @@ fn runtime_system_registrations() -> Vec<SystemRegistrationSnapshot> {
         },
         SystemRegistrationSnapshot {
             phase: Phase::Mana,
-            system_schema_id: MANA_SYSTEM_ID,
+            system_schema_id: EXPERIMENT_RECIPE_MANA_SOURCE_SYSTEM_ID,
             revision: 1,
             registration_order: 1,
         },
         SystemRegistrationSnapshot {
             phase: Phase::Mana,
-            system_schema_id: MANA_EFFECTS_SYSTEM_ID,
+            system_schema_id: MANA_SYSTEM_ID,
             revision: 1,
             registration_order: 2,
+        },
+        SystemRegistrationSnapshot {
+            phase: Phase::Mana,
+            system_schema_id: MANA_EFFECTS_SYSTEM_ID,
+            revision: 1,
+            registration_order: 3,
         },
         SystemRegistrationSnapshot {
             phase: Phase::Resolution,
             system_schema_id: RESOLUTION_SYSTEM_ID,
             revision: 1,
-            registration_order: 3,
+            registration_order: 4,
         },
         SystemRegistrationSnapshot {
             phase: Phase::Perception,
             system_schema_id: 40,
             revision: 1,
-            registration_order: 4,
+            registration_order: 5,
         },
         SystemRegistrationSnapshot {
             phase: Phase::Cognition,
             system_schema_id: 41,
             revision: 1,
-            registration_order: 5,
+            registration_order: 6,
         },
         SystemRegistrationSnapshot {
             phase: Phase::Action,
             system_schema_id: ACTOR_ACTION_SYSTEM_ID,
             revision: 1,
-            registration_order: 6,
+            registration_order: 7,
         },
         SystemRegistrationSnapshot {
             phase: Phase::Lifecycle,
             system_schema_id: LIFECYCLE_SYSTEM_ID,
             revision: 1,
-            registration_order: 7,
+            registration_order: 8,
         },
     ]
 }
@@ -1882,6 +2261,44 @@ fn import_active_chunks(
         }
     }
     Ok(chunks)
+}
+
+fn import_experiment_recipe_mana_source_receipts(
+    snapshots: Vec<ExperimentRecipeManaSourceReceiptSnapshot>,
+) -> Result<Vec<ExperimentRecipeManaSourceReceipt>, RuntimeError> {
+    if snapshots.len() > MAX_EXPERIMENT_RECIPE_MANA_SOURCES {
+        return Err(RuntimeError::InvalidSnapshot(
+            "too many experiment recipe mana source receipts",
+        ));
+    }
+    let mut receipts = Vec::with_capacity(snapshots.len());
+    let mut previous_key = None;
+    let mut source_ids = BTreeSet::new();
+    for snapshot in snapshots {
+        let key = (snapshot.executed_tick, snapshot.source_record_id);
+        if previous_key.is_some_and(|previous| previous >= key) {
+            return Err(RuntimeError::InvalidSnapshot(
+                "experiment recipe mana source receipts must be strictly ordered",
+            ));
+        }
+        if !source_ids.insert(snapshot.source_record_id) {
+            return Err(RuntimeError::InvalidSnapshot(
+                "duplicate experiment recipe mana source receipt ID",
+            ));
+        }
+        previous_key = Some(key);
+        receipts.push(ExperimentRecipeManaSourceReceipt {
+            source_record_id: snapshot.source_record_id,
+            scheduled_tick: snapshot.scheduled_tick,
+            executed_tick: snapshot.executed_tick,
+            source_trace: snapshot.source_trace,
+            before_intensity: snapshot.before_intensity,
+            after_intensity: snapshot.after_intensity,
+            recipe_hash: snapshot.recipe_hash,
+            policy_schema_id: snapshot.policy_schema_id,
+        });
+    }
+    Ok(receipts)
 }
 
 type ImportedMaterialSurfaces = (
@@ -2014,6 +2431,169 @@ fn validate_trace_exists(store: &CausalTraceStore, trace: TraceId) -> Result<(),
         Ok(())
     } else {
         Err(RuntimeError::InvalidSnapshot("unknown trace reference"))
+    }
+}
+
+struct ExperimentRecipeManaSourceSystem {
+    state: Arc<Mutex<RuntimeState>>,
+    next_time: SimulationTime,
+}
+
+impl ExperimentRecipeManaSourceSystem {
+    fn new(state: Arc<Mutex<RuntimeState>>) -> Self {
+        Self {
+            state,
+            next_time: SimulationTime::new(1),
+        }
+    }
+
+    fn execute(&mut self) -> Result<(), RuntimeError> {
+        let mut state = self.state.lock().map_err(|_| RuntimeError::StatePoisoned)?;
+        let recipe_hash = state.config.experiment_recipe_mana_sources.recipe_hash();
+        let due_records = state
+            .config
+            .experiment_recipe_mana_sources
+            .records
+            .iter()
+            .filter(|record| {
+                record.enabled
+                    && record.amount > 0
+                    && record.scheduled_tick == self.next_time.raw()
+                    && !state
+                        .executed_experiment_recipe_mana_sources
+                        .iter()
+                        .any(|receipt| receipt.source_record_id == record.source_record_id)
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        let mut pending = due_records
+            .into_iter()
+            .map(|record| {
+                let proposal = state.mana.propose_experiment_recipe_mana_source(
+                    record.target_chunk,
+                    record.cell_index,
+                    record.amount,
+                )?;
+                Ok::<_, RuntimeError>((record, proposal))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        pending.sort_unstable_by_key(|(_, proposal)| {
+            EventProposalKey::new(
+                EXPERIMENT_RECIPE_MANA_SOURCE_SYSTEM_ID,
+                cell_object_id(proposal.chunk, proposal.cell_index),
+                0,
+            )
+        });
+        if pending.is_empty() {
+            self.next_time = self.next_time.tick();
+            return Ok(());
+        }
+        if state
+            .executed_experiment_recipe_mana_sources
+            .len()
+            .saturating_add(pending.len())
+            > MAX_EXPERIMENT_RECIPE_MANA_SOURCES
+        {
+            return Err(RuntimeError::ExperimentRecipeSourceCountExceeded {
+                count: state
+                    .executed_experiment_recipe_mana_sources
+                    .len()
+                    .saturating_add(pending.len()),
+            });
+        }
+
+        let next_trace_id = state.traces.export_snapshot().next_trace_id;
+        let events = pending
+            .iter()
+            .enumerate()
+            .map(|(index, (record, proposal))| {
+                let trace_offset = u64::try_from(index).map_err(|_| {
+                    RuntimeError::CausalCommit(CausalCommitError::IdentifierExhausted)
+                })?;
+                let source_trace = TraceId::new(next_trace_id.checked_add(trace_offset).ok_or(
+                    RuntimeError::CausalCommit(CausalCommitError::IdentifierExhausted),
+                )?);
+                let cell_effect = CausalEffect::new(
+                    CausalTarget::new(
+                        StateObjectKindId::new(EXPERIMENT_RECIPE_MANA_SOURCE_OBJECT_KIND),
+                        cell_object_id(proposal.chunk, proposal.cell_index),
+                        StatePropertyId::new(EXPERIMENT_RECIPE_MANA_SOURCE_PROPERTY),
+                    ),
+                    fingerprint_i64(0x0302, proposal.before),
+                    fingerprint_i64(0x0302, proposal.after),
+                )?;
+                let receipt_effect = CausalEffect::new(
+                    CausalTarget::new(
+                        StateObjectKindId::new(EXPERIMENT_RECIPE_MANA_SOURCE_OBJECT_KIND),
+                        record.source_record_id,
+                        StatePropertyId::new(EXPERIMENT_RECIPE_MANA_SOURCE_PROPERTY),
+                    ),
+                    fingerprint_u64(0x0303, 0),
+                    experiment_recipe_mana_source_receipt_fingerprint(
+                        record,
+                        self.next_time.raw(),
+                        source_trace,
+                        proposal.before,
+                        proposal.after,
+                        recipe_hash,
+                    ),
+                )?;
+                let mut effects = vec![cell_effect, receipt_effect];
+                effects.sort_unstable_by_key(|effect| effect.target());
+                CausalEventProposal::new(
+                    EventProposalKey::new(
+                        EXPERIMENT_RECIPE_MANA_SOURCE_SYSTEM_ID,
+                        cell_object_id(proposal.chunk, proposal.cell_index),
+                        0,
+                    ),
+                    EventKindId::new(EXPERIMENT_RECIPE_MANA_SOURCE_EVENT_KIND),
+                    Vec::new(),
+                    effects,
+                )
+                .map_err(RuntimeError::from)
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let traces = state
+            .traces
+            .commit_batch(self.next_time, Phase::Mana, events)?;
+        for ((record, proposal), trace) in pending.iter().zip(traces.iter().copied()) {
+            state.mana = state
+                .mana
+                .clone()
+                .commit_experiment_recipe_mana_source(*proposal, trace)?;
+            state.latest_mana_trace = Some(trace);
+            state
+                .executed_experiment_recipe_mana_sources
+                .push(ExperimentRecipeManaSourceReceipt {
+                    source_record_id: record.source_record_id,
+                    scheduled_tick: record.scheduled_tick,
+                    executed_tick: self.next_time.raw(),
+                    source_trace: trace,
+                    before_intensity: proposal.before,
+                    after_intensity: proposal.after,
+                    recipe_hash,
+                    policy_schema_id: record.policy_schema_id,
+                });
+        }
+        state
+            .executed_experiment_recipe_mana_sources
+            .sort_unstable_by_key(|receipt| (receipt.executed_tick, receipt.source_record_id));
+        self.next_time = self.next_time.tick();
+        Ok(())
+    }
+}
+
+impl System for ExperimentRecipeManaSourceSystem {
+    fn run(&mut self, _stream: &mut RandomStream) {
+        if let Err(error) = self.execute() {
+            if let Ok(mut state) = self.state.lock() {
+                state.failure.get_or_insert(error);
+            }
+        }
+    }
+
+    fn restore_time(&mut self, time: SimulationTime) {
+        self.next_time = time;
     }
 }
 
@@ -2154,7 +2734,14 @@ impl ManaRuntimeSystem {
         state.mana_cell_changes = state
             .mana_cell_changes
             .saturating_add(u64::from(changed_count));
-        if let Some(trace) = traces.last().copied() {
+        let source_descendant = state.latest_mana_trace.and_then(|source_trace| {
+            traces
+                .iter()
+                .copied()
+                .filter(|trace| trace_descends_from(&state.traces, *trace, source_trace))
+                .min()
+        });
+        if let Some(trace) = source_descendant.or_else(|| traces.last().copied()) {
             state.latest_mana_trace = Some(trace);
         }
         self.next_time = self.next_time.tick();
@@ -3191,6 +3778,23 @@ fn append_trace(ancestry: &[TraceId], trace: TraceId) -> Result<Vec<TraceId>, Ru
     Ok(next)
 }
 
+fn trace_descends_from(store: &CausalTraceStore, trace: TraceId, ancestor: TraceId) -> bool {
+    let mut pending = vec![trace];
+    let mut visited = BTreeSet::new();
+    while let Some(candidate) = pending.pop() {
+        if candidate == ancestor {
+            return true;
+        }
+        if !visited.insert(candidate) {
+            continue;
+        }
+        if let Some(event) = store.event(candidate) {
+            pending.extend(event.causes.iter().copied());
+        }
+    }
+    false
+}
+
 fn merge_trace_ancestry(
     left: &[TraceId],
     right: &[TraceId],
@@ -3579,6 +4183,35 @@ fn validate_material_surface_last_transition(
         }
     }
     Ok(())
+}
+
+fn material_surface_mana_transition_evidence(
+    traces: &CausalTraceStore,
+    receipts: &[ExperimentRecipeManaSourceReceipt],
+    transition: &MaterialSurfaceTransition,
+) -> (Option<TraceId>, Option<i64>, Option<i64>) {
+    let Some(mana_effect_trace) = transition.mana_effect_trace else {
+        return (None, None, None);
+    };
+    let Some(mana_effect_event) = traces.event(mana_effect_trace) else {
+        return (None, None, None);
+    };
+    let Some(mana_transition_trace) = mana_effect_event.causes.iter().copied().find(|cause| {
+        traces.event(*cause).is_some_and(|event| {
+            event.kind == EventKindId::new(MANA_EVENT_KIND)
+                || event.kind == EventKindId::new(EXPERIMENT_RECIPE_MANA_SOURCE_EVENT_KIND)
+        })
+    }) else {
+        return (None, None, None);
+    };
+    let receipt = receipts
+        .iter()
+        .find(|receipt| receipt.source_trace == mana_transition_trace);
+    (
+        Some(mana_transition_trace),
+        receipt.map(|receipt| receipt.before_intensity),
+        receipt.map(|receipt| receipt.after_intensity),
+    )
 }
 
 fn validate_material_surface_mana_contact_parent(
@@ -3974,6 +4607,27 @@ fn fingerprint_i64(tag: u64, value: i64) -> StateFingerprint {
     fingerprint_u64(tag, value as u64)
 }
 
+fn experiment_recipe_mana_source_receipt_fingerprint(
+    record: &ExperimentRecipeManaSource,
+    executed_tick: u64,
+    source_trace: TraceId,
+    before_intensity: i64,
+    after_intensity: i64,
+    recipe_hash: StateFingerprint,
+) -> StateFingerprint {
+    let mut digest = CanonicalDigest::new();
+    digest.write(0x0303);
+    digest.write(record.source_record_id);
+    digest.write(record.scheduled_tick);
+    digest.write(executed_tick);
+    digest.write(source_trace.raw());
+    digest.write(before_intensity as u64);
+    digest.write(after_intensity as u64);
+    digest.write_bytes(recipe_hash.bytes());
+    digest.write(record.policy_schema_id);
+    digest.finish()
+}
+
 fn fingerprint_pair(tag: u64, first: i64, second: i64) -> StateFingerprint {
     fingerprint_words([
         tag,
@@ -4080,6 +4734,35 @@ mod tests {
 
         // Then: Option presence is part of the canonical authoritative representation.
         assert_ne!(absent_digest, zero_digest);
+    }
+
+    #[test]
+    fn physical_digest_includes_source_receipt_recipe_hash() {
+        // Given: equivalent states whose only receipt difference is the canonical recipe hash.
+        let config = production_loop_config(703);
+        let mut first = RuntimeState::new(&config).unwrap();
+        let mut second = RuntimeState::new(&config).unwrap();
+        let receipt = ExperimentRecipeManaSourceReceipt {
+            source_record_id: 1,
+            scheduled_tick: 2,
+            executed_tick: 2,
+            source_trace: TraceId::new(1),
+            before_intensity: 0,
+            after_intensity: 3,
+            recipe_hash: fingerprint_u64(0x0303, 1),
+            policy_schema_id: EXPERIMENT_RECIPE_MANA_SOURCE_POLICY_SCHEMA_V1,
+        };
+        first.executed_experiment_recipe_mana_sources.push(receipt);
+        let mut altered = receipt;
+        altered.recipe_hash = fingerprint_u64(0x0303, 2);
+        second.executed_experiment_recipe_mana_sources.push(altered);
+
+        // When: physical digests are computed at the same completed time.
+        let first_digest = first.physical_state_digest(SimulationTime::new(2));
+        let second_digest = second.physical_state_digest(SimulationTime::new(2));
+
+        // Then: the persisted recipe identity contributes to authoritative physical identity.
+        assert_ne!(first_digest, second_digest);
     }
 
     #[test]

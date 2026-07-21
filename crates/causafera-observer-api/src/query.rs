@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 pub const OBSERVER_PROTOCOL_V1: u32 = 1;
 pub const MAX_QUERY_PAYLOAD_BYTES: usize = 1 << 20;
 pub const MATERIAL_SURFACE_DELTA_SCHEMA_V1: u32 = 1;
+pub const MATERIAL_SURFACE_DELTA_SCHEMA_V2: u32 = 2;
 pub const MAX_MATERIAL_SURFACE_DELTAS: usize = 64;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -134,6 +135,10 @@ pub struct MaterialSurfaceDelta {
     pub mana_total: i64,
     pub contact_trace: Option<TraceId>,
     pub mana_effect_trace: Option<TraceId>,
+    pub transition_tick: u64,
+    pub mana_transition_trace: Option<TraceId>,
+    pub mana_before: Option<i64>,
+    pub mana_after: Option<i64>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

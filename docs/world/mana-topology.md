@@ -36,6 +36,40 @@ This is a bounded local material response, not a general material economy, terra
 biological coupling. The changed surface supplies a range-limited physical signal, but agents
 still receive only generic extracted features and subjective-scene cues.
 
+## Bounded immutable experiment-recipe source
+
+One additional Mana-phase path commits an external experiment-policy creation
+through the same proposal/commit boundary. `RuntimeConfig` carries an immutable
+recipe of at most 16 `ExperimentRecipeManaSource` records, each with an opaque
+source record ID, enabled flag, scheduled tick, chart-qualified cell address,
+fixed-point `i64` amount, per-record maximum, recipe-wide budget, and policy
+schema V1. The recipe rejects duplicates, invalid cells, invalid ticks, negative
+or over-budget amounts, and malformed policy before any scheduler commit.
+
+`ExperimentRecipeManaSourceSystem` (system schema id 19, registration order 1,
+`Phase::Mana`) reads only the immutable recipe and its own bounded executed-receipt
+state. At a record's scheduled tick it commits exactly one root external-cause
+event (event kind 17, object kind 9, property 13, empty causes) with two effects:
+a mana-cell before/after transition and an executed-receipt record. It then
+installs the cell intensity and a `last_change` trace through
+`ManaFieldSet::propose/commit_experiment_recipe_mana_source`. Disabled or zero-
+amount records never commit and never receipt.
+
+Executed receipts in `RuntimeState` are bounded to 16, sorted by
+`(executed_tick, source_record_id)`, and contain the source record ID,
+scheduled/executed tick, source trace, before/after intensity, recipe hash, and
+policy schema. They prevent re-execution across save/resume. The source trace
+becomes a parent-before-child ancestor of every derived mana evolution, gate
+activity, and material-surface transition that uses the changed cell.
+
+Same-seed replay and pre/post-source save/resume are exactly equal. A disabled
+or zero-amount source produces no source commit and remains equal to its no-
+record control in physical, history, and canonical digests.
+
+This is an experiment-specific accounting rule, not a general source API,
+conservation redesign, reservoir, or redistribution. A production conservation
+model, operator reservoir, and broader external-creation policies remain deferred.
+
 ## Geography
 
 Fields are chunk-local causal state, so terrain, geology, hydrology, climate, ecology, and construction can later alter sample production or field parameters. Phase 17 does not invent those couplings. Cross-chunk boundary exchange is also deferred.

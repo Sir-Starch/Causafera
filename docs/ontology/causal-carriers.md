@@ -72,4 +72,10 @@ cues and a subjective scene before a later action. The observer and Explanation 
 read-only and carry trace anchors; no material-surface ID, chart address, or trace becomes agent
 knowledge.
 
+The bounded experiment-recipe source adds one externally originated carrier to this same path.
+An immutable, validated recipe record enters as a root Mana-phase commit, then its chart-qualified
+fixed-point cell transition may flow through the existing mana, material-surface, physical-signal,
+and perception boundaries. Source record IDs, recipe hashes, and policy schemas remain engine-level
+provenance and never enter agent-facing state; the source does not carry semantic intent.
+
 RFC-GEO-002 clarifies spatial carrier addressing: global geography is chart-qualified surface state, while local physics uses bounded Euclidean 3D frames. Bare chunks are local-chart addresses. Chart seams and local-frame bounds require explicit transforms; containment and resolution cannot manufacture geometric adjacency.

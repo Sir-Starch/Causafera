@@ -112,6 +112,7 @@ fn schema_name(id: u64, locale: ObserverLocale) -> String {
         (11, ObserverLocale::En) => "material-surface observation window",
         (12, ObserverLocale::En) => "material-surface repetition control",
         (13, ObserverLocale::En) => "material-surface mana context",
+        (14, ObserverLocale::En) => "material-surface mana transition",
         (1, ObserverLocale::Ru) => "коэффициент реконструируемости",
         (2, ObserverLocale::Ru) => "коэффициент зависимости от истории",
         (3, ObserverLocale::Ru) => "каузальная глубина",
@@ -125,6 +126,7 @@ fn schema_name(id: u64, locale: ObserverLocale) -> String {
         (11, ObserverLocale::Ru) => "окно наблюдения материальной поверхности",
         (12, ObserverLocale::Ru) => "контроль повторяемости материальной поверхности",
         (13, ObserverLocale::Ru) => "мана-контекст материальной поверхности",
+        (14, ObserverLocale::Ru) => "переход маны материальной поверхности",
         _ => {
             return match locale {
                 ObserverLocale::En => format!("claim schema {id} (generic renderer)"),

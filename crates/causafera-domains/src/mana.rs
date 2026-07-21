@@ -317,6 +317,14 @@ pub struct ManaFieldSet {
     fields: BTreeMap<ChartChunkCoord, ManaField>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ExperimentRecipeManaSourceManaProposal {
+    pub chunk: ChartChunkCoord,
+    pub cell_index: u16,
+    pub before: i64,
+    pub after: i64,
+}
+
 impl ManaFieldSet {
     pub fn new(fields: Vec<ManaField>) -> Result<Self, ManaError> {
         if fields.is_empty() {
@@ -356,6 +364,51 @@ impl ManaFieldSet {
 
     pub fn field(&self, chunk: ChartChunkCoord) -> Option<&ManaField> {
         self.fields.get(&chunk)
+    }
+
+    pub fn propose_experiment_recipe_mana_source(
+        &self,
+        chunk: ChartChunkCoord,
+        cell_index: u16,
+        amount: i64,
+    ) -> Result<ExperimentRecipeManaSourceManaProposal, ManaError> {
+        if amount <= 0 {
+            return Err(ManaError::InvalidSourceAmount);
+        }
+        let field = self
+            .fields
+            .get(&chunk)
+            .ok_or(ManaError::UnknownFieldChunk)?;
+        let index = usize::from(cell_index);
+        let before = field
+            .intensity
+            .get(index)
+            .copied()
+            .ok_or(ManaError::PositionOutsideField)?;
+        Ok(ExperimentRecipeManaSourceManaProposal {
+            chunk,
+            cell_index,
+            before,
+            after: before.saturating_add(amount),
+        })
+    }
+
+    pub fn commit_experiment_recipe_mana_source(
+        mut self,
+        proposal: ExperimentRecipeManaSourceManaProposal,
+        source_trace: TraceId,
+    ) -> Result<Self, ManaError> {
+        let field = self
+            .fields
+            .get_mut(&proposal.chunk)
+            .ok_or(ManaError::UnknownFieldChunk)?;
+        let index = usize::from(proposal.cell_index);
+        if index >= field.intensity.len() {
+            return Err(ManaError::PositionOutsideField);
+        }
+        field.intensity[index] = proposal.after;
+        field.last_change[index] = Some(source_trace);
+        Ok(self)
     }
 
     pub fn total_intensity(&self) -> i64 {
@@ -535,6 +588,7 @@ pub enum ManaError {
     SampleOutsideWindow,
     SampleOutsideChunk,
     PositionOutsideField,
+    InvalidSourceAmount,
     CommitTraceMismatch,
     InvalidFieldSet,
     DuplicateFieldChunk,
@@ -937,6 +991,99 @@ mod tests {
             .collect::<Vec<_>>();
         let committed = proposal.commit(&traces).unwrap();
         assert_eq!(committed.observed_through(), SimulationTime::new(2));
+    }
+
+    #[test]
+    fn experiment_recipe_mana_source_proposes_without_mutating() {
+        // Given: an existing field set with an empty target cell.
+        let field = ManaField::new(ManaFieldId::new(1), chart_chunk(), 3).unwrap();
+        let fields = ManaFieldSet::new(vec![field]).unwrap();
+
+        // When: a positive experiment-recipe source amount is proposed.
+        let proposal = fields
+            .propose_experiment_recipe_mana_source(chart_chunk(), 4, 7)
+            .unwrap();
+
+        // Then: the proposal contains the fixed-point transition and the field remains unchanged.
+        assert_eq!(proposal.chunk, chart_chunk());
+        assert_eq!(proposal.cell_index, 4);
+        assert_eq!(proposal.before, 0);
+        assert_eq!(proposal.after, 7);
+        assert_eq!(fields.field(chart_chunk()).unwrap().intensity()[4], 0);
+        assert_eq!(fields.observed_through(), Some(SimulationTime::new(0)));
+    }
+
+    #[test]
+    fn experiment_recipe_mana_source_commit_sets_trace_without_advancing_clock() {
+        // Given: a pure source proposal for an existing mana cell.
+        let fields = ManaFieldSet::new(vec![
+            ManaField::new(ManaFieldId::new(1), chart_chunk(), 3).unwrap(),
+        ])
+        .unwrap();
+        let proposal = fields
+            .propose_experiment_recipe_mana_source(chart_chunk(), 4, 7)
+            .unwrap();
+
+        // When: the proposal is committed with its source trace.
+        let committed = fields
+            .commit_experiment_recipe_mana_source(proposal, TraceId::new(42))
+            .unwrap();
+
+        // Then: only the cell value and last-change trace change; the evolution clock does not.
+        let field = committed.field(chart_chunk()).unwrap();
+        assert_eq!(field.intensity()[4], 7);
+        assert_eq!(field.last_change()[4], Some(TraceId::new(42)));
+        assert_eq!(field.observed_through(), SimulationTime::new(0));
+    }
+
+    #[test]
+    fn experiment_recipe_mana_source_saturates_at_i64_maximum() {
+        // Given: a target cell already at the fixed-point maximum.
+        let mut field = ManaField::new(ManaFieldId::new(1), chart_chunk(), 1)
+            .unwrap()
+            .export_snapshot();
+        field.intensity[0] = i64::MAX;
+        let fields = ManaFieldSet::import_snapshot(ManaFieldSetSnapshot {
+            fields: vec![field],
+        })
+        .unwrap();
+
+        // When: a positive source is proposed at that cell.
+        let proposal = fields
+            .propose_experiment_recipe_mana_source(chart_chunk(), 0, 1)
+            .unwrap();
+
+        // Then: fixed-point addition saturates instead of overflowing.
+        assert_eq!(proposal.before, i64::MAX);
+        assert_eq!(proposal.after, i64::MAX);
+    }
+
+    #[test]
+    fn experiment_recipe_mana_source_rejects_invalid_targets_and_amounts() {
+        // Given: a field set containing exactly one bounded field.
+        let fields = ManaFieldSet::new(vec![
+            ManaField::new(ManaFieldId::new(1), chart_chunk(), 3).unwrap(),
+        ])
+        .unwrap();
+
+        // When: source proposals use an unknown chunk, invalid cell, or non-positive amount.
+        // Then: every invalid source is rejected before mutation.
+        assert_eq!(
+            fields.propose_experiment_recipe_mana_source(chart_chunk_at(2, 0), 0, 1),
+            Err(ManaError::UnknownFieldChunk)
+        );
+        assert_eq!(
+            fields.propose_experiment_recipe_mana_source(chart_chunk(), 27, 1),
+            Err(ManaError::PositionOutsideField)
+        );
+        assert_eq!(
+            fields.propose_experiment_recipe_mana_source(chart_chunk(), 0, 0),
+            Err(ManaError::InvalidSourceAmount)
+        );
+        assert_eq!(
+            fields.propose_experiment_recipe_mana_source(chart_chunk(), 0, -1),
+            Err(ManaError::InvalidSourceAmount)
+        );
     }
 
     #[test]
