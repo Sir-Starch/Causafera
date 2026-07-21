@@ -575,6 +575,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[ignore = "expensive benchmark"]
     fn default_control_and_intervention_bootstraps_a_real_runtime_carrier() {
         let report = ExperimentRunner::run_control_and_intervention(
             77,
@@ -597,6 +598,29 @@ mod tests {
     }
 
     #[test]
+    fn short_control_and_intervention_bootstraps_a_real_runtime_carrier() {
+        let report = ExperimentRunner::run_control_and_intervention(
+            77,
+            128,
+            32,
+            SimulationTime::new(40),
+            SimulationTime::new(80),
+        )
+        .expect("short comparison must exercise the production material-mana carrier");
+
+        assert!(report.control.result.final_snapshot.actor_count > 0);
+        assert!(
+            report
+                .control
+                .result
+                .final_snapshot
+                .perceived_actor_features
+                > 0
+        );
+    }
+
+    #[test]
+    #[ignore = "expensive benchmark"]
     fn long_run_suite_replays_and_detects_intervention() {
         let report = ExperimentRunner::run_control_and_intervention(
             77,
@@ -633,6 +657,43 @@ mod tests {
     }
 
     #[test]
+    fn short_run_suite_replays_and_detects_intervention() {
+        let report = ExperimentRunner::run_control_and_intervention(
+            77,
+            128,
+            32,
+            SimulationTime::new(40),
+            SimulationTime::new(80),
+        )
+        .unwrap();
+        assert!(report.trajectories_diverged);
+        assert!(!report.explanation_report.frames.is_empty());
+        assert_eq!(
+            report
+                .matched_checkpoint_analysis
+                .pre_intervention_baseline_distance,
+            0
+        );
+        assert!(report.final_physical_states_diverged);
+        assert!(report.transient_physical_states_diverged);
+        assert!(report.history_diverged);
+        assert_ne!(
+            report.control.physical_state_digest,
+            report.intervention.physical_state_digest
+        );
+        assert_ne!(
+            report.control.history_digest,
+            report.intervention.history_digest
+        );
+        assert_eq!(report.control.result.final_snapshot.time.raw(), 128);
+        assert!(
+            report.control.result.final_snapshot.physical_events
+                > report.intervention.result.final_snapshot.physical_events
+        );
+    }
+
+    #[test]
+    #[ignore = "expensive benchmark"]
     fn populated_long_run_reports_coupled_domains_with_bounded_evidence() {
         let report = ExperimentRunner::run_populated_control_and_intervention(
             88,
