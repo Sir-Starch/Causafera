@@ -248,6 +248,9 @@ impl ManaField {
         let mut injected = self.intensity.clone();
         let mut direct_causes = vec![Vec::new(); injected.len()];
         for (pattern, group) in &groups {
+            if group.len() < 2 {
+                continue;
+            }
             let score = pattern_score(group, parameters);
             let group_causes: Vec<_> = group.iter().map(|sample| sample.cause).collect();
             for sample in canonical.iter().filter(|sample| sample.pattern == *pattern) {
@@ -289,6 +292,7 @@ impl ManaField {
             chunk: self.chunk,
             extent: self.extent,
             through,
+            base_intensity: self.intensity.clone(),
             proposed,
             inherited_traces: self.last_change.clone(),
             changes,
@@ -483,6 +487,7 @@ pub struct ManaEvolutionProposal {
     chunk: ChartChunkCoord,
     extent: u8,
     through: SimulationTime,
+    base_intensity: Vec<i64>,
     proposed: Vec<i64>,
     inherited_traces: Vec<Option<TraceId>>,
     changes: Vec<ManaCellChange>,
@@ -649,14 +654,20 @@ fn apply_exchange_delta(
         .get_mut(&chunk)
         .ok_or(ManaError::UnknownFieldChunk)?;
     let before = proposal.proposed[index];
+    let base = proposal.base_intensity[index];
     let after = before.saturating_add(delta);
     proposal.proposed[index] = after;
     let cell_index = index as u16;
-    if let Some(change) = proposal
+    if let Some(change_index) = proposal
         .changes
-        .iter_mut()
-        .find(|change| change.cell_index == cell_index)
+        .iter()
+        .position(|change| change.cell_index == cell_index)
     {
+        if after == base {
+            proposal.changes.remove(change_index);
+            return Ok(());
+        }
+        let change = &mut proposal.changes[change_index];
         change.after = after;
         for cause in causes.into_iter().flatten() {
             if !change.causes.contains(&cause) {
@@ -666,12 +677,19 @@ fn apply_exchange_delta(
         change.causes.sort_unstable();
         return Ok(());
     }
-    proposal.changes.push(ManaCellChange {
-        cell_index,
-        before,
-        after,
-        causes: causes.into_iter().flatten().collect(),
-    });
+    if after != base {
+        proposal.changes.push(ManaCellChange {
+            cell_index,
+            before: base,
+            after,
+            causes: causes
+                .into_iter()
+                .flatten()
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .collect(),
+        });
+    }
     Ok(())
 }
 
@@ -904,9 +922,9 @@ mod tests {
         let field = ManaField::new(ManaFieldId::new(1), chart_chunk(), 3).unwrap();
         let proposal = field
             .propose_evolution(
-                SimulationTime::new(1),
+                SimulationTime::new(2),
                 parameters(),
-                &[sample(1, 1, 0)],
+                &[sample(1, 1, 0), sample(2, 1, 1)],
                 &[],
             )
             .unwrap();
@@ -918,7 +936,48 @@ mod tests {
             .map(|index| TraceId::new(100 + index as u64))
             .collect::<Vec<_>>();
         let committed = proposal.commit(&traces).unwrap();
-        assert_eq!(committed.observed_through(), SimulationTime::new(1));
+        assert_eq!(committed.observed_through(), SimulationTime::new(2));
+    }
+
+    #[test]
+    fn boundary_exchange_that_returns_to_start_emits_no_mana_change() {
+        let field = ManaField::new(ManaFieldId::new(1), chart_chunk(), 3).unwrap();
+        let proposal = field
+            .propose_evolution(SimulationTime::new(1), parameters(), &[], &[])
+            .unwrap();
+        let mut proposals = BTreeMap::from([(chart_chunk(), proposal)]);
+
+        apply_exchange_delta(&mut proposals, chart_chunk(), 0, 5, [None, None]).unwrap();
+        apply_exchange_delta(&mut proposals, chart_chunk(), 0, -5, [None, None]).unwrap();
+
+        assert!(
+            proposals[&chart_chunk()].changes().is_empty(),
+            "a net-zero boundary exchange must not require a causal commit trace"
+        );
+    }
+
+    #[test]
+    fn boundary_exchange_canonicalizes_parent_traces() {
+        let field = ManaField::new(ManaFieldId::new(1), chart_chunk(), 3).unwrap();
+        let proposal = field
+            .propose_evolution(SimulationTime::new(1), parameters(), &[], &[])
+            .unwrap();
+        let mut proposals = BTreeMap::from([(chart_chunk(), proposal)]);
+
+        apply_exchange_delta(
+            &mut proposals,
+            chart_chunk(),
+            0,
+            5,
+            [Some(TraceId::new(5)), Some(TraceId::new(3))],
+        )
+        .unwrap();
+
+        assert_eq!(
+            proposals[&chart_chunk()].changes()[0].causes,
+            vec![TraceId::new(3), TraceId::new(5)],
+            "boundary-exchange parents must be strictly ordered for provenance commits"
+        );
     }
 
     #[test]
@@ -1037,13 +1096,13 @@ mod tests {
         let left = chart_chunk_at(1, 0);
         let same_chart_right = chart_chunk_at(1, 1);
         let other_chart_right = chart_chunk_at(2, 1);
-        let samples = [sample_in(left, 1, 2, 1)];
+        let samples = [sample_in(left, 1, 2, 1), sample_in(left, 2, 2, 2)];
 
         let same_chart = field_set(left, same_chart_right)
-            .propose_evolution(SimulationTime::new(1), parameters(), &samples, &[])
+            .propose_evolution(SimulationTime::new(2), parameters(), &samples, &[])
             .unwrap();
         let cross_chart = field_set(left, other_chart_right)
-            .propose_evolution(SimulationTime::new(1), parameters(), &samples, &[])
+            .propose_evolution(SimulationTime::new(2), parameters(), &samples, &[])
             .unwrap();
 
         let same_neighbor_total: i64 = same_chart

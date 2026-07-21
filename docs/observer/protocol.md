@@ -34,8 +34,18 @@ The implemented v1 surface supports negotiation and three request kinds:
 - a bounded chart-qualified world-chunk snapshot.
 
 The world projection contains numeric terrain bounds, roughness, local mana total, causal-resolution
-relevance/level, population aggregate, activity count, and trace anchor. It does not contain a city,
-biome, species, occupation, spell, or other semantic classification.
+relevance/level, population aggregate, activity count, and trace anchor. Its additive
+`MaterialSurfaceDelta` V1 projection is bounded and includes a chart-qualified chunk, cell ordinal,
+typed before/after condition, mana total, and optional contact and mana-effect trace anchors. It
+does not contain a city, biome, species, occupation, spell, or other semantic classification.
+
+`MaterialSurfaceDelta` is an inspection projection, not the material state or a mutation API. Its
+schema version and capacity remain explicit in the existing `world_chunks` response; a query,
+locale, or UI rendering cannot alter authoritative state.
+
+The two trace anchors use protobuf field presence, not a numeric sentinel: an omitted anchor is
+different from an explicitly encoded `TraceId(0)`. Consumers must preserve that distinction when
+round-tripping V1 data, so bootstrap-only surface state cannot be misreported as actor contact.
 
 ## Protocol Boundaries
 

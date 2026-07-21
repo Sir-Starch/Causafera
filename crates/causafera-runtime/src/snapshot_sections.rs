@@ -21,6 +21,8 @@ use crate::{
     ActorId, ActorObjectiveSnapshot, ActorObjectiveStateSnapshot, ActorPhysicalObject,
     ActorSubjectiveSnapshot, ActorSubjectiveStateSnapshot, BootstrapReceiptRecord,
     BootstrapReceiptSnapshot, CarrierAdapterConfig, ExperimentManifestSnapshot, GenericFeature,
+    MAX_MATERIAL_SURFACE_TRANSITIONS, MaterialSurface, MaterialSurfaceId,
+    MaterialSurfaceRecordSnapshot, MaterialSurfaceSnapshot, MaterialSurfaceTransition,
     MinimalBodyState, PatternHistorySnapshot, PerceivedSelf, PhysicalCountersSnapshot,
     PopulationAggregate, PopulationAggregateSnapshot, RuntimeConfig, RuntimeRecipeSnapshot,
     RuntimeSnapshotData, RuntimeState, SensorAperture, SensorKindId, SpatialChunkSnapshot,
@@ -38,6 +40,12 @@ pub const SECTION_ACTOR_SUBJECTIVE: u16 = 0x0008;
 pub const SECTION_POPULATION_BOOTSTRAP: u16 = 0x0009;
 pub const SECTION_CAUSAL_TRACES: u16 = 0x000A;
 pub const SECTION_EXPERIMENT_MANIFEST: u16 = 0x000B;
+pub const MATERIAL_SURFACE_SECTION_ID: u16 = 0x000C;
+
+const RUNTIME_RECIPE_SECTION_MAJOR: u16 = 2;
+const PHYSICAL_COUNTERS_SECTION_MAJOR: u16 = 2;
+const MATERIAL_SURFACE_SECTION_MAJOR: u16 = 1;
+const CURRENT_SECTION_MINOR: u16 = 0;
 
 /// Encode a `CausalTraceSnapshot` into section bytes.
 pub fn encode_trace_section(snapshot: &CausalTraceSnapshot) -> Vec<u8> {
@@ -493,7 +501,6 @@ pub fn encode_physical_counters_section(snapshot: &PhysicalCountersSnapshot) -> 
     encode_option_trace(&mut enc, snapshot.latest_mana_trace);
     enc.write_u64(snapshot.advanced_through.raw());
     for value in [
-        snapshot.physical_counter,
         snapshot.physical_events,
         snapshot.mana_cell_changes,
         snapshot.mana_physical_effects,
@@ -515,7 +522,6 @@ pub fn encode_physical_counters_section(snapshot: &PhysicalCountersSnapshot) -> 
     }
     enc.write_u32(snapshot.last_mana_changes);
     encode_bool(&mut enc, snapshot.mana_effect_active);
-    enc.write_u32(snapshot.physical_mana_effect_boost);
     buf
 }
 
@@ -531,7 +537,6 @@ pub fn decode_physical_counters_section(
     let latest_physical_trace = TraceId::new(dec.read_u64()?);
     let latest_mana_trace = decode_option_trace(&mut dec)?;
     let advanced_through = SimulationTime::new(dec.read_u64()?);
-    let physical_counter = dec.read_u64()?;
     let physical_events = dec.read_u64()?;
     let mana_cell_changes = dec.read_u64()?;
     let mana_physical_effects = dec.read_u64()?;
@@ -550,14 +555,12 @@ pub fn decode_physical_counters_section(
     let next_actor_id = dec.read_u64()?;
     let last_mana_changes = dec.read_u32()?;
     let mana_effect_active = decode_bool(&mut dec)?;
-    let physical_mana_effect_boost = dec.read_u32()?;
     require_empty(&dec)?;
     Ok(PhysicalCountersSnapshot {
         pending_samples,
         latest_physical_trace,
         latest_mana_trace,
         advanced_through,
-        physical_counter,
         physical_events,
         mana_cell_changes,
         mana_physical_effects,
@@ -576,7 +579,91 @@ pub fn decode_physical_counters_section(
         next_actor_id,
         last_mana_changes,
         mana_effect_active,
-        physical_mana_effect_boost,
+    })
+}
+
+pub fn encode_material_surface_section(snapshot: &MaterialSurfaceSnapshot) -> Vec<u8> {
+    let mut buf = Vec::new();
+    let mut enc = LittleEndianEncoder::new(&mut buf);
+    enc.write_u64(snapshot.records.len() as u64);
+    for record in &snapshot.records {
+        encode_material_surface_id(&mut enc, record.id);
+        enc.write_i64(record.surface.condition);
+        enc.write_u64(record.surface.contact_count);
+        enc.write_u64(record.surface.last_transition.raw());
+    }
+    enc.write_u64(snapshot.pending_physical_changes.len() as u64);
+    for id in &snapshot.pending_physical_changes {
+        encode_material_surface_id(&mut enc, *id);
+    }
+    enc.write_u64(snapshot.transitions.len() as u64);
+    for transition in &snapshot.transitions {
+        encode_material_surface_id(&mut enc, transition.id);
+        enc.write_u64(transition.occurred_at.raw());
+        enc.write_i64(transition.before_condition);
+        enc.write_i64(transition.after_condition);
+        enc.write_i64(transition.mana_total);
+        encode_option_trace(&mut enc, transition.contact_trace);
+        encode_option_trace(&mut enc, transition.mana_effect_trace);
+        enc.write_u64(transition.transition_trace.raw());
+    }
+    buf
+}
+
+pub fn decode_material_surface_section(
+    bytes: &[u8],
+) -> Result<MaterialSurfaceSnapshot, PersistenceError> {
+    let mut dec = LittleEndianDecoder::new(bytes);
+    let record_count = read_count(&mut dec, 4_096, "material surface")?;
+    let mut records = Vec::with_capacity(record_count);
+    for _ in 0..record_count {
+        records.push(MaterialSurfaceRecordSnapshot {
+            id: decode_material_surface_id(&mut dec)?,
+            surface: MaterialSurface {
+                condition: dec.read_i64()?,
+                contact_count: dec.read_u64()?,
+                last_transition: TraceId::new(dec.read_u64()?),
+            },
+        });
+    }
+    reject_unsorted_material_surfaces(records.iter().map(|record| record.id))?;
+    let pending_count = read_count(&mut dec, 4_096, "changed material surface")?;
+    let mut pending_physical_changes = Vec::with_capacity(pending_count);
+    for _ in 0..pending_count {
+        pending_physical_changes.push(decode_material_surface_id(&mut dec)?);
+    }
+    reject_unsorted_material_surfaces(pending_physical_changes.iter().copied())?;
+    let transition_count = read_count(
+        &mut dec,
+        MAX_MATERIAL_SURFACE_TRANSITIONS,
+        "material surface transition",
+    )?;
+    let mut transitions = Vec::with_capacity(transition_count);
+    let mut previous_trace = None;
+    for _ in 0..transition_count {
+        let transition = MaterialSurfaceTransition {
+            id: decode_material_surface_id(&mut dec)?,
+            occurred_at: SimulationTime::new(dec.read_u64()?),
+            before_condition: dec.read_i64()?,
+            after_condition: dec.read_i64()?,
+            mana_total: dec.read_i64()?,
+            contact_trace: decode_option_trace(&mut dec)?,
+            mana_effect_trace: decode_option_trace(&mut dec)?,
+            transition_trace: TraceId::new(dec.read_u64()?),
+        };
+        if previous_trace.is_some_and(|previous| previous >= transition.transition_trace) {
+            return Err(PersistenceError::codec(
+                "material surface transitions must be strictly trace ordered",
+            ));
+        }
+        previous_trace = Some(transition.transition_trace);
+        transitions.push(transition);
+    }
+    require_empty(&dec)?;
+    Ok(MaterialSurfaceSnapshot {
+        records,
+        pending_physical_changes,
+        transitions,
     })
 }
 
@@ -821,6 +908,7 @@ fn encode_runtime_config(enc: &mut LittleEndianEncoder<'_>, config: &RuntimeConf
     enc.write_u8(config.sensor_count);
     enc.write_i64(config.action_bounds);
     enc.write_u64(config.bootstrap_population);
+    encode_bool(enc, config.material_surface_signals_enabled);
 }
 
 fn decode_runtime_config(
@@ -856,6 +944,7 @@ fn decode_runtime_config(
     config.sensor_count = dec.read_u8()?;
     config.action_bounds = dec.read_i64()?;
     config.bootstrap_population = dec.read_u64()?;
+    config.material_surface_signals_enabled = decode_bool(dec)?;
     Ok(config)
 }
 
@@ -1686,6 +1775,11 @@ fn encode_chart_chunk(enc: &mut LittleEndianEncoder<'_>, chunk: ChartChunkCoord)
     enc.write_u32(chunk.chunk.z as u32);
 }
 
+fn encode_material_surface_id(enc: &mut LittleEndianEncoder<'_>, id: MaterialSurfaceId) {
+    encode_chart_chunk(enc, id.chunk);
+    enc.write_u16(id.cell_index);
+}
+
 fn decode_chart_chunk(
     dec: &mut LittleEndianDecoder<'_>,
 ) -> Result<ChartChunkCoord, PersistenceError> {
@@ -1697,6 +1791,18 @@ fn decode_chart_chunk(
             dec.read_u32()? as i32,
         ),
     ))
+}
+
+fn decode_material_surface_id(
+    dec: &mut LittleEndianDecoder<'_>,
+) -> Result<MaterialSurfaceId, PersistenceError> {
+    let id = MaterialSurfaceId::new(decode_chart_chunk(dec)?, dec.read_u16()?);
+    if !id.has_valid_cell_ordinal() {
+        return Err(PersistenceError::codec(
+            "material surface cell ordinal is invalid",
+        ));
+    }
+    Ok(id)
 }
 
 fn encode_world_coord(enc: &mut LittleEndianEncoder<'_>, coord: WorldCoord) {
@@ -1857,6 +1963,21 @@ fn reject_unsorted_chunks(
     Ok(())
 }
 
+fn reject_unsorted_material_surfaces(
+    ids: impl Iterator<Item = MaterialSurfaceId>,
+) -> Result<(), PersistenceError> {
+    let mut previous = None;
+    for id in ids {
+        if previous.is_some_and(|previous| previous >= id) {
+            return Err(PersistenceError::codec(
+                "material surfaces must be strictly ordered",
+            ));
+        }
+        previous = Some(id);
+    }
+    Ok(())
+}
+
 fn require_empty(dec: &LittleEndianDecoder<'_>) -> Result<(), PersistenceError> {
     if dec.is_empty() {
         Ok(())
@@ -1874,8 +1995,8 @@ pub fn assemble_envelope(data: &RuntimeSnapshotData) -> Result<SnapshotEnvelope,
     sections.insert(
         u64::from(SECTION_RUNTIME_RECIPE),
         SectionPayload {
-            section_major: 1,
-            section_minor: 0,
+            section_major: RUNTIME_RECIPE_SECTION_MAJOR,
+            section_minor: CURRENT_SECTION_MINOR,
             flags: 0,
             decoded_size_limit: 0,
             bytes: encode_runtime_recipe_section(&data.recipe),
@@ -1924,11 +2045,21 @@ pub fn assemble_envelope(data: &RuntimeSnapshotData) -> Result<SnapshotEnvelope,
     sections.insert(
         u64::from(SECTION_PHYSICAL_COUNTERS),
         SectionPayload {
-            section_major: 1,
-            section_minor: 0,
+            section_major: PHYSICAL_COUNTERS_SECTION_MAJOR,
+            section_minor: CURRENT_SECTION_MINOR,
             flags: 0,
             decoded_size_limit: 0,
             bytes: encode_physical_counters_section(&data.physical_counters),
+        },
+    );
+    sections.insert(
+        u64::from(MATERIAL_SURFACE_SECTION_ID),
+        SectionPayload {
+            section_major: MATERIAL_SURFACE_SECTION_MAJOR,
+            section_minor: CURRENT_SECTION_MINOR,
+            flags: 0,
+            decoded_size_limit: 0,
+            bytes: encode_material_surface_section(&data.material_surfaces),
         },
     );
     sections.insert(
@@ -1999,9 +2130,9 @@ pub fn assemble_envelope(data: &RuntimeSnapshotData) -> Result<SnapshotEnvelope,
         world_seed: data.recipe.seed,
         completed_time: data.recipe.completed_time.raw(),
         runtime_recipe_fingerprint: [0u8; 32],
-        physical_digest_schema: 1,
+        physical_digest_schema: crate::CURRENT_DIGEST_SCHEMA_VERSION.raw(),
         physical_digest,
-        history_digest_schema: 1,
+        history_digest_schema: crate::CURRENT_DIGEST_SCHEMA_VERSION.raw(),
         history_digest,
         section_count: 0,
         section_directory_offset: 0,
@@ -2015,15 +2146,21 @@ pub fn assemble_envelope(data: &RuntimeSnapshotData) -> Result<SnapshotEnvelope,
 pub fn disassemble_envelope(
     envelope: &SnapshotEnvelope,
 ) -> Result<RuntimeSnapshotData, PersistenceError> {
+    if envelope.header.physical_digest_schema != crate::CURRENT_DIGEST_SCHEMA_VERSION.raw()
+        || envelope.header.history_digest_schema != crate::CURRENT_DIGEST_SCHEMA_VERSION.raw()
+    {
+        return Err(PersistenceError::codec(
+            "unsupported authoritative digest schema",
+        ));
+    }
     let recipe = decode_runtime_recipe_section(
-        envelope
-            .sections
-            .get(&u64::from(SECTION_RUNTIME_RECIPE))
-            .ok_or(PersistenceError::MissingRequiredSection {
-                schema_id: u64::from(SECTION_RUNTIME_RECIPE),
-            })?
-            .bytes
-            .as_slice(),
+        required_section(
+            envelope,
+            SECTION_RUNTIME_RECIPE,
+            RUNTIME_RECIPE_SECTION_MAJOR,
+        )?
+        .bytes
+        .as_slice(),
     )?;
     let spatial = decode_spatial_section(
         envelope
@@ -2066,14 +2203,22 @@ pub fn disassemble_envelope(
             .as_slice(),
     )?;
     let physical_counters = decode_physical_counters_section(
-        envelope
-            .sections
-            .get(&u64::from(SECTION_PHYSICAL_COUNTERS))
-            .ok_or(PersistenceError::MissingRequiredSection {
-                schema_id: u64::from(SECTION_PHYSICAL_COUNTERS),
-            })?
-            .bytes
-            .as_slice(),
+        required_section(
+            envelope,
+            SECTION_PHYSICAL_COUNTERS,
+            PHYSICAL_COUNTERS_SECTION_MAJOR,
+        )?
+        .bytes
+        .as_slice(),
+    )?;
+    let material_surfaces = decode_material_surface_section(
+        required_section(
+            envelope,
+            MATERIAL_SURFACE_SECTION_ID,
+            MATERIAL_SURFACE_SECTION_MAJOR,
+        )?
+        .bytes
+        .as_slice(),
     )?;
     let actors_objective = decode_actor_objective_section(
         envelope
@@ -2129,6 +2274,7 @@ pub fn disassemble_envelope(
         resolution_policy,
         pattern_history,
         physical_counters,
+        material_surfaces,
         actors_objective,
         actors_subjective,
         population,
@@ -2136,6 +2282,25 @@ pub fn disassemble_envelope(
         traces,
         experiment_manifest,
     })
+}
+
+fn required_section(
+    envelope: &SnapshotEnvelope,
+    schema_id: u16,
+    required_major: u16,
+) -> Result<&SectionPayload, PersistenceError> {
+    let payload = envelope.sections.get(&u64::from(schema_id)).ok_or(
+        PersistenceError::MissingRequiredSection {
+            schema_id: u64::from(schema_id),
+        },
+    )?;
+    if payload.section_major != required_major || payload.section_minor != CURRENT_SECTION_MINOR {
+        return Err(PersistenceError::codec(format!(
+            "unsupported authoritative section {schema_id:#06x} version {}.{}",
+            payload.section_major, payload.section_minor
+        )));
+    }
+    Ok(payload)
 }
 
 #[cfg(test)]
@@ -2147,7 +2312,7 @@ mod tests {
         CausalEffect, CausalEventProposal, CausalTarget, EventProposalKey, StateFingerprint,
     };
     use causafera_types::{
-        EventKindId, SimulationTime, StateObjectKindId, StatePropertyId, TraceId,
+        CHUNK_SIZE, EventKindId, SimulationTime, StateObjectKindId, StatePropertyId, TraceId,
     };
 
     fn fingerprint(byte: u8) -> StateFingerprint {
@@ -2172,6 +2337,18 @@ mod tests {
         config.actor_count = 1;
         config.sensor_count = 1;
         config.bootstrap_population = 4;
+        let mut runtime = Runtime::new(config).unwrap();
+        runtime.run_ticks(16).unwrap();
+        runtime.export_snapshot().unwrap()
+    }
+
+    fn material_surface_loop_snapshot_data() -> crate::RuntimeSnapshotData {
+        let mut config = crate::RuntimeConfig::new(56);
+        config.actor_count = 1;
+        config.sensor_count = 1;
+        config.bootstrap_population = 8;
+        config.mana_parameters.effect_threshold = 1;
+        config.mana_parameters.effect_hysteresis = 0;
         let mut runtime = Runtime::new(config).unwrap();
         runtime.run_ticks(16).unwrap();
         runtime.export_snapshot().unwrap()
@@ -2292,6 +2469,12 @@ mod tests {
         .unwrap();
         assert_eq!(counters, data.physical_counters);
 
+        let material = decode_material_surface_section(&encode_material_surface_section(
+            &data.material_surfaces,
+        ))
+        .unwrap();
+        assert_eq!(material, data.material_surfaces);
+
         let objective =
             decode_actor_objective_section(&encode_actor_objective_section(&data.actors_objective))
                 .unwrap();
@@ -2310,6 +2493,43 @@ mod tests {
         .unwrap();
         assert_eq!(population, data.population);
         assert_eq!(bootstrap, data.bootstrap);
+    }
+
+    #[test]
+    fn authoritative_recipe_and_material_sections_are_versioned_and_fail_closed() {
+        // Given: a current authoritative snapshot envelope.
+        let data = populated_snapshot_data();
+        let envelope = assemble_envelope(&data).unwrap();
+
+        // When: a required section declares an incompatible major version.
+        let mut incompatible_recipe = envelope.clone();
+        incompatible_recipe
+            .sections
+            .get_mut(&u64::from(SECTION_RUNTIME_RECIPE))
+            .unwrap()
+            .section_major = 1;
+        let mut incompatible_material = envelope.clone();
+        incompatible_material
+            .sections
+            .get_mut(&u64::from(MATERIAL_SURFACE_SECTION_ID))
+            .unwrap()
+            .section_major = 0;
+
+        // Then: current layout versions are explicit and incompatible authoritative bytes stop.
+        assert_eq!(
+            envelope.sections[&u64::from(SECTION_RUNTIME_RECIPE)].section_major,
+            2
+        );
+        assert_eq!(
+            envelope.sections[&u64::from(SECTION_PHYSICAL_COUNTERS)].section_major,
+            2
+        );
+        assert_eq!(
+            envelope.sections[&u64::from(MATERIAL_SURFACE_SECTION_ID)].section_major,
+            1
+        );
+        assert!(disassemble_envelope(&incompatible_recipe).is_err());
+        assert!(disassemble_envelope(&incompatible_material).is_err());
     }
 
     #[test]
@@ -2353,6 +2573,7 @@ mod tests {
             encode_resolution_section(&data.resolution, &data.resolution_policy),
             encode_pattern_history_section(&data.pattern_history),
             encode_physical_counters_section(&data.physical_counters),
+            encode_material_surface_section(&data.material_surfaces),
             encode_actor_objective_section(&data.actors_objective),
             encode_actor_subjective_section(&data.actors_subjective),
             encode_population_section(&data.population, &data.bootstrap),
@@ -2367,6 +2588,7 @@ mod tests {
                     || decode_resolution_section(&encoded).is_err()
                     || decode_pattern_history_section(&encoded).is_err()
                     || decode_physical_counters_section(&encoded).is_err()
+                    || decode_material_surface_section(&encoded).is_err()
                     || decode_actor_objective_section(&encoded).is_err()
                     || decode_actor_subjective_section(&encoded).is_err()
                     || decode_population_section(&encoded).is_err()
@@ -2399,6 +2621,513 @@ mod tests {
             )
             .is_err()
         );
+
+        let mut data = populated_snapshot_data();
+        let duplicate = data.material_surfaces.records[0];
+        data.material_surfaces.records.push(duplicate);
+        assert!(
+            decode_material_surface_section(&encode_material_surface_section(
+                &data.material_surfaces,
+            ))
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn material_surface_decoder_rejects_invalid_cell_ordinal() {
+        let mut data = populated_snapshot_data();
+        data.material_surfaces.records[0].id.cell_index = u16::from(CHUNK_SIZE).pow(3);
+
+        assert!(
+            decode_material_surface_section(&encode_material_surface_section(
+                &data.material_surfaces,
+            ))
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn material_surface_decoder_rejects_unordered_transition_history() {
+        let mut data = populated_snapshot_data();
+        assert!(data.material_surfaces.transitions.len() > 1);
+        data.material_surfaces.transitions.swap(0, 1);
+
+        assert!(
+            decode_material_surface_section(&encode_material_surface_section(
+                &data.material_surfaces,
+            ))
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn material_surface_decoder_rejects_transition_history_over_its_bound() {
+        let mut data = populated_snapshot_data();
+        let transition = data.material_surfaces.transitions[0];
+        data.material_surfaces.transitions =
+            vec![transition; MAX_MATERIAL_SURFACE_TRANSITIONS.saturating_add(1)];
+
+        assert!(
+            decode_material_surface_section(&encode_material_surface_section(
+                &data.material_surfaces,
+            ))
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn runtime_state_import_rejects_material_transition_without_a_change() {
+        let mut data = populated_snapshot_data();
+        let transition = data
+            .material_surfaces
+            .transitions
+            .first_mut()
+            .expect("production snapshot retains bootstrap transition");
+        transition.after_condition = transition.before_condition;
+
+        assert!(matches!(
+            RuntimeState::import_snapshot(data),
+            Err(crate::RuntimeError::InvalidSnapshot(
+                "material surface transition has no state change"
+            ))
+        ));
+    }
+
+    #[test]
+    fn runtime_state_import_rejects_non_contact_material_anchor() {
+        let mut data = populated_snapshot_data();
+        let transition = data
+            .material_surfaces
+            .transitions
+            .first_mut()
+            .expect("production snapshot retains bootstrap transition");
+        transition.contact_trace = Some(transition.transition_trace);
+
+        assert!(matches!(
+            RuntimeState::import_snapshot(data),
+            Err(crate::RuntimeError::InvalidSnapshot(
+                "material surface contact anchor is not an actor contact"
+            ))
+        ));
+    }
+
+    #[test]
+    fn runtime_state_import_rejects_mana_effect_without_direct_contact_parent() {
+        let mut data = material_surface_loop_snapshot_data();
+        let mana_index = data
+            .material_surfaces
+            .transitions
+            .iter()
+            .position(|transition| transition.mana_effect_trace.is_some())
+            .expect("production snapshot retains mana material transition");
+        let original_contact = data.material_surfaces.transitions[mana_index]
+            .contact_trace
+            .expect("mana material transition retains contact trace");
+        let unrelated_contact = data
+            .material_surfaces
+            .transitions
+            .iter()
+            .find_map(|transition| {
+                transition
+                    .contact_trace
+                    .filter(|trace| *trace != original_contact)
+            })
+            .expect("production snapshot retains another contact trace");
+        data.material_surfaces.transitions[mana_index].contact_trace = Some(unrelated_contact);
+
+        assert!(matches!(
+            RuntimeState::import_snapshot(data),
+            Err(crate::RuntimeError::InvalidSnapshot(
+                "material surface mana anchor does not cite contact trace"
+            ))
+        ));
+    }
+
+    #[test]
+    fn runtime_state_import_rejects_mana_effect_with_unrelated_contact_parent() {
+        // Given: a generated mana transition, an earlier direct contact, and another surface.
+        let mut data = material_surface_loop_snapshot_data();
+        let mana_index = data
+            .material_surfaces
+            .transitions
+            .iter()
+            .position(|transition| transition.mana_effect_trace.is_some())
+            .expect("production snapshot retains mana material transition");
+        let mana_transition = data.material_surfaces.transitions[mana_index];
+        let original_contact = mana_transition
+            .contact_trace
+            .expect("mana material transition retains contact trace");
+        let unrelated_index = data
+            .material_surfaces
+            .transitions
+            .iter()
+            .position(|transition| {
+                transition.transition_trace < mana_transition.transition_trace
+                    && transition.contact_trace == Some(transition.transition_trace)
+                    && transition.transition_trace != original_contact
+            })
+            .expect("production snapshot retains another earlier contact transition");
+        let unrelated_transition = data.material_surfaces.transitions[unrelated_index];
+        let unrelated_surface = data
+            .material_surfaces
+            .records
+            .iter()
+            .map(|record| record.id)
+            .find(|id| *id != mana_transition.id)
+            .expect("production snapshot retains another material surface");
+        let unrelated_bootstrap_trace = data
+            .material_surfaces
+            .transitions
+            .iter()
+            .find(|transition| {
+                transition.id == unrelated_surface
+                    && transition.contact_trace.is_none()
+                    && transition.mana_effect_trace.is_none()
+            })
+            .expect("production snapshot retains the other surface bootstrap transition")
+            .transition_trace;
+        let unrelated_surface_target = data
+            .traces
+            .events
+            .iter()
+            .find(|event| event.trace_id == unrelated_bootstrap_trace)
+            .and_then(|event| event.effects.last())
+            .expect("surface bootstrap retains a material condition target")
+            .target();
+
+        // When: a crafted snapshot turns that direct contact into a valid contact on the other surface.
+        let contact_event = data
+            .traces
+            .events
+            .iter_mut()
+            .find(|event| event.trace_id == unrelated_transition.transition_trace)
+            .expect("earlier contact event is persisted");
+        let actor_effect = *contact_event
+            .effects
+            .first()
+            .expect("contact event retains actor effect");
+        let source_material_effect = *contact_event
+            .effects
+            .last()
+            .expect("contact event retains material condition effect");
+        let material_effect = CausalEffect::new(
+            unrelated_surface_target,
+            source_material_effect.before(),
+            source_material_effect.after(),
+        )
+        .expect("material condition effect is valid");
+        contact_event.effects = vec![actor_effect, material_effect];
+        data.material_surfaces.transitions[unrelated_index].id = unrelated_surface;
+        data.material_surfaces.transitions[mana_index].contact_trace =
+            Some(unrelated_transition.transition_trace);
+        let mana_event = data
+            .traces
+            .events
+            .iter_mut()
+            .find(|event| event.trace_id == mana_transition.transition_trace)
+            .expect("mana transition event is persisted");
+        let contact_cause = mana_event
+            .causes
+            .iter_mut()
+            .find(|cause| **cause == original_contact)
+            .expect("mana transition directly cites its contact anchor");
+        *contact_cause = unrelated_transition.transition_trace;
+        mana_event.causes.sort_unstable();
+
+        // Then: the accepted direct contact must bind to the mana transition's own surface.
+        assert!(matches!(
+            RuntimeState::import_snapshot(data),
+            Err(crate::RuntimeError::InvalidSnapshot(
+                "material surface mana contact parent does not target declared condition"
+            ))
+        ));
+    }
+
+    #[test]
+    fn runtime_state_import_accepts_production_material_surface_loop_anchors() {
+        // Given: a production-path snapshot with bootstrap, contact, and mana transitions.
+        let data = material_surface_loop_snapshot_data();
+
+        // When: the full authoritative state is imported.
+        let imported = RuntimeState::import_snapshot(data);
+
+        // Then: the emitted anchors bind to the generated transition history.
+        assert!(imported.is_ok());
+    }
+
+    #[test]
+    fn runtime_state_import_rejects_material_surface_last_transition_from_another_surface() {
+        // Given: two persisted material surfaces with valid causal anchors.
+        let mut data = material_surface_loop_snapshot_data();
+        let record_index = data
+            .material_surfaces
+            .records
+            .iter()
+            .position(|record| {
+                data.material_surfaces.transitions.iter().any(|transition| {
+                    transition.id == record.id
+                        && transition.transition_trace == record.surface.last_transition
+                })
+            })
+            .expect("production snapshot retains a material surface with a transition anchor");
+        let record_id = data.material_surfaces.records[record_index].id;
+        let unrelated_trace = data
+            .material_surfaces
+            .records
+            .iter()
+            .find(|record| record.id != record_id)
+            .expect("production snapshot retains another material surface")
+            .surface
+            .last_transition;
+
+        // When: the record's anchor is replaced by another existing causal trace.
+        data.material_surfaces.records[record_index]
+            .surface
+            .last_transition = unrelated_trace;
+
+        // Then: existence alone is insufficient; the anchor must own this exact surface state.
+        assert!(matches!(
+            RuntimeState::import_snapshot(data),
+            Err(crate::RuntimeError::InvalidSnapshot(
+                "material surface last transition effect target does not match surface"
+            ))
+        ));
+    }
+
+    #[test]
+    fn runtime_state_import_rejects_material_surface_last_transition_with_stale_state() {
+        // Given: a production material record anchored to its own valid causal event.
+        let mut data = material_surface_loop_snapshot_data();
+        let record = data
+            .material_surfaces
+            .records
+            .iter_mut()
+            .find(|record| {
+                data.material_surfaces.transitions.iter().any(|transition| {
+                    transition.id == record.id
+                        && transition.transition_trace == record.surface.last_transition
+                })
+            })
+            .expect("production snapshot retains a material surface with a transition anchor");
+
+        // When: persisted physical state no longer matches the anchor's after fingerprint.
+        record.surface.contact_count = record.surface.contact_count.saturating_add(1);
+
+        // Then: import rejects a detached authoritative material record.
+        assert!(matches!(
+            RuntimeState::import_snapshot(data),
+            Err(crate::RuntimeError::InvalidSnapshot(
+                "material surface last transition effect does not match persisted surface"
+            ))
+        ));
+    }
+
+    #[test]
+    fn runtime_state_import_rejects_same_kind_contact_event_from_another_surface() {
+        // Given: a contact transition and another real contact event of the same kind.
+        let mut data = material_surface_loop_snapshot_data();
+        let contact_index = data
+            .material_surfaces
+            .transitions
+            .iter()
+            .position(|transition| {
+                transition.contact_trace.is_some() && transition.mana_effect_trace.is_none()
+            })
+            .expect("production snapshot retains a contact transition");
+        let contact_trace = data.material_surfaces.transitions[contact_index].transition_trace;
+        let contact_event = data
+            .traces
+            .events
+            .iter()
+            .find(|event| event.trace_id == contact_trace)
+            .expect("contact transition trace is persisted")
+            .clone();
+        let unrelated_event = data
+            .traces
+            .events
+            .iter()
+            .find(|event| {
+                event.trace_id != contact_trace
+                    && event.kind == contact_event.kind
+                    && event.effects != contact_event.effects
+            })
+            .expect("production snapshot retains another contact event")
+            .clone();
+
+        // When: the transition's own trace is replaced with another same-kind event payload.
+        let event = data
+            .traces
+            .events
+            .iter_mut()
+            .find(|event| event.trace_id == contact_trace)
+            .expect("contact transition trace is mutable in the snapshot");
+        event.time = unrelated_event.time;
+        event.effects = unrelated_event.effects;
+        data.material_surfaces.transitions[contact_index].occurred_at = unrelated_event.time;
+
+        // Then: matching an event kind alone cannot rebind the transition to another surface.
+        assert!(matches!(
+            RuntimeState::import_snapshot(data),
+            Err(crate::RuntimeError::InvalidSnapshot(
+                "material surface transition effect fingerprint does not match declared condition"
+            ))
+        ));
+    }
+
+    #[test]
+    fn runtime_state_import_rejects_material_transition_with_unrelated_surface_id() {
+        // Given: a real contact transition and a second persisted surface.
+        let mut data = material_surface_loop_snapshot_data();
+        let transition = data
+            .material_surfaces
+            .transitions
+            .iter_mut()
+            .find(|transition| {
+                transition.contact_trace.is_some() && transition.mana_effect_trace.is_none()
+            })
+            .expect("production snapshot retains a contact transition");
+        let unrelated_surface = data
+            .material_surfaces
+            .records
+            .iter()
+            .map(|record| record.id)
+            .find(|id| *id != transition.id)
+            .expect("production snapshot retains another material surface");
+
+        // When: the transition declares a different chart-qualified surface.
+        transition.id = unrelated_surface;
+
+        // Then: the event target must still bind to the declared surface identity.
+        assert!(matches!(
+            RuntimeState::import_snapshot(data),
+            Err(crate::RuntimeError::InvalidSnapshot(
+                "material surface transition effect target does not match surface"
+            ))
+        ));
+    }
+
+    #[test]
+    fn runtime_state_import_rejects_material_transition_with_unrelated_time() {
+        // Given: a real contact transition with an authoritative trace time.
+        let mut data = material_surface_loop_snapshot_data();
+        let transition = data
+            .material_surfaces
+            .transitions
+            .iter_mut()
+            .find(|transition| {
+                transition.contact_trace.is_some() && transition.mana_effect_trace.is_none()
+            })
+            .expect("production snapshot retains a contact transition");
+
+        // When: the persisted transition claims a different scheduler time.
+        transition.occurred_at = transition.occurred_at.tick();
+
+        // Then: import rejects the mismatched trace anchor time.
+        assert!(matches!(
+            RuntimeState::import_snapshot(data),
+            Err(crate::RuntimeError::InvalidSnapshot(
+                "material surface transition time does not match anchor"
+            ))
+        ));
+    }
+
+    #[test]
+    fn runtime_state_import_rejects_material_transition_with_wrong_effect_property() {
+        // Given: a real contact transition and its committed causal event.
+        let mut data = material_surface_loop_snapshot_data();
+        let trace = data
+            .material_surfaces
+            .transitions
+            .iter()
+            .find(|transition| {
+                transition.contact_trace.is_some() && transition.mana_effect_trace.is_none()
+            })
+            .expect("production snapshot retains a contact transition")
+            .transition_trace;
+        let event = data
+            .traces
+            .events
+            .iter_mut()
+            .find(|event| event.trace_id == trace)
+            .expect("contact transition trace is persisted");
+        let effect = event
+            .effects
+            .iter_mut()
+            .find(|effect| effect.target().object_kind() == StateObjectKindId::new(8))
+            .expect("contact event has a material effect");
+        let target = effect.target();
+        *effect = CausalEffect::new(
+            CausalTarget::new(
+                target.object_kind(),
+                target.object_id(),
+                StatePropertyId::new(99),
+            ),
+            effect.before(),
+            effect.after(),
+        )
+        .unwrap();
+
+        // When: the material effect uses a non-condition property.
+        // Then: import fails rather than accepting a same-object provenance substitution.
+        assert!(matches!(
+            RuntimeState::import_snapshot(data),
+            Err(crate::RuntimeError::InvalidSnapshot(
+                "material surface transition effect property is not condition"
+            ))
+        ));
+    }
+
+    #[test]
+    fn runtime_state_import_rejects_material_transition_with_wrong_condition_fingerprint() {
+        // Given: a real contact transition with a persisted material effect.
+        let mut data = material_surface_loop_snapshot_data();
+        let transition = data
+            .material_surfaces
+            .transitions
+            .iter_mut()
+            .find(|transition| {
+                transition.contact_trace.is_some() && transition.mana_effect_trace.is_none()
+            })
+            .expect("production snapshot retains a contact transition");
+
+        // When: its declared condition no longer matches the causal effect fingerprint.
+        transition.before_condition = transition.before_condition.saturating_sub(1);
+
+        // Then: import fails closed instead of trusting the detached scalar history.
+        assert!(matches!(
+            RuntimeState::import_snapshot(data),
+            Err(crate::RuntimeError::InvalidSnapshot(
+                "material surface transition effect fingerprint does not match declared condition"
+            ))
+        ));
+    }
+
+    #[test]
+    fn runtime_state_import_rejects_material_surface_outside_runtime_extent() {
+        let mut data = populated_snapshot_data();
+        data.material_surfaces.records[0].id.cell_index =
+            u16::from(data.recipe.config.chunk_extent).pow(3);
+
+        assert!(matches!(
+            RuntimeState::import_snapshot(data),
+            Err(crate::RuntimeError::InvalidSnapshot(
+                "material surface cell ordinal outside chunk extent"
+            ))
+        ));
+    }
+
+    #[test]
+    fn runtime_state_import_rejects_duplicate_pending_material_surface_id() {
+        let mut data = populated_snapshot_data();
+        let id = data.material_surfaces.records[0].id;
+        data.material_surfaces.pending_physical_changes = vec![id, id];
+
+        assert!(matches!(
+            RuntimeState::import_snapshot(data),
+            Err(crate::RuntimeError::InvalidSnapshot(
+                "duplicate changed material surface"
+            ))
+        ));
     }
 
     #[test]
@@ -2445,6 +3174,7 @@ mod tests {
         assert_eq!(restored.resolution_policy, data.resolution_policy);
         assert_eq!(restored.pattern_history, data.pattern_history);
         assert_eq!(restored.physical_counters, data.physical_counters);
+        assert_eq!(restored.material_surfaces, data.material_surfaces);
         assert_eq!(restored.actors_objective, data.actors_objective);
         assert_eq!(restored.actors_subjective, data.actors_subjective);
         assert_eq!(restored.population, data.population);

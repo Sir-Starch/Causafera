@@ -57,6 +57,19 @@ The same phenomenon may have different Explanation IR depending on perspective:
 - **Agent-specific:** One subjective model
 - **Historical:** Development over time
 
+## Bounded material-surface loop claim
+
+The active actor/material/mana slice supplies `MaterialSurfaceLoopClaim` as a live, read-only
+Explanation input. It records typed condition bounds, field-total context, an observation window,
+the actor-contact trace, and an optional mana-effect trace. Its deterministic claims distinguish
+supported evidence from explicit insufficiency and include control/window schemas; they do not
+infer purpose, ritual, or semantic meaning from the pattern.
+
+The live input reads only the bounded retained material-transition window. Retention is
+deterministic and protects the newest mana-mediated transition when ordinary contacts would
+otherwise fill the window; when contact ancestry is absent, the claim remains explicitly
+insufficient rather than inventing a causal anchor.
+
 ## Related Documents
 
 - `docs/explanation/architecture.md` - Explanation pipeline

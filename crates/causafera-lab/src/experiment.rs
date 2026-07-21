@@ -236,7 +236,7 @@ impl ExperimentRunner {
             checkpoint_interval,
             suppression_from,
             suppression_through,
-            0,
+            1,
         )
     }
 
@@ -309,6 +309,10 @@ impl ExperimentRunner {
         let mut runtime_config = RuntimeConfig::new(config.world_seed);
         runtime_config.pattern_schedule = config.pattern_schedule;
         runtime_config.bootstrap_population = config.bootstrap_population;
+        if config.bootstrap_population > 0 {
+            runtime_config.actor_count = 1;
+            runtime_config.sensor_count = 1;
+        }
         let mut runtime = Runtime::new(runtime_config)?;
         let mut checkpoints =
             Vec::with_capacity(config.ticks.div_ceil(config.checkpoint_interval) as usize + 1);
@@ -571,6 +575,28 @@ mod tests {
     use super::*;
 
     #[test]
+    fn default_control_and_intervention_bootstraps_a_real_runtime_carrier() {
+        let report = ExperimentRunner::run_control_and_intervention(
+            77,
+            256,
+            32,
+            SimulationTime::new(80),
+            SimulationTime::new(160),
+        )
+        .expect("default comparison must exercise the production material-mana carrier");
+
+        assert!(report.control.result.final_snapshot.actor_count > 0);
+        assert!(
+            report
+                .control
+                .result
+                .final_snapshot
+                .perceived_actor_features
+                > 0
+        );
+    }
+
+    #[test]
     fn long_run_suite_replays_and_detects_intervention() {
         let report = ExperimentRunner::run_control_and_intervention(
             77,
@@ -637,6 +663,7 @@ mod tests {
         assert!(control.population_total <= 16);
         assert!(control.population_movements > 0);
         assert!(control.actor_promotions > 0);
+        assert!(control.actor_count > 0);
         assert!(control.actor_count <= 16);
         assert!(control.perceived_actor_features > 0);
         assert!(control.subjective_actor_objects > 0);

@@ -588,8 +588,12 @@
 **Explanation Implications:** No capability may target M4/M5 without typed metrics, uncertainty, traces, and counterfactual/negative-control strategy
 **Out of Scope:** Implementing every domain in one batch, fixed final phase count, optional LLM integration
 
+**Current note:** The frozen `26026fb3862e` audit is paused after completed Todos 1–4. Its
+unfinished deep audit is not a prerequisite for the bounded actor/material/mana implementation
+slice; future maturity claims require current-HEAD evidence.
+
 ## TODO-SIM-001: Durable Physical State and Cross-Domain Coupling
-**Status:** Pending
+**Status:** In Progress
 **Phase:** Detailed Development — Simulation Core
 **Priority:** Critical
 **Dependencies:** TODO-DEPTH-001, TODO-TRACE-001, TODO-MANA-001, TODO-PERSIST-001
@@ -602,8 +606,17 @@
 **Explanation Implications:** Typed before/after values and causal attribution replace digest-byte proximity
 **Out of Scope:** Fake weather, fake settlements, gameplay mechanics, or unbounded global voxel physics
 
+**Current evidence:** The completed actor/material/mana slice adds chart-qualified authoritative
+material surfaces, Action- and Mana-phase provenance commits (including the persisted mana gate),
+canonical repeated samples, and an accessible physical signal → subjective-scene → later-action
+production test. It has snapshot/replay/save-resume coverage, material codec/version-rejection
+coverage, parent-before-child provenance validation, no-mana/no-repetition controls, retained
+newest-mana observation evidence, and a bounded release diagnostic. Final repository validation,
+five independent review lanes, and a focused runtime failure-mode audit passed; this completes the
+accepted actor/material/mana slice but not the broader TODO.
+
 ## TODO-RUNTIME-001: Production Bootstrap and Fixture Elimination
-**Status:** Pending
+**Status:** In Progress
 **Phase:** Detailed Development — Runtime
 **Priority:** Critical
 **Dependencies:** TODO-DEPTH-001, TODO-HIST-001, TODO-PERSIST-001
@@ -616,8 +629,13 @@
 **Explanation Implications:** Initial conditions and later outcomes can be traced to real bootstrap receipts
 **Out of Scope:** Authored lore, demo worlds, or random high-level history tables
 
+**Current evidence:** The completed slice constructs material surfaces through `HistoricalBootstrapPlan`
+and its integration tests exercise the production runtime path rather than fixture construction.
+This does not yet establish fixture elimination or production-bootstrap coverage for every runtime
+capability.
+
 ## TODO-OBSERVER-003: Bounded Causal and Domain Inspection
-**Status:** Pending
+**Status:** In Progress
 **Phase:** Detailed Development — Observer
 **Priority:** High
 **Dependencies:** TODO-DEPTH-001, TODO-OBSERVER-002, TODO-TRACE-001
@@ -630,8 +648,13 @@
 **Explanation Implications:** Explanation claims can link to inspectable typed evidence rather than trace counts alone
 **Out of Scope:** Direct storage access, unbounded graph dumps, a panel for every field, or LLM prose
 
+**Current evidence:** `world_chunks` now has an additive, versioned, bounded
+`MaterialSurfaceDelta` V1 with chart/cell, typed condition delta, mana context, and optional trace
+anchors whose field presence distinguishes absence from `TraceId(0)`. It covers this slice only;
+broader query, pagination, and overhead requirements remain open.
+
 ## TODO-EXPLAIN-003: Domain-Aware Causal Explanation
-**Status:** Pending
+**Status:** In Progress
 **Phase:** Detailed Development — Explanation
 **Priority:** High
 **Dependencies:** TODO-ANALYTICS-001, TODO-OBSERVER-003, TODO-EXPLAIN-001
@@ -643,6 +666,10 @@
 **Observer Implications:** Read models carry all structured claim inputs and source references
 **Explanation Implications:** Deterministic rendering remains complete without an LLM
 **Out of Scope:** Narrative invention, uncertainty resolution by prose, or terminal optional LLM integration
+
+**Current evidence:** `MaterialSurfaceLoopClaim` supplies live typed values, window/control context,
+insufficiency behavior, and trace-backed evidence for this slice. It does not complete the
+domain-aware Explanation requirement for all future vertical slices.
 
 ## TODO-PERF-001: Benchmark Framework
 **Status:** Pending

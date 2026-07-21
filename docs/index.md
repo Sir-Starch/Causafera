@@ -19,9 +19,9 @@ Later documents supersede conflicting initialization-spec sections **only when t
 - **Project overview** — [README.md](../README.md), the [project thesis](vision/project-thesis.md), and [what distinguishes Causafera](vision/uniqueness.md).
 - **Architecture and concepts** — the [invariants](architecture/invariants.md), [Detailed Development rebaseline](architecture/detailed-development-rebaseline.md), [domain coverage matrix](ontology/domain-coverage-matrix.md), and the subsystem sections below.
 - **Development and contribution** — [CONTRIBUTING.md](../CONTRIBUTING.md), [development notes](development/), and [CHANGELOG.md](../CHANGELOG.md).
-- **Active plans** — [PLANS.md](../PLANS.md) lists the pending biological mana-coupling plan.
+- **Active plans** — [PLANS.md](../PLANS.md) lists the pending biological mana-coupling plan and the active actor/material/mana vertical slice.
 - **Historical records** — completed ExecPlans and public-source-readiness provenance are retained in [historical plans and records](../plans/history/README.md); they are not current implementation guidance.
-- **Audit and maturity material** — [the active maturity audit](../plans/detailed-development-maturity-audit.md) is internal validation material, not a public project-status claim.
+- **Audit and maturity material** — [the paused maturity audit](../plans/detailed-development-maturity-audit.md) is historical diagnostic groundwork, not a public project-status claim or an implementation prerequisite.
 
 ## Vision
 
@@ -49,6 +49,8 @@ Later documents supersede conflicting initialization-spec sections **only when t
 - `docs/architecture/observer.md` - Observer architecture
 - `docs/architecture/protocol.md` - Observer protocol
 - `docs/architecture/provenance.md` - Ground Truth events and causal provenance
+- `docs/architecture/external-consciousness-archive.md` - Proposed external archive and restoration boundaries
+- `docs/architecture/operator-physical-interventions.md` - Proposed constrained physical and mana intervention boundaries
 - `docs/architecture/cognition-rebaseline.md` - Cognition rebaseline: subjective scene and cognitive continuity
 - `docs/architecture/detailed-development-rebaseline.md` - Post-Phase-26 detailed development priorities, maturity gates, and terminal LLM policy
 
@@ -215,6 +217,7 @@ Later documents supersede conflicting initialization-spec sections **only when t
 - `docs/development/codebase-memory.md` - Codebase knowledge graph
 - `docs/development/contributing.md` - Contributing
 - `docs/development/changelog.md` - Changelog
+- `docs/development/maturity-audit-groundwork.md` - Preserved frozen-audit Todos 1–4 groundwork
 
 ## Roadmap
 

@@ -7,9 +7,13 @@ use causafera_types::{
     CHUNK_SIZE, ChartChunkCoord, LocalCoord, MaterialId, PhysicalPatternId, SimulationTime, TraceId,
 };
 
+use crate::{MaterialSurface, MaterialSurfaceId};
+
 pub const TERRAIN_CARRIER_SCHEMA: CarrierAdapterSchemaId = CarrierAdapterSchemaId::new(1);
+pub const MATERIAL_SURFACE_CARRIER_SCHEMA: CarrierAdapterSchemaId = CarrierAdapterSchemaId::new(2);
 
 const TERRAIN_PATTERN_DOMAIN: u64 = 0x5445_5252_4149_4E50;
+const MATERIAL_SURFACE_PATTERN_DOMAIN: u64 = 0x4D41_5453_5552_4643;
 const TERRAIN_GENERATOR: TerrainGeneratorFingerprint =
     TerrainGeneratorFingerprint::new(0x2405_0001);
 const TERRAIN_PARAMETERS: TerrainParameterFingerprint =
@@ -20,6 +24,41 @@ pub struct TerrainCarrierAdapter {
     chunk: ChartChunkCoord,
     terrain: TerrainChunk,
     field_extent: u8,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct MaterialSurfaceCarrierAdapter {
+    field_extent: u8,
+}
+
+impl MaterialSurfaceCarrierAdapter {
+    pub const fn new(field_extent: u8) -> Self {
+        Self { field_extent }
+    }
+
+    pub fn emit_samples(
+        &self,
+        id: MaterialSurfaceId,
+        surface: MaterialSurface,
+        time: SimulationTime,
+    ) -> Vec<PhysicalPatternSample> {
+        let source_ordinal = u32::from(id.cell_index);
+        let magnitude = surface.condition.unsigned_abs().min(u64::from(u32::MAX)) as u32;
+        vec![PhysicalPatternSample {
+            chunk: id.chunk,
+            pattern: PhysicalPatternId::new(mix64(
+                MATERIAL_SURFACE_PATTERN_DOMAIN
+                    ^ material_surface_chart_hash(id.chunk)
+                    ^ u64::from(id.cell_index).rotate_left(17),
+            )),
+            position: field_position(usize::from(id.cell_index), self.field_extent),
+            observed_at: time,
+            magnitude: magnitude
+                .saturating_add(surface.contact_count.min(u64::from(u32::MAX)) as u32),
+            source_ordinal,
+            cause: surface.last_transition,
+        }]
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -258,6 +297,15 @@ fn mix64(mut value: u64) -> u64 {
     value ^= value >> 27;
     value = value.wrapping_mul(0x94D0_49BB_1331_11EB);
     value ^ (value >> 31)
+}
+
+fn material_surface_chart_hash(chunk: ChartChunkCoord) -> u64 {
+    mix64(
+        chunk.chart.raw()
+            ^ (chunk.chunk.x as u64).rotate_left(7)
+            ^ (chunk.chunk.y as u64).rotate_left(19)
+            ^ (chunk.chunk.z as u64).rotate_left(31),
+    )
 }
 
 #[cfg(test)]

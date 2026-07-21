@@ -1,13 +1,16 @@
 use std::collections::BTreeMap;
 
 use causafera_explanation::{
-    ClaimEvidenceState, ComparisonContext, ExplanationReport, FrameAssessment, NumericClaimValue,
+    ClaimConfidence, ClaimEvidenceState, ComparisonCohortId, ComparisonContext, ExplanationClaim,
+    ExplanationClaimSchemaId, ExplanationFrame, ExplanationReport, FrameAssessment,
+    NumericClaimValue,
 };
 use causafera_observer_api::{
-    OBSERVER_PROTOCOL_V1, ObserverChunkSummary, ObserverQuery, ObserverResponse, ObserverSnapshot,
-    ObserverWorldSnapshot, QueryKind, QueryStatus, StreamEnvelope, StreamKind,
+    MAX_MATERIAL_SURFACE_DELTAS, MaterialSurfaceDelta, OBSERVER_PROTOCOL_V1, ObserverChunkSummary,
+    ObserverQuery, ObserverResponse, ObserverSnapshot, ObserverWorldSnapshot, QueryKind,
+    QueryStatus, StreamEnvelope, StreamKind,
 };
-use causafera_types::{ChunkId, SimulationTime, TraceId};
+use causafera_types::{ChunkId, ExperimentId, SimulationTime, TraceId};
 use thiserror::Error;
 
 const WIRE_VARINT: u8 = 0;
@@ -365,6 +368,20 @@ pub fn encode_world_snapshot(snapshot: &ObserverWorldSnapshot) -> Vec<u8> {
         field_varint(&mut nested, 13, chunk.latest_trace.raw());
         field_bytes(&mut out, 2, &nested);
     }
+    for delta in snapshot
+        .material_surface_deltas
+        .iter()
+        .take(MAX_MATERIAL_SURFACE_DELTAS)
+    {
+        field_bytes(&mut out, 3, &encode_material_surface_delta(delta));
+    }
+    if snapshot.material_surface_delta_schema_version != 0 {
+        field_varint(
+            &mut out,
+            4,
+            u64::from(snapshot.material_surface_delta_schema_version),
+        );
+    }
     out
 }
 
@@ -372,17 +389,73 @@ pub fn decode_world_snapshot(bytes: &[u8]) -> Result<ObserverWorldSnapshot, Wire
     let mut cursor = Cursor::new(bytes);
     let mut time = None;
     let mut chunks = Vec::new();
+    let mut material_surface_deltas = Vec::new();
+    let mut material_surface_delta_schema_version = 0;
     while !cursor.is_empty() {
         let (field, wire) = cursor.key()?;
         match (field, wire) {
             (1, WIRE_VARINT) => time = Some(SimulationTime::new(cursor.varint()?)),
             (2, WIRE_LEN) => chunks.push(decode_chunk_summary(cursor.bytes()?)?),
+            (3, WIRE_LEN) if material_surface_deltas.len() < MAX_MATERIAL_SURFACE_DELTAS => {
+                material_surface_deltas.push(decode_material_surface_delta(cursor.bytes()?)?)
+            }
+            (3, WIRE_LEN) => {
+                cursor.bytes()?;
+            }
+            (4, WIRE_VARINT) => material_surface_delta_schema_version = to_u32(cursor.varint()?)?,
             _ => cursor.skip(wire)?,
         }
     }
     Ok(ObserverWorldSnapshot {
         time: time.ok_or(WireError::MissingField(1))?,
         chunks,
+        material_surface_delta_schema_version,
+        material_surface_deltas,
+    })
+}
+
+fn encode_material_surface_delta(delta: &MaterialSurfaceDelta) -> Vec<u8> {
+    let mut nested = Vec::new();
+    field_varint(&mut nested, 1, delta.chart_id);
+    field_varint(&mut nested, 2, zigzag(i64::from(delta.chunk_x)));
+    field_varint(&mut nested, 3, zigzag(i64::from(delta.chunk_y)));
+    field_varint(&mut nested, 4, zigzag(i64::from(delta.chunk_z)));
+    field_varint(&mut nested, 5, u64::from(delta.cell_ordinal));
+    field_varint(&mut nested, 6, zigzag(delta.before_condition));
+    field_varint(&mut nested, 7, zigzag(delta.after_condition));
+    field_varint(&mut nested, 8, zigzag(delta.mana_total));
+    if let Some(trace) = delta.contact_trace {
+        field_varint(&mut nested, 9, trace.raw());
+    }
+    if let Some(trace) = delta.mana_effect_trace {
+        field_varint(&mut nested, 10, trace.raw());
+    }
+    nested
+}
+
+fn decode_material_surface_delta(bytes: &[u8]) -> Result<MaterialSurfaceDelta, WireError> {
+    let mut cursor = Cursor::new(bytes);
+    let mut values = [None; 10];
+    while !cursor.is_empty() {
+        let (field, wire) = cursor.key()?;
+        if (1..=10).contains(&field) && wire == WIRE_VARINT {
+            values[field as usize - 1] = Some(cursor.varint()?);
+        } else {
+            cursor.skip(wire)?;
+        }
+    }
+    let value = |field: usize| values[field - 1].ok_or(WireError::MissingField(field as u32));
+    Ok(MaterialSurfaceDelta {
+        chart_id: value(1)?,
+        chunk_x: to_i32(unzigzag(value(2)?))?,
+        chunk_y: to_i32(unzigzag(value(3)?))?,
+        chunk_z: to_i32(unzigzag(value(4)?))?,
+        cell_ordinal: u16::try_from(value(5)?).map_err(|_| WireError::IntegerOverflow)?,
+        before_condition: unzigzag(value(6)?),
+        after_condition: unzigzag(value(7)?),
+        mana_total: unzigzag(value(8)?),
+        contact_trace: values[8].map(TraceId::new),
+        mana_effect_trace: values[9].map(TraceId::new),
     })
 }
 
@@ -585,6 +658,174 @@ pub fn encode_explanation_report(report: &ExplanationReport) -> Vec<u8> {
     out
 }
 
+pub fn decode_explanation_report(bytes: &[u8]) -> Result<ExplanationReport, WireError> {
+    let mut cursor = Cursor::new(bytes);
+    let mut experiment = None;
+    let mut frames = Vec::new();
+    let mut assessment = None;
+    while !cursor.is_empty() {
+        let (field, wire) = cursor.key()?;
+        match (field, wire) {
+            (1, WIRE_VARINT) => experiment = Some(ExperimentId::new(cursor.varint()?)),
+            (2, WIRE_LEN) => frames.push(decode_explanation_frame(cursor.bytes()?)?),
+            (3, WIRE_VARINT) => assessment = Some(decode_assessment(cursor.varint()?)?),
+            _ => cursor.skip(wire)?,
+        }
+    }
+    let report = ExplanationReport::new(experiment.ok_or(WireError::MissingField(1))?, frames)
+        .map_err(|_| WireError::InvalidExplanationReport)?;
+    if report.overall_assessment != assessment.ok_or(WireError::MissingField(3))? {
+        return Err(WireError::InvalidExplanationReport);
+    }
+    Ok(report)
+}
+
+fn decode_explanation_frame(bytes: &[u8]) -> Result<ExplanationFrame, WireError> {
+    let mut cursor = Cursor::new(bytes);
+    let mut checkpoint_time = None;
+    let mut claims = Vec::new();
+    let mut assessment = None;
+    while !cursor.is_empty() {
+        let (field, wire) = cursor.key()?;
+        match (field, wire) {
+            (1, WIRE_VARINT) => checkpoint_time = Some(SimulationTime::new(cursor.varint()?)),
+            (2, WIRE_LEN) => claims.push(decode_explanation_claim(cursor.bytes()?)?),
+            (3, WIRE_VARINT) => assessment = Some(decode_assessment(cursor.varint()?)?),
+            _ => cursor.skip(wire)?,
+        }
+    }
+    let frame = ExplanationFrame::new(checkpoint_time.ok_or(WireError::MissingField(1))?, claims)
+        .map_err(|_| WireError::InvalidExplanationFrame)?;
+    if frame.overall_assessment != assessment.ok_or(WireError::MissingField(3))? {
+        return Err(WireError::InvalidExplanationFrame);
+    }
+    Ok(frame)
+}
+
+fn decode_explanation_claim(bytes: &[u8]) -> Result<ExplanationClaim, WireError> {
+    let mut cursor = Cursor::new(bytes);
+    let mut schema = None;
+    let mut value = None;
+    let mut confidence = None;
+    let mut evidence_traces = Vec::new();
+    let mut comparison = None;
+    let mut evidence_state = None;
+    while !cursor.is_empty() {
+        let (field, wire) = cursor.key()?;
+        match (field, wire) {
+            (1, WIRE_VARINT) => schema = Some(ExplanationClaimSchemaId::new(cursor.varint()?)),
+            (2, WIRE_LEN) => value = Some(decode_numeric_value(cursor.bytes()?)?),
+            (3, WIRE_FIXED64) => {
+                confidence = Some(
+                    ClaimConfidence::new(f64::from_bits(cursor.fixed64()?))
+                        .map_err(|_| WireError::InvalidClaimConfidence)?,
+                )
+            }
+            (4, WIRE_VARINT) => evidence_traces.push(TraceId::new(cursor.varint()?)),
+            (5, WIRE_LEN) => comparison = Some(decode_comparison(cursor.bytes()?)?),
+            (6, WIRE_VARINT) => evidence_state = Some(decode_evidence_state(cursor.varint()?)?),
+            _ => cursor.skip(wire)?,
+        }
+    }
+    ExplanationClaim::new(
+        schema.ok_or(WireError::MissingField(1))?,
+        value.ok_or(WireError::MissingField(2))?,
+        confidence.ok_or(WireError::MissingField(3))?,
+        evidence_traces,
+        comparison.ok_or(WireError::MissingField(5))?,
+        evidence_state.ok_or(WireError::MissingField(6))?,
+    )
+    .map_err(|_| WireError::InvalidExplanationClaim)
+}
+
+fn decode_numeric_value(bytes: &[u8]) -> Result<NumericClaimValue, WireError> {
+    let mut cursor = Cursor::new(bytes);
+    while !cursor.is_empty() {
+        let (field, wire) = cursor.key()?;
+        match (field, wire) {
+            (1, WIRE_VARINT) => return Ok(NumericClaimValue::scalar(unzigzag(cursor.varint()?))),
+            (2, WIRE_LEN) => {
+                let (start, end) = decode_numeric_pair(cursor.bytes()?)?;
+                return NumericClaimValue::range(unzigzag(start), unzigzag(end))
+                    .map_err(|_| WireError::InvalidNumericClaimValue);
+            }
+            (3, WIRE_LEN) => {
+                let (numerator, denominator) = decode_numeric_pair(cursor.bytes()?)?;
+                return NumericClaimValue::ratio(numerator, denominator)
+                    .map_err(|_| WireError::InvalidNumericClaimValue);
+            }
+            _ => cursor.skip(wire)?,
+        }
+    }
+    Err(WireError::InvalidNumericClaimValue)
+}
+
+fn decode_numeric_pair(bytes: &[u8]) -> Result<(u64, u64), WireError> {
+    let mut cursor = Cursor::new(bytes);
+    let mut first = None;
+    let mut second = None;
+    while !cursor.is_empty() {
+        let (field, wire) = cursor.key()?;
+        match (field, wire) {
+            (1, WIRE_VARINT) => first = Some(cursor.varint()?),
+            (2, WIRE_VARINT) => second = Some(cursor.varint()?),
+            _ => cursor.skip(wire)?,
+        }
+    }
+    Ok((
+        first.ok_or(WireError::MissingField(1))?,
+        second.ok_or(WireError::MissingField(2))?,
+    ))
+}
+
+fn decode_comparison(bytes: &[u8]) -> Result<ComparisonContext, WireError> {
+    let (kind, cohort) = decode_numeric_pair_optional_second(bytes)?;
+    match kind {
+        0 => Ok(ComparisonContext::None),
+        1 => Ok(ComparisonContext::MatchedCohort {
+            cohort: ComparisonCohortId::new(cohort.ok_or(WireError::MissingField(2))?),
+        }),
+        2 => Ok(ComparisonContext::Counterfactual {
+            cohort: ComparisonCohortId::new(cohort.ok_or(WireError::MissingField(2))?),
+        }),
+        value => Err(WireError::UnknownComparisonContext(value)),
+    }
+}
+
+fn decode_numeric_pair_optional_second(bytes: &[u8]) -> Result<(u64, Option<u64>), WireError> {
+    let mut cursor = Cursor::new(bytes);
+    let mut first = None;
+    let mut second = None;
+    while !cursor.is_empty() {
+        let (field, wire) = cursor.key()?;
+        match (field, wire) {
+            (1, WIRE_VARINT) => first = Some(cursor.varint()?),
+            (2, WIRE_VARINT) => second = Some(cursor.varint()?),
+            _ => cursor.skip(wire)?,
+        }
+    }
+    Ok((first.ok_or(WireError::MissingField(1))?, second))
+}
+
+fn decode_evidence_state(value: u64) -> Result<ClaimEvidenceState, WireError> {
+    match value {
+        1 => Ok(ClaimEvidenceState::Supported),
+        2 => Ok(ClaimEvidenceState::Unsupported),
+        3 => Ok(ClaimEvidenceState::Unknown),
+        value => Err(WireError::UnknownEvidenceState(value)),
+    }
+}
+
+fn decode_assessment(value: u64) -> Result<FrameAssessment, WireError> {
+    match value {
+        1 => Ok(FrameAssessment::Supported),
+        2 => Ok(FrameAssessment::Partial),
+        3 => Ok(FrameAssessment::Unsupported),
+        4 => Ok(FrameAssessment::Unknown),
+        value => Err(WireError::UnknownAssessment(value)),
+    }
+}
+
 fn encode_numeric_value(value: NumericClaimValue) -> Vec<u8> {
     let mut out = Vec::new();
     match value {
@@ -711,6 +952,17 @@ impl<'a> Cursor<'a> {
         self.at = end;
         Ok(result)
     }
+    fn fixed64(&mut self) -> Result<u64, WireError> {
+        let end = self.at.checked_add(8).ok_or(WireError::IntegerOverflow)?;
+        let bytes = self
+            .bytes
+            .get(self.at..end)
+            .ok_or(WireError::UnexpectedEof)?;
+        self.at = end;
+        Ok(u64::from_le_bytes(
+            bytes.try_into().map_err(|_| WireError::UnexpectedEof)?,
+        ))
+    }
     fn skip(&mut self, wire: u8) -> Result<(), WireError> {
         match wire {
             WIRE_VARINT => {
@@ -755,6 +1007,22 @@ pub enum WireError {
     NoCompatibleProtocolVersion,
     #[error("protobuf string is not valid UTF-8")]
     InvalidUtf8,
+    #[error("explanation claim confidence is invalid")]
+    InvalidClaimConfidence,
+    #[error("explanation numeric claim value is invalid")]
+    InvalidNumericClaimValue,
+    #[error("explanation claim is invalid")]
+    InvalidExplanationClaim,
+    #[error("explanation frame is invalid")]
+    InvalidExplanationFrame,
+    #[error("explanation report is invalid")]
+    InvalidExplanationReport,
+    #[error("unknown explanation comparison context {0}")]
+    UnknownComparisonContext(u64),
+    #[error("unknown explanation evidence state {0}")]
+    UnknownEvidenceState(u64),
+    #[error("unknown explanation assessment {0}")]
+    UnknownAssessment(u64),
     #[error(transparent)]
     Api(#[from] causafera_observer_api::ObserverApiError),
 }
@@ -873,6 +1141,8 @@ mod tests {
                 causal_event_count: 11,
                 latest_trace: TraceId::new(8),
             }],
+            material_surface_delta_schema_version: 0,
+            material_surface_deltas: Vec::new(),
         };
         let mut handler = ProtocolHandler::default();
         handler.set_world_snapshot(&expected);
@@ -882,6 +1152,56 @@ mod tests {
                 .unwrap(),
         )
         .unwrap();
+        assert_eq!(response.status, QueryStatus::Ok);
+        assert_eq!(decode_world_snapshot(&response.payload).unwrap(), expected);
+    }
+
+    #[test]
+    fn world_query_roundtrips_bounded_material_surface_deltas() {
+        // Given: a chart-qualified, typed material transition from a live observer read model.
+        let expected = ObserverWorldSnapshot {
+            time: SimulationTime::new(8),
+            chunks: Vec::new(),
+            material_surface_delta_schema_version: 1,
+            material_surface_deltas: vec![
+                MaterialSurfaceDelta {
+                    chart_id: 5,
+                    chunk_x: -1,
+                    chunk_y: 2,
+                    chunk_z: -3,
+                    cell_ordinal: 7,
+                    before_condition: 4,
+                    after_condition: 6,
+                    mana_total: 12,
+                    contact_trace: None,
+                    mana_effect_trace: None,
+                },
+                MaterialSurfaceDelta {
+                    chart_id: 5,
+                    chunk_x: -1,
+                    chunk_y: 2,
+                    chunk_z: -3,
+                    cell_ordinal: 8,
+                    before_condition: 6,
+                    after_condition: 9,
+                    mana_total: 12,
+                    contact_trace: Some(TraceId::new(0)),
+                    mana_effect_trace: Some(TraceId::new(22)),
+                },
+            ],
+        };
+        let mut handler = ProtocolHandler::default();
+        handler.set_world_snapshot(&expected);
+
+        // When: an OBSERVER_PROTOCOL_V1 client asks for the existing world-chunk read model.
+        let response = decode_response(
+            &handler
+                .handle_query(&encode_query(&ObserverQuery::world_chunks(18)))
+                .unwrap(),
+        )
+        .unwrap();
+
+        // Then: the additive bounded delta projection round-trips without a new query kind.
         assert_eq!(response.status, QueryStatus::Ok);
         assert_eq!(decode_world_snapshot(&response.payload).unwrap(), expected);
     }
@@ -942,6 +1262,10 @@ mod tests {
             decode_response(&handler.handle_query(&encode_query(&query)).unwrap()).unwrap();
         assert_eq!(response.status, QueryStatus::Ok);
         assert_eq!(response.payload, encode_explanation_report(&report));
+        assert_eq!(
+            decode_explanation_report(&response.payload).unwrap(),
+            report
+        );
         assert!(!response.payload.is_empty());
     }
 }

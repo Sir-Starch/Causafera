@@ -1,4 +1,3 @@
-use causafera_lab::{ExperimentError, ExperimentRunner};
 use causafera_observer_api::{
     DeliveryPolicy, ObserverStreamHub, StreamError, StreamKind, StreamScope,
 };
@@ -7,7 +6,6 @@ use causafera_observer_wire::{
     encode_observer_snapshot, encode_stream_envelope,
 };
 use causafera_runtime::{Runtime, RuntimeConfig, RuntimeError};
-use causafera_types::SimulationTime;
 use thiserror::Error;
 
 const RUNTIME_STREAM_ID: u64 = 1;
@@ -15,17 +13,11 @@ const MAX_ADVANCE_TICKS: u64 = 64;
 const DEFAULT_ACTORS: u8 = 8;
 const DEFAULT_SENSORS: u8 = 2;
 const DEFAULT_POPULATION: u64 = 512;
-const ANALYSIS_POPULATION: u64 = 16;
-const ANALYSIS_TICKS: u64 = 192;
-const ANALYSIS_CHECKPOINT_INTERVAL: u64 = 24;
-const ANALYSIS_SUPPRESSION_FROM: u64 = 72;
-const ANALYSIS_SUPPRESSION_THROUGH: u64 = 120;
 
 pub struct ObserverSession {
     runtime: Runtime,
     protocol: ProtocolHandler,
     streams: ObserverStreamHub,
-    seed: u64,
 }
 
 impl ObserverSession {
@@ -35,7 +27,6 @@ impl ObserverSession {
             runtime,
             protocol: ProtocolHandler::default(),
             streams: ObserverStreamHub::default(),
-            seed,
         };
         session.refresh_protocol()?;
         Ok(session)
@@ -77,16 +68,8 @@ impl ObserverSession {
     }
 
     pub fn analyze(&mut self, request: &[u8]) -> Result<Vec<u8>, SessionError> {
-        let report = ExperimentRunner::run_populated_control_and_intervention(
-            self.seed,
-            ANALYSIS_TICKS,
-            ANALYSIS_CHECKPOINT_INTERVAL,
-            SimulationTime::new(ANALYSIS_SUPPRESSION_FROM),
-            SimulationTime::new(ANALYSIS_SUPPRESSION_THROUGH),
-            ANALYSIS_POPULATION,
-        )?;
-        self.protocol
-            .set_explanation_report(&report.explanation_report);
+        let report = self.runtime.observer_material_surface_loop_explanation()?;
+        self.protocol.set_explanation_report(&report);
         Ok(self.protocol.handle_query(request)?)
     }
 
@@ -127,6 +110,8 @@ fn session_config(seed: u64) -> RuntimeConfig {
     config.actor_count = DEFAULT_ACTORS;
     config.sensor_count = DEFAULT_SENSORS;
     config.bootstrap_population = DEFAULT_POPULATION;
+    config.mana_parameters.effect_threshold = 1;
+    config.mana_parameters.effect_hysteresis = 0;
     config
 }
 
@@ -142,17 +127,20 @@ pub enum SessionError {
     Wire(#[from] WireError),
     #[error(transparent)]
     Stream(#[from] StreamError),
-    #[error(transparent)]
-    Experiment(#[from] ExperimentError),
 }
 
 #[cfg(test)]
 mod tests {
-    use causafera_observer_api::{OBSERVER_PROTOCOL_V1, ObserverQuery, QueryKind, QueryStatus};
-    use causafera_observer_wire::{
-        ConnectRequest, decode_connect_response, decode_observer_snapshot, decode_response,
-        decode_stream_envelope, decode_world_snapshot, encode_connect_request, encode_query,
+    use causafera_observer_api::{
+        MATERIAL_SURFACE_DELTA_SCHEMA_V1, MAX_MATERIAL_SURFACE_DELTAS, OBSERVER_PROTOCOL_V1,
+        ObserverQuery, QueryKind, QueryStatus,
     };
+    use causafera_observer_wire::{
+        ConnectRequest, decode_connect_response, decode_explanation_report,
+        decode_observer_snapshot, decode_response, decode_stream_envelope, decode_world_snapshot,
+        encode_connect_request, encode_query,
+    };
+    use causafera_types::SimulationTime;
 
     use super::*;
 
@@ -172,8 +160,11 @@ mod tests {
         let initial = decode_stream_envelope(&session.open_runtime_stream().unwrap()).unwrap();
         assert!(initial.header.is_snapshot);
         let initial_summary = decode_observer_snapshot(&initial.payload).unwrap();
-        assert_eq!(initial_summary.population_total, DEFAULT_POPULATION);
         assert_eq!(initial_summary.actor_count, u32::from(DEFAULT_ACTORS));
+        assert_eq!(
+            initial_summary.population_total + u64::from(initial_summary.actor_count),
+            DEFAULT_POPULATION
+        );
 
         let delta = decode_stream_envelope(&session.advance(4).unwrap()).unwrap();
         assert!(!delta.header.is_snapshot);
@@ -184,6 +175,8 @@ mod tests {
     #[test]
     fn world_query_contains_real_bounded_chunk_projection() {
         let mut session = ObserverSession::new(10).unwrap();
+        let summary = decode_stream_envelope(&session.open_runtime_stream().unwrap()).unwrap();
+        let summary = decode_observer_snapshot(&summary.payload).unwrap();
         let response = decode_response(
             &session
                 .query(&encode_query(&ObserverQuery::world_chunks(2)))
@@ -200,7 +193,46 @@ mod tests {
                 .iter()
                 .map(|chunk| chunk.population_total)
                 .sum::<u64>(),
+            summary.population_total
+        );
+        assert_eq!(
+            summary.population_total + u64::from(summary.actor_count),
             DEFAULT_POPULATION
+        );
+        assert_eq!(
+            world.material_surface_delta_schema_version,
+            MATERIAL_SURFACE_DELTA_SCHEMA_V1
+        );
+        assert!(!world.material_surface_deltas.is_empty());
+        assert!(
+            world.material_surface_deltas.len() <= MAX_MATERIAL_SURFACE_DELTAS,
+            "material-surface observer deltas must remain bounded"
+        );
+        assert!(
+            world
+                .material_surface_deltas
+                .iter()
+                .all(|delta| delta.after_condition >= delta.before_condition)
+        );
+        assert!(
+            world
+                .material_surface_deltas
+                .iter()
+                .all(|delta| delta.contact_trace.is_none())
+        );
+        session.advance(1).unwrap();
+        let contacted = decode_response(
+            &session
+                .query(&encode_query(&ObserverQuery::world_chunks(2)))
+                .unwrap(),
+        )
+        .unwrap();
+        let contacted = decode_world_snapshot(&contacted.payload).unwrap();
+        assert!(
+            contacted
+                .material_surface_deltas
+                .iter()
+                .any(|delta| delta.contact_trace.is_some())
         );
     }
 
@@ -238,8 +270,10 @@ mod tests {
     }
 
     #[test]
-    fn replay_verified_analysis_is_delivered_as_typed_observer_payload() {
+    fn live_runtime_material_loop_explanation_distinguishes_absent_and_present_contact() {
+        // Given: an observer session backed by the causally bootstrapped production runtime.
         let mut session = ObserverSession::new(13).unwrap();
+        session.open_runtime_stream().unwrap();
         let query = ObserverQuery {
             request_id: 9,
             protocol_version: OBSERVER_PROTOCOL_V1,
@@ -247,8 +281,30 @@ mod tests {
             scope: None,
             payload: Vec::new(),
         };
-        let response = decode_response(&session.analyze(&encode_query(&query)).unwrap()).unwrap();
-        assert_eq!(response.status, QueryStatus::Ok);
-        assert!(!response.payload.is_empty());
+
+        // When: the read-only Explanation query runs before and after actor contact.
+        let before = decode_response(&session.analyze(&encode_query(&query)).unwrap()).unwrap();
+        session.advance(4).unwrap();
+        let after = decode_response(&session.analyze(&encode_query(&query)).unwrap()).unwrap();
+
+        // Then: bootstrap claims no actor-contact evidence, while a later live query does.
+        assert_eq!(before.status, QueryStatus::Ok);
+        let before = decode_explanation_report(&before.payload).unwrap();
+        assert!(
+            before.frames[0]
+                .claims
+                .iter()
+                .all(|claim| claim.evidence_traces.is_empty())
+        );
+        assert_eq!(after.status, QueryStatus::Ok);
+        let after = decode_explanation_report(&after.payload).unwrap();
+        assert_eq!(after.frames.len(), 1);
+        assert_eq!(after.frames[0].checkpoint_time.raw(), 4);
+        assert!(
+            after.frames[0]
+                .claims
+                .iter()
+                .any(|claim| claim.schema.raw() == 10 && claim.evidence_traces.len() >= 2)
+        );
     }
 }
