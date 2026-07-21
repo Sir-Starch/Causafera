@@ -38,9 +38,37 @@ Domain systems construct property-specific canonical fingerprints and proposals.
 
 The store exposes read-only numeric event views. Future observer and Explanation Engine adapters may traverse these views, attach non-authoritative localized glosses, and report confidence. Neither adapter may mutate the graph or invent missing causes.
 
+## Epistemic Provenance and Agent-Perspective Explanation
+
+Causal provenance answers: “Why did this happen in the world?”
+Epistemic provenance answers: “Why did this agent know, suspect, believe, or falsely believe this?”
+
+Agent-perspective explanation requires explicit epistemic provenance. It conceptually answers: “Why did agent A, at tick T, believe or explain event E as hypothesis H?” The explanation must be time-specific; later knowledge must not silently rewrite what the agent believed earlier.
+
+An agent-perspective explanation must be able to trace:
+- what signals were physically accessible to the agent;
+- what the agent actually perceived;
+- the subjective scene formed from those perceptions;
+- relevant memories activated at that time;
+- testimony or information received from other agents;
+- trust in those information sources;
+- concepts and prior beliefs available to the agent;
+- causal hypotheses considered;
+- the selected interpretation;
+- confidence or uncertainty;
+- important unavailable or contradictory evidence;
+- how the interpretation affected later belief or action.
+
+Different agents must be able to form different explanations of the same event because they have different perceptions, memories, concepts, testimony, relationships, and prior beliefs. Beliefs learned through communication must retain their informational lineage (e.g., event → witness perception → witness interpretation → testimony → listener trust and prior beliefs → listener interpretation).
+
+Subjective explanations are not authoritative Ground Truth. Agents must not have access to hidden runtime state, causal traces, operator intent, or other information they did not perceive or learn causally. The authoritative basis should remain structured subjective state and its history. Human-readable text, including future LLM-generated phrasing, is only a presentation layer and must not invent reasons absent from the agent state.
+
+Full memory, belief formation, hypothesis comparison, social testimony, and agent-perspective Explanation remain proposed future work and are not currently implemented.
+
 ## Related documents
 
 - `docs/rfc/RFC-TRACE-001.md`
 - `docs/architecture/determinism.md`
 - `docs/ontology/causal-carriers.md`
 - `docs/explanation/causal-summaries.md`
+- `docs/architecture/invariants.md` (INV-041)
