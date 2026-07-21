@@ -163,3 +163,9 @@ Fixtures and test helpers may construct isolated state in tests. Production runt
 ## INV-040: Biological mana interaction remains external and physical
 
 Organisms have no unexplained semantic mana pool, magic class, scalar aptitude, or spell authority. They may differ in lower-level physical coupling to the external mana field and may acquire spatially contained, materially retained, or dynamically bound mana through traced physical processes. Such retained state may already exist at birth when produced by gestation, development, inheritance-mediated carrier structure, environmental transfer, or an explicit physical conversion process. Intention affects mana only through embodied physical action. Ritual history remains a primary coupling mechanism, while rare active biological coupling may emerge without being guaranteed or privileged by the simulation. See `RFC-BIO-003`.
+
+## INV-041: Agent-perspective explanation requires epistemic provenance
+
+Causal provenance answers: “Why did this happen in the world?” Epistemic provenance answers: “Why did this agent know, suspect, believe, or falsely believe this?”
+
+An agent-perspective explanation must be time-specific (e.g., “Why did agent A, at tick T, believe or explain event E as hypothesis H?”) and must not be silently rewritten by later knowledge. The authoritative basis must remain structured subjective state and its history, not natural-language text. Explanations must trace physically accessible signals, perceptions, the subjective scene, activated memories, received testimony, trust, concepts, hypotheses, the selected interpretation, confidence, unavailable evidence, and effects on later belief. Different agents form different explanations of the same event. Subjective explanations are not authoritative Ground Truth, and agents do not have access to hidden runtime state or causal traces they did not perceive.
