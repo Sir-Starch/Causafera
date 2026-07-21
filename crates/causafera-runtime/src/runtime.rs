@@ -3785,6 +3785,9 @@ fn trace_descends_from(store: &CausalTraceStore, trace: TraceId, ancestor: Trace
         if candidate == ancestor {
             return true;
         }
+        if candidate < ancestor {
+            continue;
+        }
         if !visited.insert(candidate) {
             continue;
         }
