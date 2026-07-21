@@ -3785,6 +3785,9 @@ fn trace_descends_from(store: &CausalTraceStore, trace: TraceId, ancestor: Trace
         if candidate == ancestor {
             return true;
         }
+        if candidate < ancestor {
+            continue;
+        }
         if !visited.insert(candidate) {
             continue;
         }
@@ -4723,6 +4726,16 @@ mod tests {
     }
 
     #[test]
+    fn runtime_executes_a_short_causal_run_without_errors() {
+        let mut runtime = Runtime::new(production_loop_config(42)).unwrap();
+        let snapshot = runtime.run_ticks(64).unwrap();
+        assert_eq!(snapshot.time, SimulationTime::new(64));
+        assert!(snapshot.mana_total > 0);
+        assert!(snapshot.causal_trace_count > 64);
+        assert!(snapshot.resolution_level > 0);
+    }
+
+    #[test]
     fn material_transition_digest_distinguishes_absent_and_zero_trace_anchor() {
         // Given: equivalent authoritative material histories except for a contact anchor.
         let state = RuntimeState::new(&production_loop_config(701)).unwrap();
@@ -4916,6 +4929,27 @@ mod tests {
         let mut intervention = Runtime::new(intervention_config).unwrap();
         let control = control.run_ticks(256).unwrap();
         let intervention = intervention.run_ticks(256).unwrap();
+        assert_ne!(
+            control.physical_state_digest,
+            intervention.physical_state_digest
+        );
+        assert_ne!(control.history_digest, intervention.history_digest);
+        assert_ne!(control.canonical_state, intervention.canonical_state);
+        assert!(control.physical_events > intervention.physical_events);
+    }
+
+    #[test]
+    fn physical_suppression_changes_the_causal_trajectory_short() {
+        let control_config = production_loop_config(9);
+        let mut intervention_config = control_config.clone();
+        intervention_config.pattern_schedule = intervention_config
+            .pattern_schedule
+            .with_suppression(SimulationTime::new(32), SimulationTime::new(64))
+            .unwrap();
+        let mut control = Runtime::new(control_config).unwrap();
+        let mut intervention = Runtime::new(intervention_config).unwrap();
+        let control = control.run_ticks(96).unwrap();
+        let intervention = intervention.run_ticks(96).unwrap();
         assert_ne!(
             control.physical_state_digest,
             intervention.physical_state_digest
