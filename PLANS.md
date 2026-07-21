@@ -53,7 +53,8 @@ Progress
 
 ## Draft Plans
 
-No current Draft ExecPlans.
+- [`plans/experiment-recipe-mana-source.md`](plans/experiment-recipe-mana-source.md) — Draft
+  bounded production-path experiment-recipe mana source slice; not active and not an operator API.
 
 ## Paused Audit and Evidence Material
 
