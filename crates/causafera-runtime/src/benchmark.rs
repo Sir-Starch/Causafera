@@ -2,14 +2,74 @@ use std::time::Instant;
 
 use causafera_observer_api::{ObserverQuery, QueryStatus};
 use causafera_observer_wire::{ProtocolHandler, decode_response, encode_query};
+use causafera_types::{ChartChunkCoord, ChunkCoord};
 
 use crate::benchmark_validation::{
     MaterialSurfaceLoopBenchmarkError, validate_benchmark_config, validate_benchmark_measurement,
+    validate_experiment_recipe_mana_source_benchmark_config,
+    validate_experiment_recipe_mana_source_benchmark_measurement,
 };
-use crate::{Runtime, RuntimeConfig, assemble_envelope};
+use crate::{
+    EXPERIMENT_RECIPE_MANA_SOURCE_EVENT_KIND, EXPERIMENT_RECIPE_MANA_SOURCE_POLICY_SCHEMA_V1,
+    ExperimentRecipeManaSource, ExperimentRecipeManaSourceRecipe,
+    MAX_EXPERIMENT_RECIPE_MANA_SOURCES, Runtime, RuntimeConfig, assemble_envelope,
+};
 
 pub const MATERIAL_SURFACE_LOOP_BENCHMARK_VERSION: u32 = 1;
 pub const MATERIAL_SURFACE_LOOP_BENCHMARK_SEED: u64 = 0x4D41_5445_5249_414C;
+pub const EXPERIMENT_RECIPE_MANA_SOURCE_BENCHMARK_VERSION: u32 = 1;
+pub const EXPERIMENT_RECIPE_MANA_SOURCE_BENCHMARK_WARMUP_TICKS: u64 = 4;
+pub const EXPERIMENT_RECIPE_MANA_SOURCE_BENCHMARK_AMOUNT: i64 = 1;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ExperimentRecipeManaSourceBenchmarkConfig {
+    pub seed: u64,
+    pub measurement_ticks: u64,
+}
+
+impl Default for ExperimentRecipeManaSourceBenchmarkConfig {
+    fn default() -> Self {
+        Self {
+            seed: MATERIAL_SURFACE_LOOP_BENCHMARK_SEED,
+            measurement_ticks: 32,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ExperimentRecipeManaSourceBenchmarkMode {
+    Disabled,
+    Enabled,
+}
+
+impl ExperimentRecipeManaSourceBenchmarkMode {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Disabled => "disabled",
+            Self::Enabled => "enabled",
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ExperimentRecipeManaSourceBenchmarkMeasurement {
+    pub mode: ExperimentRecipeManaSourceBenchmarkMode,
+    pub tick_elapsed_ns: u128,
+    pub mean_tick_elapsed_ns: u128,
+    pub provenance_event_growth: u64,
+    pub encoded_snapshot_bytes: u64,
+    pub observer_response_bytes: u64,
+    pub source_receipt_count: u64,
+    pub source_event_count: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ExperimentRecipeManaSourceBenchmarkReport {
+    pub version: u32,
+    pub config: ExperimentRecipeManaSourceBenchmarkConfig,
+    pub disabled: ExperimentRecipeManaSourceBenchmarkMeasurement,
+    pub enabled: ExperimentRecipeManaSourceBenchmarkMeasurement,
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct MaterialSurfaceLoopBenchmarkConfig {
@@ -87,6 +147,102 @@ pub fn run_material_surface_loop_benchmark(
         observer_off,
         world_chunks_query,
     })
+}
+
+pub fn run_experiment_recipe_mana_source_benchmark(
+    config: ExperimentRecipeManaSourceBenchmarkConfig,
+) -> Result<ExperimentRecipeManaSourceBenchmarkReport, MaterialSurfaceLoopBenchmarkError> {
+    validate_experiment_recipe_mana_source_benchmark_config(config)?;
+    let disabled = measure_experiment_recipe_mana_source(
+        config,
+        ExperimentRecipeManaSourceBenchmarkMode::Disabled,
+    )?;
+    let enabled = measure_experiment_recipe_mana_source(
+        config,
+        ExperimentRecipeManaSourceBenchmarkMode::Enabled,
+    )?;
+    Ok(ExperimentRecipeManaSourceBenchmarkReport {
+        version: EXPERIMENT_RECIPE_MANA_SOURCE_BENCHMARK_VERSION,
+        config,
+        disabled,
+        enabled,
+    })
+}
+
+fn measure_experiment_recipe_mana_source(
+    config: ExperimentRecipeManaSourceBenchmarkConfig,
+    mode: ExperimentRecipeManaSourceBenchmarkMode,
+) -> Result<ExperimentRecipeManaSourceBenchmarkMeasurement, MaterialSurfaceLoopBenchmarkError> {
+    let mut runtime = Runtime::new(experiment_recipe_config(config.seed, mode)?)?;
+    runtime.run_ticks(EXPERIMENT_RECIPE_MANA_SOURCE_BENCHMARK_WARMUP_TICKS)?;
+    let provenance_before = trace_count(&runtime.export_snapshot()?)?;
+    let started = Instant::now();
+    let mut observer_response_bytes = 0_u64;
+    for _ in 0..config.measurement_ticks {
+        let snapshot = runtime.tick()?;
+        observer_response_bytes = observer_response_bytes
+            .checked_add(bounded_world_chunks_query(&runtime, snapshot)?)
+            .ok_or(MaterialSurfaceLoopBenchmarkError::MetricOverflow)?;
+    }
+    let tick_elapsed_ns = started.elapsed().as_nanos();
+    let exported = runtime.export_snapshot()?;
+    let provenance_after = trace_count(&exported)?;
+    let encoded_snapshot_bytes = u64::try_from(assemble_envelope(&exported)?.encode()?.len())
+        .map_err(|_| MaterialSurfaceLoopBenchmarkError::MetricOverflow)?;
+    let source_receipt_count =
+        u64::try_from(runtime.executed_experiment_recipe_mana_sources()?.len())
+            .map_err(|_| MaterialSurfaceLoopBenchmarkError::MetricOverflow)?;
+    let source_event_count = source_event_count(&exported)?;
+    let measurement = ExperimentRecipeManaSourceBenchmarkMeasurement {
+        mode,
+        tick_elapsed_ns,
+        mean_tick_elapsed_ns: tick_elapsed_ns / u128::from(config.measurement_ticks),
+        provenance_event_growth: provenance_after.saturating_sub(provenance_before),
+        encoded_snapshot_bytes,
+        observer_response_bytes,
+        source_receipt_count,
+        source_event_count,
+    };
+    validate_experiment_recipe_mana_source_benchmark_measurement(&measurement)?;
+    Ok(measurement)
+}
+
+fn experiment_recipe_config(
+    seed: u64,
+    mode: ExperimentRecipeManaSourceBenchmarkMode,
+) -> Result<RuntimeConfig, MaterialSurfaceLoopBenchmarkError> {
+    let mut config = production_loop_config(seed);
+    config.material_surface_signals_enabled = false;
+    config.mana_parameters.effect_threshold = i64::MAX;
+    config.mana_parameters.diffusion = 0;
+    config.mana_parameters.decay = 0;
+    let target_chunk = ChartChunkCoord::new(config.chart_id, ChunkCoord::new(0, 0, 0));
+    let mut records = Vec::with_capacity(MAX_EXPERIMENT_RECIPE_MANA_SOURCES);
+    for index in 0..MAX_EXPERIMENT_RECIPE_MANA_SOURCES {
+        let index =
+            u64::try_from(index).map_err(|_| MaterialSurfaceLoopBenchmarkError::MetricOverflow)?;
+        records.push(ExperimentRecipeManaSource {
+            source_record_id: index + 1,
+            enabled: matches!(mode, ExperimentRecipeManaSourceBenchmarkMode::Enabled) && index == 0,
+            scheduled_tick: EXPERIMENT_RECIPE_MANA_SOURCE_BENCHMARK_WARMUP_TICKS + 1 + index,
+            target_chunk,
+            cell_index: u16::try_from(index)
+                .map_err(|_| MaterialSurfaceLoopBenchmarkError::MetricOverflow)?,
+            amount: EXPERIMENT_RECIPE_MANA_SOURCE_BENCHMARK_AMOUNT,
+            per_record_maximum: EXPERIMENT_RECIPE_MANA_SOURCE_BENCHMARK_AMOUNT,
+            policy_schema_id: EXPERIMENT_RECIPE_MANA_SOURCE_POLICY_SCHEMA_V1,
+        });
+    }
+    config.experiment_recipe_mana_sources = ExperimentRecipeManaSourceRecipe {
+        records,
+        recipe_budget: match mode {
+            ExperimentRecipeManaSourceBenchmarkMode::Disabled => 0,
+            ExperimentRecipeManaSourceBenchmarkMode::Enabled => {
+                EXPERIMENT_RECIPE_MANA_SOURCE_BENCHMARK_AMOUNT
+            }
+        },
+    };
+    Ok(config)
 }
 
 fn measure(
@@ -174,6 +330,20 @@ fn trace_count(
 ) -> Result<u64, MaterialSurfaceLoopBenchmarkError> {
     u64::try_from(snapshot.traces.events.len())
         .map_err(|_| MaterialSurfaceLoopBenchmarkError::MetricOverflow)
+}
+
+fn source_event_count(
+    snapshot: &crate::RuntimeSnapshotData,
+) -> Result<u64, MaterialSurfaceLoopBenchmarkError> {
+    u64::try_from(
+        snapshot
+            .traces
+            .events
+            .iter()
+            .filter(|event| event.kind.raw() == EXPERIMENT_RECIPE_MANA_SOURCE_EVENT_KIND)
+            .count(),
+    )
+    .map_err(|_| MaterialSurfaceLoopBenchmarkError::MetricOverflow)
 }
 
 fn require_loop_evidence(

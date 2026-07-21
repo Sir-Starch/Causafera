@@ -305,4 +305,29 @@ implementation evidence lands; do not create maturity-audit artifacts.
 
 ## Progress
 
-Draft only. No implementation is authorized by this plan.
+Implemented and verified on 2026-07-21. Stages 1–5 landed the bounded immutable recipe and
+canonical validation, first Mana-phase source proposal/commit with receipts and ancestry, V3
+recipe plus required `0x000D` receipt persistence, digest/replay/save-resume support, bounded
+redacted observer/Explanation evidence, negative controls, and the hard-cap benchmark envelope.
+
+Verified acceptance tests:
+
+- `enabled_recipe_source_commits_once_and_drives_production_loop`
+- `zero_amount_recipe_source_matches_control_without_source_commit`
+- `disabled_recipe_source_matches_control_without_source_commit`
+- `below_threshold_source_changes_mana_without_material_consequence_or_supported_explanation`
+- `scheduled_source_waits_until_tick_and_executes_once`
+- `invalid_recipe_sources_reject_before_authoritative_commit`
+- `equivalent_source_input_order_has_equal_digests_and_receipts`
+- `enabled_source_same_seed_replays_exactly`
+- `enabled_source_save_resume_equal_pre_and_post_source`
+- `source_trace_precedes_derived_mana_material_and_signal_transitions`
+- `observer_source_evidence_is_bounded_and_redacted`
+- `explanation_source_evidence_is_typed_and_redacted`
+- `suppressed_physical_signal_keeps_source_mana_material_traced_without_subjective_divergence`
+- `experiment_recipe_mana_source_benchmark_reports_disabled_vs_enabled_envelope`
+
+Validation included `cargo fmt --all -- --check`, targeted and full Rust tests, workspace
+`cargo clippy --workspace --all-targets --all-features -- -D warnings`, and observer-protocol
+TypeScript typechecking. The operator intervention architecture remains Proposed; no general
+operator API, conservation redesign, biological coupling, or observer control surface was added.

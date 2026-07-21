@@ -88,13 +88,14 @@ Sections are strictly ordered by schema ID and unique. Unknown required sections
 
 The first complete runtime snapshot includes separate bounded sections for:
 
-1. **Runtime recipe and configuration** (`0x0001`, current major V2)
+1. **Runtime recipe and configuration** (`0x0001`, current major V3)
    - deterministic configuration (seed, stream parameters);
    - registered system schema IDs and revisions;
    - phase and registration order;
    - domain adapter schema revisions;
    - authoritative system parameters (mana, pattern, resolution, actor bounds, and the
      material-surface physical-signal boundary);
+   - immutable experiment-recipe mana source records (bounded, sorted, validated);
    - completed scheduler time.
 
 2. **Spatial/chart and active-chunk state** (`0x0002`)
@@ -177,6 +178,16 @@ The first complete runtime snapshot includes separate bounded sections for:
      Explanation paths;
    - optional trace fields encode presence, so missing contact/mana ancestry is distinct from a
      valid `TraceId(0)`.
+
+13. **Experiment recipe mana source receipts** (`0x000D`, current major V1)
+    - bounded executed-receipt records (at most 16), sorted by `(executed_tick, source_record_id)`;
+    - fields: source record ID, scheduled tick, executed tick, source trace, before/after
+      fixed-point intensity, recipe hash, policy schema;
+    - prevents re-execution of immutable recipe records after save/resume;
+    - import validates receipt ordering, correspondence to enabled nonzero recipe records,
+      tick equality, root source event kind/phase/empty causes, cell-effect fingerprints,
+      recipe hash, and policy schema before authoritative installation;
+    - unsupported major versions fail closed.
 
 ### Authoritative / non-authoritative boundary
 
@@ -280,6 +291,7 @@ Failure leaves the prior completed snapshot intact. Temporary-file cleanup is be
 | actor_objects | 0x0007 | physical objects |
 | population_aggregates | 0x0009 | conserved quantities |
 | aggregate_actor_pool | 0x0009 | membership |
+| executed experiment-recipe mana source receipts | 0x000D | bounded source execution state and replay guard |
 
 ### HistoryDigest contributors
 
@@ -307,10 +319,11 @@ Failure leaves the prior completed snapshot intact. Temporary-file cleanup is be
 - New major version for incompatible container or authoritative semantic changes;
 - Unsupported major versions fail closed; no guesswork loading.
 
-For the active actor/material/mana slice, the runtime accepts authoritative digest schema V2,
-runtime-recipe/configuration major V2, physical-counters major V2, and material-surface major V1.
-Any other required digest schema or section major is rejected deterministically rather than being
-coerced into the current causal state.
+For the active actor/material/mana slice, the runtime accepts authoritative digest schema V3,
+runtime-recipe/configuration major V3, physical-counters major V2, material-surface major V1, and
+experiment-recipe mana source receipts major V1. Any other required digest schema or section major,
+including recipe major V2 or an unsupported receipts major, is rejected deterministically rather
+than being coerced into the current causal state.
 
 ## Security considerations
 
@@ -377,3 +390,7 @@ coerced into the current causal state.
   counters sections advanced to major V2 to encode the physical-signal boundary and
   scheduler-committed mana gate; the material-surface section begins at major V1. The loader
   rejects unsupported required versions.
+- 2026-07-21: The immutable experiment-recipe source advances the runtime recipe section to V3,
+  adds required receipt section `0x000D` V1, and advances the authoritative digest schema to V3.
+  Receipt correspondence and source-event ancestry are validated before installation; unsupported
+  required versions fail closed.
