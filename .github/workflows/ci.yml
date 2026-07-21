@@ -16,21 +16,17 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           persist-credentials: false
-          fetch-depth: 0
-      - name: Path Filter
+      - uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # v3.0.2
         id: filter
-        run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            BASE_SHA=${{ github.event.pull_request.base.sha }}
-          else
-            BASE_SHA=${{ github.event.before }}
-          fi
-          
-          if git diff --name-only "$BASE_SHA" "${{ github.sha }}" | grep -E '\.rs$|Cargo\.toml$|Cargo\.lock$|^\.github/workflows/|^proto/|^apps/observer/src-tauri/'; then
-            echo "rust=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "rust=false" >> "$GITHUB_OUTPUT"
-          fi
+        with:
+          filters: |
+            rust:
+              - '**/*.rs'
+              - '**/Cargo.toml'
+              - '**/Cargo.lock'
+              - '.github/workflows/**'
+              - 'proto/**'
+              - 'apps/observer/src-tauri/**'
       - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
         if: steps.filter.outputs.rust == 'true'
         with:
@@ -48,7 +44,7 @@ jobs:
         if: steps.filter.outputs.rust == 'true'
       - uses: dtolnay/rust-toolchain@8641a17e25bf5b40c118d48fe0f81e8655731839 # 1.85.0
         if: steps.filter.outputs.rust == 'true'
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@400e7407cfd7a091e5fbb6afec01ec146c432b7c # v2.7.7
         if: steps.filter.outputs.rust == 'true'
       - name: Install Tauri OS dependencies
         if: steps.filter.outputs.rust == 'true'
