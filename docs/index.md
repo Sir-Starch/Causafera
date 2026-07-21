@@ -49,6 +49,8 @@ Later documents supersede conflicting initialization-spec sections **only when t
 - `docs/architecture/observer.md` - Observer architecture
 - `docs/architecture/protocol.md` - Observer protocol
 - `docs/architecture/provenance.md` - Ground Truth events and causal provenance
+- `docs/architecture/external-consciousness-archive.md` - Proposed external archive and restoration boundaries
+- `docs/architecture/operator-physical-interventions.md` - Proposed constrained physical and mana intervention boundaries
 - `docs/architecture/cognition-rebaseline.md` - Cognition rebaseline: subjective scene and cognitive continuity
 - `docs/architecture/detailed-development-rebaseline.md` - Post-Phase-26 detailed development priorities, maturity gates, and terminal LLM policy
 
