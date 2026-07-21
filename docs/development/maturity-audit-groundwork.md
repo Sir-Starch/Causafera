@@ -49,7 +49,7 @@ may be reused only on explicit demand with a fresh current-HEAD evidence boundar
 ## Links and scope
 
 - [Paused maturity-audit plan](https://github.com/Sir-Starch/Causafera/blob/main/plans/detailed-development-maturity-audit.md)
-- [Active actor/material/mana implementation plan](https://github.com/Sir-Starch/Causafera/blob/main/plans/actor-material-mana-loop.md)
+- [Completed actor/material/mana implementation record](https://github.com/Sir-Starch/Causafera/blob/main/plans/actor-material-mana-loop.md)
 - [Capability catalog](https://github.com/Sir-Starch/Causafera/blob/main/tools/audit/capability-catalog.json)
 - [Checker schema contracts](https://github.com/Sir-Starch/Causafera/blob/main/tools/audit/schema-contracts.json)
 - [Adapter contracts](https://github.com/Sir-Starch/Causafera/blob/main/tools/audit/adapter-contracts.json)

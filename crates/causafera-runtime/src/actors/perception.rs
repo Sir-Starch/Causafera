@@ -18,6 +18,7 @@ pub fn actor_perception_step(
     time: SimulationTime,
     actors: &mut BTreeMap<ActorId, ActorState>,
     objects: &BTreeMap<u64, ActorPhysicalObject>,
+    material_signals: &[PhysicalSignal],
 ) -> Result<usize, causafera_perception::AcquisitionError> {
     let extractor = GenericFeatureExtractor::new(
         MagnitudeQuantum::new(1)
@@ -26,7 +27,8 @@ pub fn actor_perception_step(
     let mut total = 0;
     for (actor_id, actor) in actors {
         let apertures = physical_apertures(*actor_id, actor);
-        let signals = physical_signals(time, objects);
+        let mut signals = physical_signals(time, objects);
+        signals.extend_from_slice(material_signals);
         let batch = acquire_signals(
             time,
             AcquisitionId::new(

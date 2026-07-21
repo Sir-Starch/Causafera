@@ -20,6 +20,22 @@ This permits two physically similar structures to couple even when societies int
 
 Evolution produces replacement-state proposals and changed-cell records. It does not mutate the source field. Each changed cell carries traces supporting direct pattern injection and neighbouring prior field state. A caller must commit one new provenance trace per changed cell before constructing the next field.
 
+## Bounded material-surface coupling
+
+The active actor/material/mana slice uses one concrete field-to-matter path. Runtime-owned
+`MaterialSurface` records are addressed by a chart-qualified chunk and a local cell ordinal, are
+created by `HistoricalBootstrapPlan`, and retain condition, contact count, and last transition
+trace. A valid actor action commits its body and surface-contact effects in the Action phase.
+Physics emits canonical samples only from changed surfaces; mana therefore receives measurable
+structure, not an action label or a semantic interpretation. When the threshold/hysteresis rule
+accepts an effect, the Mana phase commits a later condition change with the mana-cell and prior
+surface ancestry. Crossing either direction of the threshold/hysteresis gate is itself a
+Mana-phase provenance commit for the persisted gate state; it is not an untraced control flag.
+
+This is a bounded local material response, not a general material economy, terrain process, or
+biological coupling. The changed surface supplies a range-limited physical signal, but agents
+still receive only generic extracted features and subjective-scene cues.
+
 ## Geography
 
 Fields are chunk-local causal state, so terrain, geology, hydrology, climate, ecology, and construction can later alter sample production or field parameters. Phase 17 does not invent those couplings. Cross-chunk boundary exchange is also deferred.
@@ -32,7 +48,9 @@ All hot arithmetic is fixed-point integer arithmetic; sample and cell traversal 
 
 ## Deferred phenomena
 
-Field-to-matter effects, interference phase state, hysteresis, long-lived attractors, artifacts, gods/spirits, semantic observer classifications, causal resolution, persistence, and visualization remain future work.
+Additional field-to-matter mechanisms beyond the bounded material surface, interference phase
+state, long-lived attractors, artifacts, gods/spirits, semantic observer classifications,
+cross-chunk exchange, and visualization remain future work.
 
 ## Related documents
 

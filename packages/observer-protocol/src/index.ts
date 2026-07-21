@@ -1,5 +1,6 @@
 /** Canonical observer v1 client codec. Field numbers come from proto/causafera/observer/v1. */
 export const OBSERVER_PROTOCOL_V1 = 1;
+export const MAX_MATERIAL_SURFACE_DELTAS = 64;
 
 export interface ConnectRequest {
   supportedProtocolVersions: number[];
@@ -61,6 +62,21 @@ export interface RuntimeSummary {
 export interface WorldChunkSnapshot {
   simulationTicks: bigint;
   chunks: SpatialChunkSummary[];
+  materialSurfaceDeltaSchemaVersion: number;
+  materialSurfaceDeltas: MaterialSurfaceDelta[];
+}
+
+export interface MaterialSurfaceDelta {
+  chartId: bigint;
+  chunkX: number;
+  chunkY: number;
+  chunkZ: number;
+  cellOrdinal: number;
+  beforeCondition: bigint;
+  afterCondition: bigint;
+  manaTotal: bigint;
+  contactTraceId?: bigint;
+  manaEffectTraceId?: bigint;
 }
 
 export interface SpatialChunkSummary {
@@ -247,14 +263,23 @@ export function decodeWorldChunkSnapshot(input: Uint8Array): WorldChunkSnapshot 
   const cursor = new Cursor(input);
   let simulationTicks: bigint | undefined;
   const chunks: SpatialChunkSummary[] = [];
+  const materialSurfaceDeltas: MaterialSurfaceDelta[] = [];
+  let materialSurfaceDeltaSchemaVersion = 0;
   while (!cursor.empty) {
     const [field, wire] = cursor.key();
     if (field === 1 && wire === 0) simulationTicks = cursor.varint();
     else if (field === 2 && wire === 2) chunks.push(decodeSpatialChunk(cursor.bytes()));
+    else if (field === 3 && wire === 2) {
+      const delta = cursor.bytes();
+      if (materialSurfaceDeltas.length < MAX_MATERIAL_SURFACE_DELTAS) {
+        materialSurfaceDeltas.push(decodeMaterialSurfaceDelta(delta));
+      }
+    }
+    else if (field === 4 && wire === 0) materialSurfaceDeltaSchemaVersion = Number(cursor.varint());
     else cursor.skip(wire);
   }
   if (simulationTicks === undefined) throw new Error("missing WorldChunkSnapshot field 1");
-  return { simulationTicks, chunks };
+  return { simulationTicks, chunks, materialSurfaceDeltaSchemaVersion, materialSurfaceDeltas };
 }
 
 export function decodeStreamEnvelope(input: Uint8Array): StreamEnvelope {
@@ -320,6 +345,25 @@ function decodeSpatialChunk(input: Uint8Array): SpatialChunkSummary {
     populationTotal: value(11),
     causalEventCount: value(12),
     latestTraceId: value(13),
+  };
+}
+
+function decodeMaterialSurfaceDelta(input: Uint8Array): MaterialSurfaceDelta {
+  const values = decodeVarintFields(input);
+  const value = requiredValue(values, "MaterialSurfaceDelta");
+  const contactTraceId = values.get(9);
+  const manaEffectTraceId = values.get(10);
+  return {
+    chartId: value(1),
+    chunkX: Number(zigzagDecode(value(2))),
+    chunkY: Number(zigzagDecode(value(3))),
+    chunkZ: Number(zigzagDecode(value(4))),
+    cellOrdinal: Number(value(5)),
+    beforeCondition: zigzagDecode(value(6)),
+    afterCondition: zigzagDecode(value(7)),
+    manaTotal: zigzagDecode(value(8)),
+    contactTraceId,
+    manaEffectTraceId,
   };
 }
 

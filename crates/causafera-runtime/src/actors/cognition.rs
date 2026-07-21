@@ -49,18 +49,29 @@ pub fn actor_cognition_step(
             &actor.self_model,
         )?;
         let objects = inner.objects().to_vec();
-        let target = objects
-            .first()
-            .map_or(SubjectiveTarget::SelfBody, |object| {
-                SubjectiveTarget::Object(object.id)
-            });
+        let selected_object = actor.attention.focus(0).and_then(|focus| {
+            objects
+                .iter()
+                .find(|object| object.supporting_percept == focus.supporting_percept)
+        });
+        let target = selected_object.map_or(SubjectiveTarget::SelfBody, |object| {
+            SubjectiveTarget::Object(object.id)
+        });
+        let perceived_urgency = selected_object.map_or(0, |object| {
+            i64::from(object.confidence.raw()).saturating_div(400_000)
+        });
+        let action_urgency = if actor.body.energy > 0 {
+            perceived_urgency.clamp(1, actor.body.energy)
+        } else {
+            0
+        };
         let active_goals = if objects.is_empty() {
             Vec::new()
         } else {
             vec![ActiveGoal {
                 action_kind,
                 target,
-                urgency: actor.body.energy.max(0),
+                urgency: action_urgency,
             }]
         };
         actor.proposals = active_goals
@@ -68,7 +79,7 @@ pub fn actor_cognition_step(
             .map(|goal| ActionProposal {
                 action_kind: goal.action_kind,
                 target: goal.target,
-                intensity: goal.urgency.min(1),
+                intensity: goal.urgency,
             })
             .collect();
         actor.subjective_scene = Some(SubjectiveScene {

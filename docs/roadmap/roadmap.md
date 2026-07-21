@@ -203,7 +203,7 @@ statements, not claims that a whole domain is mature.
 Immediate program priorities are durable physical-state coupling, production historical bootstrap
 without fixtures, domain-valid recovery and phenomenon metrics, and causal/domain inspection. The
 frozen-baseline maturity audit is paused after preserving its completed groundwork; it does not
-block the bounded actor/material/mana vertical slice in
+block the completed actor/material/mana vertical-slice record in
 `plans/actor-material-mana-loop.md`.
 
 See `docs/architecture/detailed-development-rebaseline.md`; the completed planning record is in

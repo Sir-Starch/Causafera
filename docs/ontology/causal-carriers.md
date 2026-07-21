@@ -63,4 +63,13 @@ Phase 23 adds research carriers without adding metaphysical entities. Identity o
 
 Phase 24 integrates the first executable carrier chain. A repeated physical structure commits a Ground Truth event; three chart-local 3D samples drive fixed-point mana proposals; each accepted cell transition commits a trace; bounded threshold/hysteresis mana-effect proposals can commit an opaque physical-property transition that changes later physical samples; an opaque numeric relevance signal drives a committed resolution transition. Laboratory probes read checkpoints only and never mutate the chain.
 
+The active actor/material/mana loop makes that bounded field-to-matter transition concrete. A
+chart-qualified material-surface condition is initialized through `HistoricalBootstrapPlan`;
+valid actor contact commits an Action-phase surface transition with explicit parent traces;
+Physics emits canonical samples from the changed condition; Mana commits a later surface effect;
+and only a range-limited physical signal enters perception. Generic features become agent-local
+cues and a subjective scene before a later action. The observer and Explanation projections are
+read-only and carry trace anchors; no material-surface ID, chart address, or trace becomes agent
+knowledge.
+
 RFC-GEO-002 clarifies spatial carrier addressing: global geography is chart-qualified surface state, while local physics uses bounded Euclidean 3D frames. Bare chunks are local-chart addresses. Chart seams and local-frame bounds require explicit transforms; containment and resolution cannot manufacture geometric adjacency.

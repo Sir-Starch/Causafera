@@ -52,4 +52,19 @@ message RuntimeSummary {
 message WorldChunkSnapshot {
   uint64 simulation_ticks = 1;
   repeated SpatialChunkSummary chunks = 2;
+  repeated MaterialSurfaceDelta material_surface_deltas = 3;
+  uint32 material_surface_delta_schema_version = 4;
+}
+
+message MaterialSurfaceDelta {
+  uint64 chart_id = 1;
+  sint32 chunk_x = 2;
+  sint32 chunk_y = 3;
+  sint32 chunk_z = 4;
+  uint32 cell_ordinal = 5;
+  sint64 before_condition = 6;
+  sint64 after_condition = 7;
+  sint64 mana_total = 8;
+  optional uint64 contact_trace_id = 9;
+  optional uint64 mana_effect_trace_id = 10;
 }

@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 
 pub const OBSERVER_PROTOCOL_V1: u32 = 1;
 pub const MAX_QUERY_PAYLOAD_BYTES: usize = 1 << 20;
+pub const MATERIAL_SURFACE_DELTA_SCHEMA_V1: u32 = 1;
+pub const MAX_MATERIAL_SURFACE_DELTAS: usize = 64;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[repr(u32)]
@@ -116,6 +118,22 @@ pub struct ObserverSnapshot {
 pub struct ObserverWorldSnapshot {
     pub time: SimulationTime,
     pub chunks: Vec<ObserverChunkSummary>,
+    pub material_surface_delta_schema_version: u32,
+    pub material_surface_deltas: Vec<MaterialSurfaceDelta>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MaterialSurfaceDelta {
+    pub chart_id: u64,
+    pub chunk_x: i32,
+    pub chunk_y: i32,
+    pub chunk_z: i32,
+    pub cell_ordinal: u16,
+    pub before_condition: i64,
+    pub after_condition: i64,
+    pub mana_total: i64,
+    pub contact_trace: Option<TraceId>,
+    pub mana_effect_trace: Option<TraceId>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

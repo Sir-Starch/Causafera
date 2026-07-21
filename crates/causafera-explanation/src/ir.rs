@@ -16,6 +16,15 @@ impl ExplanationClaimSchemaId {
     }
 }
 
+pub const MATERIAL_SURFACE_LOOP_CLAIM_SCHEMA: ExplanationClaimSchemaId =
+    ExplanationClaimSchemaId::new(10);
+pub const MATERIAL_SURFACE_LOOP_WINDOW_SCHEMA: ExplanationClaimSchemaId =
+    ExplanationClaimSchemaId::new(11);
+pub const MATERIAL_SURFACE_LOOP_CONTROL_SCHEMA: ExplanationClaimSchemaId =
+    ExplanationClaimSchemaId::new(12);
+pub const MATERIAL_SURFACE_LOOP_MANA_SCHEMA: ExplanationClaimSchemaId =
+    ExplanationClaimSchemaId::new(13);
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct ComparisonCohortId(u64);
@@ -165,6 +174,74 @@ impl ExplanationClaim {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct MaterialSurfaceLoopClaim {
+    pub before_condition: i64,
+    pub after_condition: i64,
+    pub mana_total: i64,
+    pub observation_start: SimulationTime,
+    pub observation_end: SimulationTime,
+    pub contact_trace: TraceId,
+    pub mana_effect_trace: Option<TraceId>,
+    pub repeated_structure_observed: bool,
+}
+
+impl MaterialSurfaceLoopClaim {
+    pub fn to_explanation_claims(self) -> Result<Vec<ExplanationClaim>, ExplanationIrError> {
+        let value = NumericClaimValue::range(self.before_condition, self.after_condition)?;
+        let window = NumericClaimValue::range(
+            i64::try_from(self.observation_start.raw())
+                .map_err(|_| ExplanationIrError::ObservationTimeOverflow)?,
+            i64::try_from(self.observation_end.raw())
+                .map_err(|_| ExplanationIrError::ObservationTimeOverflow)?,
+        )?;
+        let mut trace_anchors = vec![self.contact_trace];
+        if let Some(trace) = self.mana_effect_trace {
+            trace_anchors.push(trace);
+        }
+        let primary = match (self.repeated_structure_observed, self.mana_effect_trace) {
+            (true, Some(_)) => ExplanationClaim::new(
+                MATERIAL_SURFACE_LOOP_CLAIM_SCHEMA,
+                value,
+                ClaimConfidence::ONE,
+                trace_anchors.clone(),
+                ComparisonContext::None,
+                ClaimEvidenceState::Supported,
+            )?,
+            (false, _) | (_, None) => ExplanationClaim::unknown(
+                MATERIAL_SURFACE_LOOP_CLAIM_SCHEMA,
+                value,
+                ComparisonContext::None,
+            )?,
+        };
+        let window_claim = ExplanationClaim::new(
+            MATERIAL_SURFACE_LOOP_WINDOW_SCHEMA,
+            window,
+            ClaimConfidence::ONE,
+            trace_anchors.clone(),
+            ComparisonContext::None,
+            ClaimEvidenceState::Supported,
+        )?;
+        let control_claim = ExplanationClaim::new(
+            MATERIAL_SURFACE_LOOP_CONTROL_SCHEMA,
+            NumericClaimValue::ratio(u64::from(self.repeated_structure_observed), 1)?,
+            ClaimConfidence::ONE,
+            vec![self.contact_trace],
+            ComparisonContext::None,
+            ClaimEvidenceState::Supported,
+        )?;
+        let mana_claim = ExplanationClaim::new(
+            MATERIAL_SURFACE_LOOP_MANA_SCHEMA,
+            NumericClaimValue::scalar(self.mana_total),
+            ClaimConfidence::ONE,
+            trace_anchors,
+            ComparisonContext::None,
+            ClaimEvidenceState::Supported,
+        )?;
+        Ok(vec![primary, window_claim, control_claim, mana_claim])
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum FrameAssessment {
     Supported,
@@ -283,6 +360,8 @@ pub enum ExplanationIrError {
     FrameWithoutClaims { checkpoint_time: SimulationTime },
     #[error("explanation report for {experiment:?} must contain at least one frame")]
     ReportWithoutFrames { experiment: ExperimentId },
+    #[error("material-surface observation time exceeds Explanation IR range")]
+    ObservationTimeOverflow,
 }
 
 #[cfg(test)]
@@ -339,5 +418,41 @@ mod tests {
                 schema: ExplanationClaimSchemaId::new(1)
             }
         );
+    }
+
+    #[test]
+    fn material_surface_loop_claim_emits_typed_window_and_control_claims() {
+        // Given: a traced mana-mediated material transition over an observed runtime window.
+        let claim = MaterialSurfaceLoopClaim {
+            before_condition: 4,
+            after_condition: 6,
+            mana_total: 12,
+            observation_start: SimulationTime::new(3),
+            observation_end: SimulationTime::new(8),
+            contact_trace: TraceId::new(21),
+            mana_effect_trace: Some(TraceId::new(22)),
+            repeated_structure_observed: true,
+        };
+
+        // When: the non-authoritative input is converted into Explanation IR.
+        let claims = claim.to_explanation_claims().unwrap();
+
+        // Then: typed values, window, controls, and causal anchors are available to observers.
+        assert_eq!(claims.len(), 4);
+        assert_eq!(claims[0].schema, MATERIAL_SURFACE_LOOP_CLAIM_SCHEMA);
+        assert_eq!(claims[0].evidence_state, ClaimEvidenceState::Supported);
+        assert_eq!(
+            claims[0].evidence_traces,
+            vec![TraceId::new(21), TraceId::new(22)]
+        );
+        assert_eq!(claims[1].schema, MATERIAL_SURFACE_LOOP_WINDOW_SCHEMA);
+        assert_eq!(
+            claims[1].value,
+            NumericClaimValue::Range { start: 3, end: 8 }
+        );
+        assert_eq!(claims[2].schema, MATERIAL_SURFACE_LOOP_CONTROL_SCHEMA);
+        assert_eq!(claims[2].value, NumericClaimValue::ratio(1, 1).unwrap());
+        assert_eq!(claims[3].schema, MATERIAL_SURFACE_LOOP_MANA_SCHEMA);
+        assert_eq!(claims[3].value, NumericClaimValue::scalar(12));
     }
 }

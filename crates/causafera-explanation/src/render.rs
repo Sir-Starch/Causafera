@@ -108,6 +108,10 @@ fn schema_name(id: u64, locale: ObserverLocale) -> String {
         (7, ObserverLocale::En) => "time to recovery",
         (8, ObserverLocale::En) => "stability under active input",
         (9, ObserverLocale::En) => "stability without active input",
+        (10, ObserverLocale::En) => "material-surface loop",
+        (11, ObserverLocale::En) => "material-surface observation window",
+        (12, ObserverLocale::En) => "material-surface repetition control",
+        (13, ObserverLocale::En) => "material-surface mana context",
         (1, ObserverLocale::Ru) => "коэффициент реконструируемости",
         (2, ObserverLocale::Ru) => "коэффициент зависимости от истории",
         (3, ObserverLocale::Ru) => "каузальная глубина",
@@ -117,6 +121,10 @@ fn schema_name(id: u64, locale: ObserverLocale) -> String {
         (7, ObserverLocale::Ru) => "время до восстановления",
         (8, ObserverLocale::Ru) => "стабильность при активном воздействии",
         (9, ObserverLocale::Ru) => "стабильность без активного воздействия",
+        (10, ObserverLocale::Ru) => "цикл материальной поверхности",
+        (11, ObserverLocale::Ru) => "окно наблюдения материальной поверхности",
+        (12, ObserverLocale::Ru) => "контроль повторяемости материальной поверхности",
+        (13, ObserverLocale::Ru) => "мана-контекст материальной поверхности",
         _ => {
             return match locale {
                 ObserverLocale::En => format!("claim schema {id} (generic renderer)"),
@@ -185,7 +193,10 @@ fn comparison_context(value: ComparisonContext, locale: ObserverLocale) -> Strin
 mod tests {
     use causafera_types::{ExperimentId, SimulationTime, TraceId};
 
-    use crate::{ClaimConfidence, ExplanationClaimSchemaId, ExplanationFrame};
+    use crate::{
+        ClaimConfidence, ExplanationClaimSchemaId, ExplanationFrame,
+        MATERIAL_SURFACE_LOOP_CLAIM_SCHEMA, MATERIAL_SURFACE_LOOP_MANA_SCHEMA,
+    };
 
     use super::*;
 
@@ -228,5 +239,46 @@ mod tests {
                 .text
                 .contains("claim schema 999 (generic renderer)")
         );
+    }
+
+    #[test]
+    fn material_surface_loop_schema_names_are_deterministic_and_localized() {
+        // Given: observer-only material-loop schema identities.
+        let report = ExplanationReport::new(
+            ExperimentId::new(5),
+            vec![
+                ExplanationFrame::new(
+                    SimulationTime::new(8),
+                    vec![
+                        ExplanationClaim::unknown(
+                            MATERIAL_SURFACE_LOOP_CLAIM_SCHEMA,
+                            NumericClaimValue::scalar(0),
+                            ComparisonContext::None,
+                        )
+                        .unwrap(),
+                        ExplanationClaim::new(
+                            MATERIAL_SURFACE_LOOP_MANA_SCHEMA,
+                            NumericClaimValue::scalar(12),
+                            ClaimConfidence::ONE,
+                            vec![TraceId::new(22)],
+                            ComparisonContext::None,
+                            ClaimEvidenceState::Supported,
+                        )
+                        .unwrap(),
+                    ],
+                )
+                .unwrap(),
+            ],
+        )
+        .unwrap();
+
+        // When: the same non-authoritative report is rendered in supported locales.
+        let english = DeterministicExplanationRenderer.render(&report, ObserverLocale::En);
+        let russian = DeterministicExplanationRenderer.render(&report, ObserverLocale::Ru);
+
+        // Then: localized labels change without changing the structured report.
+        assert!(english.text.contains("material-surface loop"));
+        assert!(russian.text.contains("цикл материальной поверхности"));
+        assert_ne!(english.text, russian.text);
     }
 }

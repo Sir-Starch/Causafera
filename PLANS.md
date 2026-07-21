@@ -50,7 +50,6 @@ Progress
 ## Active Planning
 
 - [`plans/biological-mana-coupling.md`](plans/biological-mana-coupling.md) — accepted architecture with pending implementation stages for physical biological mana coupling and its downstream validation.
-- [`plans/actor-material-mana-loop.md`](plans/actor-material-mana-loop.md) — Active, decision-complete first implementation tranche for a production actor/material/mana causal loop.
 
 ## Draft Plans
 
@@ -63,3 +62,7 @@ No current Draft ExecPlans.
 ## Historical Plans and Records
 
 Completed Foundation Era ExecPlans, the completed Detailed Development rebaseline, and the public-source-readiness record live in [historical plans and records](plans/history/README.md). They preserve provenance, not current guidance. For current project state, use the [roadmap](docs/roadmap/roadmap.md), [maturity matrix](docs/ontology/domain-coverage-matrix.md), and active plan above.
+
+- [`plans/actor-material-mana-loop.md`](plans/actor-material-mana-loop.md) — completed and
+  verified first Detailed Development production vertical slice; preserved as its implementation
+  record rather than current planning guidance.

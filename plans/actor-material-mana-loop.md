@@ -1,6 +1,6 @@
 # Actor Material Mana Loop ExecPlan
 
-**Status:** Active
+**Status:** Completed and verified on 2026-07-21
 
 ## Goal
 
@@ -43,18 +43,24 @@ features, subjective scene cues, action proposals, and causal traces.
 
 ## Current state
 
-`Runtime::new` schedules the required production phases. `ActorPerceptionSystem` and
-`ActorCognitionSystem` construct a bounded subjective scene before `ActorActionSystem` commits
-movement. `ManaRuntimeSystem` commits field-cell traces, but `ManaEffectsSystem` currently writes
-only `physical_mana_effect_boost`; `PhysicalPatternSystem` turns it into counter and sample
-changes. Runtime snapshots already include authoritative runtime state and resume through
-`Runtime::from_snapshot`.
+`Runtime::new` schedules the required production phases. `HistoricalBootstrapPlan` now creates a
+chart-qualified material surface for every active chunk. `ActorActionSystem` commits valid contact
+and the surface transition together in `Phase::Action`; `PhysicalPatternSystem` converts changed
+surfaces into canonical bounded samples; and `ManaEffectsSystem` commits a later material-surface
+transition in `Phase::Mana`. `ActorPerceptionSystem` and `ActorCognitionSystem` construct a
+bounded subjective scene before a later action. The mana activation gate itself is a Mana-phase
+provenance commit, so the persisted `mana_effect_active` state has a deterministic traceable
+transition. Snapshots include material-surface records and a bounded causal observation window of
+at most 128 transitions; eviction preserves the newest mana-mediated transition when it must
+discard older ordinary contacts. They resume through `Runtime::from_snapshot`.
 
 ## Proposed architecture
 
 Introduce `RuntimeState::material_surfaces: BTreeMap<MaterialSurfaceId, MaterialSurface>` as the
 sole authoritative store. `MaterialSurfaceId` is exactly `(ChartChunkCoord, u16 cell_index)` and
 `MaterialSurface` contains `condition: i64`, `contact_count: u64`, and `last_transition: TraceId`.
+Its separate bounded transition window records typed before/after values and the presence or
+absence of contact/mana trace anchors without using a trace-ID sentinel.
 The bootstrap owner is `MaterialSurfaceBootstrapStage::bootstrap`, added to
 `HistoricalBootstrapPlan`; it creates one site for each causally bootstrapped active chunk and
 commits `MATERIAL_SURFACE_BOOTSTRAP_EVENT_KIND` before any actor can access it.
@@ -125,15 +131,18 @@ milestone, or M5-scale claim.
 
 The required production-path tests are
 `actor_contact_material_surface_commits_causal_transition`,
-`repeated_material_surface_transitions_drive_mana`,
-`mana_material_surface_effect_changes_later_accessible_signal`,
-`actor_material_surface_loop_replays_and_resumes_exactly`, and
-`material_surface_loop_controls_reject_counter_fixture_and_observer_paths`.
-They must run from `HistoricalBootstrapPlan`, not a fixture/demo constructor, and prove actor
-contact changes a local material value; repeated transitions change mana; mana changes that value;
-a later bounded signal reaches a subjective scene and a later action; and every transition has
-parent-before-child traces. The final test contains no-repetition, no-mana, no-field-effect,
-fixture-exclusion, observer-cadence, locale, and batch-order controls.
+`material_surface_loop_replays_with_contact_and_mana_material_consequence`,
+`material_surface_loop_save_resume_after_contact_and_mana_material_consequence`,
+`material_surface_loop_without_mana_has_no_material_consequence`,
+`material_surface_loop_without_repetition_has_no_mana_material_consequence`,
+`mana_material_consequence_changes_later_bounded_signal_scene_and_action`,
+`material_surface_loop_parents_precede_children`, and the live observer/Explanation tests in
+`material_surface_observer.rs`. They run from `HistoricalBootstrapPlan`, not a fixture/demo
+constructor, and prove actor contact changes a local material value; repeated transitions change
+mana; mana changes that value; the resulting accessible physical signal changes a subjective scene
+and later action without exposing material identity; and every transition has parent-before-child
+traces. They also cover material-section codec roundtrips/version rejection, bounded/versioned
+observer projection, Explanation insufficiency, and retained newest mana observation evidence.
 
 ## Benchmark plan
 
@@ -169,9 +178,13 @@ semantic meaning from the loop.
 ## Persistence impact
 
 `MATERIAL_SURFACE_SECTION_ID` owns `RuntimeSnapshotData::material_surfaces`; its codecs are
-`encode_material_surface_section` and `decode_material_surface_section`. It stores the bounded
-surface records, last transition traces, and required bounded history. An uninterrupted run and
-save/load/resume run must have equal canonical state and history digests.
+`encode_material_surface_section` and `decode_material_surface_section`. Material surfaces use
+section major V1; runtime recipe/configuration and physical counters use major V2, and the
+physical/history/experiment digest schema is V2 because material state, anchors, and gate state
+are authoritative digest inputs. The section stores bounded surface records, last-transition
+traces, and required bounded history. Unsupported digest schemas or required section majors fail
+closed; an uninterrupted run and save/load/resume run must have equal canonical state and history
+digests.
 
 ## Cross-domain effects
 
@@ -205,7 +218,39 @@ Advance the accepted slice of `TODO-SIM-001`; update `TODO-RUNTIME-001`, `TODO-O
 - 2026-07-18: Decision-completeness review fixed the authoritative store, bootstrap and phase
   owners, proposal/commit operations, provenance event identities, snapshot section, observer and
   Explanation projections, and named integration/control tests. The plan is ready to implement.
+- 2026-07-21: The active worktree implements the planned material-surface state, production
+  bootstrap, Action/Physics/Mana commits, bounded physical signal path, snapshot section,
+  `MaterialSurfaceDelta`, and `MaterialSurfaceLoopClaim`. The former counter-feedback path is no
+  longer the accepted loop. This record describes the current worktree, not a maturity or scale
+  claim.
+- 2026-07-21: A two-run release diagnostic of the production `Runtime::new` path completed Stage
+  6's bounded-envelope measurement. With one promoted actor, one sensor, bootstrap population
+  eight, one material site, and 32 measured ticks, both runs recorded 34 contacts, one
+  mana-to-material transition, a 160,989-byte snapshot, provenance growth of 734, and a
+  15,834-byte bounded world-chunks response. The signed query-minus-observer-off timing deltas
+  differed in direction, so they are retained only as local observations, not an overhead or
+  scale estimate.
+- 2026-07-21: Persistence compatibility advanced for this slice: runtime recipe and
+  physical-counter sections are major V2, the material-surface section is major V1, and the
+  authoritative digest schema is V2. Required unsupported versions reject deterministically;
+  trace-anchor absence remains distinct from `TraceId(0)` in snapshots and observer wire data.
+- 2026-07-21: Final post-fix validation passed: 9 material-loop, 4 observer/Explanation, 8
+  observer-wire, 5 observer-session, 6 lab, and 2 bounded-benchmark tests; workspace
+  all-features and no-default-features suites; `xtask ci`; formatting and Clippy; pnpm lint,
+  typecheck, build, and protocol typecheck; the current relative-link/anchor validator; and
+  `git diff --check`. Five independent review lanes and a focused runtime failure-mode audit
+  passed. Snapshot decoding rejects over-bound transition history before it becomes authoritative,
+  and the 140-tick bounded-history test preserves a traced mana result through snapshot, observer,
+  and Explanation projections.
+- 2026-07-21: The final bounded release diagnostic used the production runtime with one promoted
+  actor, one material site, 32 measured ticks, and a bounded world-chunks query. It recorded 20
+  contacts, one mana-to-material transition, and an 11,637-byte query response. It is an envelope
+  observation only; this plan makes no performance or scale claim.
 
 ## Progress
 
-READY FOR IMPLEMENTATION. No product implementation has begun.
+COMPLETED AND VERIFIED 2026-07-21. All six implementation stages passed their production-path,
+replay, save/resume, control, provenance, observer, Explanation, codec, bounded-history, and
+release-diagnostic acceptance evidence. Final repository validation, five independent review
+lanes, and a focused runtime failure-mode audit passed against the final worktree. No broad
+material model, stable overhead estimate, or scale claim is accepted by this slice.

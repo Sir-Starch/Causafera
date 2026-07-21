@@ -190,12 +190,16 @@ impl AttentionState {
             AttentionWeight::new(snapshot.config.continuity_bonus)?,
         )?;
         let mut state = Self::new(config);
-        for index in 1..snapshot.foci.len() {
-            if snapshot.foci[index - 1].target >= snapshot.foci[index].target {
-                return Err(AttentionConfigError::CapacityOutOfRange {
-                    capacity: snapshot.config.capacity,
-                });
-            }
+        let mut targets = snapshot
+            .foci
+            .iter()
+            .map(|focus| focus.target)
+            .collect::<Vec<_>>();
+        targets.sort_unstable();
+        if targets.windows(2).any(|pair| pair[0] == pair[1]) {
+            return Err(AttentionConfigError::CapacityOutOfRange {
+                capacity: snapshot.config.capacity,
+            });
         }
         state.len = snapshot.foci.len() as u8;
         for (index, focus) in snapshot.foci.into_iter().enumerate() {
@@ -334,6 +338,22 @@ mod tests {
         assert_eq!(a.len(), 2);
         assert_eq!(a.focus(0).unwrap().target, AttentionTargetId::new(3));
         assert_eq!(a.focus(1).unwrap().target, AttentionTargetId::new(5));
+    }
+
+    #[test]
+    fn snapshot_import_preserves_deterministic_rank_order() {
+        let mut state = state(2, 0);
+        state
+            .update(
+                SimulationTime::new(1),
+                &[candidate(3, 400, 1), candidate(5, 700, 2)],
+            )
+            .unwrap();
+        let snapshot = state.export_snapshot();
+
+        assert_eq!(snapshot.foci[0].target, AttentionTargetId::new(5));
+        assert_eq!(snapshot.foci[1].target, AttentionTargetId::new(3));
+        assert_eq!(AttentionState::import_snapshot(snapshot), Ok(state));
     }
 
     #[test]

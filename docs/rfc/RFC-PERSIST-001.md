@@ -17,13 +17,17 @@ The post-Phase-24 implementation now includes:
 - complete `CausalTraceStore` with event/effect/cause ancestry;
 - bounded cross-tick `PhysicalPatternHistory`;
 - chart-qualified multi-chunk mana fields and causal resolution;
-- mana-effect hysteresis and physical feedback state;
+- mana-effect hysteresis and bounded material-surface feedback state;
 - active chunk bookkeeping and promotion/demotion state;
 - objective biological actors, subjective scenes/active cognition, and action state;
 - population aggregates and concrete historical bootstrap receipts;
 - experiment manifests and read-only Explanation IR/analytics.
 
-`causafera-persistence::Snapshot` currently stores only `version` and `world_seed`. It is disconnected from runtime state and cannot restore a simulation. Serializing Rust object memory or derived observer data would be incorrect. Persistence needs a canonical logical-state boundary, explicit schema revisions, bounded allocation, validated reconstruction, and exact post-load digest verification.
+`causafera-runtime` now assembles the registered sections into a canonical logical-state snapshot
+and reconstructs them through validated import before exposing a resumed runtime. Serializing Rust
+object memory or derived observer data remains incorrect: the persisted boundary is the explicit
+section inventory, with bounded allocation, validated reconstruction, and exact post-load digest
+verification.
 
 ## Design
 
@@ -84,12 +88,13 @@ Sections are strictly ordered by schema ID and unique. Unknown required sections
 
 The first complete runtime snapshot includes separate bounded sections for:
 
-1. **Runtime recipe and configuration** (`0x0001`)
+1. **Runtime recipe and configuration** (`0x0001`, current major V2)
    - deterministic configuration (seed, stream parameters);
    - registered system schema IDs and revisions;
    - phase and registration order;
    - domain adapter schema revisions;
-   - authoritative system parameters (mana, pattern, resolution, actor bounds);
+   - authoritative system parameters (mana, pattern, resolution, actor bounds, and the
+     material-surface physical-signal boundary);
    - completed scheduler time.
 
 2. **Spatial/chart and active-chunk state** (`0x0002`)
@@ -101,7 +106,8 @@ The first complete runtime snapshot includes separate bounded sections for:
    - per-field id, chunk, extent, observed-through time;
    - intensity arrays (little-endian i64 per cell);
    - last-change trace IDs per cell;
-   - effect threshold, hysteresis, active flag, boost value.
+   - field state only; thresholds/hysteresis are recipe parameters and the committed activation
+     gate is held by the runtime-counters section.
 
 4. **Causal resolution field** (`0x0004`)
    - field id, evaluated-through time;
@@ -114,13 +120,17 @@ The first complete runtime snapshot includes separate bounded sections for:
    - per-pattern sample queues (pattern id, chunk, position, time, magnitude, ordinal, cause);
    - insertion order queue.
 
-6. **Physical counters and material state** (`0x0006`)
-   - physical counter, event counts;
+6. **Runtime counters and material activity** (`0x0006`, current major V2)
+   - physical event counts;
    - mana cell changes, physical effects;
    - resolution changes, transitions;
    - perceived features, subjective objects;
    - action committed/rejected counts;
    - material activity events.
+   - scheduler-committed mana-effect activation state.
+
+   This is bookkeeping and gate state, not a replacement authoritative material property; durable
+   material state belongs only to section `0x000C`.
 
 7. **Biological actor objective state** (`0x0007`)
    - actor id, body position, energy;
@@ -156,7 +166,17 @@ The first complete runtime snapshot includes separate bounded sections for:
     - code/schema revision identifiers;
     - warm-up, duration, hardware metadata;
     - activity counts, memory record;
-    - state/history digests, confidence, supporting traces, evidence flag.
+   - state/history digests, confidence, supporting traces, evidence flag.
+
+12. **Material surfaces** (`0x000C`, current major V1)
+   - chart-qualified surface IDs and bounded condition/contact/last-transition records;
+   - sorted pending physics changes and bounded transition history with contact and mana-effect
+     trace anchors;
+   - at most 128 transition records, with eviction preferring an older non-mana record so the
+     newest mana-mediated causal observation remains available to bounded observer and
+     Explanation paths;
+   - optional trace fields encode presence, so missing contact/mana ancestry is distinct from a
+     valid `TraceId(0)`.
 
 ### Authoritative / non-authoritative boundary
 
@@ -247,9 +267,8 @@ Failure leaves the prior completed snapshot intact. Temporary-file cleanup is be
 | Field | Section | Rationale |
 |-------|---------|-----------|
 | time | header | snapshot boundary time |
-| physical_counter | 0x0006 | objective physical count |
-| physical_mana_effect_boost | 0x0003 | feedback state |
-| mana_effect_active | 0x0003 | feedback flag |
+| material-surface records and transitions | 0x000C | bounded authoritative material state and history |
+| mana_effect_active | 0x0006 | scheduler-committed feedback-gate state |
 | pattern_history samples | 0x0005 | bounded temporal patterns |
 | mana observed_through | 0x0003 | field time |
 | mana field intensities | 0x0003 | per-cell i64 values |
@@ -287,6 +306,11 @@ Failure leaves the prior completed snapshot intact. Temporary-file cleanup is be
 - Pure registered migrations for supported older minor schemas;
 - New major version for incompatible container or authoritative semantic changes;
 - Unsupported major versions fail closed; no guesswork loading.
+
+For the active actor/material/mana slice, the runtime accepts authoritative digest schema V2,
+runtime-recipe/configuration major V2, physical-counters major V2, and material-surface major V1.
+Any other required digest schema or section major is rejected deterministically rather than being
+coerced into the current causal state.
 
 ## Security considerations
 
@@ -349,3 +373,7 @@ Failure leaves the prior completed snapshot intact. Temporary-file cleanup is be
 - 2026-07-13: Initial file writes use atomic replacement and preserve the prior valid snapshot on failure.
 - 2026-07-13: Unsupported major versions fail closed; migration is explicit and pure.
 - 2026-07-13: Section schema IDs are opaque u64 values without English meaning in authoritative bytes.
+- 2026-07-21: Material-surface state and trace-anchor presence are digest inputs. The recipe and
+  counters sections advanced to major V2 to encode the physical-signal boundary and
+  scheduler-committed mana gate; the material-surface section begins at major V1. The loader
+  rejects unsupported required versions.
