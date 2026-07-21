@@ -5462,17 +5462,14 @@ mod tests {
             use causafera_types::ids::{StateObjectKindId, StatePropertyId};
             let key = EventProposalKey::new(1, obj, 0);
             let dummy_effect = causafera_core::provenance::CausalEffect::new(
-                CausalTarget::new(
-                    StateObjectKindId::new(1),
-                    1,
-                    StatePropertyId::new(1),
-                ),
+                CausalTarget::new(StateObjectKindId::new(1), 1, StatePropertyId::new(1)),
                 StateFingerprint::new([1; 32]),
                 StateFingerprint::new([2; 32]),
             )
             .unwrap();
             let proposal =
-                CausalEventProposal::new(key, EventKindId::new(1), causes, vec![dummy_effect]).unwrap();
+                CausalEventProposal::new(key, EventKindId::new(1), causes, vec![dummy_effect])
+                    .unwrap();
             let mut committed = store
                 .commit_batch(SimulationTime::new(1), Phase::Mana, vec![proposal])
                 .unwrap();
