@@ -1,0 +1,30 @@
+
+✓ plan/experiment-recipe-mana-source CI Sir-Starch/Causafera#3 · 29797633200
+Triggered via pull_request about 5 hours ago
+
+✓ rust in 5m37s (ID 88532100415)
+  ✓ Set up job
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320
+  ✓ Run actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+  ✓ Run node tools/audit/check-entry-points.mjs
+  ✓ Run pnpm install --frozen-lockfile
+  ✓ Run pnpm build
+  ✓ Run dtolnay/rust-toolchain@8641a17e25bf5b40c118d48fe0f81e8655731839
+  ✓ Install Tauri OS dependencies
+  ✓ Run cargo fmt --check
+  ✓ Run cargo clippy --workspace --all-targets --all-features -- -D warnings
+  ✓ Run cargo test --workspace --all-features
+  ✓ Run cargo test --workspace --no-default-features
+  ✓ Post Run actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+  ✓ Post Run pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320
+  ✓ Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Complete job
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5, actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+rust: .github#2
+
+
+To see the full job log, try: gh run view --log --job=88532100415
+View this run on GitHub: https://github.com/Sir-Starch/Causafera/actions/runs/29797633200

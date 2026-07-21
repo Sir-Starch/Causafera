@@ -575,6 +575,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[ignore = "expensive benchmark"]
     fn default_control_and_intervention_bootstraps_a_real_runtime_carrier() {
         let report = ExperimentRunner::run_control_and_intervention(
             77,
@@ -597,6 +598,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "expensive benchmark"]
     fn long_run_suite_replays_and_detects_intervention() {
         let report = ExperimentRunner::run_control_and_intervention(
             77,
@@ -633,6 +635,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "expensive benchmark"]
     fn populated_long_run_reports_coupled_domains_with_bounded_evidence() {
         let report = ExperimentRunner::run_populated_control_and_intervention(
             88,

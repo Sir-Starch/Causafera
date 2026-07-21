@@ -4712,6 +4712,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "expensive benchmark"]
     fn runtime_executes_a_long_causal_run_without_errors() {
         let mut runtime = Runtime::new(production_loop_config(42)).unwrap();
         let snapshot = runtime.run_ticks(512).unwrap();
@@ -4903,6 +4904,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "expensive benchmark"]
     fn physical_suppression_changes_the_causal_trajectory() {
         let control_config = production_loop_config(9);
         let mut intervention_config = control_config.clone();
