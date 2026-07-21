@@ -24,7 +24,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
       - uses: dtolnay/rust-toolchain@8641a17e25bf5b40c118d48fe0f81e8655731839 # 1.85.0
-      - uses: Swatinem/rust-cache@83a4fb7c7849d44cb2d699e1d8825c9b68a3fb1b # v2.7.7
+      - uses: Swatinem/rust-cache@v2
       - name: Install Tauri OS dependencies
         run: |
           sudo apt-get update
