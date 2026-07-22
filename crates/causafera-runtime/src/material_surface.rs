@@ -24,10 +24,18 @@ impl MaterialSurfaceId {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct MaterialSurfaceManaGate {
+    pub active: bool,
+    pub last_transition: Option<TraceId>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct MaterialSurface {
     pub condition: i64,
     pub contact_count: u64,
     pub last_transition: TraceId,
+    pub last_contact_trace: Option<TraceId>,
+    pub gate: MaterialSurfaceManaGate,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -41,6 +49,7 @@ pub struct MaterialSurfaceSnapshot {
     pub records: Vec<MaterialSurfaceRecordSnapshot>,
     pub pending_physical_changes: Vec<MaterialSurfaceId>,
     pub transitions: Vec<MaterialSurfaceTransition>,
+    pub gate_transitions: Vec<MaterialSurfaceGateTransition>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -52,5 +61,18 @@ pub struct MaterialSurfaceTransition {
     pub mana_total: i64,
     pub contact_trace: Option<TraceId>,
     pub mana_effect_trace: Option<TraceId>,
+    pub transition_trace: TraceId,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct MaterialSurfaceGateTransition {
+    pub id: MaterialSurfaceId,
+    pub occurred_at: SimulationTime,
+    pub before_active: bool,
+    pub after_active: bool,
+    pub local_mana_before: i64,
+    pub local_mana_after: i64,
+    pub local_mana_trace: TraceId,
+    pub contact_trace: Option<TraceId>,
     pub transition_trace: TraceId,
 }

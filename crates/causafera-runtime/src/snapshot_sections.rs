@@ -23,12 +23,13 @@ use crate::{
     BootstrapReceiptSnapshot, CarrierAdapterConfig, ExperimentManifestSnapshot,
     ExperimentRecipeManaSource, ExperimentRecipeManaSourceReceiptSnapshot,
     ExperimentRecipeManaSourceRecipe, GenericFeature, MAX_EXPERIMENT_RECIPE_MANA_SOURCES,
-    MAX_MATERIAL_SURFACE_TRANSITIONS, MaterialSurface, MaterialSurfaceId,
-    MaterialSurfaceRecordSnapshot, MaterialSurfaceSnapshot, MaterialSurfaceTransition,
-    MinimalBodyState, PatternHistorySnapshot, PerceivedSelf, PhysicalCountersSnapshot,
-    PopulationAggregate, PopulationAggregateSnapshot, RuntimeConfig, RuntimeRecipeSnapshot,
-    RuntimeSnapshotData, RuntimeState, SensorAperture, SensorKindId, SpatialChunkSnapshot,
-    SubjectiveSceneSnapshot, SubjectiveTarget, SystemRegistrationSnapshot, TerrainCarrierSnapshot,
+    MAX_MATERIAL_SURFACE_TRANSITIONS, MaterialSurface, MaterialSurfaceGateTransition,
+    MaterialSurfaceId, MaterialSurfaceManaGate, MaterialSurfaceRecordSnapshot,
+    MaterialSurfaceSnapshot, MaterialSurfaceTransition, MinimalBodyState, PatternHistorySnapshot,
+    PerceivedSelf, PhysicalCountersSnapshot, PopulationAggregate, PopulationAggregateSnapshot,
+    RuntimeConfig, RuntimeRecipeSnapshot, RuntimeSnapshotData, RuntimeState, SensorAperture,
+    SensorKindId, SpatialChunkSnapshot, SubjectiveSceneSnapshot, SubjectiveTarget,
+    SystemRegistrationSnapshot, TerrainCarrierSnapshot,
 };
 
 pub const SECTION_RUNTIME_RECIPE: u16 = 0x0001;
@@ -45,9 +46,10 @@ pub const SECTION_EXPERIMENT_MANIFEST: u16 = 0x000B;
 pub const MATERIAL_SURFACE_SECTION_ID: u16 = 0x000C;
 pub const SECTION_EXPERIMENT_RECIPE_MANA_SOURCE_RECEIPTS: u16 = 0x000D;
 
-const RUNTIME_RECIPE_SECTION_MAJOR: u16 = 3;
-const PHYSICAL_COUNTERS_SECTION_MAJOR: u16 = 2;
-const MATERIAL_SURFACE_SECTION_MAJOR: u16 = 1;
+const RUNTIME_RECIPE_SECTION_MAJOR: u16 = 4;
+const MANA_SECTION_MAJOR: u16 = 2;
+const PHYSICAL_COUNTERS_SECTION_MAJOR: u16 = 3;
+const MATERIAL_SURFACE_SECTION_MAJOR: u16 = 2;
 pub const EXPERIMENT_RECIPE_MANA_SOURCE_RECEIPTS_SECTION_MAJOR: u16 = 1;
 const CURRENT_SECTION_MINOR: u16 = 0;
 
@@ -241,6 +243,7 @@ pub fn decode_trace_store(
 pub fn encode_runtime_recipe_section(snapshot: &RuntimeRecipeSnapshot) -> Vec<u8> {
     let mut buf = Vec::new();
     let mut enc = LittleEndianEncoder::new(&mut buf);
+    enc.write_u16(RUNTIME_RECIPE_SECTION_MAJOR);
     enc.write_u64(snapshot.seed);
     encode_runtime_config(&mut enc, &snapshot.config);
     enc.write_u64(snapshot.completed_time.raw());
@@ -258,6 +261,11 @@ pub fn decode_runtime_recipe_section(
     bytes: &[u8],
 ) -> Result<RuntimeRecipeSnapshot, PersistenceError> {
     let mut dec = LittleEndianDecoder::new(bytes);
+    if dec.read_u16()? != RUNTIME_RECIPE_SECTION_MAJOR {
+        return Err(PersistenceError::codec(
+            "unsupported runtime recipe payload major",
+        ));
+    }
     let seed = dec.read_u64()?;
     let config = decode_runtime_config(&mut dec)?;
     let completed_time = SimulationTime::new(dec.read_u64()?);
@@ -389,6 +397,10 @@ pub fn encode_mana_section(snapshot: &ManaFieldSetSnapshot) -> Vec<u8> {
         for trace in &field.last_change {
             encode_option_trace(&mut enc, *trace);
         }
+        enc.write_u64(field.last_change_before.len() as u64);
+        for value in &field.last_change_before {
+            enc.write_i64(*value);
+        }
     }
     buf
 }
@@ -412,6 +424,11 @@ pub fn decode_mana_section(bytes: &[u8]) -> Result<ManaFieldSetSnapshot, Persist
         for _ in 0..trace_count {
             last_change.push(decode_option_trace(&mut dec)?);
         }
+        let before_count = read_count(&mut dec, 32 * 32 * 32, "mana prior value")?;
+        let mut last_change_before = Vec::with_capacity(before_count);
+        for _ in 0..before_count {
+            last_change_before.push(dec.read_i64()?);
+        }
         fields.push(ManaFieldSnapshot {
             id,
             chunk,
@@ -419,6 +436,7 @@ pub fn decode_mana_section(bytes: &[u8]) -> Result<ManaFieldSetSnapshot, Persist
             observed_through,
             intensity,
             last_change,
+            last_change_before,
         });
     }
     reject_unsorted_chunks(fields.iter().map(|entry| entry.chunk))?;
@@ -570,7 +588,6 @@ pub fn encode_physical_counters_section(snapshot: &PhysicalCountersSnapshot) -> 
         enc.write_u64(value);
     }
     enc.write_u32(snapshot.last_mana_changes);
-    encode_bool(&mut enc, snapshot.mana_effect_active);
     buf
 }
 
@@ -603,7 +620,6 @@ pub fn decode_physical_counters_section(
     let material_activity_events = dec.read_u64()?;
     let next_actor_id = dec.read_u64()?;
     let last_mana_changes = dec.read_u32()?;
-    let mana_effect_active = decode_bool(&mut dec)?;
     require_empty(&dec)?;
     Ok(PhysicalCountersSnapshot {
         pending_samples,
@@ -627,7 +643,6 @@ pub fn decode_physical_counters_section(
         material_activity_events,
         next_actor_id,
         last_mana_changes,
-        mana_effect_active,
     })
 }
 
@@ -640,6 +655,9 @@ pub fn encode_material_surface_section(snapshot: &MaterialSurfaceSnapshot) -> Ve
         enc.write_i64(record.surface.condition);
         enc.write_u64(record.surface.contact_count);
         enc.write_u64(record.surface.last_transition.raw());
+        encode_option_trace(&mut enc, record.surface.last_contact_trace);
+        encode_bool(&mut enc, record.surface.gate.active);
+        encode_option_trace(&mut enc, record.surface.gate.last_transition);
     }
     enc.write_u64(snapshot.pending_physical_changes.len() as u64);
     for id in &snapshot.pending_physical_changes {
@@ -654,6 +672,18 @@ pub fn encode_material_surface_section(snapshot: &MaterialSurfaceSnapshot) -> Ve
         enc.write_i64(transition.mana_total);
         encode_option_trace(&mut enc, transition.contact_trace);
         encode_option_trace(&mut enc, transition.mana_effect_trace);
+        enc.write_u64(transition.transition_trace.raw());
+    }
+    enc.write_u64(snapshot.gate_transitions.len() as u64);
+    for transition in &snapshot.gate_transitions {
+        encode_material_surface_id(&mut enc, transition.id);
+        enc.write_u64(transition.occurred_at.raw());
+        encode_bool(&mut enc, transition.before_active);
+        encode_bool(&mut enc, transition.after_active);
+        enc.write_i64(transition.local_mana_before);
+        enc.write_i64(transition.local_mana_after);
+        enc.write_u64(transition.local_mana_trace.raw());
+        encode_option_trace(&mut enc, transition.contact_trace);
         enc.write_u64(transition.transition_trace.raw());
     }
     buf
@@ -672,6 +702,11 @@ pub fn decode_material_surface_section(
                 condition: dec.read_i64()?,
                 contact_count: dec.read_u64()?,
                 last_transition: TraceId::new(dec.read_u64()?),
+                last_contact_trace: decode_option_trace(&mut dec)?,
+                gate: MaterialSurfaceManaGate {
+                    active: decode_bool(&mut dec)?,
+                    last_transition: decode_option_trace(&mut dec)?,
+                },
             },
         });
     }
@@ -708,11 +743,39 @@ pub fn decode_material_surface_section(
         previous_trace = Some(transition.transition_trace);
         transitions.push(transition);
     }
+    let gate_transition_count = read_count(
+        &mut dec,
+        MAX_MATERIAL_SURFACE_TRANSITIONS,
+        "material surface gate transition",
+    )?;
+    let mut gate_transitions = Vec::with_capacity(gate_transition_count);
+    let mut previous_gate_trace = None;
+    for _ in 0..gate_transition_count {
+        let transition = MaterialSurfaceGateTransition {
+            id: decode_material_surface_id(&mut dec)?,
+            occurred_at: SimulationTime::new(dec.read_u64()?),
+            before_active: decode_bool(&mut dec)?,
+            after_active: decode_bool(&mut dec)?,
+            local_mana_before: dec.read_i64()?,
+            local_mana_after: dec.read_i64()?,
+            local_mana_trace: TraceId::new(dec.read_u64()?),
+            contact_trace: decode_option_trace(&mut dec)?,
+            transition_trace: TraceId::new(dec.read_u64()?),
+        };
+        if previous_gate_trace.is_some_and(|previous| previous >= transition.transition_trace) {
+            return Err(PersistenceError::codec(
+                "material surface gate transitions must be strictly trace ordered",
+            ));
+        }
+        previous_gate_trace = Some(transition.transition_trace);
+        gate_transitions.push(transition);
+    }
     require_empty(&dec)?;
     Ok(MaterialSurfaceSnapshot {
         records,
         pending_physical_changes,
         transitions,
+        gate_transitions,
     })
 }
 
@@ -2100,7 +2163,7 @@ pub fn assemble_envelope(data: &RuntimeSnapshotData) -> Result<SnapshotEnvelope,
     sections.insert(
         u64::from(SECTION_MANA_FIELDS),
         SectionPayload {
-            section_major: 1,
+            section_major: MANA_SECTION_MAJOR,
             section_minor: 0,
             flags: 0,
             decoded_size_limit: 0,
@@ -2270,12 +2333,7 @@ pub fn disassemble_envelope(
             .as_slice(),
     )?;
     let mana = decode_mana_section(
-        envelope
-            .sections
-            .get(&u64::from(SECTION_MANA_FIELDS))
-            .ok_or(PersistenceError::MissingRequiredSection {
-                schema_id: u64::from(SECTION_MANA_FIELDS),
-            })?
+        required_section(envelope, SECTION_MANA_FIELDS, MANA_SECTION_MAJOR)?
             .bytes
             .as_slice(),
     )?;
@@ -2641,25 +2699,25 @@ mod tests {
 
     #[test]
     fn runtime_recipe_section_rejects_v2_and_unknown_major() {
-        // Given: a complete current snapshot envelope with a V3 recipe section.
+        // Given: a complete current snapshot envelope with a V4 recipe section.
         let data = populated_snapshot_data();
         let envelope = assemble_envelope(&data).expect("snapshot envelope must assemble");
 
         // When: the recipe section is changed to an old or unknown major.
-        let mut v2 = envelope.clone();
-        v2.sections
+        let mut v3 = envelope.clone();
+        v3.sections
             .get_mut(&u64::from(SECTION_RUNTIME_RECIPE))
             .expect("recipe section must exist")
-            .section_major = 2;
+            .section_major = 3;
         let mut unknown = envelope;
         unknown
             .sections
             .get_mut(&u64::from(SECTION_RUNTIME_RECIPE))
             .expect("recipe section must exist")
-            .section_major = 4;
+            .section_major = 5;
 
         // Then: both unsupported required majors fail closed.
-        assert!(disassemble_envelope(&v2).is_err());
+        assert!(disassemble_envelope(&v3).is_err());
         assert!(disassemble_envelope(&unknown).is_err());
     }
 
@@ -2670,18 +2728,18 @@ mod tests {
         let envelope = assemble_envelope(&data).unwrap();
 
         // When: a required section declares an incompatible major version.
-        let mut incompatible_recipe_v2 = envelope.clone();
-        incompatible_recipe_v2
+        let mut incompatible_recipe_v3 = envelope.clone();
+        incompatible_recipe_v3
             .sections
             .get_mut(&u64::from(SECTION_RUNTIME_RECIPE))
             .unwrap()
-            .section_major = 2;
+            .section_major = 3;
         let mut incompatible_recipe_unknown = envelope.clone();
         incompatible_recipe_unknown
             .sections
             .get_mut(&u64::from(SECTION_RUNTIME_RECIPE))
             .unwrap()
-            .section_major = 4;
+            .section_major = 5;
         let mut incompatible_material = envelope.clone();
         incompatible_material
             .sections
@@ -2692,17 +2750,17 @@ mod tests {
         // Then: current layout versions are explicit and incompatible authoritative bytes stop.
         assert_eq!(
             envelope.sections[&u64::from(SECTION_RUNTIME_RECIPE)].section_major,
-            3
+            4
         );
         assert_eq!(
             envelope.sections[&u64::from(SECTION_PHYSICAL_COUNTERS)].section_major,
-            2
+            3
         );
         assert_eq!(
             envelope.sections[&u64::from(MATERIAL_SURFACE_SECTION_ID)].section_major,
-            1
+            2
         );
-        assert!(disassemble_envelope(&incompatible_recipe_v2).is_err());
+        assert!(disassemble_envelope(&incompatible_recipe_v3).is_err());
         assert!(disassemble_envelope(&incompatible_recipe_unknown).is_err());
         assert!(disassemble_envelope(&incompatible_material).is_err());
     }

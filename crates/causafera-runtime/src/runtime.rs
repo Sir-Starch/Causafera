@@ -15,11 +15,12 @@ use causafera_domains::{
 };
 use causafera_explanation::{
     ComparisonContext, ExplanationClaim, ExplanationFrame, ExplanationReport,
-    MATERIAL_SURFACE_LOOP_CLAIM_SCHEMA, MaterialSurfaceLoopClaim, NumericClaimValue,
+    MATERIAL_SURFACE_LOOP_CLAIM_SCHEMA, MaterialSurfaceLocalManaTransitionClaim,
+    MaterialSurfaceLoopClaim, NumericClaimValue,
 };
 use causafera_observer_api::{
-    MATERIAL_SURFACE_DELTA_SCHEMA_V2, MAX_MATERIAL_SURFACE_DELTAS, MaterialSurfaceDelta,
-    ObserverChunkSummary, ObserverSnapshot, ObserverWorldSnapshot,
+    MATERIAL_SURFACE_DELTA_SCHEMA_V3, MAX_MATERIAL_SURFACE_DELTAS, MaterialSurfaceDelta,
+    MaterialSurfaceGateDelta, ObserverChunkSummary, ObserverSnapshot, ObserverWorldSnapshot,
 };
 use causafera_perception::{PhysicalSignal, SignalMagnitude};
 use causafera_resolution::{
@@ -37,11 +38,11 @@ use crate::{
     ACTOR_SIGNAL_CHANNEL, ActionKindId, ActionRejection, ActionValidationResult, ActorId,
     ActorObjectiveSnapshot, ActorPhysicalObject, ActorState, ActorSubjectiveSnapshot,
     MAX_MATERIAL_SURFACE_TRANSITIONS, MaterialSurface, MaterialSurfaceCarrierAdapter,
-    MaterialSurfaceId, MaterialSurfaceRecordSnapshot, MaterialSurfaceSnapshot,
-    MaterialSurfaceTransition, MinimalBodyState, PatternHistorySnapshot, PhysicalPatternHistory,
-    SensorAperture, SensorKindId, TerrainCarrierAdapter, TerrainCarrierSnapshot,
-    actor_cognition_step, actor_perception_step, actor_state_fingerprint, apply_action,
-    deterministic_terrain_chunk, validate_action,
+    MaterialSurfaceGateTransition, MaterialSurfaceId, MaterialSurfaceManaGate,
+    MaterialSurfaceRecordSnapshot, MaterialSurfaceSnapshot, MaterialSurfaceTransition,
+    MinimalBodyState, PatternHistorySnapshot, PhysicalPatternHistory, SensorAperture, SensorKindId,
+    TerrainCarrierAdapter, TerrainCarrierSnapshot, actor_cognition_step, actor_perception_step,
+    actor_state_fingerprint, apply_action, deterministic_terrain_chunk, validate_action,
 };
 
 pub const MAX_RUNTIME_TICKS: u64 = 1_000_000;
@@ -51,7 +52,7 @@ pub const MANA_PATTERN_HISTORY_TICKS: u64 = 8;
 pub const MAX_EXPERIMENT_RECIPE_MANA_SOURCES: usize = 16;
 pub const EXPERIMENT_RECIPE_MANA_SOURCE_POLICY_SCHEMA_V1: u64 = 1;
 
-pub const CURRENT_DIGEST_SCHEMA_VERSION: DigestSchemaVersion = DigestSchemaVersion::new(3);
+pub const CURRENT_DIGEST_SCHEMA_VERSION: DigestSchemaVersion = DigestSchemaVersion::new(4);
 
 const PHYSICAL_SYSTEM_ID: u64 = 10;
 pub const EXPERIMENT_RECIPE_MANA_SOURCE_SYSTEM_ID: u64 = 19;
@@ -74,7 +75,6 @@ const MATERIAL_ACTIVITY_EVENT_KIND: u64 = 12;
 const MATERIAL_SURFACE_BOOTSTRAP_EVENT_KIND: u64 = 13;
 const MATERIAL_SURFACE_CONTACT_EVENT_KIND: u64 = 14;
 const MATERIAL_SURFACE_MANA_EVENT_KIND: u64 = 15;
-const MANA_EFFECT_ACTIVITY_EVENT_KIND: u64 = 16;
 pub const EXPERIMENT_RECIPE_MANA_SOURCE_EVENT_KIND: u64 = 17;
 const RUNTIME_OBJECT_KIND: u64 = 1;
 const PHYSICAL_OBJECT_KIND: u64 = 2;
@@ -95,10 +95,9 @@ const POPULATION_AGGREGATE_PROPERTY: u64 = 8;
 const ACTOR_PROMOTION_PROPERTY: u64 = 9;
 const MATERIAL_FLOW_PROPERTY: u64 = 10;
 const MATERIAL_SURFACE_CONDITION_PROPERTY: u64 = 11;
-const MANA_EFFECT_ACTIVITY_PROPERTY: u64 = 12;
+const MATERIAL_SURFACE_MANA_GATE_PROPERTY: u64 = 12;
 pub const EXPERIMENT_RECIPE_MANA_SOURCE_PROPERTY: u64 = 13;
 const RESOLUTION_CHANNEL: u64 = 1;
-const MATERIAL_SURFACE_MANA_EFFECT_SCHEMA: u64 = 1;
 const PHYSICAL_DIGEST_DOMAIN: u64 = 0x5048_5953_4943_414C;
 const HISTORY_DIGEST_DOMAIN: u64 = 0x4849_5354_4F52_595F;
 const EXPERIMENT_DIGEST_DOMAIN: u64 = 0x4558_5045_5249_4D45;
@@ -595,7 +594,6 @@ pub struct PhysicalCountersSnapshot {
     pub material_activity_events: u64,
     pub next_actor_id: u64,
     pub last_mana_changes: u32,
-    pub mana_effect_active: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -760,7 +758,18 @@ impl Runtime {
         if let Some(error) = state.failure.clone() {
             return Err(error);
         }
-        state.material_surface_loop_explanation(self.scheduler.current_time())
+        state.material_surface_loop_explanation(self.scheduler.current_time(), None)
+    }
+
+    pub fn observer_material_surface_loop_explanation_for_surface(
+        &self,
+        surface: MaterialSurfaceId,
+    ) -> Result<ExplanationReport, RuntimeError> {
+        let state = self.lock_state()?;
+        if let Some(error) = state.failure.clone() {
+            return Err(error);
+        }
+        state.material_surface_loop_explanation(self.scheduler.current_time(), Some(surface))
     }
 
     pub fn export_snapshot(&self) -> Result<RuntimeSnapshotData, RuntimeError> {
@@ -786,6 +795,11 @@ impl Runtime {
 
     /// Reconstruct a full `Runtime` from a completed-tick snapshot.
     pub fn from_snapshot(data: RuntimeSnapshotData) -> Result<Self, RuntimeError> {
+        if data.recipe.system_registrations != runtime_system_registrations() {
+            return Err(RuntimeError::InvalidSnapshot(
+                "runtime system registrations do not match compiled registry",
+            ));
+        }
         let config = data.recipe.config.clone();
         let mut runtime = Self::new(config)?;
         runtime
@@ -1077,6 +1091,12 @@ impl HistoricalBootstrapAdapter for TerrainBootstrapStage {
 impl HistoricalBootstrapAdapter for MaterialSurfaceBootstrapStage {
     fn bootstrap(&self, state: &mut RuntimeState) -> Result<Vec<TraceId>, BootstrapError> {
         let chunks = state.active_chunks.keys().copied().collect::<Vec<_>>();
+        validate_material_surface_object_ids(
+            chunks
+                .iter()
+                .copied()
+                .map(|chunk| MaterialSurfaceId::new(chunk, 0)),
+        )?;
         let mut traces = Vec::with_capacity(chunks.len());
         for (ordinal, chunk) in chunks.into_iter().enumerate() {
             let id = MaterialSurfaceId::new(chunk, 0);
@@ -1093,6 +1113,11 @@ impl HistoricalBootstrapAdapter for MaterialSurfaceBootstrapStage {
                     condition: self.initial_condition,
                     contact_count: 0,
                     last_transition: trace,
+                    last_contact_trace: None,
+                    gate: MaterialSurfaceManaGate {
+                        active: false,
+                        last_transition: None,
+                    },
                 },
             );
             record_material_surface_transition(
@@ -1217,6 +1242,7 @@ pub struct RuntimeState {
     material_surfaces: BTreeMap<MaterialSurfaceId, MaterialSurface>,
     pending_material_surface_changes: BTreeSet<MaterialSurfaceId>,
     material_surface_transitions: Vec<MaterialSurfaceTransition>,
+    material_surface_gate_transitions: Vec<MaterialSurfaceGateTransition>,
     latest_physical_trace: TraceId,
     latest_mana_trace: Option<TraceId>,
     pub executed_experiment_recipe_mana_sources: Vec<ExperimentRecipeManaSourceReceipt>,
@@ -1238,7 +1264,6 @@ pub struct RuntimeState {
     material_activity_events: u64,
     next_actor_id: u64,
     last_mana_changes: u32,
-    mana_effect_active: bool,
     failure: Option<RuntimeError>,
 }
 
@@ -1343,6 +1368,7 @@ impl RuntimeState {
             material_surfaces: BTreeMap::new(),
             pending_material_surface_changes: BTreeSet::new(),
             material_surface_transitions: Vec::new(),
+            material_surface_gate_transitions: Vec::new(),
             latest_physical_trace: root_trace,
             latest_mana_trace: None,
             executed_experiment_recipe_mana_sources: Vec::new(),
@@ -1364,7 +1390,6 @@ impl RuntimeState {
             material_activity_events: 0,
             next_actor_id: 1,
             last_mana_changes: 0,
-            mana_effect_active: false,
             failure: None,
         };
         HistoricalBootstrapPlan::for_runtime_config(config)
@@ -1428,7 +1453,6 @@ impl RuntimeState {
                 material_activity_events: self.material_activity_events,
                 next_actor_id: self.next_actor_id,
                 last_mana_changes: self.last_mana_changes,
-                mana_effect_active: self.mana_effect_active,
             },
             material_surfaces: MaterialSurfaceSnapshot {
                 records: self
@@ -1445,6 +1469,7 @@ impl RuntimeState {
                     .copied()
                     .collect(),
                 transitions: self.material_surface_transitions.clone(),
+                gate_transitions: self.material_surface_gate_transitions.clone(),
             },
             actors_objective: ActorObjectiveStateSnapshot {
                 actors: self
@@ -1509,6 +1534,7 @@ impl RuntimeState {
         let traces = CausalTraceStore::import_snapshot(data.traces)
             .map_err(|_| RuntimeError::InvalidSnapshot("trace store failed validation"))?;
         let mana = ManaFieldSet::import_snapshot(data.mana)?;
+        validate_mana_cell_object_ids(&mana)?;
         let resolution = ResolutionField::import_snapshot(data.resolution)?;
         let resolution_policy = ResolutionPolicy::import_snapshot(data.resolution_policy)?;
         let carrier_adapters = import_carrier_adapters(data.spatial.carrier_adapters)?;
@@ -1550,8 +1576,12 @@ impl RuntimeState {
         let population_aggregates = import_population_aggregates(data.population.aggregates)?;
         let aggregate_actor_pool =
             import_aggregate_actor_pool(data.population.aggregate_actor_pool)?;
-        let (material_surfaces, pending_material_surface_changes, material_surface_transitions) =
-            import_material_surfaces(data.material_surfaces, config.chunk_extent)?;
+        let (
+            material_surfaces,
+            pending_material_surface_changes,
+            material_surface_transitions,
+            material_surface_gate_transitions,
+        ) = import_material_surfaces(data.material_surfaces, config.chunk_extent)?;
         let counters = data.physical_counters;
         let state = Self {
             config,
@@ -1572,6 +1602,7 @@ impl RuntimeState {
             material_surfaces,
             pending_material_surface_changes,
             material_surface_transitions,
+            material_surface_gate_transitions,
             latest_physical_trace: counters.latest_physical_trace,
             latest_mana_trace: counters.latest_mana_trace,
             executed_experiment_recipe_mana_sources: imported_receipts,
@@ -1593,7 +1624,6 @@ impl RuntimeState {
             material_activity_events: counters.material_activity_events,
             next_actor_id: counters.next_actor_id,
             last_mana_changes: counters.last_mana_changes,
-            mana_effect_active: counters.mana_effect_active,
             failure: None,
         };
         state.validate_snapshot_references()?;
@@ -1615,6 +1645,18 @@ impl RuntimeState {
         }
         for (id, surface) in &self.material_surfaces {
             validate_material_surface_last_transition(&self.traces, *id, *surface)?;
+            validate_material_surface_last_contact_trace(&self.traces, *id, *surface)?;
+            validate_material_surface_gate_state(&self.traces, *id, *surface)?;
+            if surface.gate.last_transition.is_some_and(|trace| {
+                !self
+                    .material_surface_gate_transitions
+                    .iter()
+                    .any(|transition| transition.transition_trace == trace)
+            }) {
+                return Err(RuntimeError::InvalidSnapshot(
+                    "material surface gate state is missing its transition record",
+                ));
+            }
             if !self.active_chunks.contains_key(&id.chunk) {
                 return Err(RuntimeError::InvalidSnapshot(
                     "material surface outside active chunks",
@@ -1630,6 +1672,13 @@ impl RuntimeState {
         }
         for transition in &self.material_surface_transitions {
             validate_material_surface_transition(&self.traces, transition)?;
+        }
+        for transition in &self.material_surface_gate_transitions {
+            validate_material_surface_gate_transition(
+                &self.traces,
+                &self.material_surface_transitions,
+                transition,
+            )?;
         }
         for field in self.mana.fields().values() {
             for trace in field.last_change().iter().flatten().copied() {
@@ -1876,6 +1925,10 @@ impl RuntimeState {
                         &self.executed_experiment_recipe_mana_sources,
                         &transition,
                     );
+                let local_gate_transition = self
+                    .material_surface_gate_transitions
+                    .iter()
+                    .find(|gate| gate.transition_trace == transition.transition_trace);
                 MaterialSurfaceDelta {
                     chart_id: transition.id.chunk.chart.raw(),
                     chunk_x: transition.id.chunk.chunk.x,
@@ -1891,29 +1944,68 @@ impl RuntimeState {
                     mana_transition_trace,
                     mana_before,
                     mana_after,
+                    local_mana_before: local_gate_transition.map(|gate| gate.local_mana_before),
+                    local_mana_after: local_gate_transition.map(|gate| gate.local_mana_after),
+                    local_mana_transition_trace_id: local_gate_transition
+                        .map(|gate| gate.local_mana_trace),
                 }
+            })
+            .collect::<Vec<_>>();
+        let material_surface_gate_deltas = self
+            .material_surface_gate_transitions
+            .iter()
+            .rev()
+            .filter(|transition| !transition.after_active)
+            .take(MAX_MATERIAL_SURFACE_DELTAS)
+            .copied()
+            .collect::<Vec<_>>()
+            .into_iter()
+            .map(|transition| MaterialSurfaceGateDelta {
+                chart_id: transition.id.chunk.chart.raw(),
+                chunk_x: transition.id.chunk.chunk.x,
+                chunk_y: transition.id.chunk.chunk.y,
+                chunk_z: transition.id.chunk.chunk.z,
+                cell_ordinal: transition.id.cell_index,
+                before_active: transition.before_active,
+                after_active: transition.after_active,
+                local_mana_before: transition.local_mana_before,
+                local_mana_after: transition.local_mana_after,
+                local_mana_transition_trace_id: transition.local_mana_trace,
+                gate_transition_trace_id: transition.transition_trace,
+                contact_trace_id: transition.contact_trace,
+                transition_tick: transition.occurred_at.raw(),
             })
             .collect::<Vec<_>>();
         ObserverWorldSnapshot {
             time,
             chunks,
-            material_surface_delta_schema_version: if material_surface_deltas.is_empty() {
+            material_surface_delta_schema_version: if material_surface_deltas.is_empty()
+                && material_surface_gate_deltas.is_empty()
+            {
                 0
             } else {
-                MATERIAL_SURFACE_DELTA_SCHEMA_V2
+                MATERIAL_SURFACE_DELTA_SCHEMA_V3
             },
             material_surface_deltas,
+            material_surface_gate_deltas,
         }
     }
 
     fn material_surface_loop_explanation(
         &self,
         time: SimulationTime,
+        surface: Option<MaterialSurfaceId>,
     ) -> Result<ExplanationReport, RuntimeError> {
+        let scoped_surface = surface.or_else(|| {
+            self.material_surface_gate_transitions
+                .last()
+                .map(|transition| transition.id)
+        });
         let transition = self
             .material_surface_transitions
             .iter()
             .rev()
+            .filter(|transition| scoped_surface.is_none_or(|id| transition.id == id))
             .find(|transition| transition.mana_effect_trace.is_some())
             .or_else(|| {
                 self.material_surface_transitions
@@ -1944,7 +2036,11 @@ impl RuntimeState {
             .map_err(|_| {
                 RuntimeError::InvalidSnapshot("invalid material surface Explanation claim")
             })?;
-            let frame = ExplanationFrame::new(time, vec![claim]).map_err(|_| {
+            let local_claim = MaterialSurfaceLocalManaTransitionClaim::unknown(
+                transition.mana_total,
+            )
+            .map_err(|_| RuntimeError::InvalidSnapshot("invalid local mana Explanation claim"))?;
+            let frame = ExplanationFrame::new(time, vec![claim, local_claim]).map_err(|_| {
                 RuntimeError::InvalidSnapshot("invalid material surface Explanation frame")
             })?;
             return ExplanationReport::new(
@@ -1974,9 +2070,34 @@ impl RuntimeState {
             mana_after,
             repeated_structure_observed,
         };
-        let claims = claim.to_explanation_claims().map_err(|_| {
+        let mut claims = claim.to_explanation_claims().map_err(|_| {
             RuntimeError::InvalidSnapshot("invalid material surface Explanation claim")
         })?;
+        let local_claim = self
+            .material_surface_gate_transitions
+            .iter()
+            .rev()
+            .find(|gate| gate.id == transition.id)
+            .map(|gate| {
+                MaterialSurfaceLocalManaTransitionClaim {
+                    local_mana_before: gate.local_mana_before,
+                    local_mana_after: gate.local_mana_after,
+                    local_mana_trace: gate.local_mana_trace,
+                    gate_transition_trace: gate.transition_trace,
+                    contact_trace: gate.contact_trace,
+                }
+                .to_explanation_claim()
+            })
+            .transpose()
+            .map_err(|_| RuntimeError::InvalidSnapshot("invalid local mana Explanation claim"))?;
+        let local_claim = match local_claim {
+            Some(local_claim) => local_claim,
+            None => MaterialSurfaceLocalManaTransitionClaim::unknown(transition.mana_total)
+                .map_err(|_| {
+                    RuntimeError::InvalidSnapshot("invalid local mana Explanation claim")
+                })?,
+        };
+        claims.push(local_claim);
         let frame = ExplanationFrame::new(time, claims).map_err(|_| {
             RuntimeError::InvalidSnapshot("invalid material surface Explanation frame")
         })?;
@@ -1999,7 +2120,6 @@ impl RuntimeState {
         digest.write(u64::from(CURRENT_DIGEST_SCHEMA_VERSION.raw()));
         digest.write(PHYSICAL_DIGEST_DOMAIN);
         digest.write(time.raw());
-        digest.write(if self.mana_effect_active { 1 } else { 0 });
         digest.write(self.executed_experiment_recipe_mana_sources.len() as u64);
         for receipt in &self.executed_experiment_recipe_mana_sources {
             digest.write(receipt.source_record_id);
@@ -2018,6 +2138,9 @@ impl RuntimeState {
             digest.write(surface.condition as u64);
             digest.write(surface.contact_count);
             digest.write(surface.last_transition.raw());
+            write_optional_trace(&mut digest, surface.last_contact_trace);
+            digest.write(u64::from(surface.gate.active));
+            write_optional_trace(&mut digest, surface.gate.last_transition);
         }
         digest.write(self.pending_material_surface_changes.len() as u64);
         for id in &self.pending_material_surface_changes {
@@ -2036,6 +2159,19 @@ impl RuntimeState {
             write_optional_trace(&mut digest, transition.mana_effect_trace);
             digest.write(transition.transition_trace.raw());
         }
+        digest.write(self.material_surface_gate_transitions.len() as u64);
+        for transition in &self.material_surface_gate_transitions {
+            write_chart_chunk(&mut digest, transition.id.chunk);
+            digest.write(u64::from(transition.id.cell_index));
+            digest.write(transition.occurred_at.raw());
+            digest.write(u64::from(transition.before_active));
+            digest.write(u64::from(transition.after_active));
+            digest.write(transition.local_mana_before as u64);
+            digest.write(transition.local_mana_after as u64);
+            digest.write(transition.local_mana_trace.raw());
+            write_optional_trace(&mut digest, transition.contact_trace);
+            digest.write(transition.transition_trace.raw());
+        }
         digest.write(self.pattern_history.len() as u64);
         for sample in self.pattern_history.samples() {
             write_chart_chunk(&mut digest, sample.chunk);
@@ -2052,6 +2188,9 @@ impl RuntimeState {
         for (chunk, field) in self.mana.fields() {
             write_chart_chunk(&mut digest, *chunk);
             for value in field.intensity() {
+                digest.write(*value as u64);
+            }
+            for value in field.last_change_before() {
                 digest.write(*value as u64);
             }
         }
@@ -2141,6 +2280,26 @@ impl RuntimeState {
                 digest.write_bytes(effect.after().bytes());
             }
         }
+        digest.write(self.material_surfaces.len() as u64);
+        for (id, surface) in &self.material_surfaces {
+            write_chart_chunk(&mut digest, id.chunk);
+            digest.write(u64::from(id.cell_index));
+            digest.write(u64::from(surface.gate.active));
+            write_optional_trace(&mut digest, surface.gate.last_transition);
+        }
+        digest.write(self.material_surface_gate_transitions.len() as u64);
+        for transition in &self.material_surface_gate_transitions {
+            write_chart_chunk(&mut digest, transition.id.chunk);
+            digest.write(u64::from(transition.id.cell_index));
+            digest.write(transition.occurred_at.raw());
+            digest.write(u64::from(transition.before_active));
+            digest.write(u64::from(transition.after_active));
+            digest.write(transition.local_mana_before as u64);
+            digest.write(transition.local_mana_after as u64);
+            digest.write(transition.local_mana_trace.raw());
+            write_optional_trace(&mut digest, transition.contact_trace);
+            digest.write(transition.transition_trace.raw());
+        }
         HistoryDigest {
             schema_version: CURRENT_DIGEST_SCHEMA_VERSION,
             fingerprint: digest.finish(),
@@ -2188,7 +2347,7 @@ fn runtime_system_registrations() -> Vec<SystemRegistrationSnapshot> {
         SystemRegistrationSnapshot {
             phase: Phase::Mana,
             system_schema_id: MANA_EFFECTS_SYSTEM_ID,
-            revision: 1,
+            revision: 2,
             registration_order: 3,
         },
         SystemRegistrationSnapshot {
@@ -2305,6 +2464,7 @@ type ImportedMaterialSurfaces = (
     BTreeMap<MaterialSurfaceId, MaterialSurface>,
     BTreeSet<MaterialSurfaceId>,
     Vec<MaterialSurfaceTransition>,
+    Vec<MaterialSurfaceGateTransition>,
 );
 
 fn import_material_surfaces(
@@ -2322,6 +2482,7 @@ fn import_material_surfaces(
             return Err(RuntimeError::InvalidSnapshot("duplicate material surface"));
         }
     }
+    validate_material_surface_object_ids(surfaces.keys().copied())?;
     let mut pending_changes = BTreeSet::new();
     for id in snapshot.pending_physical_changes {
         if !id.is_within_extent(chunk_extent) {
@@ -2368,7 +2529,66 @@ fn import_material_surfaces(
         }
         previous_trace = Some(transition.transition_trace);
     }
-    Ok((surfaces, pending_changes, snapshot.transitions))
+    if snapshot.gate_transitions.len() > MAX_MATERIAL_SURFACE_TRANSITIONS {
+        return Err(RuntimeError::InvalidSnapshot(
+            "too many material surface gate transitions",
+        ));
+    }
+    let mut previous_gate_trace = None;
+    for transition in &snapshot.gate_transitions {
+        if !transition.id.is_within_extent(chunk_extent) || !surfaces.contains_key(&transition.id) {
+            return Err(RuntimeError::InvalidSnapshot(
+                "material surface gate transition references invalid surface",
+            ));
+        }
+        if transition.before_active == transition.after_active {
+            return Err(RuntimeError::InvalidSnapshot(
+                "material surface gate transition has no state change",
+            ));
+        }
+        if previous_gate_trace.is_some_and(|previous| previous >= transition.transition_trace) {
+            return Err(RuntimeError::InvalidSnapshot(
+                "material surface gate transitions must be strictly trace ordered",
+            ));
+        }
+        previous_gate_trace = Some(transition.transition_trace);
+    }
+    Ok((
+        surfaces,
+        pending_changes,
+        snapshot.transitions,
+        snapshot.gate_transitions,
+    ))
+}
+
+fn validate_material_surface_object_ids(
+    ids: impl Iterator<Item = MaterialSurfaceId>,
+) -> Result<(), RuntimeError> {
+    let mut object_ids = BTreeSet::new();
+    for id in ids {
+        if !object_ids.insert(material_surface_object_id(id)) {
+            return Err(RuntimeError::InvalidSnapshot(
+                "material surface object ID collision",
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_mana_cell_object_ids(fields: &ManaFieldSet) -> Result<(), RuntimeError> {
+    let mut object_ids = BTreeSet::new();
+    for (chunk, field) in fields.fields() {
+        for index in 0..field.intensity().len() {
+            let cell_index = u16::try_from(index)
+                .map_err(|_| RuntimeError::InvalidSnapshot("mana field cell index exceeds u16"))?;
+            if !object_ids.insert(cell_object_id(*chunk, cell_index)) {
+                return Err(RuntimeError::InvalidSnapshot(
+                    "mana cell object ID collision",
+                ));
+            }
+        }
+    }
+    Ok(())
 }
 
 fn import_actor_ancestry(
@@ -2699,7 +2919,11 @@ impl ManaRuntimeSystem {
             &history,
         )?;
         let changes = proposal.changes();
-        let events = changes
+        let mut ordered_changes = changes.clone();
+        ordered_changes.sort_unstable_by_key(|(chunk, change)| {
+            EventProposalKey::new(MANA_SYSTEM_ID, cell_object_id(*chunk, change.cell_index), 0)
+        });
+        let events = ordered_changes
             .iter()
             .map(|(chunk, change)| {
                 let object_id = cell_object_id(*chunk, change.cell_index);
@@ -2724,9 +2948,26 @@ impl ManaRuntimeSystem {
             .traces
             .commit_batch(self.next_time, Phase::Mana, events)?;
         let changed_count = changes.len() as u32;
+        let traces_by_change = ordered_changes
+            .iter()
+            .zip(traces.iter().copied())
+            .map(|((chunk, change), trace)| ((*chunk, change.cell_index), trace))
+            .collect::<BTreeMap<_, _>>();
         let mut traces_by_chunk = BTreeMap::<ChartChunkCoord, Vec<TraceId>>::new();
-        for ((chunk, _change), trace) in changes.iter().zip(traces.iter().copied()) {
-            traces_by_chunk.entry(*chunk).or_default().push(trace);
+        for (chunk, field_proposal) in proposal.field_proposals() {
+            let field_traces = field_proposal
+                .changes()
+                .iter()
+                .map(|change| {
+                    traces_by_change
+                        .get(&(*chunk, change.cell_index))
+                        .copied()
+                        .ok_or(RuntimeError::InvalidSnapshot(
+                            "mana proposal is missing its committed trace",
+                        ))
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            traces_by_chunk.insert(*chunk, field_traces);
         }
         state.mana = proposal.commit(&traces_by_chunk)?;
         state.pending_samples.clear();
@@ -2756,12 +2997,15 @@ struct ManaEffectsSystem {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-struct ManaMaterialSurfaceEffectProposal {
-    schema: u64,
+struct LocalManaMaterialSurfaceProposal {
+    key: EventProposalKey,
     surface: MaterialSurfaceId,
     before: MaterialSurface,
-    after: MaterialSurface,
-    mana_total: i64,
+    after_active: bool,
+    after_condition: Option<i64>,
+    local_mana_before: i64,
+    local_mana_after: i64,
+    local_mana_trace: TraceId,
     contact_trace: Option<TraceId>,
     causes: Vec<TraceId>,
 }
@@ -2777,69 +3021,102 @@ impl ManaEffectsSystem {
 
     fn execute(&mut self) -> Result<(), RuntimeError> {
         let mut state = self.state.lock().map_err(|_| RuntimeError::StatePoisoned)?;
-        let mana_total = state.mana.total_intensity();
-        let active = mana_effect_active(
-            state.mana_effect_active,
-            mana_total,
-            self.parameters.effect_threshold,
-            self.parameters.effect_hysteresis,
-        );
-        let was_active = state.mana_effect_active;
-        let latest_mana_trace = state.latest_mana_trace;
-        let activity_trace = (active != was_active)
-            .then(|| {
-                commit_mana_effect_activity_event(
-                    &mut state,
-                    self.next_time,
-                    was_active,
-                    active,
-                    latest_mana_trace,
-                )
-            })
-            .transpose()?;
-        if !active || was_active {
+        if self.parameters.effect_threshold <= 0 {
             self.next_time = self.next_time.tick();
             return Ok(());
         }
-        let Some(cause) = state.latest_mana_trace else {
-            self.next_time = self.next_time.tick();
-            return Ok(());
-        };
-        if state.traces.event(cause).is_none() {
-            return Err(RuntimeError::UnknownManaPhysicalEffectCause { cause });
-        }
-        let Some((surface_id, before)) = state
+        let mut proposals = Vec::new();
+        for (ordinal, (surface_id, surface)) in state
             .material_surfaces
             .iter()
-            .find_map(|(id, surface)| (surface.contact_count > 0).then_some((*id, *surface)))
-        else {
-            self.next_time = self.next_time.tick();
-            return Ok(());
-        };
-        let after = MaterialSurface {
-            condition: before.condition.saturating_add(1),
-            contact_count: before.contact_count,
-            last_transition: before.last_transition,
-        };
-        let mut causes = ordered_trace_causes([cause, before.last_transition]);
-        if let Some(activity_trace) = activity_trace {
-            causes.push(activity_trace);
+            .filter(|(_, surface)| surface.contact_count > 0)
+            .enumerate()
+        {
+            let field = state
+                .mana
+                .field(surface_id.chunk)
+                .ok_or(RuntimeError::InvalidSnapshot(
+                    "contacted material surface has no matching mana field",
+                ))?;
+            let index = usize::from(surface_id.cell_index);
+            let local_mana_after =
+                *field
+                    .intensity()
+                    .get(index)
+                    .ok_or(RuntimeError::InvalidSnapshot(
+                        "material surface cell is outside matching mana field",
+                    ))?;
+            let transition = if surface.gate.active {
+                (local_mana_after
+                    < self
+                        .parameters
+                        .effect_threshold
+                        .saturating_sub(self.parameters.effect_hysteresis))
+                .then_some((false, None))
+            } else {
+                (local_mana_after > self.parameters.effect_threshold)
+                    .then_some((true, Some(surface.condition.saturating_add(1))))
+            };
+            let Some((after_active, after_condition)) = transition else {
+                continue;
+            };
+            let local_mana_trace = field.last_change().get(index).copied().flatten().ok_or(
+                RuntimeError::UnknownManaPhysicalEffectCause {
+                    cause: surface.last_transition,
+                },
+            )?;
+            let contact_trace = surface.last_contact_trace;
+            let mut causes = vec![local_mana_trace];
+            if after_active {
+                let trace = contact_trace.ok_or(RuntimeError::InvalidSnapshot(
+                    "contacted material surface is missing its contact trace",
+                ))?;
+                causes.push(trace);
+                if surface.last_transition != trace {
+                    causes.push(surface.last_transition);
+                }
+            }
+            if let Some(trace) = surface.gate.last_transition {
+                causes.push(trace);
+            }
             causes.sort_unstable();
             causes.dedup();
+            proposals.push(LocalManaMaterialSurfaceProposal {
+                key: EventProposalKey::new(
+                    MANA_EFFECTS_SYSTEM_ID,
+                    material_surface_object_id(*surface_id),
+                    u64::try_from(ordinal).map_err(|_| {
+                        RuntimeError::CausalCommit(CausalCommitError::IdentifierExhausted)
+                    })?,
+                ),
+                surface: *surface_id,
+                before: *surface,
+                after_active,
+                after_condition,
+                local_mana_before: *field.last_change_before().get(index).ok_or(
+                    RuntimeError::InvalidSnapshot("mana prior value is outside matching field"),
+                )?,
+                local_mana_after,
+                local_mana_trace,
+                contact_trace: after_active.then_some(contact_trace).flatten(),
+                causes,
+            });
         }
-        let proposal = ManaMaterialSurfaceEffectProposal {
-            schema: MATERIAL_SURFACE_MANA_EFFECT_SCHEMA,
-            surface: surface_id,
-            before,
-            after,
-            mana_total,
-            contact_trace: latest_material_surface_contact_trace(&state, surface_id),
-            causes,
-        };
-        let trace =
-            commit_mana_material_surface_effect_events(&mut state, self.next_time, proposal)?;
-        state.mana_physical_effects = state.mana_physical_effects.saturating_add(1);
-        state.latest_physical_trace = trace;
+        proposals.sort_unstable_by_key(|proposal| proposal.key);
+        let traces =
+            commit_mana_material_surface_effect_events(&mut state, self.next_time, &proposals)?;
+        for (proposal, trace) in proposals.iter().zip(traces) {
+            if proposal.after_condition.is_some() {
+                state.mana_physical_effects = state.mana_physical_effects.saturating_add(1);
+            }
+            state.latest_physical_trace = trace;
+            apply_local_mana_material_surface_transition(
+                &mut state,
+                self.next_time,
+                proposal,
+                trace,
+            );
+        }
         self.next_time = self.next_time.tick();
         Ok(())
     }
@@ -2871,21 +3148,6 @@ impl System for ManaRuntimeSystem {
     fn restore_time(&mut self, time: SimulationTime) {
         self.next_time = time;
     }
-}
-
-fn mana_effect_active(
-    previously_active: bool,
-    total: i64,
-    threshold: i64,
-    hysteresis: i64,
-) -> bool {
-    if threshold <= 0 {
-        return false;
-    }
-    if previously_active {
-        return total >= threshold.saturating_sub(hysteresis);
-    }
-    total > threshold
 }
 
 fn runtime_carrier_adapters(
@@ -3147,6 +3409,8 @@ impl ActorActionSystem {
                             condition: before_surface.condition.saturating_add(1),
                             contact_count: before_surface.contact_count.saturating_add(1),
                             last_transition: before_surface.last_transition,
+                            last_contact_trace: before_surface.last_contact_trace,
+                            gate: before_surface.gate,
                         };
                         let actor_cause = state
                             .actor_ancestry
@@ -4131,6 +4395,11 @@ fn validate_material_surface_last_transition(
                         condition: 0,
                         contact_count: 0,
                         last_transition: TraceId::new(0),
+                        last_contact_trace: None,
+                        gate: MaterialSurfaceManaGate {
+                            active: false,
+                            last_transition: None,
+                        },
                     })
                 && before_contact_count == 0
                 && after_contact_count == 0
@@ -4175,17 +4444,257 @@ fn validate_material_surface_last_transition(
             .ok_or(RuntimeError::InvalidSnapshot(
                 "material surface last mana transition contact parent does not target surface",
             ))?;
-        if contact_effect.after() != material_effect.before()
-            || material_surface_fingerprint_contact_count(contact_effect.after())
-                != material_surface_fingerprint_contact_count(contact_effect.before())
-                    .saturating_add(1)
+        if material_surface_fingerprint_contact_count(contact_effect.after())
+            != material_surface_fingerprint_contact_count(contact_effect.before()).saturating_add(1)
         {
             return Err(RuntimeError::InvalidSnapshot(
                 "material surface last mana transition has invalid contact parent",
             ));
         }
+        let has_condition_parent = event.causes.iter().any(|trace| {
+            traces.event(*trace).is_some_and(|candidate| {
+                candidate.effects.iter().any(|effect| {
+                    effect.target().object_kind()
+                        == StateObjectKindId::new(MATERIAL_SURFACE_OBJECT_KIND)
+                        && effect.target().object_id() == material_surface_object_id(id)
+                        && effect.target().property()
+                            == StatePropertyId::new(MATERIAL_SURFACE_CONDITION_PROPERTY)
+                        && effect.after() == material_effect.before()
+                })
+            })
+        });
+        if !has_condition_parent {
+            return Err(RuntimeError::InvalidSnapshot(
+                "material surface last mana transition has no matching condition parent",
+            ));
+        }
     }
     Ok(())
+}
+
+fn validate_material_surface_last_contact_trace(
+    traces: &CausalTraceStore,
+    id: MaterialSurfaceId,
+    surface: MaterialSurface,
+) -> Result<(), RuntimeError> {
+    match (surface.contact_count, surface.last_contact_trace) {
+        (0, None) => Ok(()),
+        (0, Some(_)) => Err(RuntimeError::InvalidSnapshot(
+            "uncontacted material surface has a contact trace",
+        )),
+        (_, None) => Err(RuntimeError::InvalidSnapshot(
+            "contacted material surface is missing a contact trace",
+        )),
+        (contact_count, Some(trace)) => {
+            let event = traces
+                .event(trace)
+                .ok_or(RuntimeError::InvalidSnapshot("unknown trace reference"))?;
+            let effect = event
+                .effects
+                .iter()
+                .find(|effect| {
+                    effect.target().object_kind()
+                        == StateObjectKindId::new(MATERIAL_SURFACE_OBJECT_KIND)
+                        && effect.target().object_id() == material_surface_object_id(id)
+                        && effect.target().property()
+                            == StatePropertyId::new(MATERIAL_SURFACE_CONDITION_PROPERTY)
+                })
+                .ok_or(RuntimeError::InvalidSnapshot(
+                    "contact trace does not target material surface condition",
+                ))?;
+            if event.kind != EventKindId::new(MATERIAL_SURFACE_CONTACT_EVENT_KIND)
+                || event.phase != Phase::Action
+                || material_surface_fingerprint_contact_count(effect.after()) != contact_count
+                || material_surface_fingerprint_contact_count(effect.before())
+                    != contact_count.saturating_sub(1)
+            {
+                return Err(RuntimeError::InvalidSnapshot(
+                    "contact trace does not match persisted material contact count",
+                ));
+            }
+            Ok(())
+        }
+    }
+}
+
+fn validate_material_surface_gate_state(
+    traces: &CausalTraceStore,
+    id: MaterialSurfaceId,
+    surface: MaterialSurface,
+) -> Result<(), RuntimeError> {
+    if surface.contact_count == 0 && surface.gate.last_transition.is_some() {
+        return Err(RuntimeError::InvalidSnapshot(
+            "uncontacted material surface has a gate transition",
+        ));
+    }
+    let Some(trace) = surface.gate.last_transition else {
+        return if surface.gate.active {
+            Err(RuntimeError::InvalidSnapshot(
+                "active material surface gate is missing a transition",
+            ))
+        } else {
+            Ok(())
+        };
+    };
+    let event = traces
+        .event(trace)
+        .ok_or(RuntimeError::InvalidSnapshot("unknown trace reference"))?;
+    let gate_effect = event
+        .effects
+        .iter()
+        .find(|effect| {
+            effect.target().object_kind() == StateObjectKindId::new(MATERIAL_SURFACE_OBJECT_KIND)
+                && effect.target().object_id() == material_surface_object_id(id)
+                && effect.target().property()
+                    == StatePropertyId::new(MATERIAL_SURFACE_MANA_GATE_PROPERTY)
+        })
+        .ok_or(RuntimeError::InvalidSnapshot(
+            "material surface gate transition does not target gate property",
+        ))?;
+    let expected_before = material_surface_gate_fingerprint(!surface.gate.active);
+    let expected_after = material_surface_gate_fingerprint(surface.gate.active);
+    if event.kind != EventKindId::new(MATERIAL_SURFACE_MANA_EVENT_KIND)
+        || event.phase != Phase::Mana
+        || gate_effect.before() != expected_before
+        || gate_effect.after() != expected_after
+    {
+        return Err(RuntimeError::InvalidSnapshot(
+            "material surface gate state does not match its transition",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_material_surface_gate_transition(
+    traces: &CausalTraceStore,
+    material_transitions: &[MaterialSurfaceTransition],
+    transition: &MaterialSurfaceGateTransition,
+) -> Result<(), RuntimeError> {
+    let event = traces
+        .event(transition.transition_trace)
+        .ok_or(RuntimeError::InvalidSnapshot("unknown trace reference"))?;
+    if event.kind != EventKindId::new(MATERIAL_SURFACE_MANA_EVENT_KIND)
+        || event.phase != Phase::Mana
+        || event.time != transition.occurred_at
+    {
+        return Err(RuntimeError::InvalidSnapshot(
+            "material surface gate transition has invalid event semantics",
+        ));
+    }
+    let gate_effect = event
+        .effects
+        .iter()
+        .find(|effect| {
+            effect.target().object_kind() == StateObjectKindId::new(MATERIAL_SURFACE_OBJECT_KIND)
+                && effect.target().object_id() == material_surface_object_id(transition.id)
+                && effect.target().property()
+                    == StatePropertyId::new(MATERIAL_SURFACE_MANA_GATE_PROPERTY)
+        })
+        .ok_or(RuntimeError::InvalidSnapshot(
+            "material surface gate transition is missing its gate effect",
+        ))?;
+    if gate_effect.before() != material_surface_gate_fingerprint(transition.before_active)
+        || gate_effect.after() != material_surface_gate_fingerprint(transition.after_active)
+    {
+        return Err(RuntimeError::InvalidSnapshot(
+            "material surface gate transition gate effect does not match record",
+        ));
+    }
+    validate_local_mana_transition(traces, transition)?;
+    if !event.causes.contains(&transition.local_mana_trace) {
+        return Err(RuntimeError::InvalidSnapshot(
+            "material surface gate transition does not cite local mana trace",
+        ));
+    }
+    match (
+        transition.before_active,
+        transition.after_active,
+        transition.contact_trace,
+    ) {
+        (false, true, Some(contact_trace)) => {
+            validate_material_surface_last_contact_event(traces, transition.id, contact_trace)?;
+            if !event.causes.contains(&contact_trace)
+                || event.effects.len() != 2
+                || !material_transitions.iter().any(|condition| {
+                    condition.id == transition.id
+                        && condition.transition_trace == transition.transition_trace
+                        && condition.mana_effect_trace == Some(transition.transition_trace)
+                })
+            {
+                return Err(RuntimeError::InvalidSnapshot(
+                    "rising material surface gate transition is missing condition evidence",
+                ));
+            }
+        }
+        (true, false, None) if event.effects.len() == 1 => {}
+        _ => {
+            return Err(RuntimeError::InvalidSnapshot(
+                "material surface gate transition has invalid rising or falling shape",
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_material_surface_last_contact_event(
+    traces: &CausalTraceStore,
+    id: MaterialSurfaceId,
+    trace: TraceId,
+) -> Result<(), RuntimeError> {
+    let event = traces
+        .event(trace)
+        .ok_or(RuntimeError::InvalidSnapshot("unknown trace reference"))?;
+    if event.kind != EventKindId::new(MATERIAL_SURFACE_CONTACT_EVENT_KIND)
+        || event.phase != Phase::Action
+        || !event.effects.iter().any(|effect| {
+            effect.target().object_kind() == StateObjectKindId::new(MATERIAL_SURFACE_OBJECT_KIND)
+                && effect.target().object_id() == material_surface_object_id(id)
+                && effect.target().property()
+                    == StatePropertyId::new(MATERIAL_SURFACE_CONDITION_PROPERTY)
+        })
+    {
+        return Err(RuntimeError::InvalidSnapshot(
+            "material surface gate transition contact trace is invalid",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_local_mana_transition(
+    traces: &CausalTraceStore,
+    transition: &MaterialSurfaceGateTransition,
+) -> Result<(), RuntimeError> {
+    let event = traces
+        .event(transition.local_mana_trace)
+        .ok_or(RuntimeError::InvalidSnapshot("unknown trace reference"))?;
+    let object_id = cell_object_id(transition.id.chunk, transition.id.cell_index);
+    let ordinary = event.kind == EventKindId::new(MANA_EVENT_KIND)
+        && event.phase == Phase::Mana
+        && event.effects.iter().any(|effect| {
+            effect.target().object_kind() == StateObjectKindId::new(MANA_OBJECT_KIND)
+                && effect.target().object_id() == object_id
+                && effect.target().property() == StatePropertyId::new(MANA_PROPERTY)
+                && effect.before() == fingerprint_i64(0x0301, transition.local_mana_before)
+                && effect.after() == fingerprint_i64(0x0301, transition.local_mana_after)
+        });
+    let source = event.kind == EventKindId::new(EXPERIMENT_RECIPE_MANA_SOURCE_EVENT_KIND)
+        && event.phase == Phase::Mana
+        && event.effects.iter().any(|effect| {
+            effect.target().object_kind()
+                == StateObjectKindId::new(EXPERIMENT_RECIPE_MANA_SOURCE_OBJECT_KIND)
+                && effect.target().object_id() == object_id
+                && effect.target().property()
+                    == StatePropertyId::new(EXPERIMENT_RECIPE_MANA_SOURCE_PROPERTY)
+                && effect.before() == fingerprint_i64(0x0302, transition.local_mana_before)
+                && effect.after() == fingerprint_i64(0x0302, transition.local_mana_after)
+        });
+    if ordinary || source {
+        Ok(())
+    } else {
+        Err(RuntimeError::InvalidSnapshot(
+            "material surface gate transition local mana evidence is invalid",
+        ))
+    }
 }
 
 fn material_surface_mana_transition_evidence(
@@ -4249,16 +4758,31 @@ fn validate_material_surface_mana_contact_parent(
         .ok_or(RuntimeError::InvalidSnapshot(
             "material surface mana contact parent does not target declared condition",
         ))?;
-    if contact_effect.after() != mana_effect.before() {
-        return Err(RuntimeError::InvalidSnapshot(
-            "material surface mana contact parent condition does not precede mana effect",
-        ));
-    }
     if material_surface_fingerprint_contact_count(contact_effect.after())
         != material_surface_fingerprint_contact_count(contact_effect.before()).saturating_add(1)
     {
         return Err(RuntimeError::InvalidSnapshot(
             "material surface mana contact parent has invalid contact count semantics",
+        ));
+    }
+    let mana_event = traces
+        .event(mana_transition.transition_trace)
+        .ok_or(RuntimeError::InvalidSnapshot("unknown trace reference"))?;
+    let has_condition_parent = mana_event.causes.iter().any(|trace| {
+        traces.event(*trace).is_some_and(|event| {
+            event.effects.iter().any(|effect| {
+                effect.target().object_kind()
+                    == StateObjectKindId::new(MATERIAL_SURFACE_OBJECT_KIND)
+                    && effect.target().object_id() == material_surface_object_id(mana_transition.id)
+                    && effect.target().property()
+                        == StatePropertyId::new(MATERIAL_SURFACE_CONDITION_PROPERTY)
+                    && effect.after() == mana_effect.before()
+            })
+        })
+    });
+    if !has_condition_parent {
+        return Err(RuntimeError::InvalidSnapshot(
+            "material surface mana transition has no matching prior condition parent",
         ));
     }
     Ok(())
@@ -4272,6 +4796,11 @@ fn material_surface_fingerprint_matches_condition(
         condition,
         contact_count: material_surface_fingerprint_contact_count(fingerprint),
         last_transition: TraceId::new(0),
+        last_contact_trace: None,
+        gate: MaterialSurfaceManaGate {
+            active: false,
+            last_transition: None,
+        },
     }) == fingerprint
 }
 
@@ -4333,6 +4862,10 @@ fn material_surface_fingerprint(surface: MaterialSurface) -> StateFingerprint {
     )
 }
 
+fn material_surface_gate_fingerprint(active: bool) -> StateFingerprint {
+    fingerprint_u64(0x0D03, u64::from(active))
+}
+
 fn ordered_trace_causes(causes: [TraceId; 2]) -> Vec<TraceId> {
     let mut ordered = causes.to_vec();
     ordered.sort_unstable();
@@ -4351,11 +4884,21 @@ fn commit_material_surface_bootstrap_event(
         condition: 0,
         contact_count: 0,
         last_transition: state.latest_physical_trace,
+        last_contact_trace: None,
+        gate: MaterialSurfaceManaGate {
+            active: false,
+            last_transition: None,
+        },
     };
     let after = MaterialSurface {
         condition: initial_condition,
         contact_count: 0,
         last_transition: state.latest_physical_trace,
+        last_contact_trace: None,
+        gate: MaterialSurfaceManaGate {
+            active: false,
+            last_transition: None,
+        },
     };
     let event = CausalEventProposal::new(
         EventProposalKey::new(BOOTSTRAP_SYSTEM_ID, stage.raw(), ordinal),
@@ -4417,6 +4960,7 @@ fn commit_material_surface_contact_events(
         proposal.surface,
         MaterialSurface {
             last_transition: trace,
+            last_contact_trace: Some(trace),
             ..proposal.after_surface
         },
     );
@@ -4442,77 +4986,90 @@ fn commit_material_surface_contact_events(
 fn commit_mana_material_surface_effect_events(
     state: &mut RuntimeState,
     time: SimulationTime,
-    proposal: ManaMaterialSurfaceEffectProposal,
-) -> Result<TraceId, RuntimeError> {
-    let event = CausalEventProposal::new(
-        EventProposalKey::new(
-            MANA_EFFECTS_SYSTEM_ID,
-            material_surface_object_id(proposal.surface),
-            proposal.schema,
-        ),
-        EventKindId::new(MATERIAL_SURFACE_MANA_EVENT_KIND),
-        proposal.causes,
-        vec![CausalEffect::new(
-            CausalTarget::new(
-                StateObjectKindId::new(MATERIAL_SURFACE_OBJECT_KIND),
-                material_surface_object_id(proposal.surface),
-                StatePropertyId::new(MATERIAL_SURFACE_CONDITION_PROPERTY),
-            ),
-            material_surface_fingerprint(proposal.before),
-            material_surface_fingerprint(proposal.after),
-        )?],
-    )?;
-    let trace = state.traces.commit_batch(time, Phase::Mana, vec![event])?[0];
-    state.material_surfaces.insert(
-        proposal.surface,
-        MaterialSurface {
-            last_transition: trace,
-            ..proposal.after
-        },
-    );
-    state
-        .pending_material_surface_changes
-        .insert(proposal.surface);
-    record_material_surface_transition(
+    proposals: &[LocalManaMaterialSurfaceProposal],
+) -> Result<Vec<TraceId>, RuntimeError> {
+    let events = proposals
+        .iter()
+        .map(|proposal| {
+            let mut effects = vec![CausalEffect::new(
+                CausalTarget::new(
+                    StateObjectKindId::new(MATERIAL_SURFACE_OBJECT_KIND),
+                    material_surface_object_id(proposal.surface),
+                    StatePropertyId::new(MATERIAL_SURFACE_MANA_GATE_PROPERTY),
+                ),
+                material_surface_gate_fingerprint(proposal.before.gate.active),
+                material_surface_gate_fingerprint(proposal.after_active),
+            )?];
+            if let Some(after_condition) = proposal.after_condition {
+                let mut after = proposal.before;
+                after.condition = after_condition;
+                effects.push(CausalEffect::new(
+                    CausalTarget::new(
+                        StateObjectKindId::new(MATERIAL_SURFACE_OBJECT_KIND),
+                        material_surface_object_id(proposal.surface),
+                        StatePropertyId::new(MATERIAL_SURFACE_CONDITION_PROPERTY),
+                    ),
+                    material_surface_fingerprint(proposal.before),
+                    material_surface_fingerprint(after),
+                )?);
+            }
+            effects.sort_unstable_by_key(|effect| effect.target());
+            CausalEventProposal::new(
+                proposal.key,
+                EventKindId::new(MATERIAL_SURFACE_MANA_EVENT_KIND),
+                proposal.causes.clone(),
+                effects,
+            )
+            .map_err(RuntimeError::from)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(state.traces.commit_batch(time, Phase::Mana, events)?)
+}
+
+fn apply_local_mana_material_surface_transition(
+    state: &mut RuntimeState,
+    time: SimulationTime,
+    proposal: &LocalManaMaterialSurfaceProposal,
+    trace: TraceId,
+) {
+    let mut after = proposal.before;
+    after.gate.active = proposal.after_active;
+    after.gate.last_transition = Some(trace);
+    if let Some(condition) = proposal.after_condition {
+        after.condition = condition;
+        after.last_transition = trace;
+        state
+            .pending_material_surface_changes
+            .insert(proposal.surface);
+        record_material_surface_transition(
+            state,
+            MaterialSurfaceTransition {
+                id: proposal.surface,
+                occurred_at: time,
+                before_condition: proposal.before.condition,
+                after_condition: condition,
+                mana_total: state.mana.total_intensity(),
+                contact_trace: proposal.contact_trace,
+                mana_effect_trace: Some(trace),
+                transition_trace: trace,
+            },
+        );
+    }
+    state.material_surfaces.insert(proposal.surface, after);
+    record_material_surface_gate_transition(
         state,
-        MaterialSurfaceTransition {
+        MaterialSurfaceGateTransition {
             id: proposal.surface,
             occurred_at: time,
-            before_condition: proposal.before.condition,
-            after_condition: proposal.after.condition,
-            mana_total: proposal.mana_total,
+            before_active: proposal.before.gate.active,
+            after_active: proposal.after_active,
+            local_mana_before: proposal.local_mana_before,
+            local_mana_after: proposal.local_mana_after,
+            local_mana_trace: proposal.local_mana_trace,
             contact_trace: proposal.contact_trace,
-            mana_effect_trace: Some(trace),
             transition_trace: trace,
         },
     );
-    Ok(trace)
-}
-
-fn commit_mana_effect_activity_event(
-    state: &mut RuntimeState,
-    time: SimulationTime,
-    before: bool,
-    after: bool,
-    mana_cause: Option<TraceId>,
-) -> Result<TraceId, RuntimeError> {
-    let event = CausalEventProposal::new(
-        EventProposalKey::new(MANA_EFFECTS_SYSTEM_ID, 0, 0),
-        EventKindId::new(MANA_EFFECT_ACTIVITY_EVENT_KIND),
-        mana_cause.into_iter().collect(),
-        vec![CausalEffect::new(
-            CausalTarget::new(
-                StateObjectKindId::new(RUNTIME_OBJECT_KIND),
-                0,
-                StatePropertyId::new(MANA_EFFECT_ACTIVITY_PROPERTY),
-            ),
-            fingerprint_u64(0x0D03, u64::from(before)),
-            fingerprint_u64(0x0D03, u64::from(after)),
-        )?],
-    )?;
-    let trace = state.traces.commit_batch(time, Phase::Mana, vec![event])?[0];
-    state.mana_effect_active = after;
-    Ok(trace)
 }
 
 fn record_material_surface_transition(
@@ -4530,16 +5087,19 @@ fn record_material_surface_transition(
     state.material_surface_transitions.push(transition);
 }
 
-fn latest_material_surface_contact_trace(
-    state: &RuntimeState,
-    surface: MaterialSurfaceId,
-) -> Option<TraceId> {
-    state
-        .material_surface_transitions
-        .iter()
-        .rev()
-        .find(|transition| transition.id == surface)
-        .and_then(|transition| transition.contact_trace)
+fn record_material_surface_gate_transition(
+    state: &mut RuntimeState,
+    transition: MaterialSurfaceGateTransition,
+) {
+    if state.material_surface_gate_transitions.len() == MAX_MATERIAL_SURFACE_TRANSITIONS {
+        let evicted = state
+            .material_surface_gate_transitions
+            .iter()
+            .position(|existing| !existing.after_active)
+            .unwrap_or(0);
+        state.material_surface_gate_transitions.remove(evicted);
+    }
+    state.material_surface_gate_transitions.push(transition);
 }
 
 fn resolve_material_surface(
@@ -4791,13 +5351,13 @@ mod tests {
         runtime.run_ticks(4).unwrap();
         let state = runtime.lock_state().unwrap();
 
-        // Then: every persisted gate transition has Mana-phase provenance.
+        // Then: every persisted local gate transition has Mana-phase provenance.
         assert!(state.traces.iter().any(|event| {
             event.phase == Phase::Mana
-                && event.kind == EventKindId::new(MANA_EFFECT_ACTIVITY_EVENT_KIND)
+                && event.kind == EventKindId::new(MATERIAL_SURFACE_MANA_EVENT_KIND)
                 && event.effects.iter().any(|effect| {
                     effect.target().property()
-                        == StatePropertyId::new(MANA_EFFECT_ACTIVITY_PROPERTY)
+                        == StatePropertyId::new(MATERIAL_SURFACE_MANA_GATE_PROPERTY)
                 })
         }));
     }
@@ -5439,7 +5999,7 @@ mod tests {
         let state = runtime.lock_state().unwrap();
 
         assert!(snapshot.mana_physical_effects > 0);
-        assert_eq!(snapshot.mana_physical_effects, 1);
+        assert_eq!(snapshot.mana_physical_effects, 3);
         assert!(
             state
                 .material_surfaces
