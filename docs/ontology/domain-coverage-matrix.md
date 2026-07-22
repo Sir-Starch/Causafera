@@ -39,9 +39,9 @@ accepted.
 |--------|---------------------|----------------------|--------------------------|
 | Space | Coordinate and hierarchy primitives | M1–M2 | Complete chart/frame migration, adjacency, topology, and physically owned local geometry |
 | Time | Deterministic scheduler time | M2 | Domain timescales, calendars as emergent/observer structures, temporal aggregation, and benchmarked long horizons |
-| Matter | Generic physical/material contracts | M1 | Durable conserved state, transformations, contact/containment coupling, and production mutation systems |
+| Matter | Generic physical/material contracts; chart-qualified material surfaces with durable condition state | M1–M2 | Conserved transformations, contact/containment coupling, production mutation systems, and broader material provenance |
 | Energy | Numeric physical primitives | M1 | Conserved transfer/storage mechanisms and coupling to bodies, matter, environment, and mana |
-| Pattern / Feature | Generic samples and bounded history participate in mana | M2–M3 | Broader physical carriers, validated detection metrics, resolution behavior, and domain effects |
+| Pattern / Feature | Generic samples, bounded history, and local gate coupling participate in mana | M2–M3 | Broader physical carriers, validated detection metrics, resolution behavior, and domain effects |
 | Spatial geometry | Finite charted 2.5D surface plus bounded local 3D contracts | M1–M2 | Concrete planet metric, atlas transforms, cross-chart geodesics, interiors/subsurface, and domain migration |
 | Geography | Hierarchy, terrain cells, deterministic terrain carrier | M1–M2 | Durable geographic processes, materials, water, climate/ecology coupling, multiscale synthesis, and observer detail |
 | Geology | Documentation only | M0 | Formation, strata, deposits, deformation, material provenance, and long-timescale resolution |
@@ -52,7 +52,7 @@ accepted.
 | Physical access / perception | Range/threshold acquisition and generic extraction run for promoted actors | M2 | Real geometry, occlusion/media, multiple physical signal carriers, internal access, adaptation, and costs |
 | Cognition | Bounded attention, scene, continuity, concepts, beliefs, trust, and hypotheses exist | M1 with a narrow M2 path | State-dependent goals, learning across real environments, memory lifecycle, prediction-error propagation, social inference, and performance |
 | Language | Lineage, opaque phonology, communication boundary, lexical change, and documents | M1 | Physical acoustics, grammar/morphology, grounded interpretation, conversation, diffusion, writing/reading, and runtime coupling |
-| Mana | Local fixed-point field, history response, diffusion/decay, and traced boost feedback | M3 with limited M4 metrics | Durable physical targets, multiple real carriers, validated pattern response, domain-specific effects, resolution, and explanatory metrics |
+| Mana | Local fixed-point field, history response, diffusion/decay, traced boost feedback, and per-surface local hysteresis gates with observer deltas and explanation claims | M3–M4 | Multiple real carriers, validated pattern response, domain-specific effects, resolution, and deeper explanatory metrics |
 | Causal resolution | Relevance field, hysteresis, traced transitions, and minimal actor/population promotion | M2–M3 | Domain aggregation contracts, conservation proofs, reconstruction, cross-chart operation, and quality/error metrics |
 | Society | Distributed relation, role, authority, claim, rule, practice, and agreement contracts | M1 | Agent-local social inference, lifecycle, institutions, governance, enforcement, conflict, diffusion, and resolution |
 | Economy | Inventory, transfer, transformation, labour, and contestable ownership contracts | M1 | Production runtime, allocation, scarcity response, capability constraints, exchange emergence, conservation, and aggregation |
@@ -62,7 +62,7 @@ accepted.
 | Practice | Bounded programs, proposal execution, mutation, and lineage | M1 | Embodied execution, resources/tools, learning, transmission, roles, failure, standardization, and mana coupling |
 | Isekai | Transfer plans/receipts, imported priors, and capability separation | M1 | Transfer physics, body/cognition integration, translation, historical occurrence, contamination, persistence, and observation |
 | Metaphysics | Neutral identity criteria and minimal trajectory probes | M1 | Domain-valid attractor/state metrics, causal hypotheses, repeated experiments, alternatives, and non-semantic agency evidence |
-| Simulation runtime | Deterministic eight-phase harness, provenance, replay, persistence, bounded observer | M3 infrastructure; domain depth uneven | Remove fixtures/timers, integrate all claimed domains, durable coupling, maturity validation, provenance growth strategy, and representative performance |
+| Simulation runtime | Deterministic eight-phase harness, provenance, replay, persistence, bounded observer; modular architecture with extracted domain modules (INV-042) | M3 infrastructure; domain depth uneven | Remove fixtures/timers, integrate all claimed domains, durable coupling, maturity validation, provenance growth strategy, and representative performance |
 | Explanation / analytics | Typed IR, evidence states, comparison context, localized rendering | M2–M3 infrastructure | Replace digest distances, add domain metrics/units/alternatives, causal queries, intervention design, phenomenon evaluation, and honest insufficiency |
 | Observer | Versioned queries and bounded streams for summary, chunks, and Explanation | M3 infrastructure | Causal slices, domain series, objective/subjective views, entity/history inspection, schema metadata, and measured overhead |
 | UI | Real dark Tauri/React observer with bounded aggregate views | M2 presentation | Batch stable inspection workflows after simulation/Explanation contracts mature; do not chase every internal field |

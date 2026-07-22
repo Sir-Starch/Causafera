@@ -615,6 +615,11 @@ newest-mana observation evidence, and a bounded release diagnostic. Final reposi
 five independent review lanes, and a focused runtime failure-mode audit passed; this completes the
 accepted actor/material/mana slice but not the broader TODO.
 
+The completed local mana-material-surface coupling slice replaces the global mana-total gate with
+per-surface local hysteresis gates that retain cell transition priors, emit bounded observer deltas,
+and produce typed explanation claims with trace-backed evidence. Fail-closed validation, eviction-safe
+gate history, and contact-aware condition history are verified.
+
 ## TODO-RUNTIME-001: Production Bootstrap and Fixture Elimination
 **Status:** In Progress
 **Phase:** Detailed Development — Runtime
@@ -650,8 +655,10 @@ capability.
 
 **Current evidence:** `world_chunks` now has an additive, versioned, bounded
 `MaterialSurfaceDelta` V1 with chart/cell, typed condition delta, mana context, and optional trace
-anchors whose field presence distinguishes absence from `TraceId(0)`. It covers this slice only;
-broader query, pagination, and overhead requirements remain open.
+anchors whose field presence distinguishes absence from `TraceId(0)`. The local mana-material-surface
+coupling slice adds local gate deltas to the observer wire protocol with V2 protocol guards. These
+cover the accepted vertical slices only; broader query, pagination, and overhead requirements remain
+open.
 
 ## TODO-EXPLAIN-003: Domain-Aware Causal Explanation
 **Status:** In Progress
@@ -668,8 +675,10 @@ broader query, pagination, and overhead requirements remain open.
 **Out of Scope:** Narrative invention, uncertainty resolution by prose, or terminal optional LLM integration
 
 **Current evidence:** `MaterialSurfaceLoopClaim` supplies live typed values, window/control context,
-insufficiency behavior, and trace-backed evidence for this slice. It does not complete the
-domain-aware Explanation requirement for all future vertical slices.
+insufficiency behavior, and trace-backed evidence for the actor/material/mana slice. Local coupling
+claims added in the mana-material-surface coupling slice provide additional typed values and causal
+attribution. These do not complete the domain-aware Explanation requirement for all future vertical
+slices.
 
 ## TODO-PERF-001: Benchmark Framework
 **Status:** Pending
