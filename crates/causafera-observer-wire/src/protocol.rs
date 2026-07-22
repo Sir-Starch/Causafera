@@ -387,12 +387,14 @@ pub fn encode_world_snapshot(snapshot: &ObserverWorldSnapshot) -> Vec<u8> {
             u64::from(snapshot.material_surface_delta_schema_version),
         );
     }
-    for delta in snapshot
-        .material_surface_gate_deltas
-        .iter()
-        .take(MAX_MATERIAL_SURFACE_DELTAS)
-    {
-        field_bytes(&mut out, 5, &encode_material_surface_gate_delta(delta));
+    if snapshot.material_surface_delta_schema_version >= MATERIAL_SURFACE_DELTA_SCHEMA_V3 {
+        for delta in snapshot
+            .material_surface_gate_deltas
+            .iter()
+            .take(MAX_MATERIAL_SURFACE_DELTAS)
+        {
+            field_bytes(&mut out, 5, &encode_material_surface_gate_delta(delta));
+        }
     }
     out
 }

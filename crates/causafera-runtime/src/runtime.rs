@@ -4629,10 +4629,58 @@ fn expected_gate_transition_causes(
     Ok(causes.into_iter().collect())
 }
 
+fn prior_material_surface_gate_trace(
+    traces: &CausalTraceStore,
+    id: MaterialSurfaceId,
+    before: TraceId,
+) -> Option<TraceId> {
+    let object_id = material_surface_object_id(id);
+    let object_kind = StateObjectKindId::new(MATERIAL_SURFACE_OBJECT_KIND);
+    let gate_property = StatePropertyId::new(MATERIAL_SURFACE_MANA_GATE_PROPERTY);
+    traces
+        .iter()
+        .filter(|event| {
+            event.trace_id < before
+                && event.kind == EventKindId::new(MATERIAL_SURFACE_MANA_EVENT_KIND)
+                && event.phase == Phase::Mana
+                && event.effects.iter().any(|effect| {
+                    effect.target().object_kind() == object_kind
+                        && effect.target().object_id() == object_id
+                        && effect.target().property() == gate_property
+                })
+        })
+        .map(|event| event.trace_id)
+        .max()
+}
+
+fn prior_material_surface_condition_trace(
+    traces: &CausalTraceStore,
+    id: MaterialSurfaceId,
+    before: TraceId,
+) -> Option<TraceId> {
+    let object_id = material_surface_object_id(id);
+    let object_kind = StateObjectKindId::new(MATERIAL_SURFACE_OBJECT_KIND);
+    let condition_property = StatePropertyId::new(MATERIAL_SURFACE_CONDITION_PROPERTY);
+    traces
+        .iter()
+        .filter(|event| {
+            event.trace_id < before
+                && event.kind == EventKindId::new(MATERIAL_SURFACE_MANA_EVENT_KIND)
+                && event.phase == Phase::Mana
+                && event.effects.iter().any(|effect| {
+                    effect.target().object_kind() == object_kind
+                        && effect.target().object_id() == object_id
+                        && effect.target().property() == condition_property
+                })
+        })
+        .map(|event| event.trace_id)
+        .max()
+}
+
 fn validate_material_surface_gate_transition_history(
     traces: &CausalTraceStore,
     surfaces: &BTreeMap<MaterialSurfaceId, MaterialSurface>,
-    material_transitions: &[MaterialSurfaceTransition],
+    _material_transitions: &[MaterialSurfaceTransition],
     gate_transitions: &[MaterialSurfaceGateTransition],
 ) -> Result<(), RuntimeError> {
     let mut latest_gate_by_surface: BTreeMap<MaterialSurfaceId, &MaterialSurfaceGateTransition> =
@@ -4649,23 +4697,10 @@ fn validate_material_surface_gate_transition_history(
             .ok_or(RuntimeError::InvalidSnapshot("unknown trace reference"))?;
         let prior_condition_trace = latest
             .after_active
-            .then(|| {
-                material_transitions
-                    .iter()
-                    .filter(|candidate| {
-                        candidate.id == id && candidate.transition_trace < latest.transition_trace
-                    })
-                    .map(|candidate| candidate.transition_trace)
-                    .max()
-            })
+            .then(|| prior_material_surface_condition_trace(traces, id, latest.transition_trace))
             .flatten();
-        let prior_gate_trace = gate_transitions
-            .iter()
-            .filter(|candidate| {
-                candidate.id == id && candidate.transition_trace < latest.transition_trace
-            })
-            .map(|candidate| candidate.transition_trace)
-            .max();
+        let prior_gate_trace =
+            prior_material_surface_gate_trace(traces, id, latest.transition_trace);
         let expected_causes =
             expected_gate_transition_causes(latest, prior_gate_trace, prior_condition_trace)?;
         if event.causes != expected_causes {
@@ -6179,5 +6214,171 @@ mod tests {
 
         // multi-parent DAG ancestry
         assert!(super::trace_descends_from(&store, d, a));
+    }
+
+    #[test]
+    fn gate_transition_history_uses_trace_store_for_evicted_predecessors() {
+        use causafera_core::provenance::{CausalEffect, CausalEventProposal, CausalTraceStore};
+        use causafera_types::{
+            ChartChunkCoord, ChunkCoord, EventKindId, SimulationTime, SpatialChartId,
+            StateObjectKindId, StatePropertyId,
+        };
+
+        let surface_id = MaterialSurfaceId::new(
+            ChartChunkCoord::new(SpatialChartId::new(1), ChunkCoord::new(0, 0, 0)),
+            0,
+        );
+        let object_id = material_surface_object_id(surface_id);
+        let object_kind = StateObjectKindId::new(MATERIAL_SURFACE_OBJECT_KIND);
+        let condition_property = StatePropertyId::new(MATERIAL_SURFACE_CONDITION_PROPERTY);
+        let gate_property = StatePropertyId::new(MATERIAL_SURFACE_MANA_GATE_PROPERTY);
+        let mana_object_kind = StateObjectKindId::new(MANA_OBJECT_KIND);
+        let mana_property = StatePropertyId::new(MANA_PROPERTY);
+        let mana_object_id = cell_object_id(surface_id.chunk, surface_id.cell_index);
+
+        let mut store = CausalTraceStore::new();
+        let root = CausalEventProposal::new(
+            EventProposalKey::new(0, 0, 0),
+            EventKindId::new(ROOT_EVENT_KIND),
+            Vec::new(),
+            vec![
+                CausalEffect::new(
+                    CausalTarget::new(
+                        StateObjectKindId::new(RUNTIME_OBJECT_KIND),
+                        0,
+                        StatePropertyId::new(ROOT_PROPERTY),
+                    ),
+                    fingerprint_u64(0x0901, 0),
+                    fingerprint_u64(0x0901, 1),
+                )
+                .unwrap(),
+            ],
+        )
+        .unwrap();
+        let root_trace = store
+            .commit_batch(SimulationTime::new(0), Phase::Physics, vec![root])
+            .unwrap()[0];
+
+        let surface_at = |condition: i64, contact_count: u64| MaterialSurface {
+            condition,
+            contact_count,
+            last_transition: root_trace,
+            last_contact_trace: None,
+            gate: MaterialSurfaceManaGate {
+                active: false,
+                last_transition: None,
+            },
+        };
+
+        let contact = CausalEventProposal::new(
+            EventProposalKey::new(1, object_id, 0),
+            EventKindId::new(MATERIAL_SURFACE_CONTACT_EVENT_KIND),
+            vec![root_trace],
+            vec![
+                CausalEffect::new(
+                    CausalTarget::new(object_kind, object_id, condition_property),
+                    material_surface_fingerprint(surface_at(0, 0)),
+                    material_surface_fingerprint(surface_at(1, 1)),
+                )
+                .unwrap(),
+            ],
+        )
+        .unwrap();
+        let contact_trace = store
+            .commit_batch(SimulationTime::new(1), Phase::Action, vec![contact])
+            .unwrap()[0];
+
+        let local_mana = CausalEventProposal::new(
+            EventProposalKey::new(2, mana_object_id, 0),
+            EventKindId::new(MANA_EVENT_KIND),
+            vec![root_trace],
+            vec![
+                CausalEffect::new(
+                    CausalTarget::new(mana_object_kind, mana_object_id, mana_property),
+                    fingerprint_i64(0x0301, 0),
+                    fingerprint_i64(0x0301, 3),
+                )
+                .unwrap(),
+            ],
+        )
+        .unwrap();
+        let local_mana_trace = store
+            .commit_batch(SimulationTime::new(2), Phase::Mana, vec![local_mana])
+            .unwrap()[0];
+
+        let rising = CausalEventProposal::new(
+            EventProposalKey::new(3, object_id, 0),
+            EventKindId::new(MATERIAL_SURFACE_MANA_EVENT_KIND),
+            vec![contact_trace, local_mana_trace],
+            vec![
+                CausalEffect::new(
+                    CausalTarget::new(object_kind, object_id, condition_property),
+                    material_surface_fingerprint(surface_at(1, 1)),
+                    material_surface_fingerprint(surface_at(2, 1)),
+                )
+                .unwrap(),
+                CausalEffect::new(
+                    CausalTarget::new(object_kind, object_id, gate_property),
+                    material_surface_gate_fingerprint(false),
+                    material_surface_gate_fingerprint(true),
+                )
+                .unwrap(),
+            ],
+        )
+        .unwrap();
+        let rising_trace = store
+            .commit_batch(SimulationTime::new(3), Phase::Mana, vec![rising])
+            .unwrap()[0];
+
+        let falling = CausalEventProposal::new(
+            EventProposalKey::new(4, object_id, 0),
+            EventKindId::new(MATERIAL_SURFACE_MANA_EVENT_KIND),
+            vec![local_mana_trace, rising_trace],
+            vec![
+                CausalEffect::new(
+                    CausalTarget::new(object_kind, object_id, gate_property),
+                    material_surface_gate_fingerprint(true),
+                    material_surface_gate_fingerprint(false),
+                )
+                .unwrap(),
+            ],
+        )
+        .unwrap();
+        let falling_trace = store
+            .commit_batch(SimulationTime::new(4), Phase::Mana, vec![falling])
+            .unwrap()[0];
+
+        let surface = MaterialSurface {
+            condition: 2,
+            contact_count: 1,
+            last_transition: rising_trace,
+            last_contact_trace: Some(contact_trace),
+            gate: MaterialSurfaceManaGate {
+                active: false,
+                last_transition: Some(falling_trace),
+            },
+        };
+        let mut surfaces = BTreeMap::new();
+        surfaces.insert(surface_id, surface);
+
+        let gate_transitions = vec![MaterialSurfaceGateTransition {
+            id: surface_id,
+            occurred_at: SimulationTime::new(4),
+            before_active: true,
+            after_active: false,
+            local_mana_before: 3,
+            local_mana_after: 0,
+            local_mana_trace,
+            contact_trace: None,
+            transition_trace: falling_trace,
+        }];
+
+        validate_material_surface_gate_transition_history(
+            &store,
+            &surfaces,
+            &[],
+            &gate_transitions,
+        )
+        .expect("evicted predecessor must be resolved from the authoritative trace store");
     }
 }
