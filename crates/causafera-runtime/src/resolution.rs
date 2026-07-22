@@ -94,7 +94,7 @@ impl System for ResolutionRuntimeSystem {
     }
 }
 
-pub(crate) fn resolution_signals(
+fn resolution_signals(
     state: &RuntimeState,
     mana_totals: &BTreeMap<ChartChunkCoord, i64>,
     time: SimulationTime,
@@ -169,7 +169,7 @@ pub(crate) fn resolution_signals(
     Ok(signals)
 }
 
-pub(crate) fn terrain_relevance_signals(
+fn terrain_relevance_signals(
     state: &RuntimeState,
     time: SimulationTime,
 ) -> Vec<CausalRelevanceSignal> {
@@ -198,7 +198,7 @@ pub(crate) fn terrain_relevance_signals(
         .collect()
 }
 
-pub(crate) fn apply_resolution_transitions(
+fn apply_resolution_transitions(
     active_chunks: &mut BTreeMap<ChartChunkCoord, ActiveChunkState>,
     changes: &[causafera_resolution::ResolutionChange],
     traces: &[TraceId],

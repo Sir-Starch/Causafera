@@ -451,7 +451,7 @@ pub(crate) fn validate_material_surface_gate_state(
     Ok(())
 }
 
-pub(crate) fn expected_gate_transition_causes(
+fn expected_gate_transition_causes(
     transition: &MaterialSurfaceGateTransition,
     prior_gate_trace: Option<TraceId>,
     prior_condition_trace: Option<TraceId>,
@@ -477,7 +477,7 @@ pub(crate) fn expected_gate_transition_causes(
     Ok(causes.into_iter().collect())
 }
 
-pub(crate) fn prior_material_surface_gate_trace(
+fn prior_material_surface_gate_trace(
     traces: &CausalTraceStore,
     id: MaterialSurfaceId,
     before: TraceId,
@@ -501,7 +501,7 @@ pub(crate) fn prior_material_surface_gate_trace(
         .max()
 }
 
-pub(crate) fn prior_material_surface_condition_trace(
+fn prior_material_surface_condition_trace(
     traces: &CausalTraceStore,
     id: MaterialSurfaceId,
     before: TraceId,
@@ -649,7 +649,7 @@ pub(crate) fn validate_material_surface_gate_transition(
     Ok(())
 }
 
-pub(crate) fn validate_material_surface_last_contact_event(
+fn validate_material_surface_last_contact_event(
     traces: &CausalTraceStore,
     id: MaterialSurfaceId,
     trace: TraceId,
@@ -673,7 +673,7 @@ pub(crate) fn validate_material_surface_last_contact_event(
     Ok(())
 }
 
-pub(crate) fn validate_local_mana_transition(
+fn validate_local_mana_transition(
     traces: &CausalTraceStore,
     transition: &MaterialSurfaceGateTransition,
 ) -> Result<(), RuntimeError> {
@@ -739,7 +739,7 @@ pub(crate) fn material_surface_mana_transition_evidence(
     )
 }
 
-pub(crate) fn validate_material_surface_mana_contact_parent(
+fn validate_material_surface_mana_contact_parent(
     traces: &CausalTraceStore,
     mana_transition: &MaterialSurfaceTransition,
     mana_effect: &CausalEffect,
@@ -801,7 +801,7 @@ pub(crate) fn validate_material_surface_mana_contact_parent(
     Ok(())
 }
 
-pub(crate) fn material_surface_fingerprint_matches_condition(
+fn material_surface_fingerprint_matches_condition(
     fingerprint: StateFingerprint,
     condition: i64,
 ) -> bool {
@@ -817,7 +817,7 @@ pub(crate) fn material_surface_fingerprint_matches_condition(
     }) == fingerprint
 }
 
-pub(crate) fn material_surface_fingerprint_contact_count(fingerprint: StateFingerprint) -> u64 {
+fn material_surface_fingerprint_contact_count(fingerprint: StateFingerprint) -> u64 {
     let bytes = fingerprint.bytes();
     let mut encoded = [0_u8; 8];
     encoded.copy_from_slice(&bytes[16..24]);
@@ -1054,7 +1054,7 @@ pub(crate) fn record_material_surface_transition(
     state.material_surface_transitions.push(transition);
 }
 
-pub(crate) fn record_material_surface_gate_transition(
+fn record_material_surface_gate_transition(
     state: &mut RuntimeState,
     transition: MaterialSurfaceGateTransition,
 ) {

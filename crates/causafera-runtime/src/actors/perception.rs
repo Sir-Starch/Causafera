@@ -68,7 +68,7 @@ pub fn actor_perception_step(
     Ok(total)
 }
 
-pub(crate) fn physical_apertures(
+fn physical_apertures(
     actor_id: ActorId,
     actor: &ActorState,
 ) -> Vec<PhysicalSensorAperture> {
@@ -98,7 +98,7 @@ pub(crate) fn physical_apertures(
         .collect()
 }
 
-pub(crate) fn physical_signals(
+fn physical_signals(
     time: SimulationTime,
     objects: &BTreeMap<u64, ActorPhysicalObject>,
 ) -> Vec<PhysicalSignal> {
@@ -122,7 +122,7 @@ pub(crate) fn physical_signals(
         .collect()
 }
 
-pub(crate) fn generic_feature_from_extracted(
+fn generic_feature_from_extracted(
     time: SimulationTime,
     feature: &causafera_types::Feature,
     relative_position: [i64; 3],

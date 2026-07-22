@@ -169,7 +169,7 @@ pub fn run_experiment_recipe_mana_source_benchmark(
     })
 }
 
-pub(crate) fn measure_experiment_recipe_mana_source(
+fn measure_experiment_recipe_mana_source(
     config: ExperimentRecipeManaSourceBenchmarkConfig,
     mode: ExperimentRecipeManaSourceBenchmarkMode,
 ) -> Result<ExperimentRecipeManaSourceBenchmarkMeasurement, MaterialSurfaceLoopBenchmarkError> {
@@ -207,7 +207,7 @@ pub(crate) fn measure_experiment_recipe_mana_source(
     Ok(measurement)
 }
 
-pub(crate) fn experiment_recipe_config(
+fn experiment_recipe_config(
     seed: u64,
     mode: ExperimentRecipeManaSourceBenchmarkMode,
 ) -> Result<RuntimeConfig, MaterialSurfaceLoopBenchmarkError> {
@@ -245,7 +245,7 @@ pub(crate) fn experiment_recipe_config(
     Ok(config)
 }
 
-pub(crate) fn measure(
+fn measure(
     config: MaterialSurfaceLoopBenchmarkConfig,
     mode: MaterialSurfaceLoopBenchmarkMode,
 ) -> Result<MaterialSurfaceLoopBenchmarkMeasurement, MaterialSurfaceLoopBenchmarkError> {
@@ -308,7 +308,7 @@ pub(crate) fn production_loop_config(seed: u64) -> RuntimeConfig {
     config
 }
 
-pub(crate) fn bounded_world_chunks_query(
+fn bounded_world_chunks_query(
     runtime: &Runtime,
     snapshot: crate::RuntimeSnapshot,
 ) -> Result<u64, MaterialSurfaceLoopBenchmarkError> {
@@ -346,7 +346,7 @@ pub(crate) fn source_event_count(
     .map_err(|_| MaterialSurfaceLoopBenchmarkError::MetricOverflow)
 }
 
-pub(crate) fn require_loop_evidence(
+fn require_loop_evidence(
     snapshot: &crate::RuntimeSnapshotData,
 ) -> Result<(u64, u64, u64, u64), MaterialSurfaceLoopBenchmarkError> {
     let promoted_actor_count = u64::try_from(snapshot.actors_objective.actors.len())
@@ -392,7 +392,7 @@ pub(crate) fn require_loop_evidence(
     ))
 }
 
-pub(crate) fn linux_status_memory_kib(field: &str) -> Option<u64> {
+fn linux_status_memory_kib(field: &str) -> Option<u64> {
     #[cfg(target_os = "linux")]
     {
         std::fs::read_to_string("/proc/self/status")

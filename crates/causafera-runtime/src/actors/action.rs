@@ -207,7 +207,7 @@ impl System for ActorActionSystem {
     }
 }
 
-pub(crate) fn rejected_action_event(
+fn rejected_action_event(
     actor_id: ActorId,
     ordinal: u64,
     rejection: ActionRejection,

@@ -267,7 +267,7 @@ pub enum BootstrapError {
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn commit_bootstrap_stage_event(
+fn commit_bootstrap_stage_event(
     state: &mut RuntimeState,
     stage: HistoricalStageId,
     chunk: ChartChunkCoord,

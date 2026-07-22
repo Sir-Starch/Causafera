@@ -103,7 +103,7 @@ pub fn actor_cognition_step(
     Ok(object_total)
 }
 
-pub(crate) fn attention_error_to_scene_error(
+fn attention_error_to_scene_error(
     error: causafera_cognition::AttentionUpdateError,
 ) -> causafera_cognition::SceneUpdateError {
     match error {

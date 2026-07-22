@@ -72,7 +72,7 @@ impl System for PopulationLifecycleSystem {
     }
 }
 
-pub(crate) fn lifecycle_births_and_deaths(
+fn lifecycle_births_and_deaths(
     state: &mut RuntimeState,
     time: SimulationTime,
 ) -> Result<(), RuntimeError> {
@@ -134,7 +134,7 @@ pub(crate) fn lifecycle_births_and_deaths(
     Ok(())
 }
 
-pub(crate) fn lifecycle_movement(
+fn lifecycle_movement(
     state: &mut RuntimeState,
     time: SimulationTime,
 ) -> Result<(), RuntimeError> {
@@ -211,7 +211,7 @@ pub(crate) fn lifecycle_movement(
     Ok(())
 }
 
-pub(crate) fn lifecycle_actor_resolution(
+fn lifecycle_actor_resolution(
     state: &mut RuntimeState,
     time: SimulationTime,
 ) -> Result<(), RuntimeError> {
@@ -235,7 +235,7 @@ pub(crate) fn lifecycle_actor_resolution(
     Ok(())
 }
 
-pub(crate) fn lifecycle_material_activity(
+fn lifecycle_material_activity(
     state: &mut RuntimeState,
     time: SimulationTime,
 ) -> Result<(), RuntimeError> {
@@ -340,13 +340,13 @@ pub(crate) fn promote_actor_from_aggregate(
     Ok(())
 }
 
-pub(crate) fn bootstrap_sensors(sensor_count: u8) -> Vec<SensorAperture> {
+fn bootstrap_sensors(sensor_count: u8) -> Vec<SensorAperture> {
     (0..sensor_count)
         .map(|index| SensorAperture::new(LocalCoord::new(index, 0, 0), 8, SensorKindId::new(1)))
         .collect()
 }
 
-pub(crate) fn demote_actor_to_aggregate(
+fn demote_actor_to_aggregate(
     state: &mut RuntimeState,
     time: SimulationTime,
     actor_id: ActorId,
@@ -396,7 +396,7 @@ pub(crate) fn demote_actor_to_aggregate(
     Ok(())
 }
 
-pub(crate) fn lifecycle_actor_death(
+fn lifecycle_actor_death(
     state: &mut RuntimeState,
     time: SimulationTime,
     actor_id: ActorId,
@@ -426,7 +426,7 @@ pub(crate) fn lifecycle_actor_death(
     Ok(())
 }
 
-pub(crate) fn commit_population_event(
+fn commit_population_event(
     state: &mut RuntimeState,
     time: SimulationTime,
     kind: u64,
@@ -458,7 +458,7 @@ pub(crate) fn commit_population_event(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn commit_actor_transition(
+fn commit_actor_transition(
     state: &mut RuntimeState,
     time: SimulationTime,
     kind: u64,
@@ -531,7 +531,7 @@ pub(crate) fn first_population_chunk(
         .ok_or(RuntimeError::InvalidPopulationAggregate)
 }
 
-pub(crate) fn total_population(state: &RuntimeState) -> u64 {
+fn total_population(state: &RuntimeState) -> u64 {
     state
         .population_aggregates
         .values()

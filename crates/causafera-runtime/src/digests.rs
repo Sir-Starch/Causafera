@@ -157,7 +157,7 @@ pub(crate) fn fingerprint_material_flow(aggregate: &PopulationAggregate) -> Stat
     )
 }
 
-pub(crate) fn fingerprint_words(words: [u64; 4]) -> StateFingerprint {
+fn fingerprint_words(words: [u64; 4]) -> StateFingerprint {
     let mut bytes = [0_u8; 32];
     for (index, word) in words.into_iter().enumerate() {
         bytes[index * 8..(index + 1) * 8].copy_from_slice(&word.to_le_bytes());

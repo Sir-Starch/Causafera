@@ -35,7 +35,7 @@ pub const EXPERIMENT_RECIPE_MANA_SOURCE_POLICY_SCHEMA_V1: u64 = 1;
 
 pub const CURRENT_DIGEST_SCHEMA_VERSION: DigestSchemaVersion = DigestSchemaVersion::new(4);
 
-pub(crate) const PHYSICAL_SYSTEM_ID: u64 = 10;
+const PHYSICAL_SYSTEM_ID: u64 = 10;
 pub const EXPERIMENT_RECIPE_MANA_SOURCE_SYSTEM_ID: u64 = 19;
 pub(crate) const MANA_SYSTEM_ID: u64 = 20;
 pub(crate) const MANA_EFFECTS_SYSTEM_ID: u64 = 21;
@@ -43,7 +43,7 @@ pub(crate) const RESOLUTION_SYSTEM_ID: u64 = 30;
 pub(crate) const ACTOR_ACTION_SYSTEM_ID: u64 = 42;
 pub(crate) const LIFECYCLE_SYSTEM_ID: u64 = 60;
 pub(crate) const BOOTSTRAP_SYSTEM_ID: u64 = 61;
-pub(crate) const ROOT_EVENT_KIND: u64 = 1;
+const ROOT_EVENT_KIND: u64 = 1;
 pub(crate) const MANA_EVENT_KIND: u64 = 3;
 pub(crate) const RESOLUTION_EVENT_KIND: u64 = 4;
 pub(crate) const ACTOR_CONTACT_ACTION_KIND: u64 = 6;
@@ -57,7 +57,7 @@ pub(crate) const MATERIAL_SURFACE_BOOTSTRAP_EVENT_KIND: u64 = 13;
 pub(crate) const MATERIAL_SURFACE_CONTACT_EVENT_KIND: u64 = 14;
 pub(crate) const MATERIAL_SURFACE_MANA_EVENT_KIND: u64 = 15;
 pub const EXPERIMENT_RECIPE_MANA_SOURCE_EVENT_KIND: u64 = 17;
-pub(crate) const RUNTIME_OBJECT_KIND: u64 = 1;
+const RUNTIME_OBJECT_KIND: u64 = 1;
 pub(crate) const PHYSICAL_OBJECT_KIND: u64 = 2;
 pub(crate) const MANA_OBJECT_KIND: u64 = 3;
 pub(crate) const RESOLUTION_OBJECT_KIND: u64 = 4;
@@ -66,7 +66,7 @@ pub(crate) const POPULATION_OBJECT_KIND: u64 = 6;
 pub(crate) const MATERIAL_OBJECT_KIND: u64 = 7;
 pub(crate) const MATERIAL_SURFACE_OBJECT_KIND: u64 = 8;
 pub const EXPERIMENT_RECIPE_MANA_SOURCE_OBJECT_KIND: u64 = 9;
-pub(crate) const ROOT_PROPERTY: u64 = 1;
+const ROOT_PROPERTY: u64 = 1;
 pub(crate) const PHYSICAL_PROPERTY: u64 = 2;
 pub(crate) const MANA_PROPERTY: u64 = 3;
 pub(crate) const RESOLUTION_PROPERTY: u64 = 4;
@@ -79,9 +79,9 @@ pub(crate) const MATERIAL_SURFACE_CONDITION_PROPERTY: u64 = 11;
 pub(crate) const MATERIAL_SURFACE_MANA_GATE_PROPERTY: u64 = 12;
 pub const EXPERIMENT_RECIPE_MANA_SOURCE_PROPERTY: u64 = 13;
 pub(crate) const RESOLUTION_CHANNEL: u64 = 1;
-pub(crate) const PHYSICAL_DIGEST_DOMAIN: u64 = 0x5048_5953_4943_414C;
-pub(crate) const HISTORY_DIGEST_DOMAIN: u64 = 0x4849_5354_4F52_595F;
-pub(crate) const EXPERIMENT_DIGEST_DOMAIN: u64 = 0x4558_5045_5249_4D45;
+const PHYSICAL_DIGEST_DOMAIN: u64 = 0x5048_5953_4943_414C;
+const HISTORY_DIGEST_DOMAIN: u64 = 0x4849_5354_4F52_595F;
+const EXPERIMENT_DIGEST_DOMAIN: u64 = 0x4558_5045_5249_4D45;
 
 /// Headless deterministic runtime for the first executable causal experiment.
 pub struct Runtime {
@@ -258,7 +258,7 @@ impl Runtime {
         RuntimeState::import_snapshot(data)
     }
 
-    pub(crate) fn lock_state(&self) -> Result<MutexGuard<'_, RuntimeState>, RuntimeError> {
+    fn lock_state(&self) -> Result<MutexGuard<'_, RuntimeState>, RuntimeError> {
         self.state.lock().map_err(|_| RuntimeError::StatePoisoned)
     }
 }
@@ -779,7 +779,7 @@ impl RuntimeState {
         Ok(state)
     }
 
-    pub(crate) fn validate_snapshot_references(&self) -> Result<(), RuntimeError> {
+    fn validate_snapshot_references(&self) -> Result<(), RuntimeError> {
         self.validate_experiment_recipe_mana_source_receipts()?;
         validate_trace_exists(&self.traces, self.latest_physical_trace)?;
         if let Some(trace) = self.latest_mana_trace {
@@ -854,7 +854,7 @@ impl RuntimeState {
         Ok(())
     }
 
-    pub(crate) fn validate_experiment_recipe_mana_source_receipts(
+    fn validate_experiment_recipe_mana_source_receipts(
         &self,
     ) -> Result<(), RuntimeError> {
         let recipe_hash = self.config.experiment_recipe_mana_sources.recipe_hash();
@@ -1138,7 +1138,7 @@ impl RuntimeState {
         }
     }
 
-    pub(crate) fn material_surface_loop_explanation(
+    fn material_surface_loop_explanation(
         &self,
         time: SimulationTime,
         surface: Option<MaterialSurfaceId>,
@@ -1486,7 +1486,7 @@ impl RuntimeState {
     }
 }
 
-pub(crate) fn runtime_system_registrations() -> Vec<SystemRegistrationSnapshot> {
+fn runtime_system_registrations() -> Vec<SystemRegistrationSnapshot> {
     vec![
         SystemRegistrationSnapshot {
             phase: Phase::Physics,
@@ -1545,7 +1545,7 @@ pub(crate) fn runtime_system_registrations() -> Vec<SystemRegistrationSnapshot> 
     ]
 }
 
-pub(crate) fn import_carrier_adapters(
+fn import_carrier_adapters(
     snapshots: Vec<TerrainCarrierSnapshot>,
 ) -> Result<BTreeMap<ChartChunkCoord, TerrainCarrierAdapter>, RuntimeError> {
     let mut adapters = BTreeMap::new();
@@ -1560,7 +1560,7 @@ pub(crate) fn import_carrier_adapters(
     Ok(adapters)
 }
 
-pub(crate) fn import_active_chunks(
+fn import_active_chunks(
     snapshots: Vec<ActiveChunkSnapshot>,
 ) -> Result<BTreeMap<ChartChunkCoord, ActiveChunkState>, RuntimeError> {
     let mut chunks = BTreeMap::new();
@@ -1584,7 +1584,7 @@ pub(crate) fn import_active_chunks(
     Ok(chunks)
 }
 
-pub(crate) fn import_experiment_recipe_mana_source_receipts(
+fn import_experiment_recipe_mana_source_receipts(
     snapshots: Vec<ExperimentRecipeManaSourceReceiptSnapshot>,
 ) -> Result<Vec<ExperimentRecipeManaSourceReceipt>, RuntimeError> {
     if snapshots.len() > MAX_EXPERIMENT_RECIPE_MANA_SOURCES {
@@ -1622,14 +1622,14 @@ pub(crate) fn import_experiment_recipe_mana_source_receipts(
     Ok(receipts)
 }
 
-pub(crate) type ImportedMaterialSurfaces = (
+type ImportedMaterialSurfaces = (
     BTreeMap<MaterialSurfaceId, MaterialSurface>,
     BTreeSet<MaterialSurfaceId>,
     Vec<MaterialSurfaceTransition>,
     Vec<MaterialSurfaceGateTransition>,
 );
 
-pub(crate) fn import_material_surfaces(
+fn import_material_surfaces(
     snapshot: MaterialSurfaceSnapshot,
     chunk_extent: u8,
 ) -> Result<ImportedMaterialSurfaces, RuntimeError> {
@@ -1732,7 +1732,7 @@ pub(crate) fn import_material_surfaces(
     ))
 }
 
-pub(crate) fn import_actor_ancestry(
+fn import_actor_ancestry(
     entries: Vec<(ActorId, Vec<TraceId>)>,
 ) -> Result<BTreeMap<ActorId, Vec<TraceId>>, RuntimeError> {
     let mut ancestry = BTreeMap::new();
@@ -1745,7 +1745,7 @@ pub(crate) fn import_actor_ancestry(
     Ok(ancestry)
 }
 
-pub(crate) fn import_actor_objects(
+fn import_actor_objects(
     entries: Vec<(u64, ActorPhysicalObject)>,
 ) -> Result<BTreeMap<u64, ActorPhysicalObject>, RuntimeError> {
     let mut objects = BTreeMap::new();
@@ -1757,7 +1757,7 @@ pub(crate) fn import_actor_objects(
     Ok(objects)
 }
 
-pub(crate) fn import_population_aggregates(
+fn import_population_aggregates(
     entries: Vec<PopulationAggregate>,
 ) -> Result<BTreeMap<ChartChunkCoord, PopulationAggregate>, RuntimeError> {
     let mut aggregates = BTreeMap::new();
@@ -1772,7 +1772,7 @@ pub(crate) fn import_population_aggregates(
     Ok(aggregates)
 }
 
-pub(crate) fn import_aggregate_actor_pool(
+fn import_aggregate_actor_pool(
     entries: Vec<(ChartChunkCoord, Vec<ActorId>)>,
 ) -> Result<BTreeMap<ChartChunkCoord, Vec<ActorId>>, RuntimeError> {
     let mut pool = BTreeMap::new();
@@ -1787,7 +1787,7 @@ pub(crate) fn import_aggregate_actor_pool(
     Ok(pool)
 }
 
-pub(crate) fn validate_trace_exists(
+fn validate_trace_exists(
     store: &CausalTraceStore,
     trace: TraceId,
 ) -> Result<(), RuntimeError> {
@@ -1798,7 +1798,7 @@ pub(crate) fn validate_trace_exists(
     }
 }
 
-pub(crate) fn runtime_carrier_adapters(
+fn runtime_carrier_adapters(
     config: CarrierAdapterConfig,
     field_extent: u8,
     root_trace: TraceId,

@@ -12,11 +12,11 @@ use crate::{MaterialSurface, MaterialSurfaceId};
 pub const TERRAIN_CARRIER_SCHEMA: CarrierAdapterSchemaId = CarrierAdapterSchemaId::new(1);
 pub const MATERIAL_SURFACE_CARRIER_SCHEMA: CarrierAdapterSchemaId = CarrierAdapterSchemaId::new(2);
 
-pub(crate) const TERRAIN_PATTERN_DOMAIN: u64 = 0x5445_5252_4149_4E50;
-pub(crate) const MATERIAL_SURFACE_PATTERN_DOMAIN: u64 = 0x4D41_5453_5552_4643;
-pub(crate) const TERRAIN_GENERATOR: TerrainGeneratorFingerprint =
+const TERRAIN_PATTERN_DOMAIN: u64 = 0x5445_5252_4149_4E50;
+const MATERIAL_SURFACE_PATTERN_DOMAIN: u64 = 0x4D41_5453_5552_4643;
+const TERRAIN_GENERATOR: TerrainGeneratorFingerprint =
     TerrainGeneratorFingerprint::new(0x2405_0001);
-pub(crate) const TERRAIN_PARAMETERS: TerrainParameterFingerprint =
+const TERRAIN_PARAMETERS: TerrainParameterFingerprint =
     TerrainParameterFingerprint::new(0x2405_0001);
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -153,7 +153,7 @@ impl TerrainCarrierAdapter {
         Ok(Self::new(snapshot.chunk, terrain, snapshot.field_extent))
     }
 
-    pub(crate) fn sample_at(
+    fn sample_at(
         &self,
         time: SimulationTime,
         cause: TraceId,
@@ -226,7 +226,7 @@ pub fn terrain_pattern(cell: TerrainCell) -> PhysicalPatternId {
     ))
 }
 
-pub(crate) fn terrain_magnitude(terrain: &TerrainChunk, index: usize) -> u32 {
+fn terrain_magnitude(terrain: &TerrainChunk, index: usize) -> u32 {
     let cell = terrain_cell_at(terrain, index);
     let contrast = elevation_contrast(terrain, index);
     let material_delta = material_difference(terrain, index);
@@ -237,7 +237,7 @@ pub(crate) fn terrain_magnitude(terrain: &TerrainChunk, index: usize) -> u32 {
         .saturating_add(roughness)
 }
 
-pub(crate) fn terrain_cell_at(terrain: &TerrainChunk, index: usize) -> TerrainCell {
+fn terrain_cell_at(terrain: &TerrainChunk, index: usize) -> TerrainCell {
     TerrainCell::new(
         terrain.elevations()[index],
         terrain.surface_materials()[index],
@@ -245,7 +245,7 @@ pub(crate) fn terrain_cell_at(terrain: &TerrainChunk, index: usize) -> TerrainCe
     )
 }
 
-pub(crate) fn elevation_contrast(terrain: &TerrainChunk, index: usize) -> u32 {
+fn elevation_contrast(terrain: &TerrainChunk, index: usize) -> u32 {
     let center = terrain.elevations()[index].millimetres();
     neighbor_indices(index)
         .into_iter()
@@ -254,7 +254,7 @@ pub(crate) fn elevation_contrast(terrain: &TerrainChunk, index: usize) -> u32 {
         .unwrap_or(0)
 }
 
-pub(crate) fn material_difference(terrain: &TerrainChunk, index: usize) -> u32 {
+fn material_difference(terrain: &TerrainChunk, index: usize) -> u32 {
     let center = terrain.surface_materials()[index].raw();
     neighbor_indices(index)
         .into_iter()
@@ -263,7 +263,7 @@ pub(crate) fn material_difference(terrain: &TerrainChunk, index: usize) -> u32 {
         .unwrap_or(0)
 }
 
-pub(crate) fn neighbor_indices(index: usize) -> Vec<usize> {
+fn neighbor_indices(index: usize) -> Vec<usize> {
     let side = usize::from(CHUNK_SIZE);
     let x = index % side;
     let y = index / side;
@@ -283,7 +283,7 @@ pub(crate) fn neighbor_indices(index: usize) -> Vec<usize> {
     neighbors
 }
 
-pub(crate) fn field_position(index: usize, extent: u8) -> LocalCoord {
+fn field_position(index: usize, extent: u8) -> LocalCoord {
     let side = usize::from(CHUNK_SIZE);
     let extent = usize::from(extent);
     let x = index % side;
@@ -299,7 +299,7 @@ pub(crate) fn mix64(mut value: u64) -> u64 {
     value ^ (value >> 31)
 }
 
-pub(crate) fn material_surface_chart_hash(chunk: ChartChunkCoord) -> u64 {
+fn material_surface_chart_hash(chunk: ChartChunkCoord) -> u64 {
     mix64(
         chunk.chart.raw()
             ^ (chunk.chunk.x as u64).rotate_left(7)

@@ -19,8 +19,8 @@ use causafera_types::{PhysicalPatternId, SimulationTime};
 /// ancestry; no semantic, English, observer, or subjective data is retained.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PhysicalPatternHistory {
-    pub(crate) per_pattern: BTreeMap<PhysicalPatternId, VecDeque<PhysicalPatternSample>>,
-    pub(crate) insertion_order: VecDeque<PhysicalPatternSample>,
+    per_pattern: BTreeMap<PhysicalPatternId, VecDeque<PhysicalPatternSample>>,
+    insertion_order: VecDeque<PhysicalPatternSample>,
     pub(crate) per_pattern_cap: usize,
     pub(crate) global_cap: usize,
 }
@@ -119,7 +119,7 @@ impl PhysicalPatternHistory {
         history
     }
 
-    pub(crate) fn enforce_per_pattern_cap(&mut self, pattern: PhysicalPatternId) {
+    fn enforce_per_pattern_cap(&mut self, pattern: PhysicalPatternId) {
         loop {
             let should_evict = self
                 .per_pattern
@@ -132,20 +132,20 @@ impl PhysicalPatternHistory {
         }
     }
 
-    pub(crate) fn enforce_global_cap(&mut self) {
+    fn enforce_global_cap(&mut self) {
         while self.insertion_order.len() > self.global_cap {
             self.evict_oldest_global();
         }
     }
 
-    pub(crate) fn evict_oldest_global(&mut self) {
+    fn evict_oldest_global(&mut self) {
         let Some(sample) = self.insertion_order.pop_front() else {
             return;
         };
         remove_first_matching(&mut self.per_pattern, sample);
     }
 
-    pub(crate) fn evict_oldest_for_pattern(&mut self, pattern: PhysicalPatternId) {
+    fn evict_oldest_for_pattern(&mut self, pattern: PhysicalPatternId) {
         let Some(sample) = self
             .per_pattern
             .get_mut(&pattern)
@@ -170,7 +170,7 @@ impl PhysicalPatternHistory {
     }
 }
 
-pub(crate) fn within_window(
+fn within_window(
     observed_at: SimulationTime,
     newest: SimulationTime,
     max_ticks: u64,
@@ -178,7 +178,7 @@ pub(crate) fn within_window(
     newest.raw().saturating_sub(observed_at.raw()) < max_ticks
 }
 
-pub(crate) fn remove_first_matching(
+fn remove_first_matching(
     per_pattern: &mut BTreeMap<PhysicalPatternId, VecDeque<PhysicalPatternSample>>,
     sample: PhysicalPatternSample,
 ) {
