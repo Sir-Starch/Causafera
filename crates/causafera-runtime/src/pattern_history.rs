@@ -1,6 +1,5 @@
 use crate::*;
 use causafera_core::*;
-use causafera_domains::*;
 use causafera_types::*;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex};
@@ -189,68 +188,6 @@ fn remove_first_matching(
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use causafera_types::{ChartChunkCoord, ChunkCoord, LocalCoord, SpatialChartId, TraceId};
-
-    fn chunk() -> ChartChunkCoord {
-        ChartChunkCoord::new(SpatialChartId::new(1), ChunkCoord::new(0, 0, 0))
-    }
-
-    fn sample(pattern: u64, tick: u64, ordinal: u32) -> PhysicalPatternSample {
-        PhysicalPatternSample {
-            chunk: chunk(),
-            pattern: PhysicalPatternId::new(pattern),
-            position: LocalCoord::new(1, 1, 1),
-            observed_at: SimulationTime::new(tick),
-            magnitude: 1_024,
-            source_ordinal: ordinal,
-            cause: TraceId::new(u64::from(ordinal) + 1),
-        }
-    }
-
-    #[test]
-    fn old_evidence_expires_under_tick_window() {
-        let pattern = PhysicalPatternId::new(7);
-        let mut history = PhysicalPatternHistory::new(8, 8);
-        history.extend([sample(7, 1, 1), sample(7, 2, 2), sample(7, 6, 6)]);
-
-        let window = history.get_window(pattern, 3);
-
-        assert_eq!(window, vec![sample(7, 6, 6)]);
-    }
-
-    #[test]
-    fn history_respects_global_and_per_pattern_caps() {
-        let mut history = PhysicalPatternHistory::new(4, 2);
-        history.extend([
-            sample(7, 1, 1),
-            sample(7, 2, 2),
-            sample(7, 3, 3),
-            sample(8, 4, 4),
-            sample(8, 5, 5),
-            sample(9, 6, 6),
-        ]);
-
-        assert_eq!(history.len(), 4);
-        assert_eq!(history.get_window(PhysicalPatternId::new(7), 10).len(), 1);
-        assert_eq!(history.get_window(PhysicalPatternId::new(8), 10).len(), 2);
-        assert_eq!(history.get_window(PhysicalPatternId::new(9), 10).len(), 1);
-    }
-
-    #[test]
-    fn split_batches_produce_identical_history_state() {
-        let samples = [sample(7, 1, 1), sample(7, 2, 2), sample(8, 3, 3)];
-        let mut whole = PhysicalPatternHistory::new(8, 8);
-        whole.extend(samples);
-        let mut split = PhysicalPatternHistory::new(8, 8);
-        split.extend(samples[..1].iter().copied());
-        split.extend(samples[1..].iter().copied());
-
-        assert_eq!(whole, split);
-    }
-}
 pub(crate) struct PhysicalPatternSystem {
     pub(crate) state: Arc<Mutex<RuntimeState>>,
     pub(crate) schedule: PhysicalPatternSchedule,
@@ -378,4 +315,66 @@ pub(crate) fn pattern_event_counts_by_chunk(
         *event_counts.entry(sample.chunk).or_default() += 1;
     }
     event_counts
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use causafera_types::{ChartChunkCoord, ChunkCoord, LocalCoord, SpatialChartId, TraceId};
+
+    fn chunk() -> ChartChunkCoord {
+        ChartChunkCoord::new(SpatialChartId::new(1), ChunkCoord::new(0, 0, 0))
+    }
+
+    fn sample(pattern: u64, tick: u64, ordinal: u32) -> PhysicalPatternSample {
+        PhysicalPatternSample {
+            chunk: chunk(),
+            pattern: PhysicalPatternId::new(pattern),
+            position: LocalCoord::new(1, 1, 1),
+            observed_at: SimulationTime::new(tick),
+            magnitude: 1_024,
+            source_ordinal: ordinal,
+            cause: TraceId::new(u64::from(ordinal) + 1),
+        }
+    }
+
+    #[test]
+    fn old_evidence_expires_under_tick_window() {
+        let pattern = PhysicalPatternId::new(7);
+        let mut history = PhysicalPatternHistory::new(8, 8);
+        history.extend([sample(7, 1, 1), sample(7, 2, 2), sample(7, 6, 6)]);
+
+        let window = history.get_window(pattern, 3);
+
+        assert_eq!(window, vec![sample(7, 6, 6)]);
+    }
+
+    #[test]
+    fn history_respects_global_and_per_pattern_caps() {
+        let mut history = PhysicalPatternHistory::new(4, 2);
+        history.extend([
+            sample(7, 1, 1),
+            sample(7, 2, 2),
+            sample(7, 3, 3),
+            sample(8, 4, 4),
+            sample(8, 5, 5),
+            sample(9, 6, 6),
+        ]);
+
+        assert_eq!(history.len(), 4);
+        assert_eq!(history.get_window(PhysicalPatternId::new(7), 10).len(), 1);
+        assert_eq!(history.get_window(PhysicalPatternId::new(8), 10).len(), 2);
+        assert_eq!(history.get_window(PhysicalPatternId::new(9), 10).len(), 1);
+    }
+
+    #[test]
+    fn split_batches_produce_identical_history_state() {
+        let samples = [sample(7, 1, 1), sample(7, 2, 2), sample(8, 3, 3)];
+        let mut whole = PhysicalPatternHistory::new(8, 8);
+        whole.extend(samples);
+        let mut split = PhysicalPatternHistory::new(8, 8);
+        split.extend(samples[..1].iter().copied());
+        split.extend(samples[1..].iter().copied());
+
+        assert_eq!(whole, split);
+    }
 }
