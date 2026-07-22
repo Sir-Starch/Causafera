@@ -110,6 +110,7 @@ pub struct ManaField {
     observed_through: SimulationTime,
     intensity: Vec<i64>,
     last_change: Vec<Option<TraceId>>,
+    last_change_before: Vec<i64>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -120,6 +121,7 @@ pub struct ManaFieldSnapshot {
     pub observed_through: SimulationTime,
     pub intensity: Vec<i64>,
     pub last_change: Vec<Option<TraceId>>,
+    pub last_change_before: Vec<i64>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -140,6 +142,7 @@ impl ManaField {
             observed_through: SimulationTime::default(),
             intensity: vec![0; volume],
             last_change: vec![None; volume],
+            last_change_before: vec![0; volume],
         })
     }
 
@@ -167,6 +170,10 @@ impl ManaField {
         &self.last_change
     }
 
+    pub fn last_change_before(&self) -> &[i64] {
+        &self.last_change_before
+    }
+
     pub fn export_snapshot(&self) -> ManaFieldSnapshot {
         ManaFieldSnapshot {
             id: self.id,
@@ -175,6 +182,7 @@ impl ManaField {
             observed_through: self.observed_through,
             intensity: self.intensity.clone(),
             last_change: self.last_change.clone(),
+            last_change_before: self.last_change_before.clone(),
         }
     }
 
@@ -184,6 +192,7 @@ impl ManaField {
             || snapshot.extent > CHUNK_SIZE
             || snapshot.intensity.len() != volume
             || snapshot.last_change.len() != volume
+            || snapshot.last_change_before.len() != volume
         {
             return Err(ManaError::InvalidExtent);
         }
@@ -194,6 +203,7 @@ impl ManaField {
             observed_through: snapshot.observed_through,
             intensity: snapshot.intensity,
             last_change: snapshot.last_change,
+            last_change_before: snapshot.last_change_before,
         })
     }
 
@@ -295,6 +305,7 @@ impl ManaField {
             base_intensity: self.intensity.clone(),
             proposed,
             inherited_traces: self.last_change.clone(),
+            inherited_change_before: self.last_change_before.clone(),
             changes,
         })
     }
@@ -408,6 +419,7 @@ impl ManaFieldSet {
         }
         field.intensity[index] = proposal.after;
         field.last_change[index] = Some(source_trace);
+        field.last_change_before[index] = proposal.before;
         Ok(self)
     }
 
@@ -543,6 +555,7 @@ pub struct ManaEvolutionProposal {
     base_intensity: Vec<i64>,
     proposed: Vec<i64>,
     inherited_traces: Vec<Option<TraceId>>,
+    inherited_change_before: Vec<i64>,
     changes: Vec<ManaCellChange>,
 }
 
@@ -564,8 +577,11 @@ impl ManaEvolutionProposal {
             return Err(ManaError::CommitTraceMismatch);
         }
         let mut last_change = self.inherited_traces;
+        let mut last_change_before = self.inherited_change_before;
         for (change, trace) in self.changes.iter().zip(committed_traces) {
-            last_change[usize::from(change.cell_index)] = Some(*trace);
+            let index = usize::from(change.cell_index);
+            last_change[index] = Some(*trace);
+            last_change_before[index] = change.before;
         }
         Ok(ManaField {
             id: self.field_id,
@@ -574,6 +590,7 @@ impl ManaEvolutionProposal {
             observed_through: self.through,
             intensity: self.proposed,
             last_change,
+            last_change_before,
         })
     }
 }
@@ -1033,6 +1050,7 @@ mod tests {
         let field = committed.field(chart_chunk()).unwrap();
         assert_eq!(field.intensity()[4], 7);
         assert_eq!(field.last_change()[4], Some(TraceId::new(42)));
+        assert_eq!(field.last_change_before()[4], 0);
         assert_eq!(field.observed_through(), SimulationTime::new(0));
     }
 
