@@ -60,6 +60,9 @@ Progress
 
 ## Active Planning
 
+- [`plans/conserved-thermal-energy-carrier.md`](plans/conserved-thermal-energy-carrier.md) — Accepted
+  bounded conserved thermal storage and same-chart transfer tranche; implementation branch created from
+  this acceptance commit.
 - [`plans/biological-mana-coupling.md`](plans/biological-mana-coupling.md) — accepted architecture with pending implementation stages for physical biological mana coupling and its downstream validation.
 - [`plans/local-mana-material-surface-coupling.md`](plans/local-mana-material-surface-coupling.md) — accepted bounded local mana-cell to material-surface coupling slice; replaces the global mana-total gate with per-surface local hysteresis.
 
