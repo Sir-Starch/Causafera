@@ -1,6 +1,7 @@
 /** Canonical observer v1 client codec. Field numbers come from proto/causafera/observer/v1. */
 export const OBSERVER_PROTOCOL_V1 = 1;
 export const MAX_MATERIAL_SURFACE_DELTAS = 64;
+export const MATERIAL_SURFACE_DELTA_SCHEMA_V3 = 3;
 
 export interface ConnectRequest {
   supportedProtocolVersions: number[];
@@ -287,21 +288,32 @@ export function decodeWorldChunkSnapshot(input: Uint8Array): WorldChunkSnapshot 
   const cursor = new Cursor(input);
   let simulationTicks: bigint | undefined;
   const chunks: SpatialChunkSummary[] = [];
-  const materialSurfaceDeltas: MaterialSurfaceDelta[] = [];
+  const materialSurfaceDeltaBytes: Uint8Array[] = [];
   const materialSurfaceGateDeltas: MaterialSurfaceGateDelta[] = [];
   let materialSurfaceDeltaSchemaVersion = 0;
+  let schemaVersionSeen = false;
   while (!cursor.empty) {
     const [field, wire] = cursor.key();
     if (field === 1 && wire === 0) simulationTicks = cursor.varint();
     else if (field === 2 && wire === 2) chunks.push(decodeSpatialChunk(cursor.bytes()));
     else if (field === 3 && wire === 2) {
       const delta = cursor.bytes();
-      if (materialSurfaceDeltas.length < MAX_MATERIAL_SURFACE_DELTAS) {
-        materialSurfaceDeltas.push(decodeMaterialSurfaceDelta(delta));
+      if (materialSurfaceDeltaBytes.length < MAX_MATERIAL_SURFACE_DELTAS) {
+        materialSurfaceDeltaBytes.push(delta);
       }
     }
-    else if (field === 4 && wire === 0) materialSurfaceDeltaSchemaVersion = Number(cursor.varint());
-    else if (field === 5 && wire === 2) {
+    else if (field === 4 && wire === 0) {
+      if (schemaVersionSeen) throw new Error("duplicate WorldChunkSnapshot field 4");
+      const version = cursor.varint();
+      if (version > 0xFFFFFFFFn) throw new Error("WorldChunkSnapshot schema version overflows u32");
+      materialSurfaceDeltaSchemaVersion = Number(version);
+      schemaVersionSeen = true;
+    }
+    else if (field === 5) {
+      if (materialSurfaceDeltaSchemaVersion < MATERIAL_SURFACE_DELTA_SCHEMA_V3) {
+        throw new Error("MaterialSurfaceGateDelta field 5 is not allowed for schema version " + materialSurfaceDeltaSchemaVersion);
+      }
+      if (wire !== 2) throw new Error("unexpected wire type for MaterialSurfaceGateDelta field 5");
       const delta = cursor.bytes();
       if (materialSurfaceGateDeltas.length < MAX_MATERIAL_SURFACE_DELTAS) {
         materialSurfaceGateDeltas.push(decodeMaterialSurfaceGateDelta(delta));
@@ -310,6 +322,9 @@ export function decodeWorldChunkSnapshot(input: Uint8Array): WorldChunkSnapshot 
     else cursor.skip(wire);
   }
   if (simulationTicks === undefined) throw new Error("missing WorldChunkSnapshot field 1");
+  const materialSurfaceDeltas = materialSurfaceDeltaBytes.map((delta) =>
+    decodeMaterialSurfaceDelta(delta, materialSurfaceDeltaSchemaVersion)
+  );
   return {
     simulationTicks,
     chunks,
@@ -385,12 +400,22 @@ function decodeSpatialChunk(input: Uint8Array): SpatialChunkSummary {
   };
 }
 
-function decodeMaterialSurfaceDelta(input: Uint8Array): MaterialSurfaceDelta {
+function decodeMaterialSurfaceDelta(input: Uint8Array, schemaVersion: number): MaterialSurfaceDelta {
   const values = decodeVarintFields(input);
   const value = requiredValue(values, "MaterialSurfaceDelta");
   const contactTraceId = values.get(9);
   const manaEffectTraceId = values.get(10);
   const manaTransitionTraceId = values.get(12);
+  if (schemaVersion < MATERIAL_SURFACE_DELTA_SCHEMA_V3) {
+    const cursor = new Cursor(input);
+    while (!cursor.empty) {
+      const [field, wire] = cursor.key();
+      if (field >= 15 && field <= 17) {
+        throw new Error("MaterialSurfaceDelta fields 15-17 are not allowed for schema version " + schemaVersion);
+      }
+      cursor.skip(wire);
+    }
+  }
   return {
     chartId: value(1),
     chunkX: Number(zigzagDecode(value(2))),

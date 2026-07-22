@@ -1315,6 +1315,7 @@ impl RuntimeState {
                 })
                 .collect::<Result<Vec<_>, _>>()?,
         )?;
+        validate_mana_cell_object_ids(&mana)?;
         let resolution = ResolutionField::new(
             ResolutionFieldId::new(1),
             SimulationTime::new(0),
@@ -4559,18 +4560,30 @@ fn validate_material_surface_gate_state(
     let event = traces
         .event(trace)
         .ok_or(RuntimeError::InvalidSnapshot("unknown trace reference"))?;
-    let gate_effect = event
+    let object_id = material_surface_object_id(id);
+    let object_kind = StateObjectKindId::new(MATERIAL_SURFACE_OBJECT_KIND);
+    let gate_property = StatePropertyId::new(MATERIAL_SURFACE_MANA_GATE_PROPERTY);
+    let gate_effects: Vec<_> = event
         .effects
         .iter()
-        .find(|effect| {
-            effect.target().object_kind() == StateObjectKindId::new(MATERIAL_SURFACE_OBJECT_KIND)
-                && effect.target().object_id() == material_surface_object_id(id)
-                && effect.target().property()
-                    == StatePropertyId::new(MATERIAL_SURFACE_MANA_GATE_PROPERTY)
+        .filter(|effect| {
+            effect.target().object_kind() == object_kind
+                && effect.target().property() == gate_property
         })
-        .ok_or(RuntimeError::InvalidSnapshot(
-            "material surface gate transition does not target gate property",
-        ))?;
+        .collect();
+    if gate_effects.len() != 1 || gate_effects[0].target().object_id() != object_id {
+        return Err(RuntimeError::InvalidSnapshot(
+            "material surface gate transition does not target gate property exactly once",
+        ));
+    }
+    if event.effects.iter().any(|effect| {
+        effect.target().object_kind() == object_kind && effect.target().object_id() != object_id
+    }) {
+        return Err(RuntimeError::InvalidSnapshot(
+            "material surface gate event contains cross-surface effects",
+        ));
+    }
+    let gate_effect = gate_effects[0];
     let expected_before = material_surface_gate_fingerprint(!surface.gate.active);
     let expected_after = material_surface_gate_fingerprint(surface.gate.active);
     if event.kind != EventKindId::new(MATERIAL_SURFACE_MANA_EVENT_KIND)
@@ -4580,6 +4593,20 @@ fn validate_material_surface_gate_state(
     {
         return Err(RuntimeError::InvalidSnapshot(
             "material surface gate state does not match its transition",
+        ));
+    }
+    if traces.iter().any(|candidate| {
+        candidate.trace_id > trace
+            && candidate.kind == EventKindId::new(MATERIAL_SURFACE_MANA_EVENT_KIND)
+            && candidate.phase == Phase::Mana
+            && candidate.effects.iter().any(|effect| {
+                effect.target().object_kind() == object_kind
+                    && effect.target().object_id() == object_id
+                    && effect.target().property() == gate_property
+            })
+    }) {
+        return Err(RuntimeError::InvalidSnapshot(
+            "material surface gate state is not the latest gate transition",
         ));
     }
     Ok(())
@@ -4667,29 +4694,32 @@ fn validate_material_surface_gate_transition_history(
     _material_transitions: &[MaterialSurfaceTransition],
     gate_transitions: &[MaterialSurfaceGateTransition],
 ) -> Result<(), RuntimeError> {
-    let mut latest_gate_by_surface: BTreeMap<MaterialSurfaceId, &MaterialSurfaceGateTransition> =
-        BTreeMap::new();
     for transition in gate_transitions {
-        latest_gate_by_surface.insert(transition.id, transition);
-    }
-    for (id, latest) in latest_gate_by_surface {
-        let _surface = surfaces.get(&id).ok_or(RuntimeError::InvalidSnapshot(
-            "material surface gate transition references unknown surface",
-        ))?;
+        if !surfaces.contains_key(&transition.id) {
+            return Err(RuntimeError::InvalidSnapshot(
+                "material surface gate transition references unknown surface",
+            ));
+        }
         let event = traces
-            .event(latest.transition_trace)
+            .event(transition.transition_trace)
             .ok_or(RuntimeError::InvalidSnapshot("unknown trace reference"))?;
-        let prior_condition_trace = latest
+        let prior_condition_trace = transition
             .after_active
-            .then(|| prior_material_surface_condition_trace(traces, id, latest.transition_trace))
+            .then(|| {
+                prior_material_surface_condition_trace(
+                    traces,
+                    transition.id,
+                    transition.transition_trace,
+                )
+            })
             .flatten();
         let prior_gate_trace =
-            prior_material_surface_gate_trace(traces, id, latest.transition_trace);
+            prior_material_surface_gate_trace(traces, transition.id, transition.transition_trace);
         let expected_causes =
-            expected_gate_transition_causes(latest, prior_gate_trace, prior_condition_trace)?;
+            expected_gate_transition_causes(transition, prior_gate_trace, prior_condition_trace)?;
         if event.causes != expected_causes {
             return Err(RuntimeError::InvalidSnapshot(
-                "latest material surface gate transition has incorrect causal parent set",
+                "material surface gate transition has incorrect causal parent set",
             ));
         }
     }
@@ -4729,6 +4759,15 @@ fn validate_material_surface_gate_transition(
     {
         return Err(RuntimeError::InvalidSnapshot(
             "material surface gate transition gate effect does not match record",
+        ));
+    }
+    let object_id = material_surface_object_id(transition.id);
+    let object_kind = StateObjectKindId::new(MATERIAL_SURFACE_OBJECT_KIND);
+    if event.effects.iter().any(|effect| {
+        effect.target().object_kind() == object_kind && effect.target().object_id() != object_id
+    }) {
+        return Err(RuntimeError::InvalidSnapshot(
+            "material surface gate transition event contains cross-surface effects",
         ));
     }
     validate_local_mana_transition(traces, transition)?;
