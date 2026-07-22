@@ -29,6 +29,7 @@ Before making any changes, read:
 - Benchmark performance claims.
 - Update TODO and documentation.
 - Avoid unrelated opportunistic implementation.
+- Maintain clean modular architecture. Do not dump disparate logic into monolithic files like `runtime.rs`. Prefer splitting domain logic into appropriately named sibling modules or extending existing ones.
 - Use `codebase-memory-mcp` to maintain and query a semantic knowledge graph of the codebase (via `search_graph`, `trace_path`, `get_code_snippet`, and Cypher queries) as the primary method for code discovery and dependency tracing, prioritizing it over raw text searches.
 
 ## Detailed Development Priorities
@@ -74,3 +75,4 @@ When working on cognition-related code (attention, memory, concepts, beliefs, la
 - Do not add English vocabulary as simulation state.
 - Do not implement gameplay features during foundation phases.
 - Do not make unverified emergence or scale claims.
+- Do not let `runtime.rs` or any single module become a dump for unrelated state and methods. Respect the modular architecture and keep files strictly scoped to their purpose.

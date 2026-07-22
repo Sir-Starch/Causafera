@@ -21,14 +21,14 @@ const TERRAIN_PARAMETERS: TerrainParameterFingerprint =
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TerrainCarrierAdapter {
-    chunk: ChartChunkCoord,
-    terrain: TerrainChunk,
-    field_extent: u8,
+    pub(crate) chunk: ChartChunkCoord,
+    pub(crate) terrain: TerrainChunk,
+    pub(crate) field_extent: u8,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct MaterialSurfaceCarrierAdapter {
-    field_extent: u8,
+    pub(crate) field_extent: u8,
 }
 
 impl MaterialSurfaceCarrierAdapter {
@@ -291,7 +291,7 @@ fn field_position(index: usize, extent: u8) -> LocalCoord {
     LocalCoord::new((x % extent) as u8, (y % extent) as u8, 0)
 }
 
-fn mix64(mut value: u64) -> u64 {
+pub(crate) fn mix64(mut value: u64) -> u64 {
     value ^= value >> 30;
     value = value.wrapping_mul(0xBF58_476D_1CE4_E5B9);
     value ^= value >> 27;

@@ -297,7 +297,7 @@ fn measure(
     Ok(measurement)
 }
 
-fn production_loop_config(seed: u64) -> RuntimeConfig {
+pub(crate) fn production_loop_config(seed: u64) -> RuntimeConfig {
     let mut config = RuntimeConfig::new(seed);
     config.active_chunk_radius = 0;
     config.actor_count = 1;
@@ -325,14 +325,14 @@ fn bounded_world_chunks_query(
         .map_err(|_| MaterialSurfaceLoopBenchmarkError::MetricOverflow)
 }
 
-fn trace_count(
+pub(crate) fn trace_count(
     snapshot: &crate::RuntimeSnapshotData,
 ) -> Result<u64, MaterialSurfaceLoopBenchmarkError> {
     u64::try_from(snapshot.traces.events.len())
         .map_err(|_| MaterialSurfaceLoopBenchmarkError::MetricOverflow)
 }
 
-fn source_event_count(
+pub(crate) fn source_event_count(
     snapshot: &crate::RuntimeSnapshotData,
 ) -> Result<u64, MaterialSurfaceLoopBenchmarkError> {
     u64::try_from(

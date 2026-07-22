@@ -1,4 +1,7 @@
+use crate::*;
+use causafera_core::*;
 use std::collections::BTreeMap;
+use std::sync::{Arc, Mutex};
 
 use causafera_cognition::{AttentionCandidate, AttentionWeight, PerceptualCue};
 use causafera_types::{SimulationTime, Velocity};
@@ -116,6 +119,47 @@ fn attention_error_to_scene_error(
     }
 }
 
-fn motion_band(velocity: Velocity) -> u8 {
+pub(crate) fn motion_band(velocity: Velocity) -> u8 {
     velocity.length_squared().sqrt().min(f64::from(u8::MAX)) as u8
+}
+pub(crate) struct ActorCognitionSystem {
+    pub(crate) state: Arc<Mutex<RuntimeState>>,
+    pub(crate) next_time: SimulationTime,
+}
+
+impl ActorCognitionSystem {
+    pub(crate) fn new(state: Arc<Mutex<RuntimeState>>) -> Self {
+        Self {
+            state,
+            next_time: SimulationTime::new(1),
+        }
+    }
+
+    pub(crate) fn execute(&mut self) -> Result<(), RuntimeError> {
+        let mut state = self.state.lock().map_err(|_| RuntimeError::StatePoisoned)?;
+        let object_count = actor_cognition_step(
+            self.next_time,
+            &mut state.actors,
+            ActionKindId::new(ACTOR_CONTACT_ACTION_KIND),
+        )?;
+        state.subjective_actor_objects = state
+            .subjective_actor_objects
+            .saturating_add(object_count as u64);
+        self.next_time = self.next_time.tick();
+        Ok(())
+    }
+}
+
+impl System for ActorCognitionSystem {
+    fn run(&mut self, _stream: &mut RandomStream) {
+        if let Err(error) = self.execute() {
+            if let Ok(mut state) = self.state.lock() {
+                state.failure.get_or_insert(error);
+            }
+        }
+    }
+
+    fn restore_time(&mut self, time: SimulationTime) {
+        self.next_time = time;
+    }
 }

@@ -169,3 +169,7 @@ Organisms have no unexplained semantic mana pool, magic class, scalar aptitude, 
 Causal provenance answers: “Why did this happen in the world?” Epistemic provenance answers: “Why did this agent know, suspect, believe, or falsely believe this?”
 
 An agent-perspective explanation must be time-specific (e.g., “Why did agent A, at tick T, believe or explain event E as hypothesis H?”) and must not be silently rewritten by later knowledge. The authoritative basis must remain structured subjective state and its history, not natural-language text. Explanations must trace physically accessible signals, perceptions, the subjective scene, activated memories, received testimony, trust, concepts, hypotheses, the selected interpretation, confidence, unavailable evidence, and effects on later belief. Different agents form different explanations of the same event. Subjective explanations are not authoritative Ground Truth, and agents do not have access to hidden runtime state or causal traces they did not perceive.
+
+## INV-042: Architecture remains modular and cohesive
+
+Runtime implementation must remain modular and cohesive. Distinct domain or execution concerns should be localized in appropriate modules rather than accumulated in a shared catch-all file. File size alone is not a violation when the contained implementation remains conceptually cohesive.
