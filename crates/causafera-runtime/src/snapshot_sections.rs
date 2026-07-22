@@ -3443,4 +3443,25 @@ mod tests {
             resumed_snapshot.history_digest
         );
     }
+
+    #[test]
+    fn runtime_state_import_allows_gate_anchor_outside_bounded_history() {
+        let mut data = material_surface_loop_snapshot_data();
+        let evict = data
+            .material_surfaces
+            .gate_transitions
+            .iter()
+            .max_by_key(|transition| transition.transition_trace)
+            .copied()
+            .expect("production snapshot must retain a gate transition");
+
+        data.material_surfaces
+            .gate_transitions
+            .retain(|transition| transition.transition_trace != evict.transition_trace);
+
+        assert!(
+            RuntimeState::import_snapshot(data).is_ok(),
+            "gate.last_transition may point to an evicted trace in the authoritative store"
+        );
+    }
 }

@@ -1647,16 +1647,6 @@ impl RuntimeState {
             validate_material_surface_last_transition(&self.traces, *id, *surface)?;
             validate_material_surface_last_contact_trace(&self.traces, *id, *surface)?;
             validate_material_surface_gate_state(&self.traces, *id, *surface)?;
-            if surface.gate.last_transition.is_some_and(|trace| {
-                !self
-                    .material_surface_gate_transitions
-                    .iter()
-                    .any(|transition| transition.transition_trace == trace)
-            }) {
-                return Err(RuntimeError::InvalidSnapshot(
-                    "material surface gate state is missing its transition record",
-                ));
-            }
             if !self.active_chunks.contains_key(&id.chunk) {
                 return Err(RuntimeError::InvalidSnapshot(
                     "material surface outside active chunks",
@@ -2582,14 +2572,6 @@ fn import_material_surfaces(
             })
             .or_insert(transition.transition_trace);
         previous_gate_trace = Some(transition.transition_trace);
-    }
-    for (id, surface) in &surfaces {
-        let latest = latest_gate_trace_by_surface.get(id).copied();
-        if surface.gate.last_transition != latest {
-            return Err(RuntimeError::InvalidSnapshot(
-                "material surface gate state is not the latest retained gate transition",
-            ));
-        }
     }
     Ok((
         surfaces,
@@ -4662,8 +4644,10 @@ fn prior_material_surface_condition_trace(
     let object_kind = StateObjectKindId::new(MATERIAL_SURFACE_OBJECT_KIND);
     let condition_property = StatePropertyId::new(MATERIAL_SURFACE_CONDITION_PROPERTY);
     let is_condition_event = |event: &causafera_core::provenance::CausalEventRef<'_>| {
-        (event.kind == EventKindId::new(MATERIAL_SURFACE_MANA_EVENT_KIND)
-            || event.kind == EventKindId::new(MATERIAL_SURFACE_CONTACT_EVENT_KIND))
+        ((event.kind == EventKindId::new(MATERIAL_SURFACE_MANA_EVENT_KIND)
+            && event.phase == Phase::Mana)
+            || (event.kind == EventKindId::new(MATERIAL_SURFACE_CONTACT_EVENT_KIND)
+                && event.phase == Phase::Action))
             && event.effects.iter().any(|effect| {
                 effect.target().object_kind() == object_kind
                     && effect.target().object_id() == object_id
@@ -5243,44 +5227,12 @@ fn record_material_surface_gate_transition(
     transition: MaterialSurfaceGateTransition,
 ) {
     if state.material_surface_gate_transitions.len() == MAX_MATERIAL_SURFACE_TRANSITIONS {
-        let latest_traces: BTreeSet<TraceId> = state
-            .material_surfaces
-            .values()
-            .filter_map(|surface| surface.gate.last_transition)
-            .collect();
-        let candidate = state
+        let evicted = state
             .material_surface_gate_transitions
             .iter()
-            .position(|existing| {
-                !existing.after_active && !latest_traces.contains(&existing.transition_trace)
-            })
-            .or_else(|| {
-                state
-                    .material_surface_gate_transitions
-                    .iter()
-                    .position(|existing| !latest_traces.contains(&existing.transition_trace))
-            })
+            .position(|existing| !existing.after_active)
             .unwrap_or(0);
-        let evicted = state.material_surface_gate_transitions.remove(candidate);
-        if latest_traces.contains(&evicted.transition_trace) {
-            if let Some(surface) = state.material_surfaces.get_mut(&evicted.id) {
-                let previous = state
-                    .material_surface_gate_transitions
-                    .iter()
-                    .rev()
-                    .find(|existing| existing.id == evicted.id);
-                match previous {
-                    Some(previous) => {
-                        surface.gate.last_transition = Some(previous.transition_trace);
-                        surface.gate.active = previous.after_active;
-                    }
-                    None => {
-                        surface.gate.last_transition = None;
-                        surface.gate.active = false;
-                    }
-                }
-            }
-        }
+        state.material_surface_gate_transitions.remove(evicted);
     }
     state.material_surface_gate_transitions.push(transition);
 }
