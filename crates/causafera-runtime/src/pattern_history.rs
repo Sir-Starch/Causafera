@@ -170,11 +170,7 @@ impl PhysicalPatternHistory {
     }
 }
 
-fn within_window(
-    observed_at: SimulationTime,
-    newest: SimulationTime,
-    max_ticks: u64,
-) -> bool {
+fn within_window(observed_at: SimulationTime, newest: SimulationTime, max_ticks: u64) -> bool {
     newest.raw().saturating_sub(observed_at.raw()) < max_ticks
 }
 

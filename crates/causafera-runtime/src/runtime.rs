@@ -854,9 +854,7 @@ impl RuntimeState {
         Ok(())
     }
 
-    fn validate_experiment_recipe_mana_source_receipts(
-        &self,
-    ) -> Result<(), RuntimeError> {
+    fn validate_experiment_recipe_mana_source_receipts(&self) -> Result<(), RuntimeError> {
         let recipe_hash = self.config.experiment_recipe_mana_sources.recipe_hash();
         for receipt in &self.executed_experiment_recipe_mana_sources {
             let record = self
@@ -1787,10 +1785,7 @@ fn import_aggregate_actor_pool(
     Ok(pool)
 }
 
-fn validate_trace_exists(
-    store: &CausalTraceStore,
-    trace: TraceId,
-) -> Result<(), RuntimeError> {
+fn validate_trace_exists(store: &CausalTraceStore, trace: TraceId) -> Result<(), RuntimeError> {
     if store.event(trace).is_some() {
         Ok(())
     } else {

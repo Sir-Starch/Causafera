@@ -134,10 +134,7 @@ fn lifecycle_births_and_deaths(
     Ok(())
 }
 
-fn lifecycle_movement(
-    state: &mut RuntimeState,
-    time: SimulationTime,
-) -> Result<(), RuntimeError> {
+fn lifecycle_movement(state: &mut RuntimeState, time: SimulationTime) -> Result<(), RuntimeError> {
     if time.raw() % 5 != 0 {
         return Ok(());
     }

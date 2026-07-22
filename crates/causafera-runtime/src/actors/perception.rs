@@ -68,10 +68,7 @@ pub fn actor_perception_step(
     Ok(total)
 }
 
-fn physical_apertures(
-    actor_id: ActorId,
-    actor: &ActorState,
-) -> Vec<PhysicalSensorAperture> {
+fn physical_apertures(actor_id: ActorId, actor: &ActorState) -> Vec<PhysicalSensorAperture> {
     actor
         .sensors
         .iter()
