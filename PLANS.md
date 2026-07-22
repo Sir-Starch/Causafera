@@ -47,15 +47,24 @@ Decision log
 Progress
 ```
 
+## Plan locations and control-plane adapters
+
+- `plans/` contains the authoritative project ExecPlans. These are the sole source of truth for
+  architecture, implementation stages, acceptance criteria, and plan status.
+- `.omo/plans/` contains tool-specific adapters or execution-control plans used by the OmO
+  orchestration tooling (e.g., Momus review paths, `start-work` ledger references). These adapters
+  are non-authoritative and intentionally minimal; they do not supersede, copy, revise, or
+  independently version the canonical ExecPlans.
+- Substantive plan changes must never be made only in `.omo/plans/`. Any accepted review finding
+  must be applied to the canonical file under `plans/`.
+
 ## Active Planning
 
 - [`plans/biological-mana-coupling.md`](plans/biological-mana-coupling.md) — accepted architecture with pending implementation stages for physical biological mana coupling and its downstream validation.
+- [`plans/local-mana-material-surface-coupling.md`](plans/local-mana-material-surface-coupling.md) — accepted bounded local mana-cell to material-surface coupling slice; replaces the global mana-total gate with per-surface local hysteresis.
 
 ## Draft Plans
 
-- [`plans/local-mana-material-surface-coupling.md`](plans/local-mana-material-surface-coupling.md) — Draft
-  bounded local mana-cell to material-surface coupling slice; not active and not a new field,
-  material, or operator system.
 - [`plans/experiment-recipe-mana-source.md`](plans/experiment-recipe-mana-source.md) — Draft
   bounded production-path experiment-recipe mana source slice; not active and not an operator API.
 
