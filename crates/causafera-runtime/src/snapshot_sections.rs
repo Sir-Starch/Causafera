@@ -46,12 +46,12 @@ pub const SECTION_EXPERIMENT_MANIFEST: u16 = 0x000B;
 pub const MATERIAL_SURFACE_SECTION_ID: u16 = 0x000C;
 pub const SECTION_EXPERIMENT_RECIPE_MANA_SOURCE_RECEIPTS: u16 = 0x000D;
 
-const RUNTIME_RECIPE_SECTION_MAJOR: u16 = 4;
-const MANA_SECTION_MAJOR: u16 = 2;
-const PHYSICAL_COUNTERS_SECTION_MAJOR: u16 = 3;
-const MATERIAL_SURFACE_SECTION_MAJOR: u16 = 2;
+pub(crate) const RUNTIME_RECIPE_SECTION_MAJOR: u16 = 4;
+pub(crate) const MANA_SECTION_MAJOR: u16 = 2;
+pub(crate) const PHYSICAL_COUNTERS_SECTION_MAJOR: u16 = 3;
+pub(crate) const MATERIAL_SURFACE_SECTION_MAJOR: u16 = 2;
 pub const EXPERIMENT_RECIPE_MANA_SOURCE_RECEIPTS_SECTION_MAJOR: u16 = 1;
-const CURRENT_SECTION_MINOR: u16 = 0;
+pub(crate) const CURRENT_SECTION_MINOR: u16 = 0;
 
 /// Encode a `CausalTraceSnapshot` into section bytes.
 pub fn encode_trace_section(snapshot: &CausalTraceSnapshot) -> Vec<u8> {
@@ -991,7 +991,7 @@ pub fn decode_experiment_manifest_section(
     })
 }
 
-fn encode_runtime_config(enc: &mut LittleEndianEncoder<'_>, config: &RuntimeConfig) {
+pub(crate) fn encode_runtime_config(enc: &mut LittleEndianEncoder<'_>, config: &RuntimeConfig) {
     enc.write_u64(config.deterministic.world_seed);
     enc.write_u8(config.chunk_extent);
     enc.write_u8(config.active_chunk_radius);
@@ -1037,7 +1037,7 @@ fn encode_runtime_config(enc: &mut LittleEndianEncoder<'_>, config: &RuntimeConf
     enc.write_i64(config.experiment_recipe_mana_sources.recipe_budget);
 }
 
-fn decode_runtime_config(
+pub(crate) fn decode_runtime_config(
     dec: &mut LittleEndianDecoder<'_>,
 ) -> Result<RuntimeConfig, PersistenceError> {
     let mut config = RuntimeConfig::new(dec.read_u64()?);
@@ -1096,7 +1096,10 @@ fn decode_runtime_config(
     Ok(config)
 }
 
-fn encode_actor_objective(enc: &mut LittleEndianEncoder<'_>, snapshot: &ActorObjectiveSnapshot) {
+pub(crate) fn encode_actor_objective(
+    enc: &mut LittleEndianEncoder<'_>,
+    snapshot: &ActorObjectiveSnapshot,
+) {
     encode_body(enc, snapshot.body);
     enc.write_u64(snapshot.sensors.len() as u64);
     for sensor in &snapshot.sensors {
@@ -1130,7 +1133,7 @@ fn encode_actor_objective(enc: &mut LittleEndianEncoder<'_>, snapshot: &ActorObj
     }
 }
 
-fn decode_actor_objective(
+pub(crate) fn decode_actor_objective(
     dec: &mut LittleEndianDecoder<'_>,
 ) -> Result<ActorObjectiveSnapshot, PersistenceError> {
     let body = decode_body(dec)?;
@@ -1184,7 +1187,10 @@ fn decode_actor_objective(
     })
 }
 
-fn encode_actor_subjective(enc: &mut LittleEndianEncoder<'_>, snapshot: &ActorSubjectiveSnapshot) {
+pub(crate) fn encode_actor_subjective(
+    enc: &mut LittleEndianEncoder<'_>,
+    snapshot: &ActorSubjectiveSnapshot,
+) {
     match &snapshot.subjective_scene {
         Some(scene) => {
             enc.write_u8(1);
@@ -1198,7 +1204,7 @@ fn encode_actor_subjective(enc: &mut LittleEndianEncoder<'_>, snapshot: &ActorSu
     encode_self_model(enc, &snapshot.self_model);
 }
 
-fn decode_actor_subjective(
+pub(crate) fn decode_actor_subjective(
     dec: &mut LittleEndianDecoder<'_>,
 ) -> Result<ActorSubjectiveSnapshot, PersistenceError> {
     let subjective_scene = match dec.read_u8()? {
@@ -1219,7 +1225,7 @@ fn decode_actor_subjective(
     })
 }
 
-fn encode_runtime_subjective_scene(
+pub(crate) fn encode_runtime_subjective_scene(
     enc: &mut LittleEndianEncoder<'_>,
     scene: &SubjectiveSceneSnapshot,
 ) {
@@ -1239,7 +1245,7 @@ fn encode_runtime_subjective_scene(
     encode_cognition_scene(enc, &scene.inner);
 }
 
-fn decode_runtime_subjective_scene(
+pub(crate) fn decode_runtime_subjective_scene(
     dec: &mut LittleEndianDecoder<'_>,
 ) -> Result<SubjectiveSceneSnapshot, PersistenceError> {
     let perceived_self = PerceivedSelf {
@@ -1271,7 +1277,7 @@ fn decode_runtime_subjective_scene(
     })
 }
 
-fn encode_cognition_scene(
+pub(crate) fn encode_cognition_scene(
     enc: &mut LittleEndianEncoder<'_>,
     scene: &causafera_cognition::SubjectiveSceneSnapshot,
 ) {
@@ -1287,7 +1293,7 @@ fn encode_cognition_scene(
     }
 }
 
-fn decode_cognition_scene(
+pub(crate) fn decode_cognition_scene(
     dec: &mut LittleEndianDecoder<'_>,
 ) -> Result<causafera_cognition::SubjectiveSceneSnapshot, PersistenceError> {
     let time = SimulationTime::new(dec.read_u64()?);
@@ -1310,7 +1316,7 @@ fn decode_cognition_scene(
     })
 }
 
-fn encode_body(enc: &mut LittleEndianEncoder<'_>, body: MinimalBodyState) {
+pub(crate) fn encode_body(enc: &mut LittleEndianEncoder<'_>, body: MinimalBodyState) {
     encode_world_coord(enc, body.position);
     enc.write_u64(body.orientation.yaw.to_bits());
     enc.write_u64(body.orientation.pitch.to_bits());
@@ -1324,7 +1330,9 @@ fn encode_body(enc: &mut LittleEndianEncoder<'_>, body: MinimalBodyState) {
     enc.write_i64(body.energy);
 }
 
-fn decode_body(dec: &mut LittleEndianDecoder<'_>) -> Result<MinimalBodyState, PersistenceError> {
+pub(crate) fn decode_body(
+    dec: &mut LittleEndianDecoder<'_>,
+) -> Result<MinimalBodyState, PersistenceError> {
     Ok(MinimalBodyState {
         position: decode_world_coord(dec)?,
         orientation: causafera_types::Orientation::new(
@@ -1346,7 +1354,7 @@ fn decode_body(dec: &mut LittleEndianDecoder<'_>) -> Result<MinimalBodyState, Pe
     })
 }
 
-fn encode_feature(enc: &mut LittleEndianEncoder<'_>, feature: &GenericFeature) {
+pub(crate) fn encode_feature(enc: &mut LittleEndianEncoder<'_>, feature: &GenericFeature) {
     enc.write_u64(feature.percept.raw());
     enc.write_u64(feature.attention_target.raw());
     enc.write_u8(feature_relation_tag(feature.relation));
@@ -1361,7 +1369,9 @@ fn encode_feature(enc: &mut LittleEndianEncoder<'_>, feature: &GenericFeature) {
     enc.write_u64(feature.time.raw());
 }
 
-fn decode_feature(dec: &mut LittleEndianDecoder<'_>) -> Result<GenericFeature, PersistenceError> {
+pub(crate) fn decode_feature(
+    dec: &mut LittleEndianDecoder<'_>,
+) -> Result<GenericFeature, PersistenceError> {
     let percept = PerceptId::new(dec.read_u64()?);
     let attention_target = AttentionTargetId::new(dec.read_u64()?);
     let relation = decode_feature_relation(dec.read_u8()?)?;
@@ -1388,7 +1398,7 @@ fn decode_feature(dec: &mut LittleEndianDecoder<'_>) -> Result<GenericFeature, P
     })
 }
 
-fn encode_feature_value(enc: &mut LittleEndianEncoder<'_>, value: FeatureValue) {
+pub(crate) fn encode_feature_value(enc: &mut LittleEndianEncoder<'_>, value: FeatureValue) {
     match value {
         FeatureValue::Scalar(value) => {
             enc.write_u8(1);
@@ -1411,7 +1421,7 @@ fn encode_feature_value(enc: &mut LittleEndianEncoder<'_>, value: FeatureValue) 
     }
 }
 
-fn decode_feature_value(
+pub(crate) fn decode_feature_value(
     dec: &mut LittleEndianDecoder<'_>,
 ) -> Result<FeatureValue, PersistenceError> {
     Ok(match dec.read_u8()? {
@@ -1431,7 +1441,7 @@ fn decode_feature_value(
     })
 }
 
-fn feature_relation_tag(relation: FeatureRelation) -> u8 {
+pub(crate) fn feature_relation_tag(relation: FeatureRelation) -> u8 {
     match relation {
         FeatureRelation::Change => 1,
         FeatureRelation::Magnitude => 2,
@@ -1450,7 +1460,7 @@ fn feature_relation_tag(relation: FeatureRelation) -> u8 {
     }
 }
 
-fn decode_feature_relation(tag: u8) -> Result<FeatureRelation, PersistenceError> {
+pub(crate) fn decode_feature_relation(tag: u8) -> Result<FeatureRelation, PersistenceError> {
     Ok(match tag {
         1 => FeatureRelation::Change,
         2 => FeatureRelation::Magnitude,
@@ -1474,7 +1484,10 @@ fn decode_feature_relation(tag: u8) -> Result<FeatureRelation, PersistenceError>
     })
 }
 
-fn encode_subjective_target(enc: &mut LittleEndianEncoder<'_>, target: SubjectiveTarget) {
+pub(crate) fn encode_subjective_target(
+    enc: &mut LittleEndianEncoder<'_>,
+    target: SubjectiveTarget,
+) {
     match target {
         SubjectiveTarget::SelfBody => enc.write_u8(1),
         SubjectiveTarget::Object(id) => {
@@ -1490,7 +1503,7 @@ fn encode_subjective_target(enc: &mut LittleEndianEncoder<'_>, target: Subjectiv
     }
 }
 
-fn decode_subjective_target(
+pub(crate) fn decode_subjective_target(
     dec: &mut LittleEndianDecoder<'_>,
 ) -> Result<SubjectiveTarget, PersistenceError> {
     Ok(match dec.read_u8()? {
@@ -1509,7 +1522,7 @@ fn decode_subjective_target(
     })
 }
 
-fn encode_rejection(enc: &mut LittleEndianEncoder<'_>, rejection: ActionRejection) {
+pub(crate) fn encode_rejection(enc: &mut LittleEndianEncoder<'_>, rejection: ActionRejection) {
     enc.write_u8(match rejection {
         ActionRejection::MissingSubjectiveTarget => 1,
         ActionRejection::OutOfBounds => 2,
@@ -1517,7 +1530,7 @@ fn encode_rejection(enc: &mut LittleEndianEncoder<'_>, rejection: ActionRejectio
     });
 }
 
-fn decode_rejection(
+pub(crate) fn decode_rejection(
     dec: &mut LittleEndianDecoder<'_>,
 ) -> Result<ActionRejection, PersistenceError> {
     Ok(match dec.read_u8()? {
@@ -1532,7 +1545,7 @@ fn decode_rejection(
     })
 }
 
-fn encode_attention(
+pub(crate) fn encode_attention(
     enc: &mut LittleEndianEncoder<'_>,
     snapshot: &causafera_cognition::AttentionStateSnapshot,
 ) {
@@ -1548,7 +1561,7 @@ fn encode_attention(
     }
 }
 
-fn decode_attention(
+pub(crate) fn decode_attention(
     dec: &mut LittleEndianDecoder<'_>,
 ) -> Result<causafera_cognition::AttentionStateSnapshot, PersistenceError> {
     let config = causafera_cognition::AttentionConfigSnapshot {
@@ -1573,7 +1586,7 @@ fn decode_attention(
     })
 }
 
-fn encode_body_schema(
+pub(crate) fn encode_body_schema(
     enc: &mut LittleEndianEncoder<'_>,
     snapshot: &causafera_cognition::BodySchemaSnapshot,
 ) {
@@ -1589,7 +1602,7 @@ fn encode_body_schema(
     }
 }
 
-fn decode_body_schema(
+pub(crate) fn decode_body_schema(
     dec: &mut LittleEndianDecoder<'_>,
 ) -> Result<causafera_cognition::BodySchemaSnapshot, PersistenceError> {
     let count = read_count(dec, 16, "body schema part")?;
@@ -1612,7 +1625,7 @@ fn decode_body_schema(
     Ok(causafera_cognition::BodySchemaSnapshot { parts })
 }
 
-fn encode_self_model(
+pub(crate) fn encode_self_model(
     enc: &mut LittleEndianEncoder<'_>,
     snapshot: &causafera_cognition::SelfModelSnapshot,
 ) {
@@ -1622,7 +1635,7 @@ fn encode_self_model(
     }
 }
 
-fn decode_self_model(
+pub(crate) fn decode_self_model(
     dec: &mut LittleEndianDecoder<'_>,
 ) -> Result<causafera_cognition::SelfModelSnapshot, PersistenceError> {
     let count = read_count(dec, 16, "self association")?;
@@ -1633,7 +1646,7 @@ fn decode_self_model(
     Ok(causafera_cognition::SelfModelSnapshot { associations })
 }
 
-fn encode_self_association(
+pub(crate) fn encode_self_association(
     enc: &mut LittleEndianEncoder<'_>,
     association: causafera_cognition::SelfAssociation,
 ) {
@@ -1642,7 +1655,7 @@ fn encode_self_association(
     enc.write_u64(association.supporting_percept.raw());
 }
 
-fn decode_self_association(
+pub(crate) fn decode_self_association(
     dec: &mut LittleEndianDecoder<'_>,
 ) -> Result<causafera_cognition::SelfAssociation, PersistenceError> {
     Ok(causafera_cognition::SelfAssociation {
@@ -1653,7 +1666,7 @@ fn decode_self_association(
     })
 }
 
-fn encode_scene_object(
+pub(crate) fn encode_scene_object(
     enc: &mut LittleEndianEncoder<'_>,
     object: &causafera_cognition::SceneObject,
 ) {
@@ -1668,7 +1681,7 @@ fn encode_scene_object(
     enc.write_u64(object.supporting_percept.raw());
 }
 
-fn decode_scene_object(
+pub(crate) fn decode_scene_object(
     dec: &mut LittleEndianDecoder<'_>,
 ) -> Result<causafera_cognition::SceneObject, PersistenceError> {
     let id = PerceivedObjectId::new(dec.read_u64()?);
@@ -1690,7 +1703,7 @@ fn decode_scene_object(
     })
 }
 
-fn encode_continuity(
+pub(crate) fn encode_continuity(
     enc: &mut LittleEndianEncoder<'_>,
     snapshot: &causafera_cognition::SceneContinuitySnapshot,
 ) {
@@ -1714,7 +1727,7 @@ fn encode_continuity(
     }
 }
 
-fn decode_continuity(
+pub(crate) fn decode_continuity(
     dec: &mut LittleEndianDecoder<'_>,
 ) -> Result<causafera_cognition::SceneContinuitySnapshot, PersistenceError> {
     let next_object_id = dec.read_u64()?;
@@ -1754,7 +1767,10 @@ fn decode_continuity(
     })
 }
 
-fn encode_terrain_carrier(enc: &mut LittleEndianEncoder<'_>, snapshot: &TerrainCarrierSnapshot) {
+pub(crate) fn encode_terrain_carrier(
+    enc: &mut LittleEndianEncoder<'_>,
+    snapshot: &TerrainCarrierSnapshot,
+) {
     encode_chart_chunk(enc, snapshot.chunk);
     enc.write_u8(snapshot.field_extent);
     enc.write_u64(snapshot.world_seed);
@@ -1776,7 +1792,7 @@ fn encode_terrain_carrier(enc: &mut LittleEndianEncoder<'_>, snapshot: &TerrainC
     }
 }
 
-fn decode_terrain_carrier(
+pub(crate) fn decode_terrain_carrier(
     dec: &mut LittleEndianDecoder<'_>,
 ) -> Result<TerrainCarrierSnapshot, PersistenceError> {
     let chunk = decode_chart_chunk(dec)?;
@@ -1815,7 +1831,7 @@ fn decode_terrain_carrier(
     })
 }
 
-fn encode_actor_object(enc: &mut LittleEndianEncoder<'_>, object: &ActorPhysicalObject) {
+pub(crate) fn encode_actor_object(enc: &mut LittleEndianEncoder<'_>, object: &ActorPhysicalObject) {
     enc.write_u64(object.object_key);
     encode_world_coord(enc, object.position);
     enc.write_i64(object.magnitude);
@@ -1824,7 +1840,7 @@ fn encode_actor_object(enc: &mut LittleEndianEncoder<'_>, object: &ActorPhysical
     enc.write_u64(object.trace.raw());
 }
 
-fn decode_actor_object(
+pub(crate) fn decode_actor_object(
     dec: &mut LittleEndianDecoder<'_>,
 ) -> Result<ActorPhysicalObject, PersistenceError> {
     Ok(ActorPhysicalObject {
@@ -1837,7 +1853,10 @@ fn decode_actor_object(
     })
 }
 
-fn encode_population_aggregate(enc: &mut LittleEndianEncoder<'_>, aggregate: &PopulationAggregate) {
+pub(crate) fn encode_population_aggregate(
+    enc: &mut LittleEndianEncoder<'_>,
+    aggregate: &PopulationAggregate,
+) {
     encode_chart_chunk(enc, aggregate.chart);
     enc.write_u64(aggregate.count);
     enc.write_u64(aggregate.births);
@@ -1847,7 +1866,7 @@ fn encode_population_aggregate(enc: &mut LittleEndianEncoder<'_>, aggregate: &Po
     encode_trace_vec(enc, &aggregate.causal_ancestry);
 }
 
-fn decode_population_aggregate(
+pub(crate) fn decode_population_aggregate(
     dec: &mut LittleEndianDecoder<'_>,
 ) -> Result<PopulationAggregate, PersistenceError> {
     Ok(PopulationAggregate {
@@ -1861,7 +1880,7 @@ fn decode_population_aggregate(
     })
 }
 
-fn encode_pattern_sample(
+pub(crate) fn encode_pattern_sample(
     enc: &mut LittleEndianEncoder<'_>,
     sample: &causafera_domains::PhysicalPatternSample,
 ) {
@@ -1874,7 +1893,7 @@ fn encode_pattern_sample(
     enc.write_u64(sample.cause.raw());
 }
 
-fn decode_pattern_sample(
+pub(crate) fn decode_pattern_sample(
     dec: &mut LittleEndianDecoder<'_>,
 ) -> Result<causafera_domains::PhysicalPatternSample, PersistenceError> {
     Ok(causafera_domains::PhysicalPatternSample {
@@ -1888,12 +1907,15 @@ fn decode_pattern_sample(
     })
 }
 
-fn encode_physical_digest(enc: &mut LittleEndianEncoder<'_>, digest: crate::PhysicalStateDigest) {
+pub(crate) fn encode_physical_digest(
+    enc: &mut LittleEndianEncoder<'_>,
+    digest: crate::PhysicalStateDigest,
+) {
     enc.write_u16(digest.schema_version.raw());
     enc.write_fixed(&digest.bytes());
 }
 
-fn decode_physical_digest(
+pub(crate) fn decode_physical_digest(
     dec: &mut LittleEndianDecoder<'_>,
 ) -> Result<crate::PhysicalStateDigest, PersistenceError> {
     Ok(crate::PhysicalStateDigest {
@@ -1902,12 +1924,15 @@ fn decode_physical_digest(
     })
 }
 
-fn encode_history_digest(enc: &mut LittleEndianEncoder<'_>, digest: crate::HistoryDigest) {
+pub(crate) fn encode_history_digest(
+    enc: &mut LittleEndianEncoder<'_>,
+    digest: crate::HistoryDigest,
+) {
     enc.write_u16(digest.schema_version.raw());
     enc.write_fixed(&digest.bytes());
 }
 
-fn decode_history_digest(
+pub(crate) fn decode_history_digest(
     dec: &mut LittleEndianDecoder<'_>,
 ) -> Result<crate::HistoryDigest, PersistenceError> {
     Ok(crate::HistoryDigest {
@@ -1916,19 +1941,19 @@ fn decode_history_digest(
     })
 }
 
-fn encode_chart_chunk(enc: &mut LittleEndianEncoder<'_>, chunk: ChartChunkCoord) {
+pub(crate) fn encode_chart_chunk(enc: &mut LittleEndianEncoder<'_>, chunk: ChartChunkCoord) {
     enc.write_u64(chunk.chart.raw());
     enc.write_u32(chunk.chunk.x as u32);
     enc.write_u32(chunk.chunk.y as u32);
     enc.write_u32(chunk.chunk.z as u32);
 }
 
-fn encode_material_surface_id(enc: &mut LittleEndianEncoder<'_>, id: MaterialSurfaceId) {
+pub(crate) fn encode_material_surface_id(enc: &mut LittleEndianEncoder<'_>, id: MaterialSurfaceId) {
     encode_chart_chunk(enc, id.chunk);
     enc.write_u16(id.cell_index);
 }
 
-fn decode_chart_chunk(
+pub(crate) fn decode_chart_chunk(
     dec: &mut LittleEndianDecoder<'_>,
 ) -> Result<ChartChunkCoord, PersistenceError> {
     Ok(ChartChunkCoord::new(
@@ -1941,7 +1966,7 @@ fn decode_chart_chunk(
     ))
 }
 
-fn decode_material_surface_id(
+pub(crate) fn decode_material_surface_id(
     dec: &mut LittleEndianDecoder<'_>,
 ) -> Result<MaterialSurfaceId, PersistenceError> {
     let id = MaterialSurfaceId::new(decode_chart_chunk(dec)?, dec.read_u16()?);
@@ -1953,13 +1978,15 @@ fn decode_material_surface_id(
     Ok(id)
 }
 
-fn encode_world_coord(enc: &mut LittleEndianEncoder<'_>, coord: WorldCoord) {
+pub(crate) fn encode_world_coord(enc: &mut LittleEndianEncoder<'_>, coord: WorldCoord) {
     enc.write_i64(coord.x);
     enc.write_i64(coord.y);
     enc.write_i64(coord.z);
 }
 
-fn decode_world_coord(dec: &mut LittleEndianDecoder<'_>) -> Result<WorldCoord, PersistenceError> {
+pub(crate) fn decode_world_coord(
+    dec: &mut LittleEndianDecoder<'_>,
+) -> Result<WorldCoord, PersistenceError> {
     Ok(WorldCoord::new(
         dec.read_i64()?,
         dec.read_i64()?,
@@ -1967,13 +1994,15 @@ fn decode_world_coord(dec: &mut LittleEndianDecoder<'_>) -> Result<WorldCoord, P
     ))
 }
 
-fn encode_local_coord(enc: &mut LittleEndianEncoder<'_>, coord: LocalCoord) {
+pub(crate) fn encode_local_coord(enc: &mut LittleEndianEncoder<'_>, coord: LocalCoord) {
     enc.write_u8(coord.x);
     enc.write_u8(coord.y);
     enc.write_u8(coord.z);
 }
 
-fn decode_local_coord(dec: &mut LittleEndianDecoder<'_>) -> Result<LocalCoord, PersistenceError> {
+pub(crate) fn decode_local_coord(
+    dec: &mut LittleEndianDecoder<'_>,
+) -> Result<LocalCoord, PersistenceError> {
     Ok(LocalCoord::new(
         dec.read_u8()?,
         dec.read_u8()?,
@@ -1981,14 +2010,14 @@ fn decode_local_coord(dec: &mut LittleEndianDecoder<'_>) -> Result<LocalCoord, P
     ))
 }
 
-fn encode_trace_vec(enc: &mut LittleEndianEncoder<'_>, traces: &[TraceId]) {
+pub(crate) fn encode_trace_vec(enc: &mut LittleEndianEncoder<'_>, traces: &[TraceId]) {
     enc.write_u64(traces.len() as u64);
     for trace in traces {
         enc.write_u64(trace.raw());
     }
 }
 
-fn decode_trace_vec(
+pub(crate) fn decode_trace_vec(
     dec: &mut LittleEndianDecoder<'_>,
     max: usize,
 ) -> Result<Vec<TraceId>, PersistenceError> {
@@ -2000,7 +2029,7 @@ fn decode_trace_vec(
     Ok(traces)
 }
 
-fn encode_option_trace(enc: &mut LittleEndianEncoder<'_>, trace: Option<TraceId>) {
+pub(crate) fn encode_option_trace(enc: &mut LittleEndianEncoder<'_>, trace: Option<TraceId>) {
     match trace {
         Some(trace) => {
             enc.write_u8(1);
@@ -2010,7 +2039,7 @@ fn encode_option_trace(enc: &mut LittleEndianEncoder<'_>, trace: Option<TraceId>
     }
 }
 
-fn decode_option_trace(
+pub(crate) fn decode_option_trace(
     dec: &mut LittleEndianDecoder<'_>,
 ) -> Result<Option<TraceId>, PersistenceError> {
     Ok(match dec.read_u8()? {
@@ -2024,7 +2053,7 @@ fn decode_option_trace(
     })
 }
 
-fn encode_option_time(enc: &mut LittleEndianEncoder<'_>, time: Option<SimulationTime>) {
+pub(crate) fn encode_option_time(enc: &mut LittleEndianEncoder<'_>, time: Option<SimulationTime>) {
     match time {
         Some(time) => {
             enc.write_u8(1);
@@ -2034,7 +2063,7 @@ fn encode_option_time(enc: &mut LittleEndianEncoder<'_>, time: Option<Simulation
     }
 }
 
-fn decode_option_time(
+pub(crate) fn decode_option_time(
     dec: &mut LittleEndianDecoder<'_>,
 ) -> Result<Option<SimulationTime>, PersistenceError> {
     Ok(match dec.read_u8()? {
@@ -2048,11 +2077,11 @@ fn decode_option_time(
     })
 }
 
-fn encode_bool(enc: &mut LittleEndianEncoder<'_>, value: bool) {
+pub(crate) fn encode_bool(enc: &mut LittleEndianEncoder<'_>, value: bool) {
     enc.write_u8(u8::from(value));
 }
 
-fn decode_bool(dec: &mut LittleEndianDecoder<'_>) -> Result<bool, PersistenceError> {
+pub(crate) fn decode_bool(dec: &mut LittleEndianDecoder<'_>) -> Result<bool, PersistenceError> {
     Ok(match dec.read_u8()? {
         0 => false,
         1 => true,
@@ -2060,7 +2089,7 @@ fn decode_bool(dec: &mut LittleEndianDecoder<'_>) -> Result<bool, PersistenceErr
     })
 }
 
-fn decode_phase(phase_id: u16) -> Result<Phase, PersistenceError> {
+pub(crate) fn decode_phase(phase_id: u16) -> Result<Phase, PersistenceError> {
     Phase::ALL
         .iter()
         .find(|phase| phase.id().0 == phase_id as u8)
@@ -2068,7 +2097,7 @@ fn decode_phase(phase_id: u16) -> Result<Phase, PersistenceError> {
         .ok_or_else(|| PersistenceError::codec(format!("unknown phase id {phase_id}")))
 }
 
-fn read_count(
+pub(crate) fn read_count(
     dec: &mut LittleEndianDecoder<'_>,
     max: usize,
     label: &str,
@@ -2082,12 +2111,12 @@ fn read_count(
     Ok(count)
 }
 
-fn usize_from_u64(value: u64, label: &str) -> Result<usize, PersistenceError> {
+pub(crate) fn usize_from_u64(value: u64, label: &str) -> Result<usize, PersistenceError> {
     usize::try_from(value)
         .map_err(|_| PersistenceError::codec(format!("{label} count exceeds usize")))
 }
 
-fn reject_unsorted_ids(ids: impl Iterator<Item = u64>) -> Result<(), PersistenceError> {
+pub(crate) fn reject_unsorted_ids(ids: impl Iterator<Item = u64>) -> Result<(), PersistenceError> {
     let mut previous = None;
     for id in ids {
         if previous.is_some_and(|previous| previous >= id) {
@@ -2098,7 +2127,7 @@ fn reject_unsorted_ids(ids: impl Iterator<Item = u64>) -> Result<(), Persistence
     Ok(())
 }
 
-fn reject_unsorted_chunks(
+pub(crate) fn reject_unsorted_chunks(
     chunks: impl Iterator<Item = ChartChunkCoord>,
 ) -> Result<(), PersistenceError> {
     let mut previous = None;
@@ -2111,7 +2140,7 @@ fn reject_unsorted_chunks(
     Ok(())
 }
 
-fn reject_unsorted_material_surfaces(
+pub(crate) fn reject_unsorted_material_surfaces(
     ids: impl Iterator<Item = MaterialSurfaceId>,
 ) -> Result<(), PersistenceError> {
     let mut previous = None;
@@ -2126,7 +2155,7 @@ fn reject_unsorted_material_surfaces(
     Ok(())
 }
 
-fn require_empty(dec: &LittleEndianDecoder<'_>) -> Result<(), PersistenceError> {
+pub(crate) fn require_empty(dec: &LittleEndianDecoder<'_>) -> Result<(), PersistenceError> {
     if dec.is_empty() {
         Ok(())
     } else {
@@ -2450,7 +2479,7 @@ pub fn disassemble_envelope(
     })
 }
 
-fn required_section(
+pub(crate) fn required_section(
     envelope: &SnapshotEnvelope,
     schema_id: u16,
     required_major: u16,

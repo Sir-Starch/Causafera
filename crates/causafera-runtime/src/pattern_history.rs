@@ -1,4 +1,11 @@
-use std::collections::{BTreeMap, VecDeque};
+use crate::*;
+use causafera_core::*;
+use causafera_domains::*;
+use causafera_types::*;
+use std::collections::{BTreeMap, BTreeSet};
+use std::sync::{Arc, Mutex};
+
+use std::collections::VecDeque;
 
 use causafera_domains::PhysicalPatternSample;
 use causafera_types::{PhysicalPatternId, SimulationTime};
@@ -12,10 +19,10 @@ use causafera_types::{PhysicalPatternId, SimulationTime};
 /// ancestry; no semantic, English, observer, or subjective data is retained.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PhysicalPatternHistory {
-    per_pattern: BTreeMap<PhysicalPatternId, VecDeque<PhysicalPatternSample>>,
-    insertion_order: VecDeque<PhysicalPatternSample>,
-    per_pattern_cap: usize,
-    global_cap: usize,
+    pub(crate) per_pattern: BTreeMap<PhysicalPatternId, VecDeque<PhysicalPatternSample>>,
+    pub(crate) insertion_order: VecDeque<PhysicalPatternSample>,
+    pub(crate) per_pattern_cap: usize,
+    pub(crate) global_cap: usize,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -112,7 +119,7 @@ impl PhysicalPatternHistory {
         history
     }
 
-    fn enforce_per_pattern_cap(&mut self, pattern: PhysicalPatternId) {
+    pub(crate) fn enforce_per_pattern_cap(&mut self, pattern: PhysicalPatternId) {
         loop {
             let should_evict = self
                 .per_pattern
@@ -125,20 +132,20 @@ impl PhysicalPatternHistory {
         }
     }
 
-    fn enforce_global_cap(&mut self) {
+    pub(crate) fn enforce_global_cap(&mut self) {
         while self.insertion_order.len() > self.global_cap {
             self.evict_oldest_global();
         }
     }
 
-    fn evict_oldest_global(&mut self) {
+    pub(crate) fn evict_oldest_global(&mut self) {
         let Some(sample) = self.insertion_order.pop_front() else {
             return;
         };
         remove_first_matching(&mut self.per_pattern, sample);
     }
 
-    fn evict_oldest_for_pattern(&mut self, pattern: PhysicalPatternId) {
+    pub(crate) fn evict_oldest_for_pattern(&mut self, pattern: PhysicalPatternId) {
         let Some(sample) = self
             .per_pattern
             .get_mut(&pattern)
@@ -163,11 +170,15 @@ impl PhysicalPatternHistory {
     }
 }
 
-fn within_window(observed_at: SimulationTime, newest: SimulationTime, max_ticks: u64) -> bool {
+pub(crate) fn within_window(
+    observed_at: SimulationTime,
+    newest: SimulationTime,
+    max_ticks: u64,
+) -> bool {
     newest.raw().saturating_sub(observed_at.raw()) < max_ticks
 }
 
-fn remove_first_matching(
+pub(crate) fn remove_first_matching(
     per_pattern: &mut BTreeMap<PhysicalPatternId, VecDeque<PhysicalPatternSample>>,
     sample: PhysicalPatternSample,
 ) {
@@ -243,4 +254,132 @@ mod tests {
 
         assert_eq!(whole, split);
     }
+}
+pub(crate) struct PhysicalPatternSystem {
+    pub(crate) state: Arc<Mutex<RuntimeState>>,
+    pub(crate) schedule: PhysicalPatternSchedule,
+    pub(crate) next_time: SimulationTime,
+}
+
+impl PhysicalPatternSystem {
+    pub(crate) fn new(state: Arc<Mutex<RuntimeState>>, schedule: PhysicalPatternSchedule) -> Self {
+        Self {
+            state,
+            schedule,
+            next_time: SimulationTime::new(1),
+        }
+    }
+
+    pub(crate) fn execute(&mut self) -> Result<(), RuntimeError> {
+        let mut state = self.state.lock().map_err(|_| RuntimeError::StatePoisoned)?;
+        state.pending_samples.clear();
+        if self.schedule.emits_at(self.next_time) {
+            let changed = std::mem::take(&mut state.pending_material_surface_changes);
+            let adapter = MaterialSurfaceCarrierAdapter::new(state.config.chunk_extent);
+            let emitted = changed
+                .into_iter()
+                .filter_map(|id| {
+                    state
+                        .material_surfaces
+                        .get(&id)
+                        .copied()
+                        .map(|surface| (id, surface))
+                })
+                .flat_map(|(id, surface)| adapter.emit_samples(id, surface, self.next_time))
+                .map(|sample| PhysicalPatternSample {
+                    magnitude: sample.magnitude.saturating_add(self.schedule.magnitude),
+                    ..sample
+                })
+                .collect::<Vec<_>>();
+            state.physical_events = state
+                .physical_events
+                .saturating_add(u64::try_from(emitted.len()).unwrap_or(u64::MAX));
+            state.pending_samples.extend(emitted.iter().copied());
+            state.pattern_history.extend(emitted);
+        }
+        self.next_time = self.next_time.tick();
+        Ok(())
+    }
+}
+
+impl System for PhysicalPatternSystem {
+    fn run(&mut self, _stream: &mut RandomStream) {
+        if let Err(error) = self.execute() {
+            if let Ok(mut state) = self.state.lock() {
+                state.failure.get_or_insert(error);
+            }
+        }
+    }
+
+    fn restore_time(&mut self, time: SimulationTime) {
+        self.next_time = time;
+    }
+}
+
+pub(crate) fn validate_trace_ancestry(ancestry: &[TraceId]) -> Result<(), RuntimeError> {
+    if ancestry.windows(2).any(|window| window[0] >= window[1]) {
+        return Err(RuntimeError::InvalidPopulationAggregate);
+    }
+    Ok(())
+}
+
+pub(crate) fn append_trace(
+    ancestry: &[TraceId],
+    trace: TraceId,
+) -> Result<Vec<TraceId>, RuntimeError> {
+    let mut next = ancestry.to_vec();
+    next.push(trace);
+    next.sort_unstable();
+    next.dedup();
+    validate_trace_ancestry(&next)?;
+    Ok(next)
+}
+
+pub(crate) fn trace_descends_from(
+    store: &CausalTraceStore,
+    trace: TraceId,
+    ancestor: TraceId,
+) -> bool {
+    let mut pending = vec![trace];
+    let mut visited = BTreeSet::new();
+    while let Some(candidate) = pending.pop() {
+        if candidate == ancestor {
+            return true;
+        }
+        if candidate < ancestor {
+            continue;
+        }
+        if !visited.insert(candidate) {
+            continue;
+        }
+        if let Some(event) = store.event(candidate) {
+            pending.extend(event.causes.iter().copied());
+        }
+    }
+    false
+}
+
+pub(crate) fn merge_trace_ancestry(
+    left: &[TraceId],
+    right: &[TraceId],
+    trace: TraceId,
+) -> Result<Vec<TraceId>, RuntimeError> {
+    let mut next = Vec::with_capacity(left.len() + right.len() + 1);
+    next.extend_from_slice(left);
+    next.extend_from_slice(right);
+    next.push(trace);
+    next.sort_unstable();
+    next.dedup();
+    validate_trace_ancestry(&next)?;
+    Ok(next)
+}
+
+pub(crate) fn pattern_event_counts_by_chunk(
+    history: &PhysicalPatternHistory,
+) -> BTreeMap<ChartChunkCoord, u64> {
+    let mut event_counts = BTreeMap::<ChartChunkCoord, u64>::new();
+    for sample in history.samples() {
+        *event_counts.entry(sample.chunk).or_default() += 1;
+    }
+    event_counts
 }

@@ -1,4 +1,8 @@
+use crate::*;
+use causafera_core::*;
+
 use std::collections::BTreeMap;
+use std::sync::{Arc, Mutex};
 
 use causafera_cognition::{AppearanceSignature, CognitiveWeight};
 use causafera_perception::{
@@ -64,7 +68,10 @@ pub fn actor_perception_step(
     Ok(total)
 }
 
-fn physical_apertures(actor_id: ActorId, actor: &ActorState) -> Vec<PhysicalSensorAperture> {
+pub(crate) fn physical_apertures(
+    actor_id: ActorId,
+    actor: &ActorState,
+) -> Vec<PhysicalSensorAperture> {
     actor
         .sensors
         .iter()
@@ -91,7 +98,7 @@ fn physical_apertures(actor_id: ActorId, actor: &ActorState) -> Vec<PhysicalSens
         .collect()
 }
 
-fn physical_signals(
+pub(crate) fn physical_signals(
     time: SimulationTime,
     objects: &BTreeMap<u64, ActorPhysicalObject>,
 ) -> Vec<PhysicalSignal> {
@@ -115,7 +122,7 @@ fn physical_signals(
         .collect()
 }
 
-fn generic_feature_from_extracted(
+pub(crate) fn generic_feature_from_extracted(
     time: SimulationTime,
     feature: &causafera_types::Feature,
     relative_position: [i64; 3],
@@ -146,5 +153,49 @@ fn generic_feature_from_extracted(
             Err(_) => CognitiveWeight::ZERO,
         },
         time,
+    }
+}
+pub(crate) struct ActorPerceptionSystem {
+    pub(crate) state: Arc<Mutex<RuntimeState>>,
+    pub(crate) next_time: SimulationTime,
+}
+
+impl ActorPerceptionSystem {
+    pub(crate) fn new(state: Arc<Mutex<RuntimeState>>) -> Self {
+        Self {
+            state,
+            next_time: SimulationTime::new(1),
+        }
+    }
+
+    pub(crate) fn execute(&mut self) -> Result<(), RuntimeError> {
+        let mut state = self.state.lock().map_err(|_| RuntimeError::StatePoisoned)?;
+        let objects = state.actor_objects.clone();
+        let material_signals = material_surface_physical_signals(&state, self.next_time);
+        let feature_count = actor_perception_step(
+            self.next_time,
+            &mut state.actors,
+            &objects,
+            &material_signals,
+        )?;
+        state.perceived_actor_features = state
+            .perceived_actor_features
+            .saturating_add(feature_count as u64);
+        self.next_time = self.next_time.tick();
+        Ok(())
+    }
+}
+
+impl System for ActorPerceptionSystem {
+    fn run(&mut self, _stream: &mut RandomStream) {
+        if let Err(error) = self.execute() {
+            if let Ok(mut state) = self.state.lock() {
+                state.failure.get_or_insert(error);
+            }
+        }
+    }
+
+    fn restore_time(&mut self, time: SimulationTime) {
+        self.next_time = time;
     }
 }
