@@ -4,7 +4,7 @@ Mana is a local information-sensitive physical field. Phase 17 establishes its m
 
 ## Authoritative state
 
-`causafera-domains::mana::ManaField` stores a chunk coordinate, a cubic extent of at most `CHUNK_SIZE`, row-major fixed-point intensity, the last committed causal trace per cell, and the latest incorporated simulation tick. Human names and classifications are absent.
+`causafera-domains::mana::ManaField` stores a chunk coordinate, a cubic extent of at most `CHUNK_SIZE`, row-major fixed-point intensity, the last committed causal trace and pre-change intensity per cell, and the latest incorporated simulation tick. Human names and classifications are absent.
 
 ## Physical inputs
 
@@ -27,10 +27,11 @@ The active actor/material/mana slice uses one concrete field-to-matter path. Run
 created by `HistoricalBootstrapPlan`, and retain condition, contact count, and last transition
 trace. A valid actor action commits its body and surface-contact effects in the Action phase.
 Physics emits canonical samples only from changed surfaces; mana therefore receives measurable
-structure, not an action label or a semantic interpretation. When the threshold/hysteresis rule
-accepts an effect, the Mana phase commits a later condition change with the mana-cell and prior
-surface ancestry. Crossing either direction of the threshold/hysteresis gate is itself a
-Mana-phase provenance commit for the persisted gate state; it is not an untraced control flag.
+structure, not an action label or a semantic interpretation. Each historically contacted surface
+reads only its matching mana cell. A rising local threshold/hysteresis transition commits one
+Mana-phase event containing the gate and condition changes with local-cell and prior-surface
+ancestry; a falling transition commits only the gate change. Crossing either direction is a
+persisted provenance commit, not an untraced control flag.
 
 This is a bounded local material response, not a general material economy, terrain process, or
 biological coupling. The changed surface supplies a range-limited physical signal, but agents

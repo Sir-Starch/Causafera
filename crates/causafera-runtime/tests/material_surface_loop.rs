@@ -483,13 +483,14 @@ fn suppressed_physical_signal_keeps_source_mana_material_traced_without_subjecti
     assert_eq!(source_events(&sourced).len(), 1);
     assert_eq!(sourced.experiment_recipe_mana_source_receipts.len(), 1);
     let closure = descendant_closure(&sourced, source_event.trace_id);
-    assert!(
-        sourced
-            .traces
-            .events
-            .iter()
-            .any(|event| event.kind.raw() == 16 && closure.contains_key(&event.trace_id))
-    );
+    assert!(sourced.traces.events.iter().any(|event| {
+        event.kind.raw() == 15
+            && closure.contains_key(&event.trace_id)
+            && event
+                .effects
+                .iter()
+                .any(|effect| effect.target().property().raw() == 12)
+    }));
     assert!(
         sourced
             .traces
@@ -1009,7 +1010,7 @@ fn enabled_source_same_seed_replays_exactly() {
         second_snapshot.canonical_state
     );
     assert_eq!(first_receipts, second_receipts);
-    assert_eq!(first_snapshot.physical_state_digest.schema_version.raw(), 3);
+    assert_eq!(first_snapshot.physical_state_digest.schema_version.raw(), 4);
 }
 
 #[test]
@@ -1094,18 +1095,22 @@ fn source_trace_precedes_derived_mana_material_and_signal_transitions() {
             })
             .all(|event| closure.contains_key(&event.trace_id))
     );
-    let mut gate_events = exported
-        .traces
-        .events
-        .iter()
-        .filter(|event| event.kind.raw() == 16);
+    let mut gate_events = exported.traces.events.iter().filter(|event| {
+        event.kind.raw() == 15
+            && event
+                .effects
+                .iter()
+                .any(|effect| effect.target().property().raw() == 12)
+    });
     assert!(gate_events.clone().next().is_some());
     assert!(gate_events.all(|event| closure.contains_key(&event.trace_id)));
-    let mut material_events = exported
-        .traces
-        .events
-        .iter()
-        .filter(|event| event.kind.raw() == 15);
+    let mut material_events = exported.traces.events.iter().filter(|event| {
+        event.kind.raw() == 15
+            && event
+                .effects
+                .iter()
+                .any(|effect| effect.target().property().raw() == 11)
+    });
     assert!(material_events.clone().next().is_some());
     assert!(material_events.all(|event| closure.contains_key(&event.trace_id)));
 }

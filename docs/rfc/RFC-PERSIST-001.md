@@ -88,7 +88,7 @@ Sections are strictly ordered by schema ID and unique. Unknown required sections
 
 The first complete runtime snapshot includes separate bounded sections for:
 
-1. **Runtime recipe and configuration** (`0x0001`, current major V3)
+1. **Runtime recipe and configuration** (`0x0001`, current major V4)
    - deterministic configuration (seed, stream parameters);
    - registered system schema IDs and revisions;
    - phase and registration order;
@@ -106,9 +106,9 @@ The first complete runtime snapshot includes separate bounded sections for:
 3. **Mana field set** (`0x0003`)
    - per-field id, chunk, extent, observed-through time;
    - intensity arrays (little-endian i64 per cell);
-   - last-change trace IDs per cell;
-   - field state only; thresholds/hysteresis are recipe parameters and the committed activation
-     gate is held by the runtime-counters section.
+    - last-change trace IDs and pre-change fixed-point values per cell;
+    - field state only; thresholds/hysteresis are recipe parameters and each committed activation
+      gate is held by its material-surface record.
 
 4. **Causal resolution field** (`0x0004`)
    - field id, evaluated-through time;
@@ -121,17 +121,14 @@ The first complete runtime snapshot includes separate bounded sections for:
    - per-pattern sample queues (pattern id, chunk, position, time, magnitude, ordinal, cause);
    - insertion order queue.
 
-6. **Runtime counters and material activity** (`0x0006`, current major V2)
+6. **Runtime counters and material activity** (`0x0006`, current major V3)
    - physical event counts;
    - mana cell changes, physical effects;
    - resolution changes, transitions;
    - perceived features, subjective objects;
    - action committed/rejected counts;
    - material activity events.
-   - scheduler-committed mana-effect activation state.
-
-   This is bookkeeping and gate state, not a replacement authoritative material property; durable
-   material state belongs only to section `0x000C`.
+    This is bookkeeping only; durable material and gate state belongs only to section `0x000C`.
 
 7. **Biological actor objective state** (`0x0007`)
    - actor id, body position, energy;
@@ -169,10 +166,10 @@ The first complete runtime snapshot includes separate bounded sections for:
     - activity counts, memory record;
    - state/history digests, confidence, supporting traces, evidence flag.
 
-12. **Material surfaces** (`0x000C`, current major V1)
+12. **Material surfaces** (`0x000C`, current major V2)
    - chart-qualified surface IDs and bounded condition/contact/last-transition records;
-   - sorted pending physics changes and bounded transition history with contact and mana-effect
-     trace anchors;
+    - sorted pending physics changes, per-surface contact/gate anchors, bounded condition history,
+      and bounded local-mana gate transitions;
    - at most 128 transition records, with eviction preferring an older non-mana record so the
      newest mana-mediated causal observation remains available to bounded observer and
      Explanation paths;
@@ -279,7 +276,7 @@ Failure leaves the prior completed snapshot intact. Temporary-file cleanup is be
 |-------|---------|-----------|
 | time | header | snapshot boundary time |
 | material-surface records and transitions | 0x000C | bounded authoritative material state and history |
-| mana_effect_active | 0x0006 | scheduler-committed feedback-gate state |
+| material-surface gate state and local gate transitions | 0x000C | per-surface local activation state and evidence |
 | pattern_history samples | 0x0005 | bounded temporal patterns |
 | mana observed_through | 0x0003 | field time |
 | mana field intensities | 0x0003 | per-cell i64 values |
@@ -319,8 +316,8 @@ Failure leaves the prior completed snapshot intact. Temporary-file cleanup is be
 - New major version for incompatible container or authoritative semantic changes;
 - Unsupported major versions fail closed; no guesswork loading.
 
-For the active actor/material/mana slice, the runtime accepts authoritative digest schema V3,
-runtime-recipe/configuration major V3, physical-counters major V2, material-surface major V1, and
+For the active actor/material/mana slice, the runtime accepts authoritative digest schema V4,
+runtime-recipe/configuration major V4, mana-field major V2, physical-counters major V3, material-surface major V2, and
 experiment-recipe mana source receipts major V1. Any other required digest schema or section major,
 including recipe major V2 or an unsupported receipts major, is rejected deterministically rather
 than being coerced into the current causal state.

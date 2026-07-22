@@ -113,6 +113,7 @@ fn schema_name(id: u64, locale: ObserverLocale) -> String {
         (12, ObserverLocale::En) => "material-surface repetition control",
         (13, ObserverLocale::En) => "material-surface mana context",
         (14, ObserverLocale::En) => "material-surface mana transition",
+        (15, ObserverLocale::En) => "material-surface local mana coupling",
         (1, ObserverLocale::Ru) => "коэффициент реконструируемости",
         (2, ObserverLocale::Ru) => "коэффициент зависимости от истории",
         (3, ObserverLocale::Ru) => "каузальная глубина",
@@ -127,6 +128,7 @@ fn schema_name(id: u64, locale: ObserverLocale) -> String {
         (12, ObserverLocale::Ru) => "контроль повторяемости материальной поверхности",
         (13, ObserverLocale::Ru) => "мана-контекст материальной поверхности",
         (14, ObserverLocale::Ru) => "переход маны материальной поверхности",
+        (15, ObserverLocale::Ru) => "локальная связь маны материальной поверхности",
         _ => {
             return match locale {
                 ObserverLocale::En => format!("claim schema {id} (generic renderer)"),
@@ -197,7 +199,8 @@ mod tests {
 
     use crate::{
         ClaimConfidence, ExplanationClaimSchemaId, ExplanationFrame,
-        MATERIAL_SURFACE_LOOP_CLAIM_SCHEMA, MATERIAL_SURFACE_LOOP_MANA_SCHEMA,
+        MATERIAL_SURFACE_LOOP_CLAIM_SCHEMA, MATERIAL_SURFACE_LOOP_LOCAL_MANA_TRANSITION_SCHEMA,
+        MATERIAL_SURFACE_LOOP_MANA_SCHEMA,
     };
 
     use super::*;
@@ -267,6 +270,15 @@ mod tests {
                             ClaimEvidenceState::Supported,
                         )
                         .unwrap(),
+                        ExplanationClaim::new(
+                            MATERIAL_SURFACE_LOOP_LOCAL_MANA_TRANSITION_SCHEMA,
+                            NumericClaimValue::range(0, 3).unwrap(),
+                            ClaimConfidence::ONE,
+                            vec![TraceId::new(23)],
+                            ComparisonContext::None,
+                            ClaimEvidenceState::Supported,
+                        )
+                        .unwrap(),
                     ],
                 )
                 .unwrap(),
@@ -280,7 +292,17 @@ mod tests {
 
         // Then: localized labels change without changing the structured report.
         assert!(english.text.contains("material-surface loop"));
+        assert!(
+            english
+                .text
+                .contains("material-surface local mana coupling")
+        );
         assert!(russian.text.contains("цикл материальной поверхности"));
+        assert!(
+            russian
+                .text
+                .contains("локальная связь маны материальной поверхности")
+        );
         assert_ne!(english.text, russian.text);
     }
 }

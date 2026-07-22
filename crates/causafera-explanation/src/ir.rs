@@ -26,6 +26,8 @@ pub const MATERIAL_SURFACE_LOOP_MANA_SCHEMA: ExplanationClaimSchemaId =
     ExplanationClaimSchemaId::new(13);
 pub const MATERIAL_SURFACE_LOOP_MANA_TRANSITION_SCHEMA: ExplanationClaimSchemaId =
     ExplanationClaimSchemaId::new(14);
+pub const MATERIAL_SURFACE_LOOP_LOCAL_MANA_TRANSITION_SCHEMA: ExplanationClaimSchemaId =
+    ExplanationClaimSchemaId::new(15);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -269,6 +271,43 @@ impl MaterialSurfaceLoopClaim {
             mana_claim,
             mana_transition_claim,
         ])
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct MaterialSurfaceLocalManaTransitionClaim {
+    pub local_mana_before: i64,
+    pub local_mana_after: i64,
+    pub local_mana_trace: TraceId,
+    pub gate_transition_trace: TraceId,
+    pub contact_trace: Option<TraceId>,
+}
+
+impl MaterialSurfaceLocalManaTransitionClaim {
+    pub fn to_explanation_claim(self) -> Result<ExplanationClaim, ExplanationIrError> {
+        let mut evidence_traces = vec![self.local_mana_trace, self.gate_transition_trace];
+        if let Some(contact_trace) = self.contact_trace {
+            evidence_traces.push(contact_trace);
+        }
+        ExplanationClaim::new(
+            MATERIAL_SURFACE_LOOP_LOCAL_MANA_TRANSITION_SCHEMA,
+            NumericClaimValue::range(
+                self.local_mana_before.min(self.local_mana_after),
+                self.local_mana_before.max(self.local_mana_after),
+            )?,
+            ClaimConfidence::ONE,
+            evidence_traces,
+            ComparisonContext::None,
+            ClaimEvidenceState::Supported,
+        )
+    }
+
+    pub fn unknown(mana_total: i64) -> Result<ExplanationClaim, ExplanationIrError> {
+        ExplanationClaim::unknown(
+            MATERIAL_SURFACE_LOOP_LOCAL_MANA_TRANSITION_SCHEMA,
+            NumericClaimValue::scalar(mana_total),
+            ComparisonContext::None,
+        )
     }
 }
 

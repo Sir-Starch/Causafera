@@ -1,5 +1,6 @@
 use causafera_explanation::{
     ClaimEvidenceState, DeterministicExplanationRenderer, MATERIAL_SURFACE_LOOP_CLAIM_SCHEMA,
+    MATERIAL_SURFACE_LOOP_LOCAL_MANA_TRANSITION_SCHEMA,
     MATERIAL_SURFACE_LOOP_MANA_TRANSITION_SCHEMA, MATERIAL_SURFACE_LOOP_WINDOW_SCHEMA,
     NumericClaimValue, ObserverLocale,
 };
@@ -209,6 +210,10 @@ fn observer_source_evidence_is_bounded_and_redacted() {
     assert!(delta.mana_transition_trace.is_some());
     assert_eq!(delta.mana_before, Some(0));
     assert_eq!(delta.mana_after, Some(3));
+    assert_eq!(world.material_surface_delta_schema_version, 3);
+    assert_eq!(delta.local_mana_before, Some(0));
+    assert_eq!(delta.local_mana_after, Some(3));
+    assert!(delta.local_mana_transition_trace_id.is_some());
     let serialized = format!("{world:?}").to_ascii_lowercase();
     for forbidden in [
         "source_record_id",
@@ -258,6 +263,16 @@ fn explanation_source_evidence_is_typed_and_redacted() {
     assert_eq!(claim.evidence_state, ClaimEvidenceState::Supported);
     assert!(claim.evidence_traces.contains(&mana_trace));
     assert_eq!(claim.value, NumericClaimValue::Range { start: 0, end: 3 });
+    let local_claim = report.frames[0]
+        .claims
+        .iter()
+        .find(|claim| claim.schema == MATERIAL_SURFACE_LOOP_LOCAL_MANA_TRANSITION_SCHEMA)
+        .expect("verified local mana claim must be present");
+    assert_eq!(local_claim.evidence_state, ClaimEvidenceState::Supported);
+    assert_eq!(
+        local_claim.value,
+        NumericClaimValue::Range { start: 0, end: 3 }
+    );
     let rendered = DeterministicExplanationRenderer
         .render(&report, ObserverLocale::En)
         .text;

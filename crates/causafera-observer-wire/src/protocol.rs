@@ -6,9 +6,10 @@ use causafera_explanation::{
     NumericClaimValue,
 };
 use causafera_observer_api::{
-    MAX_MATERIAL_SURFACE_DELTAS, MaterialSurfaceDelta, OBSERVER_PROTOCOL_V1, ObserverChunkSummary,
-    ObserverQuery, ObserverResponse, ObserverSnapshot, ObserverWorldSnapshot, QueryKind,
-    QueryStatus, StreamEnvelope, StreamKind,
+    MATERIAL_SURFACE_DELTA_SCHEMA_V3, MAX_MATERIAL_SURFACE_DELTAS, MaterialSurfaceDelta,
+    MaterialSurfaceGateDelta, OBSERVER_PROTOCOL_V1, ObserverChunkSummary, ObserverQuery,
+    ObserverResponse, ObserverSnapshot, ObserverWorldSnapshot, QueryKind, QueryStatus,
+    StreamEnvelope, StreamKind,
 };
 use causafera_types::{ChunkId, ExperimentId, SimulationTime, TraceId};
 use thiserror::Error;
@@ -373,7 +374,11 @@ pub fn encode_world_snapshot(snapshot: &ObserverWorldSnapshot) -> Vec<u8> {
         .iter()
         .take(MAX_MATERIAL_SURFACE_DELTAS)
     {
-        field_bytes(&mut out, 3, &encode_material_surface_delta(delta));
+        field_bytes(
+            &mut out,
+            3,
+            &encode_material_surface_delta(delta, snapshot.material_surface_delta_schema_version),
+        );
     }
     if snapshot.material_surface_delta_schema_version != 0 {
         field_varint(
@@ -382,6 +387,15 @@ pub fn encode_world_snapshot(snapshot: &ObserverWorldSnapshot) -> Vec<u8> {
             u64::from(snapshot.material_surface_delta_schema_version),
         );
     }
+    if snapshot.material_surface_delta_schema_version >= MATERIAL_SURFACE_DELTA_SCHEMA_V3 {
+        for delta in snapshot
+            .material_surface_gate_deltas
+            .iter()
+            .take(MAX_MATERIAL_SURFACE_DELTAS)
+        {
+            field_bytes(&mut out, 5, &encode_material_surface_gate_delta(delta));
+        }
+    }
     out
 }
 
@@ -389,32 +403,56 @@ pub fn decode_world_snapshot(bytes: &[u8]) -> Result<ObserverWorldSnapshot, Wire
     let mut cursor = Cursor::new(bytes);
     let mut time = None;
     let mut chunks = Vec::new();
-    let mut material_surface_deltas = Vec::new();
+    let mut material_surface_delta_bytes = Vec::new();
+    let mut material_surface_gate_deltas = Vec::new();
     let mut material_surface_delta_schema_version = 0;
+    let mut schema_version_seen = false;
     while !cursor.is_empty() {
         let (field, wire) = cursor.key()?;
         match (field, wire) {
             (1, WIRE_VARINT) => time = Some(SimulationTime::new(cursor.varint()?)),
             (2, WIRE_LEN) => chunks.push(decode_chunk_summary(cursor.bytes()?)?),
-            (3, WIRE_LEN) if material_surface_deltas.len() < MAX_MATERIAL_SURFACE_DELTAS => {
-                material_surface_deltas.push(decode_material_surface_delta(cursor.bytes()?)?)
+            (3, WIRE_LEN) if material_surface_delta_bytes.len() < MAX_MATERIAL_SURFACE_DELTAS => {
+                material_surface_delta_bytes.push(cursor.bytes()?.to_vec())
             }
             (3, WIRE_LEN) => {
                 cursor.bytes()?;
             }
-            (4, WIRE_VARINT) => material_surface_delta_schema_version = to_u32(cursor.varint()?)?,
+            (4, WIRE_VARINT) if !schema_version_seen => {
+                material_surface_delta_schema_version = to_u32(cursor.varint()?)?;
+                schema_version_seen = true;
+            }
+            (4, _) => return Err(WireError::DuplicateField(4)),
+            (5, WIRE_LEN)
+                if material_surface_delta_schema_version >= MATERIAL_SURFACE_DELTA_SCHEMA_V3
+                    && material_surface_gate_deltas.len() < MAX_MATERIAL_SURFACE_DELTAS =>
+            {
+                material_surface_gate_deltas
+                    .push(decode_material_surface_gate_delta(cursor.bytes()?)?)
+            }
+            (5, WIRE_LEN)
+                if material_surface_delta_schema_version >= MATERIAL_SURFACE_DELTA_SCHEMA_V3 =>
+            {
+                cursor.bytes()?;
+            }
+            (5, _) => return Err(WireError::UnexpectedFieldForSchema(5)),
             _ => cursor.skip(wire)?,
         }
     }
+    let material_surface_deltas = material_surface_delta_bytes
+        .iter()
+        .map(|bytes| decode_material_surface_delta(bytes, material_surface_delta_schema_version))
+        .collect::<Result<Vec<_>, _>>()?;
     Ok(ObserverWorldSnapshot {
         time: time.ok_or(WireError::MissingField(1))?,
         chunks,
         material_surface_delta_schema_version,
         material_surface_deltas,
+        material_surface_gate_deltas,
     })
 }
 
-fn encode_material_surface_delta(delta: &MaterialSurfaceDelta) -> Vec<u8> {
+fn encode_material_surface_delta(delta: &MaterialSurfaceDelta, schema_version: u32) -> Vec<u8> {
     let mut nested = Vec::new();
     field_varint(&mut nested, 1, delta.chart_id);
     field_varint(&mut nested, 2, zigzag(i64::from(delta.chunk_x)));
@@ -440,15 +478,32 @@ fn encode_material_surface_delta(delta: &MaterialSurfaceDelta) -> Vec<u8> {
     if let Some(value) = delta.mana_after {
         field_varint(&mut nested, 14, zigzag(value));
     }
+    if schema_version >= MATERIAL_SURFACE_DELTA_SCHEMA_V3 {
+        if let Some(value) = delta.local_mana_before {
+            field_varint(&mut nested, 15, zigzag(value));
+        }
+        if let Some(value) = delta.local_mana_after {
+            field_varint(&mut nested, 16, zigzag(value));
+        }
+        if let Some(trace) = delta.local_mana_transition_trace_id {
+            field_varint(&mut nested, 17, trace.raw());
+        }
+    }
     nested
 }
 
-fn decode_material_surface_delta(bytes: &[u8]) -> Result<MaterialSurfaceDelta, WireError> {
+fn decode_material_surface_delta(
+    bytes: &[u8],
+    schema_version: u32,
+) -> Result<MaterialSurfaceDelta, WireError> {
     let mut cursor = Cursor::new(bytes);
-    let mut values = [None; 14];
+    let mut values = [None; 17];
     while !cursor.is_empty() {
         let (field, wire) = cursor.key()?;
-        if (1..=14).contains(&field) && wire == WIRE_VARINT {
+        if (15..=17).contains(&field) && schema_version < MATERIAL_SURFACE_DELTA_SCHEMA_V3 {
+            return Err(WireError::UnexpectedFieldForSchema(field));
+        }
+        if (1..=17).contains(&field) && wire == WIRE_VARINT {
             values[field as usize - 1] = Some(cursor.varint()?);
         } else {
             cursor.skip(wire)?;
@@ -470,6 +525,58 @@ fn decode_material_surface_delta(bytes: &[u8]) -> Result<MaterialSurfaceDelta, W
         mana_transition_trace: values[11].map(TraceId::new),
         mana_before: values[12].map(unzigzag),
         mana_after: values[13].map(unzigzag),
+        local_mana_before: values[14].map(unzigzag),
+        local_mana_after: values[15].map(unzigzag),
+        local_mana_transition_trace_id: values[16].map(TraceId::new),
+    })
+}
+
+fn encode_material_surface_gate_delta(delta: &MaterialSurfaceGateDelta) -> Vec<u8> {
+    let mut nested = Vec::new();
+    field_varint(&mut nested, 1, delta.chart_id);
+    field_varint(&mut nested, 2, zigzag(i64::from(delta.chunk_x)));
+    field_varint(&mut nested, 3, zigzag(i64::from(delta.chunk_y)));
+    field_varint(&mut nested, 4, zigzag(i64::from(delta.chunk_z)));
+    field_varint(&mut nested, 5, u64::from(delta.cell_ordinal));
+    field_varint(&mut nested, 6, u64::from(delta.before_active));
+    field_varint(&mut nested, 7, u64::from(delta.after_active));
+    field_varint(&mut nested, 8, zigzag(delta.local_mana_before));
+    field_varint(&mut nested, 9, zigzag(delta.local_mana_after));
+    field_varint(&mut nested, 10, delta.local_mana_transition_trace_id.raw());
+    field_varint(&mut nested, 11, delta.gate_transition_trace_id.raw());
+    if let Some(trace) = delta.contact_trace_id {
+        field_varint(&mut nested, 12, trace.raw());
+    }
+    field_varint(&mut nested, 13, delta.transition_tick);
+    nested
+}
+
+fn decode_material_surface_gate_delta(bytes: &[u8]) -> Result<MaterialSurfaceGateDelta, WireError> {
+    let mut cursor = Cursor::new(bytes);
+    let mut values = [None; 13];
+    while !cursor.is_empty() {
+        let (field, wire) = cursor.key()?;
+        if (1..=13).contains(&field) && wire == WIRE_VARINT {
+            values[field as usize - 1] = Some(cursor.varint()?);
+        } else {
+            cursor.skip(wire)?;
+        }
+    }
+    let value = |field: usize| values[field - 1].ok_or(WireError::MissingField(field as u32));
+    Ok(MaterialSurfaceGateDelta {
+        chart_id: value(1)?,
+        chunk_x: to_i32(unzigzag(value(2)?))?,
+        chunk_y: to_i32(unzigzag(value(3)?))?,
+        chunk_z: to_i32(unzigzag(value(4)?))?,
+        cell_ordinal: u16::try_from(value(5)?).map_err(|_| WireError::IntegerOverflow)?,
+        before_active: decode_bool(value(6)?)?,
+        after_active: decode_bool(value(7)?)?,
+        local_mana_before: unzigzag(value(8)?),
+        local_mana_after: unzigzag(value(9)?),
+        local_mana_transition_trace_id: TraceId::new(value(10)?),
+        gate_transition_trace_id: TraceId::new(value(11)?),
+        contact_trace_id: values[11].map(TraceId::new),
+        transition_tick: value(13)?,
     })
 }
 
@@ -914,6 +1021,14 @@ fn to_i32(value: i64) -> Result<i32, WireError> {
     i32::try_from(value).map_err(|_| WireError::IntegerOverflow)
 }
 
+fn decode_bool(value: u64) -> Result<bool, WireError> {
+    match value {
+        0 => Ok(false),
+        1 => Ok(true),
+        _ => Err(WireError::InvalidBoolean(value)),
+    }
+}
+
 fn unzigzag(value: u64) -> i64 {
     ((value >> 1) as i64) ^ (-((value & 1) as i64))
 }
@@ -1011,6 +1126,8 @@ pub enum WireError {
     MissingField(u32),
     #[error("protobuf integer overflow")]
     IntegerOverflow,
+    #[error("protobuf boolean must be zero or one, got {0}")]
+    InvalidBoolean(u64),
     #[error("unknown query response status {0}")]
     UnknownStatus(u64),
     #[error("unknown observer stream kind {0}")]
@@ -1037,6 +1154,10 @@ pub enum WireError {
     UnknownEvidenceState(u64),
     #[error("unknown explanation assessment {0}")]
     UnknownAssessment(u64),
+    #[error("field {0} is not allowed for the current schema version")]
+    UnexpectedFieldForSchema(u32),
+    #[error("duplicate protobuf field {0}")]
+    DuplicateField(u32),
     #[error(transparent)]
     Api(#[from] causafera_observer_api::ObserverApiError),
 }
@@ -1157,6 +1278,7 @@ mod tests {
             }],
             material_surface_delta_schema_version: 0,
             material_surface_deltas: Vec::new(),
+            material_surface_gate_deltas: Vec::new(),
         };
         let mut handler = ProtocolHandler::default();
         handler.set_world_snapshot(&expected);
@@ -1176,7 +1298,7 @@ mod tests {
         let expected = ObserverWorldSnapshot {
             time: SimulationTime::new(8),
             chunks: Vec::new(),
-            material_surface_delta_schema_version: 2,
+            material_surface_delta_schema_version: 3,
             material_surface_deltas: vec![
                 MaterialSurfaceDelta {
                     chart_id: 5,
@@ -1193,6 +1315,9 @@ mod tests {
                     mana_transition_trace: None,
                     mana_before: None,
                     mana_after: None,
+                    local_mana_before: None,
+                    local_mana_after: None,
+                    local_mana_transition_trace_id: None,
                 },
                 MaterialSurfaceDelta {
                     chart_id: 5,
@@ -1209,8 +1334,26 @@ mod tests {
                     mana_transition_trace: Some(TraceId::new(21)),
                     mana_before: Some(0),
                     mana_after: Some(3),
+                    local_mana_before: Some(0),
+                    local_mana_after: Some(3),
+                    local_mana_transition_trace_id: Some(TraceId::new(21)),
                 },
             ],
+            material_surface_gate_deltas: vec![MaterialSurfaceGateDelta {
+                chart_id: 5,
+                chunk_x: -1,
+                chunk_y: 2,
+                chunk_z: -3,
+                cell_ordinal: 8,
+                before_active: true,
+                after_active: false,
+                local_mana_before: 3,
+                local_mana_after: 0,
+                local_mana_transition_trace_id: TraceId::new(23),
+                gate_transition_trace_id: TraceId::new(24),
+                contact_trace_id: None,
+                transition_tick: 9,
+            }],
         };
         let mut handler = ProtocolHandler::default();
         handler.set_world_snapshot(&expected);
@@ -1299,7 +1442,7 @@ fn world_query_roundtrips_material_delta_mana_transition_trace() {
     let expected = ObserverWorldSnapshot {
         time: SimulationTime::new(8),
         chunks: Vec::new(),
-        material_surface_delta_schema_version: 2,
+        material_surface_delta_schema_version: MATERIAL_SURFACE_DELTA_SCHEMA_V3,
         material_surface_deltas: vec![MaterialSurfaceDelta {
             chart_id: 5,
             chunk_x: -1,
@@ -1315,7 +1458,11 @@ fn world_query_roundtrips_material_delta_mana_transition_trace() {
             mana_transition_trace: Some(TraceId::new(21)),
             mana_before: Some(0),
             mana_after: Some(3),
+            local_mana_before: Some(0),
+            local_mana_after: Some(3),
+            local_mana_transition_trace_id: Some(TraceId::new(21)),
         }],
+        material_surface_gate_deltas: Vec::new(),
     };
     let mut handler = ProtocolHandler::default();
     handler.set_world_snapshot(&expected);
@@ -1331,4 +1478,143 @@ fn world_query_roundtrips_material_delta_mana_transition_trace() {
     // Then: fields 11-14 round-trip without changing the query kind or bounded shape.
     assert_eq!(response.status, QueryStatus::Ok);
     assert_eq!(decode_world_snapshot(&response.payload).unwrap(), expected);
+}
+
+#[cfg(test)]
+#[test]
+fn decode_world_snapshot_rejects_gate_deltas_under_v2_schema() {
+    let v2 = ObserverWorldSnapshot {
+        time: SimulationTime::new(9),
+        chunks: Vec::new(),
+        material_surface_delta_schema_version: 2,
+        material_surface_deltas: vec![MaterialSurfaceDelta {
+            chart_id: 1,
+            chunk_x: 0,
+            chunk_y: 0,
+            chunk_z: 0,
+            cell_ordinal: 2,
+            before_condition: 4,
+            after_condition: 5,
+            mana_total: 7,
+            contact_trace: Some(TraceId::new(10)),
+            mana_effect_trace: Some(TraceId::new(12)),
+            transition_tick: 9,
+            mana_transition_trace: Some(TraceId::new(11)),
+            mana_before: Some(0),
+            mana_after: Some(3),
+            local_mana_before: None,
+            local_mana_after: None,
+            local_mana_transition_trace_id: None,
+        }],
+        material_surface_gate_deltas: Vec::new(),
+    };
+    let mut encoded = encode_world_snapshot(&v2);
+    assert_eq!(decode_world_snapshot(&encoded).unwrap(), v2);
+
+    let gate_delta = MaterialSurfaceGateDelta {
+        chart_id: 1,
+        chunk_x: 0,
+        chunk_y: 0,
+        chunk_z: 0,
+        cell_ordinal: 2,
+        before_active: true,
+        after_active: false,
+        local_mana_before: 3,
+        local_mana_after: 0,
+        local_mana_transition_trace_id: TraceId::new(13),
+        gate_transition_trace_id: TraceId::new(14),
+        contact_trace_id: None,
+        transition_tick: 10,
+    };
+    field_bytes(
+        &mut encoded,
+        5,
+        &encode_material_surface_gate_delta(&gate_delta),
+    );
+    assert_eq!(
+        decode_world_snapshot(&encoded),
+        Err(WireError::UnexpectedFieldForSchema(5))
+    );
+}
+
+#[cfg(test)]
+#[test]
+fn decode_material_surface_delta_rejects_v3_fields_under_v2_schema() {
+    let delta = MaterialSurfaceDelta {
+        chart_id: 1,
+        chunk_x: 0,
+        chunk_y: 0,
+        chunk_z: 0,
+        cell_ordinal: 2,
+        before_condition: 4,
+        after_condition: 5,
+        mana_total: 7,
+        contact_trace: Some(TraceId::new(10)),
+        mana_effect_trace: Some(TraceId::new(12)),
+        transition_tick: 9,
+        mana_transition_trace: Some(TraceId::new(11)),
+        mana_before: Some(0),
+        mana_after: Some(3),
+        local_mana_before: Some(0),
+        local_mana_after: Some(3),
+        local_mana_transition_trace_id: Some(TraceId::new(11)),
+    };
+    let encoded = encode_material_surface_delta(&delta, MATERIAL_SURFACE_DELTA_SCHEMA_V3);
+    assert_eq!(
+        decode_material_surface_delta(&encoded, 2),
+        Err(WireError::UnexpectedFieldForSchema(15))
+    );
+}
+
+#[cfg(test)]
+#[test]
+fn decode_world_snapshot_rejects_duplicate_schema_version() {
+    let v3 = ObserverWorldSnapshot {
+        time: SimulationTime::new(9),
+        chunks: Vec::new(),
+        material_surface_delta_schema_version: MATERIAL_SURFACE_DELTA_SCHEMA_V3,
+        material_surface_deltas: vec![MaterialSurfaceDelta {
+            chart_id: 1,
+            chunk_x: 0,
+            chunk_y: 0,
+            chunk_z: 0,
+            cell_ordinal: 2,
+            before_condition: 4,
+            after_condition: 5,
+            mana_total: 7,
+            contact_trace: Some(TraceId::new(10)),
+            mana_effect_trace: Some(TraceId::new(12)),
+            transition_tick: 9,
+            mana_transition_trace: Some(TraceId::new(11)),
+            mana_before: Some(0),
+            mana_after: Some(3),
+            local_mana_before: Some(0),
+            local_mana_after: Some(3),
+            local_mana_transition_trace_id: Some(TraceId::new(11)),
+        }],
+        material_surface_gate_deltas: vec![MaterialSurfaceGateDelta {
+            chart_id: 1,
+            chunk_x: 0,
+            chunk_y: 0,
+            chunk_z: 0,
+            cell_ordinal: 2,
+            before_active: true,
+            after_active: false,
+            local_mana_before: 3,
+            local_mana_after: 0,
+            local_mana_transition_trace_id: TraceId::new(13),
+            gate_transition_trace_id: TraceId::new(14),
+            contact_trace_id: None,
+            transition_tick: 10,
+        }],
+    };
+    let mut encoded = encode_world_snapshot(&v3);
+    assert_eq!(decode_world_snapshot(&encoded).unwrap(), v3);
+
+    // Append a duplicate field 4 that downgrades the schema version to V2.
+    field_varint(&mut encoded, 4, 2);
+    assert_eq!(
+        decode_world_snapshot(&encoded),
+        Err(WireError::DuplicateField(4))
+    );
 }

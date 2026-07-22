@@ -54,6 +54,7 @@ message WorldChunkSnapshot {
   repeated SpatialChunkSummary chunks = 2;
   repeated MaterialSurfaceDelta material_surface_deltas = 3;
   uint32 material_surface_delta_schema_version = 4;
+  repeated MaterialSurfaceGateDelta material_surface_gate_deltas = 5;
 }
 
 message MaterialSurfaceDelta {
@@ -71,4 +72,23 @@ message MaterialSurfaceDelta {
   optional uint64 mana_transition_trace_id = 12;
   optional sint64 mana_before = 13;
   optional sint64 mana_after = 14;
+  optional sint64 local_mana_before = 15;
+  optional sint64 local_mana_after = 16;
+  optional uint64 local_mana_transition_trace_id = 17;
+}
+
+message MaterialSurfaceGateDelta {
+  uint64 chart_id = 1;
+  sint32 chunk_x = 2;
+  sint32 chunk_y = 3;
+  sint32 chunk_z = 4;
+  uint32 cell_ordinal = 5;
+  bool before_active = 6;
+  bool after_active = 7;
+  sint64 local_mana_before = 8;
+  sint64 local_mana_after = 9;
+  uint64 local_mana_transition_trace_id = 10;
+  uint64 gate_transition_trace_id = 11;
+  optional uint64 contact_trace_id = 12;
+  uint64 transition_tick = 13;
 }

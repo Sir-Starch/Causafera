@@ -5,6 +5,7 @@ pub const OBSERVER_PROTOCOL_V1: u32 = 1;
 pub const MAX_QUERY_PAYLOAD_BYTES: usize = 1 << 20;
 pub const MATERIAL_SURFACE_DELTA_SCHEMA_V1: u32 = 1;
 pub const MATERIAL_SURFACE_DELTA_SCHEMA_V2: u32 = 2;
+pub const MATERIAL_SURFACE_DELTA_SCHEMA_V3: u32 = 3;
 pub const MAX_MATERIAL_SURFACE_DELTAS: usize = 64;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -121,6 +122,7 @@ pub struct ObserverWorldSnapshot {
     pub chunks: Vec<ObserverChunkSummary>,
     pub material_surface_delta_schema_version: u32,
     pub material_surface_deltas: Vec<MaterialSurfaceDelta>,
+    pub material_surface_gate_deltas: Vec<MaterialSurfaceGateDelta>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -139,6 +141,26 @@ pub struct MaterialSurfaceDelta {
     pub mana_transition_trace: Option<TraceId>,
     pub mana_before: Option<i64>,
     pub mana_after: Option<i64>,
+    pub local_mana_before: Option<i64>,
+    pub local_mana_after: Option<i64>,
+    pub local_mana_transition_trace_id: Option<TraceId>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MaterialSurfaceGateDelta {
+    pub chart_id: u64,
+    pub chunk_x: i32,
+    pub chunk_y: i32,
+    pub chunk_z: i32,
+    pub cell_ordinal: u16,
+    pub before_active: bool,
+    pub after_active: bool,
+    pub local_mana_before: i64,
+    pub local_mana_after: i64,
+    pub local_mana_transition_trace_id: TraceId,
+    pub gate_transition_trace_id: TraceId,
+    pub contact_trace_id: Option<TraceId>,
+    pub transition_tick: u64,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
