@@ -35,10 +35,12 @@ The implemented v1 surface supports negotiation and three request kinds:
 
 The world projection contains numeric terrain bounds, roughness, local mana total, causal-resolution
 relevance/level, population aggregate, activity count, and trace anchor. Its additive
-`MaterialSurfaceDelta` V2 projection is bounded and includes a chart-qualified chunk, cell ordinal,
+`MaterialSurfaceDelta` V3 projection is bounded and includes a chart-qualified chunk, cell ordinal,
 typed before/after condition, mana total, transition tick, and optional contact, mana-effect, and
 mana-transition trace anchors. Optional in-world mana before/after values are present only when a
-bounded source receipt supports them. It does not contain a city, biome, species, occupation,
+bounded source receipt supports them. V3 adds optional matching-cell local mana before/after values
+and the local mana transition trace. A separate bounded `MaterialSurfaceGateDelta` exposes
+gate-only falling transitions without inventing a condition change. Neither projection contains a city, biome, species, occupation,
 spell, or other semantic classification.
 
 `MaterialSurfaceDelta` is an inspection projection, not the material state or a mutation API. Its
@@ -48,7 +50,7 @@ bounded window is full. A query, locale, or UI rendering cannot alter authoritat
 
 The trace anchors and optional mana values use protobuf field presence, not a numeric sentinel: an
 omitted value is different from an explicitly encoded `TraceId(0)` or zero-valued field. Consumers
-must preserve that distinction when round-tripping V2 data, so bootstrap-only surface state cannot
+must preserve that distinction when round-tripping V2 or V3 data, so bootstrap-only surface state cannot
 be misreported as actor contact. Observer output explicitly redacts external origin, source record
 ID, recipe identity or hash, policy schema, operator intent, and semantic labels such as divine,
 reward, punishment, or worship.

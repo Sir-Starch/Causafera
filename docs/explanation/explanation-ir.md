@@ -68,6 +68,11 @@ ID 14). That claim is `Supported` only when a mana-transition trace and its befo
 available; otherwise it is `Unknown`. Explanation may cite source-derived in-world ancestry, but
 it never renders why an operator selected a source, its recipe identity, or its policy.
 
+Verified cell-local coupling is represented separately by
+`MATERIAL_SURFACE_LOOP_LOCAL_MANA_TRANSITION_SCHEMA` (opaque schema ID 15). It is supported only
+by persisted local mana and gate-transition traces scoped to the same material surface. Its numeric
+range is ordered local fixed-point evidence and never exposes recipe or operator metadata.
+
 The live input reads only the bounded retained material-transition window. Retention is
 deterministic and protects the newest mana-mediated transition when ordinary contacts would
 otherwise fill the window; when contact ancestry is absent, the claim remains explicitly
