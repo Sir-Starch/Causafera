@@ -72,7 +72,11 @@ cues and a subjective scene before a later action. The observer and Explanation 
 read-only and carry trace anchors; no material-surface ID, chart address, or trace becomes agent
 knowledge.
 
-The bounded experiment-recipe source adds one externally originated carrier to this same path.
+The local mana-material surface coupling constrains that field-to-matter carrier to one
+chart-qualified matching cell per historically contacted surface. Each persisted local gate
+transition records local fixed-point before/after values and its mana trace; a falling gate does
+not create a material-condition transition. The bounded experiment-recipe source adds one
+externally originated carrier to this same path.
 An immutable, validated recipe record enters as a root Mana-phase commit, then its chart-qualified
 fixed-point cell transition may flow through the existing mana, material-surface, physical-signal,
 and perception boundaries. Source record IDs, recipe hashes, and policy schemas remain engine-level
