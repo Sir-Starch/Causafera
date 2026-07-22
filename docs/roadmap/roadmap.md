@@ -201,10 +201,11 @@ observable, and validated maturity levels. Foundation `Completed` labels are his
 statements, not claims that a whole domain is mature.
 
 Immediate program priorities are durable physical-state coupling, production historical bootstrap
-without fixtures, domain-valid recovery and phenomenon metrics, and causal/domain inspection. The
-frozen-baseline maturity audit is paused after preserving its completed groundwork; it does not
-block the completed actor/material/mana vertical-slice record in
-`plans/actor-material-mana-loop.md`.
+without fixtures, domain-valid recovery and phenomenon metrics, and causal/domain inspection. Two
+bounded vertical slices are complete: the actor/material/mana loop (`plans/actor-material-mana-loop.md`)
+and the local mana-material-surface coupling (`plans/local-mana-material-surface-coupling.md`).
+The frozen-baseline maturity audit is paused after preserving its completed groundwork; it does not
+block accepted vertical-slice work.
 
 See `docs/architecture/detailed-development-rebaseline.md`; the completed planning record is in
 `plans/history/detailed-development-rebaseline.md`.

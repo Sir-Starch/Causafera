@@ -27,7 +27,7 @@ Before making any changes, read:
 - Treat geography and biology as causal state.
 - Preserve language intent/utterance/interpretation separation.
 - Benchmark performance claims.
-- Update TODO and documentation.
+- Keep documentation current. Whenever implementation, architecture, or domain contracts change, immediately update relevant subsystem docs, `CHANGELOG.md`, `docs/development/todo-backlog.md`, `docs/roadmap/roadmap.md`, and `docs/ontology/domain-coverage-matrix.md` as part of the work.
 - Avoid unrelated opportunistic implementation.
 - Maintain clean modular architecture. Do not dump disparate logic into monolithic files like `runtime.rs`. Prefer splitting domain logic into appropriately named sibling modules or extending existing ones.
 - Use `codebase-memory-mcp` to maintain and query a semantic knowledge graph of the codebase (via `search_graph`, `trace_path`, `get_code_snippet`, and Cypher queries) as the primary method for code discovery and dependency tracing, prioritizing it over raw text searches.

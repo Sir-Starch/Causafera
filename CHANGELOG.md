@@ -175,6 +175,154 @@ This project follows a structured changelog format. Each entry includes:
 - Added 10 unit tests covering canonical access, field validation, typed identity, topology, root/joint consistency, physical numeric constraints, joint ranges, and deterministic reconstruction.
 - All 64 workspace tests pass.
 
+### Phase 6: Ground Truth Events and Causal Provenance
+
+#### CORE / TRACE
+
+- Implemented deterministic Ground Truth event and causal provenance tracking (`TODO-TRACE-001`);
+- Added strongly-typed `TraceId` and `EventId` identifiers;
+- Implemented structure-of-arrays causal trace store (`CausalTraceStore`) with direct parent/child traversal and proposal keys (`RFC-TRACE-001`).
+
+### Phase 7: Physical Access, Sensory Acquisition, and Bounded Attention Primitives
+
+#### SENSE / COG
+
+- Established physical sensory acquisition and accessibility filtering boundary (`TODO-SENSE-001`, `RFC-PERCEPT-001`);
+- Implemented bounded attention mechanisms and `AttentionTargetId` (`TODO-COG-001`).
+
+### Phase 8: Generic Perceptual Feature Extraction
+
+#### PERCEPT
+
+- Implemented generic perceptual feature extraction from sensory signals (`TODO-PERCEPT-001`);
+- Extracted generic magnitude/change features while preventing Ground Truth identity exposure.
+
+### Phase 9: Subjective Scene Construction
+
+#### COG
+
+- Implemented identity-free perceptual cue boundary and `SubjectiveScene` reconstruction (`TODO-SCENE-001`, `RFC-SCENE-001`, `RFC-COG-001`);
+- Added subjective perceived object tracking (`PerceivedObjectId`) and subjective body schema / self-model architecture (`TODO-SCENE-002`, `TODO-SCENE-003`, `TODO-SCENE-004`).
+
+### Phase 10: Working Context, Prediction, and Cognitive Continuity
+
+#### COG
+
+- Implemented fixed-capacity working memory context separate from episodic storage (`TODO-SCENE-006`);
+- Added predictive world model, sparse prediction errors (`TODO-SCENE-005`), similarity-weighted episodic memory reactivation (`TODO-SCENE-007`), agency attribution (`TODO-SCENE-008`), and subjective temporal envelope (`TODO-SCENE-009`).
+
+### Phase 11: Sparse Subjective Concept Formation
+
+#### COG
+
+- Implemented sparse prototype-based concept formation (`ConceptId`) and deterministic prototype revision (`TODO-CONCEPT-001`, `RFC-CONCEPT-001`).
+
+### Phase 12: Beliefs and Subjective Causal Inference
+
+#### COG
+
+- Implemented fixed-capacity belief structures (`BeliefId`), evidence records (`EvidenceId`), belief inertia, subjective source trust, and fallible causal hypotheses (`TODO-COG-002`).
+
+### Phase 13: Language Bootstrap and Communication Architecture
+
+#### LANG
+
+- Implemented historical language bootstrap with seed-deterministic form lineages and abstract phoneme inventory (`TODO-LANG-001`, `RFC-LANG-001`);
+- Added physical form communication boundary separating speaker intent, utterance, and listener interpretation (`TODO-LANG-003`).
+
+### Phase 14: Lexical Innovation and Semantic Inference
+
+#### LANG
+
+- Implemented communicative pressure accumulator, deterministic phonotactic coinage, and adoption/semantic drift tracking (`TODO-LANG-002`, `RFC-LANG-002`).
+
+### Phase 15: Practice Representation and Evolution
+
+#### PRACTICES
+
+- Implemented evolvable practice programs (`PracticeId`) with deterministic proposal-only execution and lineage mutation (`TODO-PRACTICE-001`, `RFC-PRACTICE-001`).
+
+### Phase 16: Measurement, Documents, and Epistemic Infrastructure
+
+#### EPI / LANG
+
+- Implemented socially constructed measurement units, fixed-point precision/uncertainty, and calibration ancestry (`TODO-EPI-001`, `RFC-EPI-001`);
+- Implemented physical document copying with opaque glyph mark sequences and document lineages (`TODO-LANG-004`).
+
+### Phase 17: Minimal Information-Sensitive Mana
+
+#### MANA
+
+- Implemented chunk-local fixed-point mana field responding to physical recurrence, timing, geometry, and spatial patterns (`TODO-MANA-001`, `RFC-MANA-001`);
+- Added 6-neighbor stencil diffusion, decay, saturation, and trace-backed evolution.
+
+### Phase 18: Causal Resolution Field
+
+#### RES
+
+- Implemented dynamic causal resolution field assigning simulation detail based on trace-backed causal relevance (`TODO-RES-001`, `RFC-RES-001`).
+
+### Phase 19: Social Networks and Organizations
+
+#### SOCIAL
+
+- Implemented distributed, trace-backed social state tracking agent relations, roles, communication links, authority grants, property claims, institutional rules, and attested agreements (`TODO-SOCIAL-001`, `TODO-SOCIAL-002`, `RFC-SOCIAL-001`).
+
+### Phase 20: Material Economy and City Infrastructure
+
+#### ECON / CITY
+
+- Implemented physical material flow contracts tracking inventory lots, same-material transfers, transformation ancestry, and labour contributions (`TODO-ECON-001`, `RFC-ECON-001`);
+- Implemented physical city infrastructure topology tying parcels, buildings, and network nodes to material provenance (`TODO-CITY-001`, `RFC-CITY-001`).
+
+### Phase 21: Historical Bootstrap
+
+#### HIST
+
+- Implemented deterministic historical bootstrap orchestration with canonical stage DAGs and committed stage receipts (`TODO-HIST-001`, `RFC-HIST-001`).
+
+### Phase 22: Isekai Transfer and Imported Priors
+
+#### ISEKAI
+
+- Implemented cross-world transfer model with transfer plans/receipts and imported priors, strictly keeping subjective knowledge separate from local capability (`TODO-ISEKAI-001`, `TODO-ISEKAI-002`, `RFC-ISEKAI-001`).
+
+### Phase 23: Metaphysical Experiments and Attractors
+
+#### META
+
+- Implemented identity persistence research contracts and stateful mana attractor research contracts (`TODO-META-001`, `TODO-META-002`, `RFC-META-001`, `RFC-META-002`).
+
+### Phase 24: Long-Run Emergence Experiments
+
+#### SIM / GEO
+
+- Completed multiscale world spatial geometry (`TODO-GEO-003`, `RFC-GEO-002`);
+- Implemented deterministic headless laboratory harness for long-run control/intervention experiments (`TODO-LAB-001`).
+
+### Phase 25: Explanation Engine Expansion
+
+#### EXPLAIN
+
+- Implemented minimal typed Explanation IR, evidence states, confidence metrics, and localized deterministic rendering (`TODO-EXPLAIN-001`, `TODO-EXPLAIN-002`, `RFC-EXPLAIN-001`).
+
+### Phase 26: Rich Observer UI
+
+#### OBSERVER / UI
+
+- Implemented versioned observer protocol, Protocol Buffer v1 transport (`TODO-OBSERVER-001`, `TODO-PROTO-001`, `TODO-OBSERVER-002`);
+- Built Tauri 2 + React desktop observer application providing research-console inspection views (`TODO-UI-001`, `TODO-UI-002`).
+
+### Detailed Development Program
+
+#### CORE / RUNTIME
+
+- Completed the **Actor Material Mana Loop** vertical slice (`plans/actor-material-mana-loop.md`, `TODO-SIM-001`), linking chart-qualified material surfaces, contact actions, physical signals, perception, and mana effects;
+- Completed the **Local Mana-Material-Surface Coupling** vertical slice (`plans/local-mana-material-surface-coupling.md`), replacing global mana gates with per-surface local hysteresis gates, transition priors, observer deltas, and explanation claims;
+- Refactored `causafera-runtime` into a modular architecture (`INV-042`), extracting actor subsystems, material surface, mana, pattern history, digests, resolution, and bootstrap into dedicated modules;
+- Tightened workspace internal visibility by removing unused `pub(crate)` modifiers;
+- Implemented deterministic binary persistence snapshot format v1 (`TODO-PERSIST-001`, `RFC-PERSIST-001`).
+
 ## Categories
 
 - **ARCH** - Architecture
