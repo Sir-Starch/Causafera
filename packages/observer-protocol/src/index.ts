@@ -64,6 +64,7 @@ export interface WorldChunkSnapshot {
   chunks: SpatialChunkSummary[];
   materialSurfaceDeltaSchemaVersion: number;
   materialSurfaceDeltas: MaterialSurfaceDelta[];
+  materialSurfaceGateDeltas: MaterialSurfaceGateDelta[];
 }
 
 export interface MaterialSurfaceDelta {
@@ -81,6 +82,25 @@ export interface MaterialSurfaceDelta {
   manaTransitionTraceId?: bigint;
   manaBefore?: bigint;
   manaAfter?: bigint;
+  localManaBefore?: bigint;
+  localManaAfter?: bigint;
+  localManaTransitionTraceId?: bigint;
+}
+
+export interface MaterialSurfaceGateDelta {
+  chartId: bigint;
+  chunkX: number;
+  chunkY: number;
+  chunkZ: number;
+  cellOrdinal: number;
+  beforeActive: boolean;
+  afterActive: boolean;
+  localManaBefore: bigint;
+  localManaAfter: bigint;
+  localManaTransitionTraceId: bigint;
+  gateTransitionTraceId: bigint;
+  contactTraceId?: bigint;
+  transitionTick: bigint;
 }
 
 export interface SpatialChunkSummary {
@@ -268,6 +288,7 @@ export function decodeWorldChunkSnapshot(input: Uint8Array): WorldChunkSnapshot 
   let simulationTicks: bigint | undefined;
   const chunks: SpatialChunkSummary[] = [];
   const materialSurfaceDeltas: MaterialSurfaceDelta[] = [];
+  const materialSurfaceGateDeltas: MaterialSurfaceGateDelta[] = [];
   let materialSurfaceDeltaSchemaVersion = 0;
   while (!cursor.empty) {
     const [field, wire] = cursor.key();
@@ -280,10 +301,22 @@ export function decodeWorldChunkSnapshot(input: Uint8Array): WorldChunkSnapshot 
       }
     }
     else if (field === 4 && wire === 0) materialSurfaceDeltaSchemaVersion = Number(cursor.varint());
+    else if (field === 5 && wire === 2) {
+      const delta = cursor.bytes();
+      if (materialSurfaceGateDeltas.length < MAX_MATERIAL_SURFACE_DELTAS) {
+        materialSurfaceGateDeltas.push(decodeMaterialSurfaceGateDelta(delta));
+      }
+    }
     else cursor.skip(wire);
   }
   if (simulationTicks === undefined) throw new Error("missing WorldChunkSnapshot field 1");
-  return { simulationTicks, chunks, materialSurfaceDeltaSchemaVersion, materialSurfaceDeltas };
+  return {
+    simulationTicks,
+    chunks,
+    materialSurfaceDeltaSchemaVersion,
+    materialSurfaceDeltas,
+    materialSurfaceGateDeltas,
+  };
 }
 
 export function decodeStreamEnvelope(input: Uint8Array): StreamEnvelope {
@@ -373,6 +406,34 @@ function decodeMaterialSurfaceDelta(input: Uint8Array): MaterialSurfaceDelta {
     manaTransitionTraceId,
     manaBefore: values.has(13) ? zigzagDecode(value(13)) : undefined,
     manaAfter: values.has(14) ? zigzagDecode(value(14)) : undefined,
+    localManaBefore: values.has(15) ? zigzagDecode(value(15)) : undefined,
+    localManaAfter: values.has(16) ? zigzagDecode(value(16)) : undefined,
+    localManaTransitionTraceId: values.get(17),
+  };
+}
+
+function decodeMaterialSurfaceGateDelta(input: Uint8Array): MaterialSurfaceGateDelta {
+  const values = decodeVarintFields(input);
+  const value = requiredValue(values, "MaterialSurfaceGateDelta");
+  const beforeActive = value(6);
+  const afterActive = value(7);
+  if ((beforeActive !== 0n && beforeActive !== 1n) || (afterActive !== 0n && afterActive !== 1n)) {
+    throw new Error("MaterialSurfaceGateDelta boolean is malformed");
+  }
+  return {
+    chartId: value(1),
+    chunkX: Number(zigzagDecode(value(2))),
+    chunkY: Number(zigzagDecode(value(3))),
+    chunkZ: Number(zigzagDecode(value(4))),
+    cellOrdinal: Number(value(5)),
+    beforeActive: beforeActive === 1n,
+    afterActive: afterActive === 1n,
+    localManaBefore: zigzagDecode(value(8)),
+    localManaAfter: zigzagDecode(value(9)),
+    localManaTransitionTraceId: value(10),
+    gateTransitionTraceId: value(11),
+    contactTraceId: values.get(12),
+    transitionTick: value(13),
   };
 }
 
