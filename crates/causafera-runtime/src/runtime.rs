@@ -4661,18 +4661,18 @@ fn prior_material_surface_condition_trace(
     let object_id = material_surface_object_id(id);
     let object_kind = StateObjectKindId::new(MATERIAL_SURFACE_OBJECT_KIND);
     let condition_property = StatePropertyId::new(MATERIAL_SURFACE_CONDITION_PROPERTY);
+    let is_condition_event = |event: &causafera_core::provenance::CausalEventRef<'_>| {
+        (event.kind == EventKindId::new(MATERIAL_SURFACE_MANA_EVENT_KIND)
+            || event.kind == EventKindId::new(MATERIAL_SURFACE_CONTACT_EVENT_KIND))
+            && event.effects.iter().any(|effect| {
+                effect.target().object_kind() == object_kind
+                    && effect.target().object_id() == object_id
+                    && effect.target().property() == condition_property
+            })
+    };
     traces
         .iter()
-        .filter(|event| {
-            event.trace_id < before
-                && event.kind == EventKindId::new(MATERIAL_SURFACE_MANA_EVENT_KIND)
-                && event.phase == Phase::Mana
-                && event.effects.iter().any(|effect| {
-                    effect.target().object_kind() == object_kind
-                        && effect.target().object_id() == object_id
-                        && effect.target().property() == condition_property
-                })
-        })
+        .filter(|event| event.trace_id < before && is_condition_event(event))
         .map(|event| event.trace_id)
         .max()
 }
@@ -5243,12 +5243,44 @@ fn record_material_surface_gate_transition(
     transition: MaterialSurfaceGateTransition,
 ) {
     if state.material_surface_gate_transitions.len() == MAX_MATERIAL_SURFACE_TRANSITIONS {
-        let evicted = state
+        let latest_traces: BTreeSet<TraceId> = state
+            .material_surfaces
+            .values()
+            .filter_map(|surface| surface.gate.last_transition)
+            .collect();
+        let candidate = state
             .material_surface_gate_transitions
             .iter()
-            .position(|existing| !existing.after_active)
+            .position(|existing| {
+                !existing.after_active && !latest_traces.contains(&existing.transition_trace)
+            })
+            .or_else(|| {
+                state
+                    .material_surface_gate_transitions
+                    .iter()
+                    .position(|existing| !latest_traces.contains(&existing.transition_trace))
+            })
             .unwrap_or(0);
-        state.material_surface_gate_transitions.remove(evicted);
+        let evicted = state.material_surface_gate_transitions.remove(candidate);
+        if latest_traces.contains(&evicted.transition_trace) {
+            if let Some(surface) = state.material_surfaces.get_mut(&evicted.id) {
+                let previous = state
+                    .material_surface_gate_transitions
+                    .iter()
+                    .rev()
+                    .find(|existing| existing.id == evicted.id);
+                match previous {
+                    Some(previous) => {
+                        surface.gate.last_transition = Some(previous.transition_trace);
+                        surface.gate.active = previous.after_active;
+                    }
+                    None => {
+                        surface.gate.last_transition = None;
+                        surface.gate.active = false;
+                    }
+                }
+            }
+        }
     }
     state.material_surface_gate_transitions.push(transition);
 }
