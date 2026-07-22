@@ -1673,6 +1673,12 @@ impl RuntimeState {
         for transition in &self.material_surface_transitions {
             validate_material_surface_transition(&self.traces, transition)?;
         }
+        validate_material_surface_gate_transition_history(
+            &self.traces,
+            &self.material_surfaces,
+            &self.material_surface_transitions,
+            &self.material_surface_gate_transitions,
+        )?;
         for transition in &self.material_surface_gate_transitions {
             validate_material_surface_gate_transition(
                 &self.traces,
@@ -2011,9 +2017,19 @@ impl RuntimeState {
                 self.material_surface_transitions
                     .iter()
                     .rev()
+                    .filter(|transition| scoped_surface.is_none_or(|id| transition.id == id))
                     .find(|transition| transition.contact_trace.is_some())
             })
-            .or_else(|| self.material_surface_transitions.last())
+            .or_else(|| {
+                scoped_surface
+                    .and_then(|id| {
+                        self.material_surface_transitions
+                            .iter()
+                            .rev()
+                            .find(|transition| transition.id == id)
+                    })
+                    .or_else(|| self.material_surface_transitions.last())
+            })
             .copied()
             .ok_or(RuntimeError::InvalidSnapshot(
                 "missing material surface transition history",
@@ -2535,6 +2551,7 @@ fn import_material_surfaces(
         ));
     }
     let mut previous_gate_trace = None;
+    let mut latest_gate_trace_by_surface: BTreeMap<MaterialSurfaceId, TraceId> = BTreeMap::new();
     for transition in &snapshot.gate_transitions {
         if !transition.id.is_within_extent(chunk_extent) || !surfaces.contains_key(&transition.id) {
             return Err(RuntimeError::InvalidSnapshot(
@@ -2551,7 +2568,25 @@ fn import_material_surfaces(
                 "material surface gate transitions must be strictly trace ordered",
             ));
         }
+        latest_gate_trace_by_surface
+            .entry(transition.id)
+            .and_modify(|current| {
+                if transition.transition_trace > *current {
+                    *current = transition.transition_trace;
+                }
+            })
+            .or_insert(transition.transition_trace);
         previous_gate_trace = Some(transition.transition_trace);
+    }
+    for (id, surface) in &surfaces {
+        if let Some(expected) = surface.gate.last_transition {
+            let latest = latest_gate_trace_by_surface.get(id).copied();
+            if latest != Some(expected) {
+                return Err(RuntimeError::InvalidSnapshot(
+                    "material surface gate state is not the latest retained gate transition",
+                ));
+            }
+        }
     }
     Ok((
         surfaces,
@@ -4565,6 +4600,78 @@ fn validate_material_surface_gate_state(
     Ok(())
 }
 
+fn expected_gate_transition_causes(
+    transition: &MaterialSurfaceGateTransition,
+    prior_gate_trace: Option<TraceId>,
+    prior_condition_trace: Option<TraceId>,
+) -> Vec<TraceId> {
+    let mut causes = BTreeSet::new();
+    causes.insert(transition.local_mana_trace);
+    if let Some(trace) = prior_gate_trace {
+        causes.insert(trace);
+    }
+    if transition.after_active {
+        let contact_trace = transition
+            .contact_trace
+            .expect("rising gate transition has a contact trace");
+        causes.insert(contact_trace);
+        if let Some(prior_condition) = prior_condition_trace {
+            if prior_condition != contact_trace {
+                causes.insert(prior_condition);
+            }
+        }
+    }
+    causes.into_iter().collect()
+}
+
+fn validate_material_surface_gate_transition_history(
+    traces: &CausalTraceStore,
+    surfaces: &BTreeMap<MaterialSurfaceId, MaterialSurface>,
+    material_transitions: &[MaterialSurfaceTransition],
+    gate_transitions: &[MaterialSurfaceGateTransition],
+) -> Result<(), RuntimeError> {
+    let mut latest_gate_by_surface: BTreeMap<MaterialSurfaceId, &MaterialSurfaceGateTransition> =
+        BTreeMap::new();
+    for transition in gate_transitions {
+        latest_gate_by_surface.insert(transition.id, transition);
+    }
+    for (id, latest) in latest_gate_by_surface {
+        let _surface = surfaces.get(&id).ok_or(RuntimeError::InvalidSnapshot(
+            "material surface gate transition references unknown surface",
+        ))?;
+        let event = traces
+            .event(latest.transition_trace)
+            .ok_or(RuntimeError::InvalidSnapshot("unknown trace reference"))?;
+        let prior_condition_trace = latest
+            .after_active
+            .then(|| {
+                material_transitions
+                    .iter()
+                    .filter(|candidate| {
+                        candidate.id == id && candidate.transition_trace < latest.transition_trace
+                    })
+                    .map(|candidate| candidate.transition_trace)
+                    .max()
+            })
+            .flatten();
+        let prior_gate_trace = gate_transitions
+            .iter()
+            .filter(|candidate| {
+                candidate.id == id && candidate.transition_trace < latest.transition_trace
+            })
+            .map(|candidate| candidate.transition_trace)
+            .max();
+        let expected_causes =
+            expected_gate_transition_causes(latest, prior_gate_trace, prior_condition_trace);
+        if event.causes != expected_causes {
+            return Err(RuntimeError::InvalidSnapshot(
+                "latest material surface gate transition has incorrect causal parent set",
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn validate_material_surface_gate_transition(
     traces: &CausalTraceStore,
     material_transitions: &[MaterialSurfaceTransition],
@@ -4601,11 +4708,6 @@ fn validate_material_surface_gate_transition(
         ));
     }
     validate_local_mana_transition(traces, transition)?;
-    if !event.causes.contains(&transition.local_mana_trace) {
-        return Err(RuntimeError::InvalidSnapshot(
-            "material surface gate transition does not cite local mana trace",
-        ));
-    }
     match (
         transition.before_active,
         transition.after_active,
@@ -4613,8 +4715,7 @@ fn validate_material_surface_gate_transition(
     ) {
         (false, true, Some(contact_trace)) => {
             validate_material_surface_last_contact_event(traces, transition.id, contact_trace)?;
-            if !event.causes.contains(&contact_trace)
-                || event.effects.len() != 2
+            if event.effects.len() != 2
                 || !material_transitions.iter().any(|condition| {
                     condition.id == transition.id
                         && condition.transition_trace == transition.transition_trace

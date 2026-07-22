@@ -6,9 +6,10 @@ use causafera_explanation::{
     NumericClaimValue,
 };
 use causafera_observer_api::{
-    MAX_MATERIAL_SURFACE_DELTAS, MaterialSurfaceDelta, MaterialSurfaceGateDelta,
-    OBSERVER_PROTOCOL_V1, ObserverChunkSummary, ObserverQuery, ObserverResponse, ObserverSnapshot,
-    ObserverWorldSnapshot, QueryKind, QueryStatus, StreamEnvelope, StreamKind,
+    MATERIAL_SURFACE_DELTA_SCHEMA_V3, MAX_MATERIAL_SURFACE_DELTAS, MaterialSurfaceDelta,
+    MaterialSurfaceGateDelta, OBSERVER_PROTOCOL_V1, ObserverChunkSummary, ObserverQuery,
+    ObserverResponse, ObserverSnapshot, ObserverWorldSnapshot, QueryKind, QueryStatus,
+    StreamEnvelope, StreamKind,
 };
 use causafera_types::{ChunkId, ExperimentId, SimulationTime, TraceId};
 use thiserror::Error;
@@ -373,7 +374,11 @@ pub fn encode_world_snapshot(snapshot: &ObserverWorldSnapshot) -> Vec<u8> {
         .iter()
         .take(MAX_MATERIAL_SURFACE_DELTAS)
     {
-        field_bytes(&mut out, 3, &encode_material_surface_delta(delta));
+        field_bytes(
+            &mut out,
+            3,
+            &encode_material_surface_delta(delta, snapshot.material_surface_delta_schema_version),
+        );
     }
     if snapshot.material_surface_delta_schema_version != 0 {
         field_varint(
@@ -430,7 +435,7 @@ pub fn decode_world_snapshot(bytes: &[u8]) -> Result<ObserverWorldSnapshot, Wire
     })
 }
 
-fn encode_material_surface_delta(delta: &MaterialSurfaceDelta) -> Vec<u8> {
+fn encode_material_surface_delta(delta: &MaterialSurfaceDelta, schema_version: u32) -> Vec<u8> {
     let mut nested = Vec::new();
     field_varint(&mut nested, 1, delta.chart_id);
     field_varint(&mut nested, 2, zigzag(i64::from(delta.chunk_x)));
@@ -456,14 +461,16 @@ fn encode_material_surface_delta(delta: &MaterialSurfaceDelta) -> Vec<u8> {
     if let Some(value) = delta.mana_after {
         field_varint(&mut nested, 14, zigzag(value));
     }
-    if let Some(value) = delta.local_mana_before {
-        field_varint(&mut nested, 15, zigzag(value));
-    }
-    if let Some(value) = delta.local_mana_after {
-        field_varint(&mut nested, 16, zigzag(value));
-    }
-    if let Some(trace) = delta.local_mana_transition_trace_id {
-        field_varint(&mut nested, 17, trace.raw());
+    if schema_version >= MATERIAL_SURFACE_DELTA_SCHEMA_V3 {
+        if let Some(value) = delta.local_mana_before {
+            field_varint(&mut nested, 15, zigzag(value));
+        }
+        if let Some(value) = delta.local_mana_after {
+            field_varint(&mut nested, 16, zigzag(value));
+        }
+        if let Some(trace) = delta.local_mana_transition_trace_id {
+            field_varint(&mut nested, 17, trace.raw());
+        }
     }
     nested
 }
@@ -1408,7 +1415,7 @@ fn world_query_roundtrips_material_delta_mana_transition_trace() {
     let expected = ObserverWorldSnapshot {
         time: SimulationTime::new(8),
         chunks: Vec::new(),
-        material_surface_delta_schema_version: 2,
+        material_surface_delta_schema_version: MATERIAL_SURFACE_DELTA_SCHEMA_V3,
         material_surface_deltas: vec![MaterialSurfaceDelta {
             chart_id: 5,
             chunk_x: -1,
