@@ -61,9 +61,10 @@ impl PopulationLifecycleSystem {
 impl System for PopulationLifecycleSystem {
     fn run(&mut self, _stream: &mut RandomStream) {
         if let Err(error) = self.execute()
-            && let Ok(mut state) = self.state.lock() {
-                state.failure.get_or_insert(error);
-            }
+            && let Ok(mut state) = self.state.lock()
+        {
+            state.failure.get_or_insert(error);
+        }
     }
 
     fn restore_time(&mut self, time: SimulationTime) {
@@ -216,17 +217,20 @@ fn lifecycle_actor_resolution(
         .iter()
         .find_map(|(chunk, active)| (active.level > 0).then_some(*chunk))
         .or_else(|| {
-            time.raw().is_multiple_of(7)
+            time.raw()
+                .is_multiple_of(7)
                 .then(|| first_population_chunk(state).ok())
                 .flatten()
         });
     if let Some(chunk) = promote_chunk {
         promote_actor_from_aggregate(state, time, chunk)?;
     }
-    if time.raw().is_multiple_of(13) && state.actors.len() > 2
-        && let Some(actor_id) = state.actors.keys().next_back().copied() {
-            demote_actor_to_aggregate(state, time, actor_id)?;
-        }
+    if time.raw().is_multiple_of(13)
+        && state.actors.len() > 2
+        && let Some(actor_id) = state.actors.keys().next_back().copied()
+    {
+        demote_actor_to_aggregate(state, time, actor_id)?;
+    }
     Ok(())
 }
 

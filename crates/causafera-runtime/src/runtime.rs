@@ -1054,10 +1054,10 @@ impl RuntimeState {
             && !material_surface_transitions
                 .iter()
                 .any(|transition| transition.transition_trace == mana_transition.transition_trace)
-            {
-                material_surface_transitions.pop();
-                material_surface_transitions.push(mana_transition);
-            }
+        {
+            material_surface_transitions.pop();
+            material_surface_transitions.push(mana_transition);
+        }
         material_surface_transitions
             .sort_by_key(|transition| (transition.id, transition.transition_trace));
         let material_surface_deltas = material_surface_transitions

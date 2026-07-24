@@ -186,9 +186,10 @@ impl ActorPerceptionSystem {
 impl System for ActorPerceptionSystem {
     fn run(&mut self, _stream: &mut RandomStream) {
         if let Err(error) = self.execute()
-            && let Ok(mut state) = self.state.lock() {
-                state.failure.get_or_insert(error);
-            }
+            && let Ok(mut state) = self.state.lock()
+        {
+            state.failure.get_or_insert(error);
+        }
     }
 
     fn restore_time(&mut self, time: SimulationTime) {

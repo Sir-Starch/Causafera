@@ -469,9 +469,10 @@ fn expected_gate_transition_causes(
         };
         causes.insert(contact_trace);
         if let Some(prior_condition) = prior_condition_trace
-            && prior_condition != contact_trace {
-                causes.insert(prior_condition);
-            }
+            && prior_condition != contact_trace
+        {
+            causes.insert(prior_condition);
+        }
     }
     Ok(causes.into_iter().collect())
 }
