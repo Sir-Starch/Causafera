@@ -60,10 +60,10 @@ impl PopulationLifecycleSystem {
 
 impl System for PopulationLifecycleSystem {
     fn run(&mut self, _stream: &mut RandomStream) {
-        if let Err(error) = self.execute() {
-            if let Ok(mut state) = self.state.lock() {
-                state.failure.get_or_insert(error);
-            }
+        if let Err(error) = self.execute()
+            && let Ok(mut state) = self.state.lock()
+        {
+            state.failure.get_or_insert(error);
         }
     }
 
@@ -79,7 +79,7 @@ fn lifecycle_births_and_deaths(
     if state.population_aggregates.is_empty() {
         return Ok(());
     }
-    if time.raw() % 11 == 0 && total_population(state) < 16 {
+    if time.raw().is_multiple_of(11) && total_population(state) < 16 {
         let chunk = first_population_chunk(state)?;
         let mut aggregate = state
             .population_aggregates
@@ -102,7 +102,7 @@ fn lifecycle_births_and_deaths(
         state.population_aggregates.insert(chunk, aggregate);
         state.population_births = state.population_births.saturating_add(1);
     }
-    if time.raw() % 17 == 0 && total_population(state) > 1 {
+    if time.raw().is_multiple_of(17) && total_population(state) > 1 {
         if let Some(actor_id) = state.actors.keys().next().copied() {
             lifecycle_actor_death(state, time, actor_id)?;
         } else {
@@ -135,7 +135,7 @@ fn lifecycle_births_and_deaths(
 }
 
 fn lifecycle_movement(state: &mut RuntimeState, time: SimulationTime) -> Result<(), RuntimeError> {
-    if time.raw() % 5 != 0 {
+    if !time.raw().is_multiple_of(5) {
         return Ok(());
     }
     let Some(from) = state
@@ -217,17 +217,19 @@ fn lifecycle_actor_resolution(
         .iter()
         .find_map(|(chunk, active)| (active.level > 0).then_some(*chunk))
         .or_else(|| {
-            (time.raw() % 7 == 0)
+            time.raw()
+                .is_multiple_of(7)
                 .then(|| first_population_chunk(state).ok())
                 .flatten()
         });
     if let Some(chunk) = promote_chunk {
         promote_actor_from_aggregate(state, time, chunk)?;
     }
-    if time.raw() % 13 == 0 && state.actors.len() > 2 {
-        if let Some(actor_id) = state.actors.keys().next_back().copied() {
-            demote_actor_to_aggregate(state, time, actor_id)?;
-        }
+    if time.raw().is_multiple_of(13)
+        && state.actors.len() > 2
+        && let Some(actor_id) = state.actors.keys().next_back().copied()
+    {
+        demote_actor_to_aggregate(state, time, actor_id)?;
     }
     Ok(())
 }
@@ -236,7 +238,7 @@ fn lifecycle_material_activity(
     state: &mut RuntimeState,
     time: SimulationTime,
 ) -> Result<(), RuntimeError> {
-    if time.raw() % 3 != 0 {
+    if !time.raw().is_multiple_of(3) {
         return Ok(());
     }
     let chunks = state

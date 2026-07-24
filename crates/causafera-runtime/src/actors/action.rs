@@ -195,10 +195,10 @@ impl ActorActionSystem {
 
 impl System for ActorActionSystem {
     fn run(&mut self, _stream: &mut RandomStream) {
-        if let Err(error) = self.execute() {
-            if let Ok(mut state) = self.state.lock() {
-                state.failure.get_or_insert(error);
-            }
+        if let Err(error) = self.execute()
+            && let Ok(mut state) = self.state.lock()
+        {
+            state.failure.get_or_insert(error);
         }
     }
 

@@ -111,10 +111,11 @@ impl ObserverStreamHub {
         if !is_snapshot && !state.delivered_snapshot {
             return Err(StreamError::SnapshotRequired(stream_id));
         }
-        if let DeliveryPolicy::Sampled { every_ticks } = state.policy {
-            if !is_snapshot && simulation_time.raw() % every_ticks != 0 {
-                return Ok(PublishOutcome::Dropped);
-            }
+        if let DeliveryPolicy::Sampled { every_ticks } = state.policy
+            && !is_snapshot
+            && !simulation_time.raw().is_multiple_of(every_ticks)
+        {
+            return Ok(PublishOutcome::Dropped);
         }
         if state.policy == DeliveryPolicy::RequestResponse && !is_snapshot {
             return Err(StreamError::RequestResponseDoesNotStream(stream_id));
