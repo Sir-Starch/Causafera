@@ -221,7 +221,7 @@ The event's `causes` vector contains only pre-existing `TraceId`s, in ascending 
 2. The `last_change` trace of every neighbor cell that participated in a non-zero flux with this cell during this tick.
 3. The most recent pre-existing trace (bootstrap or prior transfer) of every reservoir that contributed to the cell's logical pre-state this tick.
 
-Duplicate trace IDs are removed before commit. A cell-change event **never** cites an event from the same batch as a parent, per `RFC-TRACE-001`.
+Duplicate trace IDs are removed before commit. A cell-change event **never** cites an event from the same batch as a parent, per `RFC-TRACE-001`. The prior tick's `thermal_field_set.conservation_last_change` is also not a parent of a cell-change event, because the conservation event audits the previous batch rather than contributing energy to the current cell pre-state.
 
 #### 4.4 Bounded per-cell transfer receipt
 
@@ -287,7 +287,7 @@ The batch is committed via `CausalTraceStore::commit_batch` with sorted `EventPr
 
 - Maximum cell-change events per tick = number of cells whose energy changes.
 - Maximum reservoir transfer events per tick = number of reservoirs that inject.
-- Each cell-change event references at most 2 + 6 + R parent traces (1 self + 1 conservation parent + up to 6 neighbors + R reservoir traces, where R is the number of reservoirs contributing to the cell this tick).
+- Each cell-change event references at most 1 + 6 + R parent traces (1 self + up to 6 neighbors + R reservoir traces, where R is the number of reservoirs contributing to the cell this tick).
 - Transfer receipts are bounded to six faces plus R reservoir contributions per cell.
 - Multiple reservoirs may target the same cell; combined injection is capped deterministically to the target cell's headroom.
 
@@ -889,11 +889,23 @@ Each scenario below names the exact test surface, command, and expected observab
 - **2026-07-23:** Oracle architecture review (revision 6) found two representability gaps and fixed them:
   - Added authoritative `batch_sequence` and `conservation_last_change` fields to `ThermalFieldSet`, with persistence and digest inclusion.
   - Extended `ThermalCellTransferReceipt` to record `scheduled_injection`, `accepted_injection`, `rejected_injection`, and optional `transfer_trace_id` for every reservoir targeting a cell.
+- **2026-07-23:** Implementation pre-flight: resolved a drafting inconsistency between Section 4.3 and Section 4.7. The explicit Section 4.3 parent-trace list is authoritative; cell-change events do not cite the prior conservation event as a parent. Section 4.7 corrected from `2 + 6 + R` to `1 + 6 + R`, and Section 4.3 now explicitly excludes `conservation_last_change` as a causal parent.
 
 ## Progress
 
 - Planning and contract resolution complete.
-- Awaiting final review before acceptance.
+- Implementation complete on branch `feat/thermal-energy-carrier` from baseline `e0bf3c9`.
+- Files added: `crates/causafera-types/src/physics.rs` (ThermalEnergy), `crates/causafera-domains/src/thermal/` (domain module), `crates/causafera-runtime/src/thermal.rs`, `crates/causafera-runtime/src/thermal_events.rs`, and thermal integration tests.
+- Files modified: `crates/causafera-runtime/src/runtime.rs`, `crates/causafera-runtime/src/bootstrap.rs`, `crates/causafera-runtime/src/snapshot_sections.rs`, `crates/causafera-runtime/src/snapshots.rs`, `crates/causafera-observer-api/src/query.rs`, `crates/causafera-observer-wire/src/protocol.rs`, `crates/causafera-explanation/src/ir.rs`, `packages/observer-protocol/src/index.ts`, `proto/causafera/observer/v1/query.proto`, `proto/causafera/observer/v1/explanation.proto`, and documentation.
+- Verification results:
+  - `cargo fmt --all -- --check` passed.
+  - `cargo clippy --workspace --all-targets --all-features -- -D warnings` passed.
+  - `cargo test --workspace --all-features` passed.
+  - `cargo test --workspace --no-default-features` passed.
+  - `cargo run -p xtask -- ci` passed.
+  - `pnpm --dir packages/observer-protocol typecheck` passed.
+- Causality clarification: Section 4.3 parent list is authoritative; Section 4.7 corrected from `2 + 6 + R` to `1 + 6 + R`; cell-change events do not cite the prior conservation event as a parent.
+- INV-037 compliance: thermal energy flows across same-chart chunk boundaries; boundaries are not physical barriers. The existing mana chunk-boundary seam is tracked as `TODO-MANA-002` and is not modified in this tranche.
 
 ---
 
