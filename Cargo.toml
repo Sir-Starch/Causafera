@@ -33,7 +33,7 @@ version = "0.1.0"
 edition = "2024"
 authors = ["Causafera Contributors"]
 license = "AGPL-3.0-only"
-rust-version = "1.85"
+rust-version = "1.97.1"
 
 [workspace.dependencies]
 causafera-types = { path = "crates/causafera-types" }

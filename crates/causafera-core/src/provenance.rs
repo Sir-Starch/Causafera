@@ -447,10 +447,10 @@ impl CausalTraceStore {
 
         let mut last_trace_id: Option<TraceId> = None;
         for event in &snapshot.events {
-            if let Some(last) = last_trace_id {
-                if event.trace_id <= last {
-                    return Err(CausalSnapshotError::NonMonotonicTraceIds);
-                }
+            if let Some(last) = last_trace_id
+                && event.trace_id <= last
+            {
+                return Err(CausalSnapshotError::NonMonotonicTraceIds);
             }
             last_trace_id = Some(event.trace_id);
 

@@ -82,10 +82,10 @@ impl ExperimentConfig {
                 count: checkpoint_count,
             });
         }
-        if let Some(through) = self.pattern_schedule.suppressed_through {
-            if through.raw() > self.ticks {
-                return Err(ExperimentError::SuppressionOutsideRun);
-            }
+        if let Some(through) = self.pattern_schedule.suppressed_through
+            && through.raw() > self.ticks
+        {
+            return Err(ExperimentError::SuppressionOutsideRun);
         }
         if self.bootstrap_population > 16 {
             return Err(ExperimentError::PopulationOutsideInMemoryEnvelope {

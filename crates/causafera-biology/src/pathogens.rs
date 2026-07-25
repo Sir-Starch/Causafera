@@ -344,10 +344,10 @@ impl PathogenLineages {
             if !prior_ids.insert(id) {
                 return Err(PathogenLineageError::DuplicatePathogenId { index, id });
             }
-            if let Some(parent) = parents[index] {
-                if !prior_ids.contains(&parent) {
-                    return Err(PathogenLineageError::UnknownOrUnorderedParent { index, parent });
-                }
+            if let Some(parent) = parents[index]
+                && !prior_ids.contains(&parent)
+            {
+                return Err(PathogenLineageError::UnknownOrUnorderedParent { index, parent });
             }
             validate_host_interactions(&host_interactions[index])?;
         }

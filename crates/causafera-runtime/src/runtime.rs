@@ -1401,14 +1401,13 @@ impl RuntimeState {
             .take(MAX_MATERIAL_SURFACE_DELTAS)
             .copied()
             .collect::<Vec<_>>();
-        if let Some(mana_transition) = latest_mana_transition {
-            if !material_surface_transitions
+        if let Some(mana_transition) = latest_mana_transition
+            && !material_surface_transitions
                 .iter()
                 .any(|transition| transition.transition_trace == mana_transition.transition_trace)
-            {
-                material_surface_transitions.pop();
-                material_surface_transitions.push(mana_transition);
-            }
+        {
+            material_surface_transitions.pop();
+            material_surface_transitions.push(mana_transition);
         }
         material_surface_transitions
             .sort_by_key(|transition| (transition.id, transition.transition_trace));
