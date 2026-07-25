@@ -379,19 +379,19 @@
 **Out of Scope:** Full spell system, physical effects, carrier adapters, attractors, causal resolution, persistence, observer protocol, GPU implementation
 
 ## TODO-MANA-002: Mana Cross-Chunk Same-Chart Face Transfer
-**Status:** Pending
+**Status:** Completed
 **Phase:** Detailed Development
 **Priority:** High
 **Dependencies:** TODO-MANA-001, RFC-GEO-002
-**Goal:** Remove the reflecting chunk-boundary seam in the current mana stencil so that mana can flow across same-chart chunk faces exactly once per undirected pair, matching the thermal carrier's boundary treatment and preserving INV-037.
-**Acceptance Criteria:** Mana evolution processes same-chart cross-chunk faces with compatible extents; each undirected face is handled exactly once; zero-thermal/mana-only legacy configurations remain deterministic; existing system IDs and RNG streams are unchanged.
+**Goal:** Make a same-chart chunk face conduct mana exactly as the interior lattice does, so the chunk grid is not physically visible (INV-037).
+**Acceptance Criteria:** Mana evolution processes same-chart cross-chunk faces with compatible extents; each undirected face is handled exactly once; a cell hands the same share across a seam as it hands an in-chunk neighbour; diffusion conserves mana; zero-thermal/mana-only legacy configurations remain deterministic; existing system IDs and RNG streams are unchanged.
 **Performance Requirements:** Comparable to current dense stencil; benchmark before claims
 **Determinism Requirements:** Identical input configuration and seed produce identical traces
 **Ontology Implications:** Chunk boundaries are containment/resolution, not physical barriers (INV-037)
-**Observer Implications:** Update observer deltas if cross-chunk mana changes the visible per-chunk totals; the map currently draws each chunk's mana as an independent field, so the observer surface gains one continuous field per active set once this lands
+**Observer Implications:** The map may now draw the active set as one continuous field rather than one field per chunk
 **Explanation Implications:** Preserve trace-backed cell-change causality across chunk boundaries
 **Out of Scope:** Cross-chart transport, new scheduler phase, material response, climate
-**Evidence:** `ManaField::neighbor_indices` clips at the chunk edge (`if x > 0`, `if x + 1 < side`), and `ManaFieldSet` propagates each field independently with no coupling term — confirmed by `apps/observer/src-tauri/examples/extent_bench.rs`, which finds mana totals converge across `chunk_extent` with no cross-chunk term at all. Every chunk boundary is a reflecting wall today (see `plans/observer-field-raster-map.md`)
+**Evidence:** The premise this entry originally recorded — a reflecting chunk boundary — was false. `apply_boundary_exchange` has always moved mana across same-chart faces; `chart_boundaries_do_not_cross_by_implicit_integer_adjacency` asserts it. The defect measured was the opposite: the seam conducted 2.58x the interior rate, because it transferred `(left - right) * diffusion / 2` on top of an outgoing budget already distributed in full, while `neighbor_indices` clipped at the chunk edge so a face cell divided its share among five neighbours instead of six (1.20x over-feeding). Separately, the stencil destroyed up to `count - 1` units per cell per tick by subtracting an undivided outgoing budget against truncated incoming shares. Both are fixed; `a_seam_conducts_exactly_as_the_interior_does` and `diffusion_alone_conserves_mana_across_a_seam` hold the behaviour. Re-measured with `apps/observer/src-tauri/examples/extent_bench.rs` on seed 7 at 192 ticks, total mana now rises with the lattice and is flat from extent 12 (32320, 34667, 36950, 38017, 38397, 38397)
 
 ## TODO-THERMAL-001: Cross-Chart Thermal Transport
 **Status:** Pending
@@ -737,7 +737,7 @@
 **Phase:** Detailed Development — Mana
 **Priority:** Medium
 **Dependencies:** TODO-OBS-001
-**Goal:** Decide whether the mana field should run at a finer lattice than `chunk_extent` 3, on measured evidence. The accuracy argument leads: the default lattice overestimates total mana by 11% against the value the finer lattices converge on
+**Goal:** Decide whether the mana field should run at a finer lattice than `chunk_extent` 3, on measured evidence. The accuracy argument leads: the default lattice underestimates total mana by 15.8% against the value the finer lattices converge on
 **Acceptance Criteria:** A decision recorded either way with its reasoning, against the measurements already taken in `plans/observer-field-raster-map.md`; if the extent rises, regenerated fixtures and replay evidence ship with it
 **Performance Requirements:** The mana volume grows with the cube of the extent — 3 to 8 is a factor of nineteen, 3 to 32 a factor of 1214 — so no extent change is accepted without measurements
 **Determinism Requirements:** Changing the extent changes state hashes by construction; any change ships with regenerated fixtures and replay evidence
@@ -745,7 +745,7 @@
 **Observer Implications:** The map's mana lens reports `preview` while the lattice needs upsampling and `observed` when it does not, so a finer lattice improves the map with no frontend change
 **Explanation Implications:** A finer lattice gives mana claims finer spatial evidence
 **Out of Scope:** Changing mana propagation rules, response parameters, or the gate model
-**Evidence:** `apps/observer/src-tauri/examples/extent_bench.rs`. Total mana converges from extent 4 upward and is flat by 8 (24 218, 24 330, 24 421, 24 433, 24 433) while extent 3 gives 27 176 — 11% high. The smallest non-zero cell stays at 4-7, so nothing is lost to integer flooring. Separately, the same tool measures the plan-view column field the map draws. Extent 4 gives 78% more columns at 95.8% coverage and 14% more tick cost; extent 6 quadruples detail at 57.4% coverage; extent 16 leaves 9.4% coverage at three times the tick cost. Coverage plateaus rather than filling with more ticks. Open question: intensity is an integer, so part of the coverage loss at high extent may be quantisation rather than physics
+**Evidence:** `apps/observer/src-tauri/examples/extent_bench.rs`, re-measured on seed 7 at 192 ticks after `TODO-MANA-002`. Total mana rises with the lattice and is flat from extent 12 (34 667, 36 950, 38 017, 38 397, 38 397) while extent 3 gives 32 320 — 15.8% low. Separately, the same tool measures the plan-view column field the map draws. Extent 4 gives 78% more columns at full coverage for 57% more tick cost; extent 6 quadruples detail at 88.9% coverage; extent 16 leaves 17.4% coverage at ten times the tick cost. Open question: the smallest non-zero cell falls from 66 at extent 3 to 1 from extent 6 upward, so at fine lattices part of the field sits at the quantisation floor and integer flooring does start to bite
 
 ## TODO-MANA-003: Isotropic Diffusion Kernel
 **Status:** Pending

@@ -12,7 +12,7 @@ The field accepts bounded `PhysicalPatternSample` batches. Each sample supplies 
 
 ## Minimal response
 
-Canonical same-fingerprint samples increase response through repeated occurrence, regular temporal intervals, simultaneous occurrence, and repeated placement at distinct coordinates. Magnitude scales local injection. A fixed six-neighbour stencil then applies diffusion and decay, with non-negative saturation.
+Canonical same-fingerprint samples increase response through repeated occurrence, regular temporal intervals, simultaneous occurrence, and repeated placement at distinct coordinates. Magnitude scales local injection. A fixed six-neighbour stencil then applies diffusion and decay, with non-negative saturation. A cell gives each neighbour an equal share and loses exactly the sum of the shares delivered, so diffusion moves mana without destroying it. A chunk face bounds the stencil only where no neighbouring chunk is active: across an active same-chart face the neighbour is counted like any other and receives the same share, so the chunk grid carries no physical meaning (INV-037).
 
 This permits two physically similar structures to couple even when societies interpret them differently, and physically different structures to couple differently even when agents believe they mean the same thing.
 
@@ -73,7 +73,7 @@ model, operator reservoir, and broader external-creation policies remain deferre
 
 ## Geography
 
-Fields are chunk-local causal state, so terrain, geology, hydrology, climate, ecology, and construction can later alter sample production or field parameters. Phase 17 does not invent those couplings. Cross-chunk boundary exchange is also deferred.
+Fields are chunk-local causal state, so terrain, geology, hydrology, climate, ecology, and construction can later alter sample production or field parameters. Phase 17 does not invent those couplings. Same-chart cross-chunk exchange is implemented and conducts at the interior rate; cross-chart transport is deferred.
 
 RFC-GEO-002 classifies the current cubic field as bounded local Euclidean 3D inside one surface chart. Bare `ChunkCoord` is not a global planetary position. Cross-chart diffusion requires curvature-aware registered transforms. Future density, phase, spectral, or persistence components would add field-state dimensions, not extra spatial dimensions.
 
