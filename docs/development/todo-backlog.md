@@ -602,6 +602,36 @@
 **Explanation Implications:** None; the map is a read surface
 **Out of Scope:** Joining charts into a global surface, agent-known perspectives, historical comparison, 3D terrain
 
+## TODO-OBS-001: Terrain Raster Projection and Chart Shape
+**Status:** Pending
+**Phase:** Detailed Development — Observer Surface
+**Priority:** High
+**Dependencies:** TODO-UI-005
+**Goal:** Project the terrain carrier's per-cell field to the observer and let the active chunk set form an area, so the map renders measured relief rather than one aggregate per chunk
+**Acceptance Criteria:** A bounded per-chunk `TerrainRaster` query with runtime-computed detail levels; measured hypsometric tinting, hillshading and contours in the chart instrument; a config-gated two-dimensional active chunk shape that leaves every existing fixture digest unchanged
+**Performance Requirements:** Per-chunk requests only, delta-encoded elevation, viewport culling and a cache keyed by generation trace; encoded size and paint time measured before any scale claim
+**Determinism Requirements:** Read-only for stages 1-5; the active chunk shape defaults to the existing line so no replay fixture moves
+**Ontology Implications:** Downsampling and hillshading are presentation reductions and never re-enter the runtime (INV-022); surface materials are excluded until geography generates coherent regions
+**Observer Implications:** One additive query kind, one additive Tauri command, protocol stays v1
+**Explanation Implications:** None; generation provenance travels with the raster for future claims
+**Out of Scope:** Landcover from surface materials, per-cell mana and resolution, joined charts, terrain generation changes
+**Plan:** `plans/observer-terrain-raster-map.md`
+
+## TODO-GEO-001: Coherent Surface Material Regions
+**Status:** Pending
+**Phase:** Detailed Development — Geography
+**Priority:** Medium
+**Dependencies:** TODO-OBS-001
+**Goal:** Generate surface materials as spatially coherent regions rather than per-cell independent assignments
+**Acceptance Criteria:** Measured same-material neighbour rate substantially above the chance rate for the material count; regions are deterministic and reproducible from the world seed
+**Performance Requirements:** Generation cost measured against the current per-cell assignment
+**Determinism Requirements:** Same seed produces identical material fields
+**Ontology Implications:** Material regions are authoritative geography, not an observer classification
+**Observer Implications:** Unblocks a landcover lens, which `plans/observer-terrain-raster-map.md` deliberately excludes today
+**Explanation Implications:** Material regions become available as causal context for surface claims
+**Out of Scope:** Biome semantics, climate coupling, named regions
+**Evidence:** `apps/observer/src-tauri/examples/terrain_probe.rs` measures 6.5% same-material neighbours against 6.2% expected from chance over 16 materials
+
 ## TODO-UI-004: Observer Projection Requests
 **Status:** Pending
 **Phase:** Detailed Development — Observer Surface

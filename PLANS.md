@@ -67,6 +67,9 @@ Progress
 
 - [`plans/experiment-recipe-mana-source.md`](plans/experiment-recipe-mana-source.md) — Draft
   bounded production-path experiment-recipe mana source slice; not active and not an operator API.
+- [`plans/observer-terrain-raster-map.md`](plans/observer-terrain-raster-map.md) — Draft bounded
+  per-chunk terrain raster projection and a config-gated two-dimensional active chunk shape, so the
+  chart instrument renders measured relief instead of one aggregate per chunk.
 
 ## Paused Audit and Evidence Material
 
