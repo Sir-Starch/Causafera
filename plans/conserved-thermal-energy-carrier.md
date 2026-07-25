@@ -936,6 +936,7 @@ Each scenario below names the exact test surface, command, and expected observab
   - Documentation currency: `410e197`, `4a554bb`, `2a92950`, `590c21b`, `681abb3`, `9beee01`, `4a9b9df`, `cd87121`.
   - Post-review recovery and boundary-state corrections: `f742ba0`, `009b21d`, `b076385`, `4502b04`, `2b5a343`.
   - Final checkpoint documentation: `4ad2316`.
+  - Post-review remediation and final-review follow-up: `3e46bc2`, `029256d`.
 - 2026-07-26 remediation verification (independent re-run after receipt-reconciliation, checked-arithmetic, domain-geometry-reuse, and literal-version fixes):
   - `cargo fmt --all -- --check` passed.
   - LSP diagnostics clean on all four changed files.
