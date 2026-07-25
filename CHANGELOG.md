@@ -322,6 +322,7 @@ This project follows a structured changelog format. Each entry includes:
 - Refactored `causafera-runtime` into a modular architecture (`INV-042`), extracting actor subsystems, material surface, mana, pattern history, digests, resolution, and bootstrap into dedicated modules;
 - Tightened workspace internal visibility by removing unused `pub(crate)` modifiers;
 - Implemented deterministic binary persistence snapshot format v1 (`TODO-PERSIST-001`, `RFC-PERSIST-001`).
+- Completed the **Bounded Conserved Thermal Storage and Same-Chart Transfer** vertical slice (`plans/conserved-thermal-energy-carrier.md`): added fixed-point `ThermalEnergy` carrier, finite historical-bootstrap `ThermalReservoir`, conservative six-face intra-chunk and same-chart cross-chunk diffusion, exact conservation accounting with per-tick zero-residual verification, atomic batch commit via `CausalTraceStore`, snapshot section `0x000E` v1, observer summary/delta projection, and `THERMAL_CARRIER_CONSERVATION_SCHEMA` Explanation claim; digest schema bumped to v5; thermal systems registered in `Phase::Physics` as global IDs 9 and 10.
 
 ## Categories
 
