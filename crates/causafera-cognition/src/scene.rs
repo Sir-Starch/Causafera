@@ -434,19 +434,17 @@ impl SceneContinuityState {
             if let Some((_, tracked)) = assignments
                 .iter()
                 .find(|(target, _)| *target == focus.target)
-            {
-                if !objects
+                && !objects
                     .iter()
                     .any(|value: &SceneObject| value.id == tracked.id)
-                {
-                    objects.push(SceneObject {
-                        id: tracked.id,
-                        appearance: tracked.appearance,
-                        relative_position: tracked.relative_position,
-                        confidence: tracked.confidence,
-                        supporting_percept: tracked.supporting_percept,
-                    });
-                }
+            {
+                objects.push(SceneObject {
+                    id: tracked.id,
+                    appearance: tracked.appearance,
+                    relative_position: tracked.relative_position,
+                    confidence: tracked.confidence,
+                    supporting_percept: tracked.supporting_percept,
+                });
             }
         }
         objects.sort_by_key(|object| object.id);

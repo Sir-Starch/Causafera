@@ -47,7 +47,7 @@ impl PhysicalPatternSchedule {
     }
 
     pub(crate) fn emits_at(self, time: SimulationTime) -> bool {
-        if time.raw() % self.interval_ticks != 0 {
+        if !time.raw().is_multiple_of(self.interval_ticks) {
             return false;
         }
         !matches!(
@@ -280,10 +280,10 @@ impl ExperimentRecipeManaSourceSystem {
 
 impl System for ExperimentRecipeManaSourceSystem {
     fn run(&mut self, _stream: &mut RandomStream) {
-        if let Err(error) = self.execute() {
-            if let Ok(mut state) = self.state.lock() {
-                state.failure.get_or_insert(error);
-            }
+        if let Err(error) = self.execute()
+            && let Ok(mut state) = self.state.lock()
+        {
+            state.failure.get_or_insert(error);
         }
     }
 
