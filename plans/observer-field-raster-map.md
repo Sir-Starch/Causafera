@@ -237,8 +237,8 @@ a configuration of an existing mechanism, not a new spatial primitive.
 7. **Mana lenses.** The column reduction with both readings offered, the blob rendering, isolines
    at stated intensity levels, and availability derived from the received edge length rather than
    hard-coded. Selecting a trace anywhere in the interface highlights the cells it last changed.
-8. **`chunk_extent` cost evidence.** Measure tick cost, memory and encoded raster size at extents
-   3, 8 and 16 on the demonstration session, and record them. No default is changed by this plan.
+8. **`chunk_extent` cost evidence.** Measured; see the results below. No default is changed by
+   this plan, and the measurements now inform `TODO-MANA-001` rather than await it.
 9. **Active chunk shape.** `ActiveChunkShape` in `RuntimeConfig`, `Disc` in the observer session,
    and the determinism evidence in the verification section.
 
@@ -269,9 +269,48 @@ Measure and record, rather than assert:
 
 - Encoded raster size per chunk at each detail level and per field, against the raw arrays.
 - Observer overhead per raster request, against the existing `WorldChunks` query.
-- Tick cost, resident memory and encoded mana raster size at `chunk_extent` 3, 8 and 16. The
-  volume grows with the cube of the extent, so this is the number that decides whether a smoother
-  mana field is affordable — it must be measured, not estimated.
+- Encoded mana raster size per extent, once the wire format exists.
+
+### Measured: `chunk_extent` against the map
+
+Taken with `cargo run --release -p causafera-observer --example extent_bench` on the
+demonstration session (seed 7). The honest metric is the **plan-view column field** — what the map
+actually draws — not the cell count, because the map reduces the volume through z.
+
+After 192 ticks:
+
+| `chunk_extent` | Columns drawn | Columns carrying mana | Neighbour coherence | ms per tick |
+|---|---|---|---|---|
+| 3 (default) | 27 | 100 % | 0.71 | 0.66 |
+| 4 | 48 | 95.8 % | 0.46 | 0.75 |
+| 6 | 108 | 57.4 % | 0.26 | 0.79 |
+| 8 | 192 | 36.5 % | 0.18 | 0.90 |
+| 12 | 432 | 16.7 % | 0.11 | 1.25 |
+| 16 | 768 | 9.4 % | 0.08 | 1.97 |
+| 32 | 3072 | — | — | 11.33 (48 ticks) |
+
+Three things follow.
+
+**The useful range is 4 to 6, not 16 or 32.** At extent 4 the map draws 78 % more columns, still
+covered almost everywhere, with neighbour variation cut from 0.71 to 0.46 — visibly smoother — for
+14 % more tick cost. At extent 6 the detail quadruples and the field stops saturating the chart,
+which may well read better on a map: mana that gathers somewhere is more informative than mana
+that is uniformly everywhere. Beyond 6 the field becomes a minority of the chart and the cost
+climbs steeply.
+
+**Coverage does not recover with time.** Sixteen times the ticks moves extent 8 from 9.0 % to
+13.6 % of cells and extent 16 from 1.1 % to 1.7 %. The field plateaus; a finer lattice is not
+merely slower to fill.
+
+**The mana does form a real gradient, not scattered points.** At extent 8 the populated cells span
+the full width and decay upward through z — layer counts 28, 24, 15, 8, 3, 0, 0, 0 — which is what
+a field anchored near the ground should look like. The coverage figures are about how much of a
+finer lattice that gradient reaches, not about whether the field has structure.
+
+One caveat the mana domain should check before acting on this: intensity is an integer, and the
+same total mana spread over more cells will floor to zero in more of them. Part of the coverage
+loss at high extent may be quantisation rather than physics, in which case a finer lattice needs a
+finer intensity unit, not just more cells.
 - Frontend: time to decode and blit one chunk raster, and steady-state paint time for a viewport of
   nine chunks at cell zoom, on the software-rendering profile as the pessimistic case.
 
@@ -367,9 +406,9 @@ generation, which is the prerequisite for a landcover lens, and a mana-domain it
   `chunk_extent` improves the map without a frontend change, and lowering it cannot quietly
   overstate what is drawn.
 - **`chunk_extent` is measured, not raised.** The field is fully implemented and every cell is
-  live; only its lattice is coarse. Whether a finer lattice is worth its cube-law cost is a
-  simulation decision that deserves its own evidence, and this plan supplies the evidence rather
-  than pre-empting the decision.
+  live; only its lattice is coarse. The measurements above put the useful range at 4 to 6 and rule
+  out 16 and 32 on both cost and coverage. Acting on that is a mana-domain decision with its own
+  determinism and fixture consequences, so this plan supplies the evidence and stops there.
 - **Surface materials excluded.** Measured at 6.5 % same-material neighbours against 6.2 %
   expected from chance. Drawing that as landcover would show the world as having regions it does
   not have, which is the same failure as substituting data. Revisit when geography generates

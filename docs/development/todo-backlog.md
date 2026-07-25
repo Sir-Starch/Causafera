@@ -638,14 +638,14 @@
 **Priority:** Medium
 **Dependencies:** TODO-OBS-001
 **Goal:** Decide whether the mana field should run at a finer lattice than `chunk_extent` 3, on measured evidence
-**Acceptance Criteria:** Tick cost, resident memory and encoded raster size recorded at extents 3, 8 and 16 on the demonstration session; a decision recorded either way with its reasoning
+**Acceptance Criteria:** A decision recorded either way with its reasoning, against the measurements already taken in `plans/observer-field-raster-map.md`; if the extent rises, regenerated fixtures and replay evidence ship with it
 **Performance Requirements:** The mana volume grows with the cube of the extent — 3 to 8 is a factor of nineteen, 3 to 32 a factor of 1214 — so no extent change is accepted without measurements
 **Determinism Requirements:** Changing the extent changes state hashes by construction; any change ships with regenerated fixtures and replay evidence
 **Ontology Implications:** The field is already fully implemented and every cell is live with per-cell provenance; only its spatial lattice is coarse
 **Observer Implications:** The map's mana lens reports `preview` while the lattice needs upsampling and `observed` when it does not, so a finer lattice improves the map with no frontend change
 **Explanation Implications:** A finer lattice gives mana claims finer spatial evidence
 **Out of Scope:** Changing mana propagation rules, response parameters, or the gate model
-**Evidence:** `apps/observer/src-tauri/examples/field_probe.rs` measures 27 cells per chunk, all populated and traced, with a neighbour coherence ratio of 0.41-0.48
+**Evidence:** `apps/observer/src-tauri/examples/extent_bench.rs` measures the plan-view column field the map draws. Extent 4 gives 78% more columns at 95.8% coverage and 14% more tick cost; extent 6 quadruples detail at 57.4% coverage; extent 16 leaves 9.4% coverage at three times the tick cost. Coverage plateaus rather than filling with more ticks. Open question: intensity is an integer, so part of the coverage loss at high extent may be quantisation rather than physics
 
 ## TODO-UI-004: Observer Projection Requests
 **Status:** Pending
