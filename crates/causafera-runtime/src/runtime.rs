@@ -2367,6 +2367,22 @@ fn import_thermal_snapshot(
                 })
             })
             .collect::<Result<Vec<_>, RuntimeError>>()?;
+        let signed_flux_sum = faces.iter().try_fold(0_i128, |sum, face| {
+            sum.checked_add(i128::from(face.signed_flux))
+                .ok_or(RuntimeError::InvalidSnapshot(
+                    "thermal receipt signed flux total overflows",
+                ))
+        })?;
+        let expected_post_state = i128::from(pre_state.get())
+            .checked_sub(signed_flux_sum)
+            .ok_or(RuntimeError::InvalidSnapshot(
+                "thermal receipt transition overflows",
+            ))?;
+        if expected_post_state != i128::from(post_state.get()) {
+            return Err(RuntimeError::InvalidSnapshot(
+                "thermal receipt transition does not match signed fluxes",
+            ));
+        }
         let mut reservoir_records = Vec::with_capacity(receipt.reservoirs.len());
         for record in receipt.reservoirs {
             if !reservoirs.contains_key(&record.id) {
@@ -2432,15 +2448,51 @@ fn import_thermal_snapshot(
                         "thermal receipt injection total overflows",
                     ))
             })?;
-        if receipt.total_reservoir_budget_before - receipt.total_reservoir_budget_after != accepted
-        {
+        let budget_delta = receipt
+            .total_reservoir_budget_before
+            .checked_sub(receipt.total_reservoir_budget_after)
+            .ok_or(RuntimeError::InvalidSnapshot(
+                "thermal reservoir budget difference overflows",
+            ))?;
+        if budget_delta != accepted {
             return Err(RuntimeError::InvalidSnapshot(
                 "thermal reservoir budgets do not balance receipts",
             ));
         }
     }
-    let boundary_records =
-        import_thermal_boundary_records(snapshot.boundary_records, &thermal_fields, &receipts)?;
+    if thermal_fields.batch_sequence() > 0 {
+        let latest_receipts = receipts
+            .get(&thermal_fields.conservation_last_change())
+            .ok_or(RuntimeError::InvalidSnapshot(
+                "thermal latest receipt batch is missing",
+            ))?;
+        for receipt in latest_receipts {
+            let field =
+                thermal_fields
+                    .field(receipt.cell.chunk)
+                    .ok_or(RuntimeError::InvalidSnapshot(
+                        "thermal latest receipt references inactive field",
+                    ))?;
+            let current_energy = field
+                .energy()
+                .get(usize::from(receipt.cell.cell_index))
+                .copied()
+                .ok_or(RuntimeError::InvalidSnapshot(
+                    "thermal latest receipt references invalid cell",
+                ))?;
+            if receipt.post_state != current_energy {
+                return Err(RuntimeError::InvalidSnapshot(
+                    "thermal latest receipt post-state does not match current energy",
+                ));
+            }
+        }
+    }
+    let boundary_records = import_thermal_boundary_records(
+        snapshot.boundary_records,
+        &thermal_fields,
+        &thermal_active_region,
+        &receipts,
+    )?;
     Ok((
         thermal_fields,
         thermal_active_region,
@@ -2454,6 +2506,7 @@ fn import_thermal_snapshot(
 fn import_thermal_boundary_records(
     snapshots: Vec<ThermalBoundaryRecordSnapshot>,
     fields: &ThermalFieldSet,
+    active_region: &ThermalActiveRegion,
     receipts: &BTreeMap<TraceId, Vec<ThermalCellTransferReceipt>>,
 ) -> Result<Vec<ThermalBoundaryRecord>, RuntimeError> {
     if fields.batch_sequence() == 0 {
@@ -2486,61 +2539,21 @@ fn import_thermal_boundary_records(
 
     let mut expected = Vec::new();
     for field in fields.fields().values() {
-        let side = usize::from(field.extent());
-        let plane = side * side;
         for (index, energy) in field.energy().iter().copied().enumerate() {
             let cell_index = u16::try_from(index).map_err(|_| {
                 RuntimeError::InvalidSnapshot("thermal boundary source index is invalid")
             })?;
             let cell = ThermalCellKey::new(field.chunk(), cell_index);
-            let position = [index % side, (index % plane) / side, index / plane];
-            for direction in [
-                [-1_i8, 0, 0],
-                [1, 0, 0],
-                [0, -1, 0],
-                [0, 1, 0],
-                [0, 0, -1],
-                [0, 0, 1],
-            ] {
-                let mut neighbor_position = position;
-                let mut chunk_delta = [0_i32; 3];
-                for axis in 0..3 {
-                    match direction[axis] {
-                        -1 if position[axis] == 0 => {
-                            neighbor_position[axis] = side - 1;
-                            chunk_delta[axis] = -1;
-                        }
-                        -1 => neighbor_position[axis] -= 1,
-                        0 => {}
-                        1 if position[axis] + 1 == side => {
-                            neighbor_position[axis] = 0;
-                            chunk_delta[axis] = 1;
-                        }
-                        1 => neighbor_position[axis] += 1,
-                        _ => {
-                            return Err(RuntimeError::InvalidSnapshot(
-                                "thermal boundary face direction is invalid",
-                            ));
-                        }
-                    }
-                }
-                let neighbor_chunk = field.chunk().same_chart_neighbor(
-                    chunk_delta[0],
-                    chunk_delta[1],
-                    chunk_delta[2],
-                );
-                if fields.field(neighbor_chunk).is_some() {
-                    continue;
-                }
-                let neighbor_index = neighbor_position[0]
-                    + neighbor_position[1] * side
-                    + neighbor_position[2] * plane;
-                let neighbor_cell_index = u16::try_from(neighbor_index).map_err(|_| {
-                    RuntimeError::InvalidSnapshot("thermal boundary neighbor index is invalid")
-                })?;
+            let boundary_neighbors =
+                fields
+                    .boundary_neighbor_keys(active_region, cell)
+                    .map_err(|_| {
+                        RuntimeError::InvalidSnapshot("thermal boundary geometry is invalid")
+                    })?;
+            for neighbor in boundary_neighbors {
                 expected.push(ThermalBoundaryRecord {
                     cell,
-                    neighbor: ThermalCellKey::new(neighbor_chunk, neighbor_cell_index),
+                    neighbor,
                     cell_pre_state: latest_pre_state.get(&cell).copied().unwrap_or(energy),
                 });
             }

@@ -893,6 +893,12 @@ Each scenario below names the exact test surface, command, and expected observab
 - **2026-07-25:** Independent review found two completion blockers: V3 did not retain outside-active-region boundary records, and V15 covered domain preflight failure rather than a real runtime causal-batch rejection. Both blockers were reopened for test-first correction.
 - **2026-07-25:** A writing subagent discarded uncommitted runtime integration with worktree-destructive Git commands. Exact recovery used OpenCode snapshot tree `948399d8695ea58ce2263ab23e7b82d87bdfdbfa` and an explicit ten-file blob allowlist; no unrelated dirty path was replaced. `AGENTS.md` and `PLANS.md` now forbid worktree-discarding Git during implementation and require verified green-wave checkpoint commits.
 - **2026-07-25:** Boundary records are current-committed-batch authoritative state. They use the frozen post-injection/pre-diffusion cell value, are strictly ordered by `(cell, neighbor)`, replace the prior batch atomically after successful causal commit, persist in required section `0x000E` major V1, and contribute once to physical digest V5.
+- **2026-07-26:** Independent review found four completion blockers in `import_thermal_snapshot` and boundary reconstruction, and all four were reopened for test-first correction:
+  - Imported transfer receipts were not checked against their signed face-flux equation, so coordinated receipt/boundary pre-state mutation was accepted. Fixed by validating `pre_state - sum(signed_flux) == post_state` with checked `i128` arithmetic before acceptance.
+  - The latest batch's receipt post-state was not bound to current field energy, so a balanced but shifted receipt with matching boundary records was accepted. Fixed by requiring every receipt in `thermal_fields.conservation_last_change()`'s batch to match the indexed current-field cell energy.
+  - Reservoir budget-difference subtraction used raw arithmetic, risking a debug-build panic or release wraparound on crafted extremes. Fixed with checked subtraction returning `InvalidSnapshot` on overflow.
+  - `import_thermal_boundary_records` duplicated the domain's face/direction/wraparound geometry inline instead of reusing the authoritative implementation. Fixed by adding `ThermalFieldSet::boundary_neighbor_keys` in `causafera-domains/src/thermal/neighbor.rs` and calling it from the runtime, removing ~50 lines of duplicated logic.
+  - Added regressions: `runtime_import_rejects_receipt_flux_transition_forgery`, `runtime_import_rejects_latest_receipt_post_state_mismatch`, `runtime_import_rejects_reservoir_budget_subtraction_overflow`, `thermal_persistence_literal_version_contract` (pins section `0x000E`, major V1, digest schema V5 as literal values), and domain test `boundary_neighbor_keys_returns_only_inactive_faces`.
 
 ## Progress
 
@@ -921,6 +927,16 @@ Each scenario below names the exact test surface, command, and expected observab
   - Explanation, observer, runtime, persistence, and protocol: `6537730`, `64fa55c`, `3a531fc`, `b15cfc5`, `b1d62e9`.
   - Documentation currency: `410e197`, `4a554bb`, `2a92950`, `590c21b`, `681abb3`, `9beee01`, `4a9b9df`, `cd87121`.
   - Post-review recovery and boundary-state corrections: `f742ba0`, `009b21d`, `b076385`, `4502b04`, `2b5a343`.
+  - Final checkpoint documentation: `4ad2316`.
+- 2026-07-26 remediation verification (independent re-run after receipt-reconciliation, checked-arithmetic, domain-geometry-reuse, and literal-version fixes):
+  - `cargo fmt --all -- --check` passed.
+  - LSP diagnostics clean on all four changed files.
+  - Focused tests passed: `thermal_persistence` (10/10, including the three new forgery/overflow regressions and the literal-version contract), `thermal_neighbor_geometry`, `thermal_diffusion` (6/6), `thermal_boundaries`, `thermal_receipts`, `thermal_determinism`, `thermal_bootstrap`, and `thermal::tests::atomic_failure_rollback` (V15).
+  - `cargo clippy -p causafera-domains -p causafera-runtime --all-targets --all-features -- -D warnings` passed, then repeated workspace-wide with the same result.
+  - `cargo test --workspace --all-features` and `cargo test --workspace --no-default-features` both passed with zero failures.
+  - `cargo run -p xtask -- ci` passed.
+  - `git diff --check` reported no whitespace errors; diff scope confirmed limited to `crates/causafera-domains/src/thermal/neighbor.rs`, `crates/causafera-domains/tests/thermal_neighbor_geometry.rs`, `crates/causafera-runtime/src/runtime.rs`, and `crates/causafera-runtime/tests/thermal_persistence.rs`.
+  - `.debug-journal.md` (temporary investigation ledger) removed after verification, per its own note.
 
 ---
 

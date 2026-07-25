@@ -1,9 +1,12 @@
 use causafera_persistence::SectionPayload;
 use causafera_runtime::snapshot_sections::{
-    THERMAL_SECTION_ID, assemble_envelope, decode_thermal_section, disassemble_envelope,
-    encode_thermal_section,
+    THERMAL_SECTION_ID, THERMAL_SECTION_MAJOR, assemble_envelope, decode_thermal_section,
+    disassemble_envelope, encode_thermal_section,
 };
-use causafera_runtime::{Runtime, RuntimeConfig, RuntimeError, RuntimeSnapshotData, RuntimeState};
+use causafera_runtime::{
+    CURRENT_DIGEST_SCHEMA_VERSION, Runtime, RuntimeConfig, RuntimeError, RuntimeSnapshotData,
+    RuntimeState,
+};
 use causafera_types::{ChartChunkCoord, ChunkCoord, SpatialChartId};
 
 fn runtime_config(seed: u64) -> RuntimeConfig {
@@ -21,6 +24,38 @@ fn canonicalize_boundaries(snapshot: &mut RuntimeSnapshotData) {
         .thermal
         .boundary_records
         .sort_unstable_by_key(|record| (record.cell, record.neighbor));
+}
+
+fn shift_latest_receipt(snapshot: &mut RuntimeSnapshotData, shift: i64, shift_post_state: bool) {
+    let latest_trace = snapshot.thermal.field_set.conservation_last_change;
+    let receipt = snapshot
+        .thermal
+        .transfer_receipts
+        .iter_mut()
+        .find(|receipt| receipt.conservation_trace == latest_trace)
+        .expect("latest batch must contain a transfer receipt");
+    let cell = receipt.cell;
+    receipt.pre_state = receipt
+        .pre_state
+        .checked_add(shift)
+        .expect("test shift must remain representable");
+    if shift_post_state {
+        receipt.post_state = receipt
+            .post_state
+            .checked_add(shift)
+            .expect("test shift must remain representable");
+    }
+    for boundary in snapshot
+        .thermal
+        .boundary_records
+        .iter_mut()
+        .filter(|record| record.cell == cell)
+    {
+        boundary.cell_pre_state = boundary
+            .cell_pre_state
+            .checked_add(shift)
+            .expect("test shift must remain representable");
+    }
 }
 
 #[test]
@@ -188,6 +223,52 @@ fn runtime_import_rejects_malformed_boundary_records() {
 }
 
 #[test]
+fn runtime_import_rejects_receipt_flux_transition_forgery() {
+    // Given: a valid latest receipt and a matching boundary record.
+    let mut forged = evolved_snapshot(1_809);
+    shift_latest_receipt(&mut forged, 1, false);
+
+    // When: the receipt pre-state is changed without changing its post-state or fluxes.
+    let imported = RuntimeState::import_snapshot(forged);
+
+    // Then: the internal signed-flux transition equation rejects the coordinated forgery.
+    assert!(matches!(imported, Err(RuntimeError::InvalidSnapshot(_))));
+}
+
+#[test]
+fn runtime_import_rejects_latest_receipt_post_state_mismatch() {
+    // Given: a valid latest receipt whose pre/post states are shifted together.
+    let mut forged = evolved_snapshot(1_810);
+    shift_latest_receipt(&mut forged, 1, true);
+
+    // When: the latest receipt no longer describes the current field energy.
+    let imported = RuntimeState::import_snapshot(forged);
+
+    // Then: the latest batch post-state must bind to the indexed current field cell.
+    assert!(matches!(imported, Err(RuntimeError::InvalidSnapshot(_))));
+}
+
+#[test]
+fn runtime_import_rejects_reservoir_budget_subtraction_overflow() {
+    // Given: a valid snapshot with an unrepresentable reservoir budget difference.
+    let mut forged = evolved_snapshot(1_811);
+    forged.thermal.conservation_receipts[0].total_reservoir_budget_before = i128::MAX;
+    forged.thermal.conservation_receipts[0].total_reservoir_budget_after = i128::MIN;
+
+    // When: the crafted snapshot is imported.
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        RuntimeState::import_snapshot(forged)
+    }));
+
+    // Then: checked arithmetic returns InvalidSnapshot rather than panicking.
+    assert!(result.is_ok(), "snapshot import must not panic on overflow");
+    assert!(matches!(
+        result.expect("checked import result must exist"),
+        Err(RuntimeError::InvalidSnapshot(_))
+    ));
+}
+
+#[test]
 fn malformed_rejects() {
     // Given: a production snapshot with the complete thermal section.
     let runtime = Runtime::new(runtime_config(1_801)).expect("runtime bootstrap must succeed");
@@ -272,6 +353,22 @@ fn unknown_thermal_section_or_version_rejects() {
     // Then: both envelopes fail closed before runtime restoration.
     assert!(disassemble_envelope(&incompatible).is_err());
     assert!(disassemble_envelope(&unknown).is_err());
+}
+
+#[test]
+fn thermal_persistence_literal_version_contract() {
+    // Given: the current production snapshot and its assembled envelope.
+    let runtime = Runtime::new(runtime_config(1_812)).expect("runtime bootstrap must succeed");
+    let snapshot = runtime.export_snapshot().expect("snapshot must export");
+    let envelope = assemble_envelope(&snapshot).expect("envelope must assemble");
+
+    // Then: thermal persistence and digest versions retain their literal wire contract.
+    assert_eq!(THERMAL_SECTION_ID, 0x000E);
+    assert_eq!(THERMAL_SECTION_MAJOR, 1);
+    assert_eq!(CURRENT_DIGEST_SCHEMA_VERSION.raw(), 5);
+    assert_eq!(envelope.sections[&u64::from(0x000E_u16)].section_major, 1);
+    assert_eq!(envelope.header.physical_digest_schema, 5);
+    assert_eq!(envelope.header.history_digest_schema, 5);
 }
 
 #[test]

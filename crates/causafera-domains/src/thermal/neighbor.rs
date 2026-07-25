@@ -46,6 +46,16 @@ pub(crate) fn neighbor_keys(
     Ok((neighbors, boundary_neighbors))
 }
 
+impl ThermalFieldSet {
+    pub fn boundary_neighbor_keys(
+        &self,
+        active_region: &ThermalActiveRegion,
+        key: ThermalCellKey,
+    ) -> Result<Vec<ThermalCellKey>, ThermalError> {
+        neighbor_keys(self, active_region, key).map(|(_, boundary_neighbors)| boundary_neighbors)
+    }
+}
+
 fn position_for(index: u16, extent: u8) -> Result<LocalCoord, ThermalError> {
     let side = usize::from(extent);
     let index = usize::from(index);
