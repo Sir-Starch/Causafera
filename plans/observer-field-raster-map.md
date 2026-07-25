@@ -279,31 +279,29 @@ actually draws — not the cell count, because the map reduces the volume throug
 
 After 192 ticks:
 
+These figures were re-taken after `TODO-MANA-002`, which corrected the chunk seam and stopped
+diffusion destroying mana. The first pass measured a field that was leaking, and its conclusions
+are superseded below.
+
 | `chunk_extent` | Columns drawn | Columns carrying mana | Neighbour coherence | ms per tick |
 |---|---|---|---|---|
-| 3 (default) | 27 | 100 % | 0.71 | 0.66 |
-| 4 | 48 | 95.8 % | 0.46 | 0.75 |
-| 6 | 108 | 57.4 % | 0.26 | 0.79 |
-| 8 | 192 | 36.5 % | 0.18 | 0.90 |
-| 12 | 432 | 16.7 % | 0.11 | 1.25 |
-| 16 | 768 | 9.4 % | 0.08 | 1.97 |
-| 32 | 3072 | — | — | 11.33 (48 ticks) |
+| 3 (default) | 27 | 100 % | 0.71 | 0.99 |
+| 4 | 48 | 100 % | 0.47 | 1.55 |
+| 6 | 108 | 88.9 % | 0.28 | 2.07 |
+| 8 | 192 | 59.9 % | 0.20 | 2.63 |
+| 12 | 432 | 31.0 % | 0.13 | 4.95 |
+| 16 | 768 | 17.4 % | 0.09 | 10.11 |
 
 Three things follow.
 
 **The useful range is 4 to 6, not 16 or 32.** At extent 4 the map draws 78 % more columns, still
-covered almost everywhere, with neighbour variation cut from 0.71 to 0.46 — visibly smoother — for
-14 % more tick cost. At extent 6 the detail quadruples and the field stops saturating the chart,
-which may well read better on a map: mana that gathers somewhere is more informative than mana
-that is uniformly everywhere. Beyond 6 the field becomes a minority of the chart and the cost
-climbs steeply.
-
-**Coverage does not recover with time.** Sixteen times the ticks moves extent 8 from 9.0 % to
-13.6 % of cells and extent 16 from 1.1 % to 1.7 %. The field plateaus; a finer lattice is not
-merely slower to fill.
+covered everywhere, with neighbour variation cut from 0.71 to 0.47 — visibly smoother — for 57 %
+more tick cost. At extent 6 the detail quadruples at 88.9 % coverage, which may well read better on
+a map: mana that gathers somewhere is more informative than mana that is uniformly everywhere.
+Beyond 6 the field becomes a minority of the chart and the cost climbs steeply.
 
 **The mana does form a real gradient, not scattered points.** At extent 8 the populated cells span
-the full width and decay upward through z — layer counts 28, 24, 15, 8, 3, 0, 0, 0 — which is what
+the full width and decay upward through z — layer counts 44, 37, 27, 22, 15, 8, 3, 0 — which is what
 a field anchored near the ground should look like. The coverage figures are about how much of a
 finer lattice that gradient reaches, not about whether the field has structure.
 
@@ -312,23 +310,28 @@ ticks:
 
 | `chunk_extent` | Total mana | Against extent 3 | Smallest non-zero cell |
 |---|---|---|---|
-| 3 | 27 176 | 100 % | 28 |
-| 4 | 24 218 | 89.1 % | 4 |
-| 6 | 24 330 | 89.5 % | 7 |
-| 8 | 24 421 | 89.9 % | 7 |
-| 12 | 24 433 | 89.9 % | 5 |
-| 16 | 24 433 | 89.9 % | 5 |
+| 3 | 32 320 | 100 % | 66 |
+| 4 | 34 667 | 107.3 % | 26 |
+| 6 | 36 950 | 114.3 % | 1 |
+| 8 | 38 017 | 117.6 % | 1 |
+| 12 | 38 397 | 118.8 % | 1 |
+| 16 | 38 397 | 118.8 % | 1 |
 
-The total converges from extent 4 upward and is flat by 8 — the behaviour a correct discretisation
-of a continuous field should show. Extent 3 sits 11 % above the converged value, so the default
-lattice **overestimates total mana**, and the smallest non-zero cell stays at 4 … 7 rather than
-approaching 1, so nothing is being lost to integer flooring. An earlier note in this plan
-suspected quantisation; the measurement rules it out.
+The total rises with the lattice and is flat from extent 12 — the behaviour a correct discretisation
+of a continuous field should show. Extent 3 sits 15.8 % **below** the converged value, so the
+default lattice underestimates total mana.
 
-That reverses the argument. Falling coverage is not a defect: a zero cell is a place where mana is
-zero, which is a legitimate physical state, and full coverage at extent 3 is an artefact of a
-lattice too coarse to resolve the field. The case for extent 4 to 6 is **accuracy first**, with a
-better map as the consequence rather than the reason.
+An earlier version of this table read the other way, with the total falling as the lattice grew
+finer, and concluded that extent 3 overestimated by 11 %. That was the leak: the stencil subtracted
+an undivided outgoing budget while handing its neighbours truncated shares, so a finer lattice lost
+more, and the apparent convergence was the leak saturating. The correction is recorded in
+`TODO-MANA-002`; the case for extent 4 to 6 is unchanged and still **accuracy first**, with a better
+map as the consequence rather than the reason.
+
+The smallest non-zero cell now falls to 1 from extent 6 upward, where before it stayed at 4 … 7. At
+fine lattices part of the field genuinely sits on the quantisation floor, so the earlier claim that
+integer flooring could be ruled out no longer holds; it is carried as an open question on
+`TODO-MANA-004`.
 - Frontend: time to decode and blit one chunk raster, and steady-state paint time for a viewport of
   nine chunks at cell zoom, on the software-rendering profile as the pessimistic case.
 
