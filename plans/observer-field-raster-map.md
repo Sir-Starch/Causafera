@@ -279,29 +279,30 @@ actually draws — not the cell count, because the map reduces the volume throug
 
 After 192 ticks:
 
-These figures were re-taken after `TODO-MANA-002`, which corrected the chunk seam and stopped
-diffusion destroying mana. The first pass measured a field that was leaking, and its conclusions
-are superseded below.
+These figures were re-taken after `TODO-MANA-002` corrected the chunk seam and stopped diffusion
+destroying mana, and after `TODO-MANA-003` replaced the axis-only stencil with an isotropic one.
+The first pass measured a field that was both leaking and octahedral, and its conclusions are
+superseded below.
 
 | `chunk_extent` | Columns drawn | Columns carrying mana | Neighbour coherence | ms per tick |
 |---|---|---|---|---|
-| 3 (default) | 27 | 100 % | 0.71 | 0.99 |
-| 4 | 48 | 100 % | 0.47 | 1.55 |
-| 6 | 108 | 88.9 % | 0.28 | 2.07 |
-| 8 | 192 | 59.9 % | 0.20 | 2.63 |
-| 12 | 432 | 31.0 % | 0.13 | 4.95 |
-| 16 | 768 | 17.4 % | 0.09 | 10.11 |
+| 3 (default) | 27 | 100 % | 0.73 | 1.29 |
+| 4 | 48 | 100 % | 0.50 | 1.88 |
+| 6 | 108 | 69.4 % | 0.29 | 2.50 |
+| 8 | 192 | 45.3 % | 0.20 | 3.28 |
+| 12 | 432 | 20.1 % | 0.13 | 6.80 |
+| 16 | 768 | 11.3 % | 0.09 | 14.09 |
 
 Three things follow.
 
 **The useful range is 4 to 6, not 16 or 32.** At extent 4 the map draws 78 % more columns, still
-covered everywhere, with neighbour variation cut from 0.71 to 0.47 — visibly smoother — for 57 %
-more tick cost. At extent 6 the detail quadruples at 88.9 % coverage, which may well read better on
+covered everywhere, with neighbour variation cut from 0.73 to 0.50 — visibly smoother — for 46 %
+more tick cost. At extent 6 the detail quadruples at 69.4 % coverage, which may well read better on
 a map: mana that gathers somewhere is more informative than mana that is uniformly everywhere.
 Beyond 6 the field becomes a minority of the chart and the cost climbs steeply.
 
 **The mana does form a real gradient, not scattered points.** At extent 8 the populated cells span
-the full width and decay upward through z — layer counts 44, 37, 27, 22, 15, 8, 3, 0 — which is what
+the full width and decay upward through z — layer counts 33, 31, 25, 16, 8, 0, 0, 0 — which is what
 a field anchored near the ground should look like. The coverage figures are about how much of a
 finer lattice that gradient reaches, not about whether the field has structure.
 
@@ -310,15 +311,15 @@ ticks:
 
 | `chunk_extent` | Total mana | Against extent 3 | Smallest non-zero cell |
 |---|---|---|---|
-| 3 | 32 320 | 100 % | 66 |
-| 4 | 34 667 | 107.3 % | 26 |
-| 6 | 36 950 | 114.3 % | 1 |
-| 8 | 38 017 | 117.6 % | 1 |
-| 12 | 38 397 | 118.8 % | 1 |
-| 16 | 38 397 | 118.8 % | 1 |
+| 3 | 32 266 | 100 % | 89 |
+| 4 | 33 689 | 104.4 % | 10 |
+| 6 | 35 090 | 108.8 % | 1 |
+| 8 | 35 776 | 110.9 % | 1 |
+| 12 | 35 776 | 110.9 % | 1 |
+| 16 | 35 776 | 110.9 % | 1 |
 
-The total rises with the lattice and is flat from extent 12 — the behaviour a correct discretisation
-of a continuous field should show. Extent 3 sits 15.8 % **below** the converged value, so the
+The total rises with the lattice and is flat from extent 8 — the behaviour a correct discretisation
+of a continuous field should show. Extent 3 sits 10.9 % **below** the converged value, so the
 default lattice underestimates total mana.
 
 An earlier version of this table read the other way, with the total falling as the lattice grew
@@ -435,10 +436,13 @@ generation, which is the prerequisite for a landcover lens, and a mana-domain it
   `chunk_extent³` and local physical space is full 3D. Hexagonal prisms keep the z anisotropy and
   buy nothing, and true 3D isotropy would need a close-packed lattice, not hexagons. The measured
   defect is that `neighbor_indices` returns the six axis neighbours, so a source spreads on the L1
-  ball rather than a sphere; a distance-weighted 26-neighbour stencil fixes that on the existing
-  lattice without touching `LocalCoord::flat_index`, `MaterialSurfaceId::cell_index`, terrain,
-  resolution, population attribution, the persistence format, every digest and fixture, the
-  observer protocol and the frontend. Recorded as `TODO-MANA-003`.
+  ball rather than a sphere; a weighted stencil fixes that on the existing lattice without touching
+  `LocalCoord::flat_index`, `MaterialSurfaceId::cell_index`, terrain, resolution, population
+  attribution, the persistence format, every digest and fixture, the observer protocol and the
+  frontend. Done as `TODO-MANA-003`, and the stencil that landed is eighteen neighbours rather than
+  the twenty-six first sketched here: the fourth-order isotropy condition is `f == 2e + 8c`, so
+  dropping the corners gives the smallest exact-integer weighting, and it keeps the stencil from
+  ever reaching a diagonally opposite chunk.
 - **Surface materials excluded.** Measured at 6.5 % same-material neighbours against 6.2 %
   expected from chance. Drawing that as landcover would show the world as having regions it does
   not have, which is the same failure as substituting data. Revisit when geography generates
