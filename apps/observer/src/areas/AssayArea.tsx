@@ -13,7 +13,17 @@ import { useMemo, useState } from "react";
 
 import { Assessment, EvidenceState, type ExplanationClaim } from "@causafera/observer-protocol";
 
-import { Field, Fields, Meter, Notice, Panel, StatusTag, TraceChip, Unsurveyed } from "../components/primitives";
+import {
+  Field,
+  Fields,
+  Meter,
+  Notice,
+  Panel,
+  Readout,
+  StatusTag,
+  TraceChip,
+  Unsurveyed,
+} from "../components/primitives";
 import {
   assessmentTone,
   claimDelta,
@@ -98,16 +108,43 @@ export function AssayArea({ workspace, update }: AreaProps) {
         <>
           <Panel variant="accent" flushBody>
             <div className="cluster">
-              <Field label={copy.assay.experiment}>#{report.experimentId.toString()}</Field>
-              <Field label={copy.assay.checkpoint}>{frame.checkpointTicks.toString()}</Field>
-              <Field label={copy.assay.overall}>
-                <StatusTag
-                  tone={assessmentTone(report.overallAssessment)}
-                  label={toneLabel(assessmentTone(report.overallAssessment), copy)}
-                />
-              </Field>
-              <Field label={copy.assay.claims}>{frame.claims.length}</Field>
-              <Field label={copy.assay.unknown}>{unknownCount}</Field>
+              <Readout
+                label={copy.assay.experiment}
+                value={`#${report.experimentId}`}
+                signal="trace"
+                size="compact"
+              />
+              <Readout
+                label={copy.assay.checkpoint}
+                value={frame.checkpointTicks.toString()}
+                unit={copy.transport.ticks.toLowerCase()}
+                signal="physical"
+                size="compact"
+              />
+              <Readout
+                label={copy.assay.overall}
+                value={
+                  <StatusTag
+                    tone={assessmentTone(report.overallAssessment)}
+                    label={toneLabel(assessmentTone(report.overallAssessment), copy)}
+                  />
+                }
+                signal="resolution"
+                size="compact"
+              />
+              <Readout
+                label={copy.assay.claims}
+                value={frame.claims.length}
+                signal="trace"
+                size="compact"
+              />
+              <Readout
+                label={copy.assay.unknown}
+                value={unknownCount}
+                note={unknownCount > 0 ? copy.assay.unknownTitle : undefined}
+                signal="refused"
+                size="compact"
+              />
             </div>
           </Panel>
 
