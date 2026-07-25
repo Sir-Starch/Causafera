@@ -58,6 +58,26 @@ Progress
 - Substantive plan changes must never be made only in `.omo/plans/`. Any accepted review finding
   must be applied to the canonical file under `plans/`.
 
+## Execution safety and checkpoints
+
+- An implementation wave is complete only when its focused diagnostics, tests, and applicable build
+  checks are green. RED or partially integrated work is not a checkpoint.
+- Create an atomic local checkpoint commit after every completed green wave. The commit must contain
+  the wave's implementation and direct tests, stage only the documented file allowlist, and be
+  recorded in the ExecPlan Progress section with the commands that passed.
+- Do not begin a second implementation wave while a completed prior wave exists only as uncommitted
+  working-tree state. If commits are explicitly prohibited, pause after the first green wave and
+  obtain authorization before continuing.
+- Parallel writing agents never own Git state. They must not run `git checkout`, `git restore`,
+  `git reset`, `git clean`, `git stash`, staging, or commit commands. The lead agent reads every
+  touched file, runs verification, integrates the wave, and creates the checkpoint.
+- Never use a worktree-discarding command to recover from a failed edit. Inspect snapshots and Git
+  objects read-only, materialize only verified blobs through an explicit path/hash allowlist, and
+  preserve all unrelated dirty paths.
+- Before each checkpoint, record `git status`, inspect both staged and unstaged diffs, confirm no
+  secrets or temporary artifacts are included, and stage files by explicit path. A broad `git add .`
+  is not an acceptable checkpoint procedure.
+
 ## Active Planning
 
 - [`plans/conserved-thermal-energy-carrier.md`](plans/conserved-thermal-energy-carrier.md) — Accepted
