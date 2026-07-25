@@ -748,7 +748,7 @@
 **Evidence:** `apps/observer/src-tauri/examples/extent_bench.rs`, re-measured on seed 7 at 192 ticks after `TODO-MANA-002`. Total mana rises with the lattice and is flat from extent 12 (34 667, 36 950, 38 017, 38 397, 38 397) while extent 3 gives 32 320 — 15.8% low. Separately, the same tool measures the plan-view column field the map draws. Extent 4 gives 78% more columns at full coverage for 57% more tick cost; extent 6 quadruples detail at 88.9% coverage; extent 16 leaves 17.4% coverage at ten times the tick cost. Open question: the smallest non-zero cell falls from 66 at extent 3 to 1 from extent 6 upward, so at fine lattices part of the field sits at the quantisation floor and integer flooring does start to bite
 
 ## TODO-MANA-003: Isotropic Diffusion Kernel
-**Status:** Pending
+**Status:** Completed
 **Phase:** Detailed Development — Mana
 **Priority:** Medium
 **Dependencies:** TODO-MANA-002
@@ -760,7 +760,7 @@
 **Observer Implications:** Isolines on the map become round rather than diamond-shaped
 **Explanation Implications:** Spatial mana claims stop depending on lattice orientation
 **Out of Scope:** Changing the lattice geometry itself; see the decision recorded in `plans/observer-field-raster-map.md`
-**Evidence:** `neighbor_indices` returns the six axis neighbours only, so diffusion propagates on the L1 ball
+**Evidence:** The six-neighbour stencil propagated on the L1 ball. Replaced by an eighteen-neighbour stencil weighting the six faces 2 and the twelve edges 1, which is the smallest exact-integer solution of the fourth-order isotropy condition `f == 2e + 8c`; corners are dropped so the stencil never reaches a diagonally opposite chunk. Measured by the fourth-moment ratio `<x^4> / 3<x^2 y^2>`, which is 1.0 for a round distribution, the old stencil reads 1.28 and the new one 1.00 (`a_point_source_spreads_round_rather_than_along_the_axes`). Tick cost at `chunk_extent` 3 rises from 0.99 ms to 1.29 ms
 
 ## TODO-WORLD-002: Chunk Activation Beyond Bootstrap
 **Status:** Pending
