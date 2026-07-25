@@ -1,4 +1,4 @@
-use causafera_domains::{ManaField, OpenFaces, PhysicalCarrierAdapter, PhysicalPatternSample};
+use causafera_domains::{ManaField, OpenNeighbors, PhysicalCarrierAdapter, PhysicalPatternSample};
 use causafera_geography::{
     TERRAIN_CELLS_PER_CHUNK, TerrainChunk, TerrainGenerationProvenance,
     TerrainGeneratorFingerprint, TerrainParameterFingerprint,
@@ -47,7 +47,7 @@ fn mana_total_for_samples(samples: &[PhysicalPatternSample]) -> i64 {
             config.mana_parameters,
             samples,
             &[],
-            OpenFaces::none(),
+            OpenNeighbors::none(),
         )
         .unwrap()
         .proposed_intensity()
