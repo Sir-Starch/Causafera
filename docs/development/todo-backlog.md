@@ -378,6 +378,90 @@
 **Explanation Implications:** Trace-backed cell changes support future causal explanations without semantic inference
 **Out of Scope:** Full spell system, physical effects, carrier adapters, attractors, causal resolution, persistence, observer protocol, GPU implementation
 
+## TODO-MANA-002: Mana Cross-Chunk Same-Chart Face Transfer
+**Status:** Pending
+**Phase:** Detailed Development
+**Priority:** High
+**Dependencies:** TODO-MANA-001, RFC-GEO-002
+**Goal:** Remove the reflecting chunk-boundary seam in the current mana stencil so that mana can flow across same-chart chunk faces exactly once per undirected pair, matching the thermal carrier's boundary treatment and preserving INV-037.
+**Acceptance Criteria:** Mana evolution processes same-chart cross-chunk faces with compatible extents; each undirected face is handled exactly once; zero-thermal/mana-only legacy configurations remain deterministic; existing system IDs and RNG streams are unchanged.
+**Performance Requirements:** Comparable to current dense stencil; benchmark before claims
+**Determinism Requirements:** Identical input configuration and seed produce identical traces
+**Ontology Implications:** Chunk boundaries are containment/resolution, not physical barriers (INV-037)
+**Observer Implications:** Update observer deltas if cross-chunk mana changes the visible per-chunk totals
+**Explanation Implications:** Preserve trace-backed cell-change causality across chunk boundaries
+**Out of Scope:** Cross-chart transport, new scheduler phase, material response, climate
+
+## TODO-THERMAL-001: Cross-Chart Thermal Transport
+**Status:** Pending
+**Phase:** Detailed Development
+**Priority:** Medium
+**Dependencies:** TODO-THERMAL-000 (completed same-chart slice)
+**Goal:** Extend the conserved thermal carrier across registered chart seams using explicit world-geometry transforms.
+**Acceptance Criteria:** Thermal energy flows across chart boundaries through registered transforms; each undirected cross-chart face is processed exactly once; conservation residual remains exactly zero.
+**Performance Requirements:** Benchmark before scale claims
+**Determinism Requirements:** Cross-chart ordering is canonical and seed-independent
+**Ontology Implications:** Global geography remains chart-qualified (RFC-GEO-002)
+**Observer Implications:** Observer summary aggregates across charts
+**Explanation Implications:** Conservation claim continues to report zero residual
+**Out of Scope:** Climate, biology, material response, economy
+
+## TODO-THERMAL-002: Thermal-to-Material Coupling
+**Status:** Pending
+**Phase:** Detailed Development
+**Priority:** Medium
+**Dependencies:** TODO-THERMAL-000 (completed same-chart slice), TODO-MATER-??? (material response model)
+**Goal:** Define and implement a physically meaningful material response to thermal exposure (e.g., retained heat, expansion, damage accumulation, or phase change) without semantic shortcuts.
+**Acceptance Criteria:** Material surfaces track bounded thermal exposure state; transitions commit trace-backed events; no "condition +1" semantic toggle.
+**Performance Requirements:** Benchmark before claims
+**Determinism Requirements:** Material response deterministic given thermal state
+**Ontology Implications:** Energy and matter exchange through conserved carriers
+**Observer Implications:** Material thermal exposure deltas
+**Explanation Implications:** Thermal exposure claims with trace support
+**Out of Scope:** Full climate, biology, economy
+
+## TODO-THERMAL-003: Thermal Influence on Mana Field
+**Status:** Pending
+**Phase:** Detailed Development
+**Priority:** Low
+**Dependencies:** TODO-THERMAL-000 (completed same-chart slice), TODO-MANA-002
+**Goal:** Allow thermal state to feed into mana sample/response pathways as one physical carrier among others.
+**Acceptance Criteria:** Mana systems can receive trace-backed thermal samples; no direct thermal-to-mana semantic mapping.
+**Performance Requirements:** Benchmark before claims
+**Determinism Requirements:** Thermal contribution deterministic
+**Ontology Implications:** Mana responds to physical recurrence, including thermal patterns
+**Observer Implications:** Optional combined field diagnostics
+**Explanation Implications:** Trace support for thermal-mana correlations
+**Out of Scope:** Climate, biology, material response
+
+## TODO-THERMAL-004: Climate/Biology Thermal Integration
+**Status:** Pending
+**Phase:** Detailed Development
+**Priority:** Low
+**Dependencies:** TODO-THERMAL-001, TODO-THERMAL-002, TODO-BIO-??? (mature physiology)
+**Goal:** Couple the thermal carrier to climate and biological thermoregulation through conserved physical carriers.
+**Acceptance Criteria:** Climate/biology systems consume and emit thermal energy without direct access to `ThermalFieldSet`; body temperature is subjective/observer-derived, not Ground Truth.
+**Performance Requirements:** Benchmark before claims
+**Determinism Requirements:** Coupling deterministic
+**Ontology Implications:** Biology and climate are causal state, not labels
+**Observer Implications:** Body/climate thermal diagnostics
+**Explanation Implications:** Thermal exposure and regulation claims
+**Out of Scope:** Economy, cross-chart transport
+
+## TODO-THERMAL-005: Experiment-Recipe Thermal Source
+**Status:** Pending
+**Phase:** Detailed Development
+**Priority:** Low
+**Dependencies:** TODO-THERMAL-000 (completed same-chart slice)
+**Goal:** Allow an experiment recipe to specify a thermal source input analogous to the existing experiment-recipe mana source.
+**Acceptance Criteria:** Immutable recipe record commits a root Physics-phase thermal source event; chart-qualified cell transition follows existing thermal pathways.
+**Performance Requirements:** Benchmark before claims
+**Determinism Requirements:** Source contribution deterministic
+**Ontology Implications:** External inputs enter through committed carrier events
+**Observer Implications:** Source visible in thermal deltas
+**Explanation Implications:** Source trace support in conservation claim
+**Out of Scope:** Material response, climate, biology
+
 ## TODO-RES-001: Causal Resolution Field
 **Status:** Completed
 **Phase:** 18
