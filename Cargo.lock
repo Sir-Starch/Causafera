@@ -420,7 +420,7 @@ dependencies = [
  "causafera-language",
  "causafera-types",
  "causafera-world",
- "thiserror 2.0.18",
+ "thiserror 2.0.19",
 ]
 
 [[package]]
