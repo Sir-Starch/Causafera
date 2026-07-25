@@ -113,6 +113,38 @@ pub struct ManaField {
     last_change_before: Vec<i64>,
 }
 
+/// Which of a chunk's six axis faces have an active same-chart neighbour.
+///
+/// A cell sitting on an open face has a neighbour across the seam, so that
+/// neighbour is counted when the cell's outgoing mana is divided into equal
+/// shares; the share itself is delivered by [`ManaFieldSet`]'s boundary
+/// exchange rather than by the field's own stencil. A closed face is the edge
+/// of the simulated region and reflects, which is the only place a boundary is
+/// allowed to be physically visible.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct OpenFaces {
+    negative: [bool; 3],
+    positive: [bool; 3],
+}
+
+impl OpenFaces {
+    /// No neighbouring chunk is active, so every face reflects.
+    pub const fn none() -> Self {
+        Self {
+            negative: [false; 3],
+            positive: [false; 3],
+        }
+    }
+
+    fn open(&mut self, axis: usize, positive: bool) {
+        if positive {
+            self.positive[axis] = true;
+        } else {
+            self.negative[axis] = true;
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ManaFieldSnapshot {
     pub id: ManaFieldId,
@@ -217,6 +249,7 @@ impl ManaField {
         parameters: ManaParameters,
         samples: &[PhysicalPatternSample],
         history: &[PhysicalPatternSample],
+        open_faces: OpenFaces,
     ) -> Result<ManaEvolutionProposal, ManaError> {
         let parameters = parameters.validate()?;
         if through <= self.observed_through {
@@ -275,10 +308,11 @@ impl ManaField {
             }
         }
 
+        let counts = neighbor_counts(self.extent, open_faces);
         let mut proposed = vec![0; injected.len()];
         let mut changes = Vec::new();
         for (index, proposed_value) in proposed.iter_mut().enumerate() {
-            let value = diffuse_cell(index, self.extent, &injected, parameters);
+            let value = diffuse_cell(index, self.extent, &injected, parameters, &counts);
             *proposed_value = value;
             if value != self.intensity[index] {
                 let mut causes = BTreeSet::new();
@@ -303,6 +337,8 @@ impl ManaField {
             extent: self.extent,
             through,
             base_intensity: self.intensity.clone(),
+            diffusion_input: injected,
+            open_faces,
             proposed,
             inherited_traces: self.last_change.clone(),
             inherited_change_before: self.last_change_before.clone(),
@@ -482,8 +518,13 @@ impl ManaFieldSet {
                 .get(chunk)
                 .map(Vec::as_slice)
                 .unwrap_or(&[]);
-            let proposal =
-                field.propose_evolution(through, parameters, field_samples, field_history)?;
+            let proposal = field.propose_evolution(
+                through,
+                parameters,
+                field_samples,
+                field_history,
+                open_faces_for(&self.fields, *chunk, field.extent)?,
+            )?;
             field_proposals.insert(*chunk, proposal);
         }
         apply_boundary_exchange(&self.fields, &mut field_proposals, parameters)?;
@@ -553,6 +594,11 @@ pub struct ManaEvolutionProposal {
     extent: u8,
     through: SimulationTime,
     base_intensity: Vec<i64>,
+    /// The field after injection and before diffusion. The boundary exchange
+    /// reads it so a cross-chunk share is computed from exactly the values the
+    /// interior stencil diffused, not from an already-diffused result.
+    diffusion_input: Vec<i64>,
+    open_faces: OpenFaces,
     proposed: Vec<i64>,
     inherited_traces: Vec<Option<TraceId>>,
     inherited_change_before: Vec<i64>,
@@ -610,6 +656,29 @@ pub enum ManaError {
     InvalidFieldSet,
     DuplicateFieldChunk,
     UnknownFieldChunk,
+}
+
+fn open_faces_for(
+    fields: &BTreeMap<ChartChunkCoord, ManaField>,
+    chunk: ChartChunkCoord,
+    extent: u8,
+) -> Result<OpenFaces, ManaError> {
+    let mut faces = OpenFaces::none();
+    for axis in 0..3 {
+        for positive in [false, true] {
+            let mut delta = [0_i32; 3];
+            delta[axis] = if positive { 1 } else { -1 };
+            let neighbor = chunk.same_chart_neighbor(delta[0], delta[1], delta[2]);
+            let Some(neighbor_field) = fields.get(&neighbor) else {
+                continue;
+            };
+            if neighbor_field.extent != extent {
+                return Err(ManaError::InvalidFieldSet);
+            }
+            faces.open(axis, positive);
+        }
+    }
+    Ok(faces)
 }
 
 fn apply_boundary_exchange(
@@ -677,39 +746,50 @@ fn exchange_boundary_pair(
     for (left_index, right_index) in pairs {
         let left = proposals
             .get(&left_chunk)
-            .ok_or(ManaError::UnknownFieldChunk)?
-            .proposed[left_index];
+            .ok_or(ManaError::UnknownFieldChunk)?;
         let right = proposals
             .get(&right_chunk)
-            .ok_or(ManaError::UnknownFieldChunk)?
-            .proposed[right_index];
-        let transfer = left
-            .saturating_sub(right)
-            .saturating_mul(rate)
-            .saturating_div(MANA_SCALE)
-            .saturating_div(2);
-        transfers.push((left_index, right_index, transfer));
+            .ok_or(ManaError::UnknownFieldChunk)?;
+        // Each side hands over the same share it would have handed an in-chunk
+        // neighbour, computed from the pre-diffusion values the interior
+        // stencil used. Reading the proposed values instead would both double
+        // the seam's conductance and make the result depend on the order the
+        // faces happen to be visited.
+        let given = diffusion_share(
+            left.diffusion_input[left_index],
+            rate,
+            neighbor_count(left_index, extent, left.open_faces),
+        );
+        let taken = diffusion_share(
+            right.diffusion_input[right_index],
+            rate,
+            neighbor_count(right_index, extent, right.open_faces),
+        );
+        transfers.push((left_index, right_index, given, taken));
     }
-    for (left_index, right_index, transfer) in transfers {
-        if transfer == 0 {
-            continue;
-        }
+    // Each side has already parted with its share inside its own stencil,
+    // because the open face was counted there. All that is left is delivery.
+    for (left_index, right_index, given, taken) in transfers {
         let left_trace = left_field.last_change[left_index];
         let right_trace = right_field.last_change[right_index];
-        apply_exchange_delta(
-            proposals,
-            left_chunk,
-            left_index,
-            -transfer,
-            [left_trace, right_trace],
-        )?;
-        apply_exchange_delta(
-            proposals,
-            right_chunk,
-            right_index,
-            transfer,
-            [left_trace, right_trace],
-        )?;
+        if taken != 0 {
+            apply_exchange_delta(
+                proposals,
+                left_chunk,
+                left_index,
+                taken,
+                [left_trace, right_trace],
+            )?;
+        }
+        if given != 0 {
+            apply_exchange_delta(
+                proposals,
+                right_chunk,
+                right_index,
+                given,
+                [left_trace, right_trace],
+            )?;
+        }
     }
     Ok(())
 }
@@ -828,26 +908,76 @@ fn pattern_score(samples: &[PhysicalPatternSample], parameters: ManaParameters) 
         .saturating_add(spatial.saturating_mul(i64::from(parameters.spatial_response)))
 }
 
-fn diffuse_cell(index: usize, extent: u8, values: &[i64], parameters: ManaParameters) -> i64 {
-    let neighbors = neighbor_indices(index, extent);
+fn diffuse_cell(
+    index: usize,
+    extent: u8,
+    values: &[i64],
+    parameters: ManaParameters,
+    counts: &[i64],
+) -> i64 {
+    let rate = i64::from(parameters.diffusion);
     let current = values[index];
     let decay = current.saturating_mul(i64::from(parameters.decay)) / MANA_SCALE;
-    let outgoing = current.saturating_mul(i64::from(parameters.diffusion)) / MANA_SCALE;
-    let incoming = neighbors
+    // The cell gives every neighbour the same share and loses exactly the sum
+    // of those shares. Subtracting an undivided budget instead would destroy
+    // the truncation remainder on every cell of every tick.
+    let count = counts[index];
+    let outgoing = diffusion_share(current, rate, count).saturating_mul(count);
+    let incoming = neighbor_indices(index, extent)
         .iter()
-        .map(|neighbor| {
-            let count = neighbor_indices(*neighbor, extent).len() as i64;
-            values[*neighbor]
-                .saturating_mul(i64::from(parameters.diffusion))
-                .saturating_div(MANA_SCALE)
-                .saturating_div(count.max(1))
-        })
+        .map(|neighbor| diffusion_share(values[*neighbor], rate, counts[*neighbor]))
         .fold(0i64, i64::saturating_add);
     current
         .saturating_sub(decay)
         .saturating_sub(outgoing)
         .saturating_add(incoming)
         .clamp(0, parameters.maximum_intensity)
+}
+
+/// One neighbour's share of a cell's diffused mana. Truncating here and
+/// multiplying back up is what keeps the stencil conservative.
+fn diffusion_share(value: i64, rate: i64, count: i64) -> i64 {
+    if count <= 0 {
+        return 0;
+    }
+    value
+        .saturating_mul(rate)
+        .saturating_div(MANA_SCALE)
+        .saturating_div(count)
+}
+
+/// The neighbour count of every cell in a field, built once per proposal so the
+/// stencil never recomputes it per neighbour per cell.
+fn neighbor_counts(extent: u8, open_faces: OpenFaces) -> Vec<i64> {
+    (0..usize::from(extent).pow(3))
+        .map(|index| neighbor_count(index, extent, open_faces))
+        .collect()
+}
+
+/// How many neighbours a cell has, counting the one across an open chunk face.
+/// Only a face with no active neighbour reduces the count, so a cell's share
+/// does not depend on where the chunk grid happens to fall (INV-037).
+fn neighbor_count(index: usize, extent: u8, open_faces: OpenFaces) -> i64 {
+    let side = usize::from(extent);
+    let plane = side * side;
+    let z = index / plane;
+    let within = index % plane;
+    let y = within / side;
+    let x = within % side;
+    let mut count = 0_i64;
+    for (axis, coordinate) in [x, y, z].into_iter().enumerate() {
+        count += if coordinate > 0 {
+            1
+        } else {
+            i64::from(open_faces.negative[axis])
+        };
+        count += if coordinate + 1 < side {
+            1
+        } else {
+            i64::from(open_faces.positive[axis])
+        };
+    }
+    count
 }
 
 fn contributing_indices(index: usize, extent: u8) -> Vec<usize> {
@@ -944,10 +1074,22 @@ mod tests {
         let ordered = vec![sample(1, 1, 0), sample(2, 1, 1), sample(3, 1, 2)];
         let reversed = ordered.iter().copied().rev().collect::<Vec<_>>();
         let a = field
-            .propose_evolution(SimulationTime::new(3), parameters(), &ordered, &[])
+            .propose_evolution(
+                SimulationTime::new(3),
+                parameters(),
+                &ordered,
+                &[],
+                OpenFaces::none(),
+            )
             .unwrap();
         let b = field
-            .propose_evolution(SimulationTime::new(3), parameters(), &reversed, &[])
+            .propose_evolution(
+                SimulationTime::new(3),
+                parameters(),
+                &reversed,
+                &[],
+                OpenFaces::none(),
+            )
             .unwrap();
         assert_eq!(a, b);
         assert!(field.intensity().iter().all(|value| *value == 0));
@@ -974,13 +1116,25 @@ mod tests {
             },
         ];
         let repeated_total: i64 = field
-            .propose_evolution(SimulationTime::new(3), parameters(), &repeated, &[])
+            .propose_evolution(
+                SimulationTime::new(3),
+                parameters(),
+                &repeated,
+                &[],
+                OpenFaces::none(),
+            )
             .unwrap()
             .proposed_intensity()
             .iter()
             .sum();
         let isolated_total: i64 = field
-            .propose_evolution(SimulationTime::new(3), parameters(), &isolated, &[])
+            .propose_evolution(
+                SimulationTime::new(3),
+                parameters(),
+                &isolated,
+                &[],
+                OpenFaces::none(),
+            )
             .unwrap()
             .proposed_intensity()
             .iter()
@@ -997,6 +1151,7 @@ mod tests {
                 parameters(),
                 &[sample(1, 1, 0), sample(2, 1, 1)],
                 &[],
+                OpenFaces::none(),
             )
             .unwrap();
         assert_eq!(
@@ -1108,7 +1263,13 @@ mod tests {
     fn boundary_exchange_that_returns_to_start_emits_no_mana_change() {
         let field = ManaField::new(ManaFieldId::new(1), chart_chunk(), 3).unwrap();
         let proposal = field
-            .propose_evolution(SimulationTime::new(1), parameters(), &[], &[])
+            .propose_evolution(
+                SimulationTime::new(1),
+                parameters(),
+                &[],
+                &[],
+                OpenFaces::none(),
+            )
             .unwrap();
         let mut proposals = BTreeMap::from([(chart_chunk(), proposal)]);
 
@@ -1125,7 +1286,13 @@ mod tests {
     fn boundary_exchange_canonicalizes_parent_traces() {
         let field = ManaField::new(ManaFieldId::new(1), chart_chunk(), 3).unwrap();
         let proposal = field
-            .propose_evolution(SimulationTime::new(1), parameters(), &[], &[])
+            .propose_evolution(
+                SimulationTime::new(1),
+                parameters(),
+                &[],
+                &[],
+                OpenFaces::none(),
+            )
             .unwrap();
         let mut proposals = BTreeMap::from([(chart_chunk(), proposal)]);
 
@@ -1157,7 +1324,8 @@ mod tests {
                 SimulationTime::new(1),
                 parameters(),
                 &[sample(1, 2, 0)],
-                &[]
+                &[],
+                OpenFaces::none()
             ),
             Err(ManaError::PositionOutsideField)
         );
@@ -1176,13 +1344,25 @@ mod tests {
         let irregular = [sample(1, 1, 1), sample(2, 1, 2), sample(4, 1, 4)];
 
         let periodic_total: i64 = field
-            .propose_evolution(SimulationTime::new(5), parameters(), &current, &periodic)
+            .propose_evolution(
+                SimulationTime::new(5),
+                parameters(),
+                &current,
+                &periodic,
+                OpenFaces::none(),
+            )
             .unwrap()
             .proposed_intensity()
             .iter()
             .sum();
         let irregular_total: i64 = field
-            .propose_evolution(SimulationTime::new(5), parameters(), &current, &irregular)
+            .propose_evolution(
+                SimulationTime::new(5),
+                parameters(),
+                &current,
+                &irregular,
+                OpenFaces::none(),
+            )
             .unwrap()
             .proposed_intensity()
             .iter()
@@ -1204,13 +1384,20 @@ mod tests {
                 parameters(),
                 &repeated_current,
                 &repeated_history,
+                OpenFaces::none(),
             )
             .unwrap()
             .proposed_intensity()
             .iter()
             .sum();
         let burst_total: i64 = field
-            .propose_evolution(SimulationTime::new(3), parameters(), &burst, &[])
+            .propose_evolution(
+                SimulationTime::new(3),
+                parameters(),
+                &burst,
+                &[],
+                OpenFaces::none(),
+            )
             .unwrap()
             .proposed_intensity()
             .iter()
@@ -1228,6 +1415,7 @@ mod tests {
                 parameters(),
                 &[sample(2, 1, 2)],
                 &[sample(0, 1, 0)],
+                OpenFaces::none(),
             )
             .unwrap();
 
@@ -1254,6 +1442,110 @@ mod tests {
             first.proposed_total_intensity(),
             second.proposed_total_intensity()
         );
+    }
+
+    /// A chunk face carries no physical meaning (INV-037), so a cell must hand
+    /// the same share across a seam as it hands an in-chunk neighbour, and a
+    /// cell sitting on a seam must not over-feed the neighbours on its own side.
+    #[test]
+    fn a_seam_conducts_exactly_as_the_interior_does() {
+        const EXTENT: u8 = 8;
+        const V: i64 = 1_000_000;
+        let side = usize::from(EXTENT);
+        let at = |x: usize, y: usize, z: usize| z * side * side + y * side + x;
+
+        let left = chart_chunk_at(1, 0);
+        let right = chart_chunk_at(1, 1);
+        let blank = |id: u64, chunk: ChartChunkCoord| ManaFieldSnapshot {
+            id: ManaFieldId::new(id),
+            chunk,
+            extent: EXTENT,
+            observed_through: SimulationTime::default(),
+            intensity: vec![0; side.pow(3)],
+            last_change: vec![None; side.pow(3)],
+            last_change_before: vec![0; side.pow(3)],
+        };
+        let seeded = |source_x: usize| {
+            let mut left_snapshot = blank(1, left);
+            left_snapshot.intensity[at(source_x, 4, 4)] = V;
+            ManaFieldSet::new(vec![
+                ManaField::import_snapshot(left_snapshot).unwrap(),
+                ManaField::import_snapshot(blank(2, right)).unwrap(),
+            ])
+            .unwrap()
+        };
+
+        let mut parameters = parameters();
+        parameters.maximum_intensity = i64::MAX / 4;
+
+        let interior = seeded(3)
+            .propose_evolution(SimulationTime::new(1), parameters, &[], &[])
+            .unwrap();
+        let interior_received = interior
+            .field_proposals()
+            .get(&left)
+            .unwrap()
+            .proposed_intensity()[at(4, 4, 4)];
+
+        let seam = seeded(7)
+            .propose_evolution(SimulationTime::new(1), parameters, &[], &[])
+            .unwrap();
+        let seam_received = seam
+            .field_proposals()
+            .get(&right)
+            .unwrap()
+            .proposed_intensity()[at(0, 4, 4)];
+        let seam_sibling = seam
+            .field_proposals()
+            .get(&left)
+            .unwrap()
+            .proposed_intensity()[at(6, 4, 4)];
+
+        assert!(interior_received > 0);
+        assert_eq!(seam_received, interior_received);
+        assert_eq!(seam_sibling, interior_received);
+    }
+
+    /// Diffusion moves mana; it must not destroy it. The cell gives away the
+    /// sum of the shares its neighbours receive, so the only sanctioned losses
+    /// are decay and the clamp.
+    #[test]
+    fn diffusion_alone_conserves_mana_across_a_seam() {
+        const EXTENT: u8 = 5;
+        let side = usize::from(EXTENT);
+        let left = chart_chunk_at(1, 0);
+        let right = chart_chunk_at(1, 1);
+
+        let mut parameters = parameters();
+        parameters.decay = 0;
+        parameters.maximum_intensity = i64::MAX / 4;
+
+        let seeded = |chunk: ChartChunkCoord, id: u64, seed: i64| {
+            let mut intensity = vec![0; side.pow(3)];
+            for (index, value) in intensity.iter_mut().enumerate() {
+                *value = seed + (index as i64 % 97) * 1_013;
+            }
+            ManaField::import_snapshot(ManaFieldSnapshot {
+                id: ManaFieldId::new(id),
+                chunk,
+                extent: EXTENT,
+                observed_through: SimulationTime::default(),
+                intensity,
+                last_change: vec![None; side.pow(3)],
+                last_change_before: vec![0; side.pow(3)],
+            })
+            .unwrap()
+        };
+        let fields =
+            ManaFieldSet::new(vec![seeded(left, 1, 7_000), seeded(right, 2, 40_000)]).unwrap();
+        let before = fields.total_intensity();
+
+        let after = fields
+            .propose_evolution(SimulationTime::new(1), parameters, &[], &[])
+            .unwrap()
+            .proposed_total_intensity();
+
+        assert_eq!(after, before);
     }
 
     #[test]
