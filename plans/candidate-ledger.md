@@ -15,7 +15,7 @@
 - **Author:** Sisyphus (OpenCode agent) on behalf of the Causafera design session
 - **Source:** Revision 6 of `plans/conserved-thermal-energy-carrier.md` accepted 2026-07-23; baseline `main` at `bca3ae383a15607ed268c6cd0aadb47d94fabd40`.
 - **World capability added:** A deterministic, fixed-point thermal-energy carrier with finite reservoirs, intra-chunk conduction, and same-chart cross-chunk face transfer.
-- **Status:** Accepted; implementation branch to be created from this commit.
+- **Status:** Completed; implementation branch `feat/thermal-energy-carrier` from baseline `e0bf3c954961a56b4a618b235f5a8c4f80c5e447`. Verification: `cargo test --workspace --all-features`, `cargo test --workspace --no-default-features`, `cargo clippy --workspace --all-targets --all-features -- -D warnings`, `cargo fmt --all -- --check`, and `cargo run -p xtask -- ci` pass.
 - **Why selected:** Energy domain is at M1 and needs conserved transfer/storage to support future climate, material, and biological coupling. The slice is architecturally coherent: one state model (`ThermalFieldSet`), one causal loop (reservoir → cell → neighbor cells), one persistence boundary (section `0x000E`), one protocol/Explanation addition (conservation claim), and one verification strategy (exact conservation accounting).
 - **Dependencies satisfied:** Mana field provides proven cross-chunk boundary-exchange pattern; scheduler supports registration in `Phase::Physics`; material-surface gate pattern shows how to add a future thermal gate.
 - **Major risks:** Integer overflow, conservation violation from implementation bugs, observer/Explanation surface underestimated, scope creep into material coupling.
