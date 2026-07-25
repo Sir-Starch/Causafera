@@ -2335,9 +2335,15 @@ fn import_thermal_snapshot(
                 "thermal transfer receipt lacks conservation receipt",
             ));
         }
-        if thermal_fields.field(receipt.cell.chunk).is_none() {
+        let receipt_field =
+            thermal_fields
+                .field(receipt.cell.chunk)
+                .ok_or(RuntimeError::InvalidSnapshot(
+                    "thermal transfer receipt references inactive field",
+                ))?;
+        if usize::from(receipt.cell.cell_index) >= receipt_field.energy().len() {
             return Err(RuntimeError::InvalidSnapshot(
-                "thermal transfer receipt references inactive field",
+                "thermal transfer receipt cell index is outside field",
             ));
         }
         let pre_state = ThermalEnergy::new(receipt.pre_state)

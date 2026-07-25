@@ -462,6 +462,21 @@
 **Explanation Implications:** Source trace support in conservation claim
 **Out of Scope:** Material response, climate, biology
 
+## TODO-THERMAL-006: Aggregate Conservation-Total Cross-Validation on Snapshot Import
+**Status:** Pending
+**Phase:** Detailed Development
+**Priority:** Medium
+**Dependencies:** TODO-THERMAL-000 (completed same-chart slice)
+**Goal:** Cross-validate every `ThermalConservationReceipt`'s `total_cell_energy_before`/`total_cell_energy_after` and `total_reservoir_budget_before`/`total_reservoir_budget_after` against checked sums of the actual imported field energies and reservoir budgets, not only the residual and per-cell latest-batch bindings currently enforced.
+**Acceptance Criteria:** `RuntimeState::import_snapshot` rejects a snapshot whose reported aggregate totals diverge from the real summed field/reservoir state for any batch, including cells untouched by a transfer receipt; existing V1-V23 thermal contracts and CI remain green.
+**Performance Requirements:** Benchmark the added summation cost against import time before acceptance; consider incremental or batch-scoped summation if full-field summation on every import is too costly at scale.
+**Determinism Requirements:** Validation must be order-independent and side-effect free.
+**Ontology Implications:** None; this is import-path integrity hardening, not a domain contract change.
+**Observer Implications:** None.
+**Explanation Implications:** None.
+**Out of Scope:** Non-latest-batch per-cell bounds checking (closed in `3e46bc2`/follow-up commit) and the documented pre-alpha untrusted-snapshot threat-model carve-out (`SECURITY.md`).
+**Context:** Identified during the independent review of `3e46bc2` ("fix(runtime): reconcile thermal receipts and reuse domain geometry"): the per-cell latest-batch binding added there proves touched cells match current field energy, but the conservation receipt's own aggregate summary fields are still trusted literal values from the snapshot with no cross-check against a real recomputed sum, so an untouched cell's energy is never bound to anything.
+
 ## TODO-RES-001: Causal Resolution Field
 **Status:** Completed
 **Phase:** 18

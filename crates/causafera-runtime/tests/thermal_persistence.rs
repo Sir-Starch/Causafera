@@ -249,6 +249,30 @@ fn runtime_import_rejects_latest_receipt_post_state_mismatch() {
 }
 
 #[test]
+fn runtime_import_rejects_non_latest_receipt_cell_index_out_of_bounds() {
+    // Given: a snapshot spanning two committed batches, so an earlier (non-latest) transfer
+    // receipt exists alongside the latest one.
+    let mut runtime = Runtime::new(runtime_config(1_813)).expect("runtime bootstrap must succeed");
+    runtime.run_ticks(2).expect("thermal batches must execute");
+    let mut forged = runtime.export_snapshot().expect("snapshot must export");
+    let latest_trace = forged.thermal.field_set.conservation_last_change;
+    let volume = u16::from(forged.recipe.config.chunk_extent).pow(3);
+    let non_latest_receipt = forged
+        .thermal
+        .transfer_receipts
+        .iter_mut()
+        .find(|receipt| receipt.conservation_trace != latest_trace)
+        .expect("an earlier batch must have a transfer receipt");
+    non_latest_receipt.cell.cell_index = volume;
+
+    // When: a historical, non-latest transfer receipt references a cell index outside the field.
+    let imported = RuntimeState::import_snapshot(forged);
+
+    // Then: cell-index bounds validation applies to every batch, not only the latest.
+    assert!(matches!(imported, Err(RuntimeError::InvalidSnapshot(_))));
+}
+
+#[test]
 fn runtime_import_rejects_reservoir_budget_subtraction_overflow() {
     // Given: a valid snapshot with an unrepresentable reservoir budget difference.
     let mut forged = evolved_snapshot(1_811);
