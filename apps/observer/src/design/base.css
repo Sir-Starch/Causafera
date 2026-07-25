@@ -1,4 +1,4 @@
-/* Causafera Observer — element foundations and the terra incognita chart surface. */
+/* Causafera Observer — element foundations and the chart sheet beneath the application. */
 
 *,
 *::before,
@@ -14,7 +14,7 @@ body,
 
 body {
   margin: 0;
-  background: var(--void);
+  background: var(--paper-deep);
   color: var(--ink);
   font-family: var(--font-ui);
   font-size: var(--t-body);
@@ -49,69 +49,90 @@ select {
   color: inherit;
 }
 
+/* Focus is a drawn hairline, not a glow. */
 :focus-visible {
-  outline: 1px solid var(--beacon);
+  outline: 1px solid var(--ink-bright);
   outline-offset: 2px;
 }
 
 ::selection {
-  background: rgb(111 216 207 / 24%);
+  background: rgb(226 232 234 / 20%);
 }
 
-/*
- * The chart surface. Three static layers — a coarse graticule, a fine graticule, and a
- * lamp gradient — plus one grain tile. No animation, no repaint cost after first paint.
- */
+/* ---- The sheet --------------------------------------------------------- */
+
 .terra {
   position: fixed;
   inset: 0;
   z-index: 0;
   pointer-events: none;
-  background:
-    radial-gradient(
-      120% 90% at 18% -10%,
-      rgb(40 165 159 / 7%) 0%,
-      rgb(40 165 159 / 0%) 55%
-    ),
-    radial-gradient(90% 70% at 88% 108%, rgb(147 110 206 / 5%) 0%, rgb(147 110 206 / 0%) 60%),
-    linear-gradient(180deg, #080d13 0%, var(--void) 46%, #05080b 100%);
+  background: var(--paper);
 }
 
-.terra::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background-image:
-    linear-gradient(to right, var(--rule-ghost) 1px, transparent 1px),
-    linear-gradient(to bottom, var(--rule-ghost) 1px, transparent 1px),
-    linear-gradient(to right, rgb(167 190 205 / 3%) 1px, transparent 1px),
-    linear-gradient(to bottom, rgb(167 190 205 / 3%) 1px, transparent 1px);
-  background-size:
-    7.5rem 7.5rem,
-    7.5rem 7.5rem,
-    1.25rem 1.25rem,
-    1.25rem 1.25rem;
-  mask-image: radial-gradient(130% 110% at 30% 0%, #000 0%, rgb(0 0 0 / 35%) 70%, transparent 100%);
-}
-
-/* Grain: a single inline turbulence tile, rasterised once by the compositor. */
+/* Paper fibre. Low contrast, static, no blend trickery. */
 .terra::after {
   content: "";
   position: absolute;
   inset: 0;
-  opacity: 0.35;
-  mix-blend-mode: overlay;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23g)' opacity='0.16'/%3E%3C/svg%3E");
+  opacity: 0.5;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23g)' opacity='0.055'/%3E%3C/svg%3E");
 }
 
-/* Marginal survey marks drawn into the empty edges of the shell. */
-.terra-marks {
+/* The outline map itself. Colour comes from `currentcolor`; each layer sets its own weight. */
+.terra-sheet {
   position: fixed;
   inset: 0;
   z-index: 0;
+  width: 100%;
+  height: 100%;
   pointer-events: none;
-  color: var(--rule-ghost);
-  opacity: 0.9;
+  color: #d6e4ea;
+  vector-effect: non-scaling-stroke;
+}
+
+.terra-graticule {
+  stroke-width: 0.7;
+  opacity: 0.075;
+}
+
+.terra-rhumbs {
+  stroke-width: 0.5;
+  opacity: 0.05;
+}
+
+.terra-lining {
+  stroke-width: 0.7;
+  opacity: 0.1;
+}
+
+.terra-contours {
+  stroke-width: 0.7;
+  opacity: 0.13;
+  stroke-dasharray: none;
+}
+
+.terra-coast {
+  stroke-width: 1.3;
+  opacity: 0.22;
+}
+
+.terra-coast--open {
+  stroke-dasharray: 7 9;
+  opacity: 0.15;
+}
+
+.terra-hatch-field {
+  opacity: 0.1;
+}
+
+.terra-soundings {
+  stroke-width: 0.7;
+  opacity: 0.13;
+}
+
+.terra-rose {
+  stroke-width: 0.7;
+  opacity: 0.14;
 }
 
 /* ---- Typographic roles ------------------------------------------------ */
@@ -130,7 +151,7 @@ select {
   font-weight: 400;
   font-size: var(--t-display);
   line-height: 1.15;
-  letter-spacing: -0.005em;
+  letter-spacing: 0.005em;
   color: var(--ink);
 }
 
@@ -142,9 +163,11 @@ select {
   color: var(--ink);
 }
 
+/* Running prose takes the serif; it carries most of the sheet's character. */
 .lede {
+  font-family: var(--font-display);
   font-size: var(--t-small);
-  line-height: 1.55;
+  line-height: 1.6;
   color: var(--ink-dim);
   max-width: 62ch;
 }
@@ -171,11 +194,11 @@ select {
   white-space: nowrap;
 }
 
-/* ---- Scrollbars: thin survey tracks ----------------------------------- */
+/* ---- Scrollbars: thin ruled tracks ------------------------------------ */
 
 * {
   scrollbar-width: thin;
-  scrollbar-color: var(--rule-strong) transparent;
+  scrollbar-color: var(--line-strong) transparent;
 }
 
 *::-webkit-scrollbar {
@@ -188,13 +211,12 @@ select {
 }
 
 *::-webkit-scrollbar-thumb {
-  background: var(--rule);
-  border: 2px solid transparent;
+  background: var(--line);
+  border: 3px solid transparent;
   background-clip: content-box;
-  border-radius: 99px;
 }
 
 *::-webkit-scrollbar-thumb:hover {
-  background: var(--rule-strong);
+  background: var(--line-strong);
   background-clip: content-box;
 }

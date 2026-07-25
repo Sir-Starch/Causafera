@@ -39,15 +39,14 @@
 }
 
 .chart__legend-mark {
-  width: 12px;
+  width: 14px;
   height: 2px;
-  border-radius: 1px;
   background: var(--signal);
   flex-shrink: 0;
 }
 
 .chart__legend-item[data-muted="true"] .chart__legend-mark {
-  background: var(--rule-strong);
+  background: var(--line-strong);
 }
 
 .chart__legend-mark--dashed {
@@ -61,9 +60,8 @@
 .chart__surface {
   position: relative;
   width: 100%;
-  border: 1px solid var(--rule-faint);
-  border-radius: 2px;
-  background: linear-gradient(180deg, rgb(8 12 18 / 55%), rgb(8 12 18 / 25%));
+  border: 1px solid var(--line-faint);
+  background: rgb(4 5 6 / 45%);
   overflow: hidden;
   touch-action: none;
 }
@@ -79,10 +77,8 @@
   z-index: 3;
   min-width: 9rem;
   padding: var(--s2);
-  border: 1px solid var(--rule-strong);
-  border-radius: var(--radius);
-  background: rgb(13 19 27 / 96%);
-  box-shadow: var(--lift-2);
+  border: 1px solid var(--line-strong);
+  background: var(--paper-overlay);
   pointer-events: none;
   font-size: var(--t-micro);
 }
@@ -94,7 +90,7 @@
   gap: var(--s3);
   padding-bottom: 0.25rem;
   margin-bottom: 0.25rem;
-  border-bottom: 1px solid var(--rule-faint);
+  border-bottom: 1px solid var(--line-faint);
   color: var(--ink-faint);
   letter-spacing: var(--track-caps);
   text-transform: uppercase;
@@ -119,7 +115,6 @@
 .chart__probe-mark {
   width: 8px;
   height: 2px;
-  border-radius: 1px;
   background: var(--signal);
 }
 
@@ -168,10 +163,8 @@
 
 .transect {
   position: relative;
-  border: 1px solid var(--rule-faint);
-  border-radius: 2px;
-  background:
-    linear-gradient(180deg, rgb(8 12 18 / 60%), rgb(6 9 13 / 30%));
+  border: 1px solid var(--line-faint);
+  background: rgb(4 5 6 / 45%);
   overflow: hidden;
 }
 
@@ -181,7 +174,7 @@
   align-items: center;
   gap: var(--s4);
   padding: var(--s2) var(--s3);
-  border-top: 1px solid var(--rule-ghost);
+  border-top: 1px solid var(--line-ghost);
   font-size: var(--t-micro);
   color: var(--ink-ghost);
 }
@@ -194,8 +187,8 @@
 
 .transect__ramp {
   width: 4.5rem;
-  height: 6px;
-  border-radius: 1px;
+  height: 7px;
+  border: 1px solid var(--line-faint);
   background: linear-gradient(
     to right,
     var(--ramp-700),
@@ -230,7 +223,7 @@
 }
 
 .glyph--contact {
-  border: 1px solid var(--rule-bright);
+  border: 1px solid var(--line-bright);
   border-radius: 50%;
 }
 
@@ -241,6 +234,5 @@
 
 .glyph--gate {
   border: 1px solid var(--sig-resolution);
-  border-radius: 1px;
   background: var(--sig-resolution-wash);
 }

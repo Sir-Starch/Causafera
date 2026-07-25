@@ -121,24 +121,54 @@ export function readPalette(): Record<string, string> {
     inkDim: cssColor("--ink-dim", "#9baab6"),
     inkFaint: cssColor("--ink-faint", "#6b7a86"),
     inkGhost: cssColor("--ink-ghost", "#4a565f"),
-    rule: cssColor("--rule", "rgba(167,190,205,0.15)"),
-    ruleFaint: cssColor("--rule-faint", "rgba(167,190,205,0.09)"),
-    ruleGhost: cssColor("--rule-ghost", "rgba(167,190,205,0.05)"),
-    ruleStrong: cssColor("--rule-strong", "rgba(167,190,205,0.26)"),
-    ruleBright: cssColor("--rule-bright", "rgba(196,216,228,0.42)"),
+    rule: cssColor("--line", "rgba(214,228,234,0.17)"),
+    ruleFaint: cssColor("--line-faint", "rgba(214,228,234,0.10)"),
+    ruleGhost: cssColor("--line-ghost", "rgba(214,228,234,0.05)"),
+    ruleStrong: cssColor("--line-strong", "rgba(214,228,234,0.30)"),
+    ruleBright: cssColor("--line-bright", "rgba(230,242,246,0.58)"),
     mana: cssColor("--sig-mana", "#c28614"),
     trace: cssColor("--sig-trace", "#28a59f"),
     resolution: cssColor("--sig-resolution", "#936ece"),
     life: cssColor("--sig-life", "#4ba45c"),
     physical: cssColor("--sig-physical", "#4791ce"),
     refused: cssColor("--sig-refused", "#ce533e"),
-    beacon: cssColor("--beacon", "#6fd8cf"),
+    mark: cssColor("--ink-bright", "#f2f7f8"),
     ramp100: cssColor("--ramp-100", "#edd3b0"),
     ramp300: cssColor("--ramp-300", "#d7a65a"),
     ramp500: cssColor("--ramp-500", "#9f6e13"),
     ramp700: cssColor("--ramp-700", "#5f4110"),
-    sheet: cssColor("--sheet", "#0b1016"),
+    paper: cssColor("--paper", "#07080a"),
   };
+}
+
+/**
+ * Engraved hatching.
+ *
+ * An area under a curve is filled with ruled diagonals rather than a gradient wash: it keeps
+ * the plate reading as line-work, and it survives printing and forced-colours far better than
+ * a translucent fill.
+ */
+export function hatchPattern(
+  context: CanvasRenderingContext2D,
+  color: string,
+  spacing = 5,
+  width = 0.7,
+): CanvasPattern | string {
+  const tile = document.createElement("canvas");
+  const size = spacing * 2;
+  tile.width = size;
+  tile.height = size;
+  const tileContext = tile.getContext("2d");
+  if (tileContext === null) return color;
+  tileContext.strokeStyle = color;
+  tileContext.lineWidth = width;
+  tileContext.beginPath();
+  for (let offset = -size; offset <= size * 2; offset += spacing) {
+    tileContext.moveTo(offset, -1);
+    tileContext.lineTo(offset + size + 1, size + 1);
+  }
+  tileContext.stroke();
+  return context.createPattern(tile, "repeat") ?? color;
 }
 
 export const MONO_FONT =

@@ -23,8 +23,7 @@
   content: "";
   width: 3px;
   height: 9px;
-  border-radius: 1px;
-  background: var(--signal, var(--rule-strong));
+  background: var(--signal, var(--line-strong));
   flex-shrink: 0;
 }
 
@@ -69,7 +68,7 @@
 
 .cluster > * {
   padding: var(--s3);
-  border-left: 1px solid var(--rule-faint);
+  border-left: 1px solid var(--line-faint);
 }
 
 .cluster > *:first-child {
@@ -79,7 +78,7 @@
 @media (width < 60rem) {
   .cluster > * {
     border-left: 0;
-    border-top: 1px solid var(--rule-faint);
+    border-top: 1px solid var(--line-faint);
   }
 
   .cluster > *:first-child {
@@ -100,7 +99,7 @@
   align-items: baseline;
   gap: var(--s3);
   padding: 0.3125rem 0;
-  border-bottom: 1px solid var(--rule-ghost);
+  border-bottom: 1px solid var(--line-ghost);
 }
 
 .field:last-child {
@@ -163,13 +162,13 @@
 /* Each byte pair gets its own cell, so a divergence is visible at a glance. */
 .digest__byte {
   padding: 0.0625rem 0.1875rem;
-  border-radius: 1px;
-  background: rgb(167 190 205 / 6%);
+  border-bottom: 1px solid var(--line-faint);
 }
 
+/* A byte that moved since the previous frame is underscored, not lit. */
 .digest__byte[data-changed="true"] {
-  background: rgb(111 216 207 / 18%);
-  color: var(--beacon);
+  border-bottom-color: var(--ink-bright);
+  color: var(--ink-bright);
 }
 
 /* ---- Register: a scrollable list of surveyed records ------------------ */
@@ -177,7 +176,7 @@
 .register {
   display: flex;
   flex-direction: column;
-  border-top: 1px solid var(--rule-ghost);
+  border-top: 1px solid var(--line-ghost);
 }
 
 .register__row {
@@ -185,7 +184,7 @@
   align-items: center;
   gap: var(--s3);
   padding: var(--s2) var(--s3);
-  border-bottom: 1px solid var(--rule-ghost);
+  border-bottom: 1px solid var(--line-ghost);
   min-width: 0;
 }
 
@@ -219,7 +218,7 @@
 .table-frame {
   overflow: auto;
   max-height: var(--table-height, 26rem);
-  border-top: 1px solid var(--rule-faint);
+  border-top: 1px solid var(--line-faint);
 }
 
 table.data {
@@ -234,8 +233,8 @@ table.data thead th {
   top: 0;
   z-index: 2;
   padding: var(--s2) var(--s3);
-  border-bottom: 1px solid var(--rule);
-  background: var(--sheet-sunken);
+  border-bottom: 1px solid var(--line);
+  background: var(--paper-inset);
   font-size: var(--t-micro);
   font-weight: 600;
   letter-spacing: var(--track-caps);
@@ -254,23 +253,25 @@ table.data td.num {
 
 table.data tbody td {
   padding: 0.3125rem var(--s3);
-  border-bottom: 1px solid var(--rule-ghost);
+  border-bottom: 1px solid var(--line-ghost);
   color: var(--ink-dim);
   white-space: nowrap;
 }
 
 table.data tbody tr:hover td {
-  background: rgb(167 190 205 / 4%);
+  background: rgb(214 228 234 / 4%);
   color: var(--ink);
 }
 
+/* Selection is ruled, in the manner of a marked-up register. */
 table.data tbody tr[data-selected="true"] td {
-  background: rgb(40 165 159 / 10%);
+  background: rgb(214 228 234 / 7%);
   color: var(--ink);
+  border-bottom-color: var(--line);
 }
 
-table.data tbody tr[data-highlighted="true"] td {
-  background: rgb(111 216 207 / 8%);
+table.data tbody tr[data-selected="true"] td:first-child {
+  box-shadow: inset 2px 0 0 var(--ink-bright);
 }
 
 table.data td.emphasis {
@@ -284,24 +285,27 @@ table.data td.emphasis {
   align-items: center;
   gap: 0.25rem;
   padding: 0.0625rem 0.3125rem;
-  border: 1px solid rgb(40 165 159 / 30%);
-  border-radius: 2px;
-  background: rgb(40 165 159 / 8%);
+  border: 1px solid var(--line);
+  background: transparent;
   font-family: var(--font-mono);
   font-size: var(--t-micro);
-  color: #6cc9c3;
+  color: var(--ink-dim);
   cursor: pointer;
   white-space: nowrap;
+  transition: color var(--dur-fast) var(--ease-survey),
+    border-color var(--dur-fast) var(--ease-survey);
 }
 
 .trace-chip:hover {
-  border-color: rgb(111 216 207 / 60%);
-  color: var(--beacon);
+  border-color: var(--line-bright);
+  color: var(--ink);
 }
 
+/* A followed anchor is inked solid, the way a surveyor marks a fix. */
 .trace-chip[data-active="true"] {
-  background: rgb(111 216 207 / 20%);
-  color: #a8f0e9;
+  border-color: var(--ink-bright);
+  background: var(--ink-bright);
+  color: var(--paper-deep);
 }
 
 .trace-chip--static {
@@ -325,9 +329,8 @@ table.data td.emphasis {
 
 .meter__track {
   position: relative;
-  height: 4px;
-  border-radius: 1px;
-  background: rgb(167 190 205 / 8%);
+  height: 5px;
+  border: 1px solid var(--line-faint);
   overflow: hidden;
 }
 
@@ -335,8 +338,7 @@ table.data td.emphasis {
   position: absolute;
   inset-block: 0;
   left: 0;
-  border-radius: 1px;
-  background: var(--signal, var(--sig-trace));
+  background: var(--signal, var(--ink-dim));
   transition: width var(--dur) var(--ease-survey);
 }
 
@@ -346,7 +348,7 @@ table.data td.emphasis {
   background-image: repeating-linear-gradient(
     to right,
     transparent 0 calc(25% - 1px),
-    rgb(11 16 22 / 90%) calc(25% - 1px) 25%
+    var(--paper) calc(25% - 1px) 25%
   );
 }
 
@@ -370,12 +372,9 @@ table.data td.emphasis {
   color: var(--ink-faint);
 }
 
-.delta[data-direction="up"] {
-  color: #6cc9c3;
-}
-
+.delta[data-direction="up"],
 .delta[data-direction="down"] {
-  color: #d9866f;
+  color: var(--ink-dim);
 }
 
 /* ---- Provenance ribbon: derived-not-authoritative marker -------------- */
@@ -393,5 +392,5 @@ table.data td.emphasis {
   content: "";
   width: 10px;
   height: 0;
-  border-top: 1px dashed var(--rule-strong);
+  border-top: 1px dashed var(--line-strong);
 }

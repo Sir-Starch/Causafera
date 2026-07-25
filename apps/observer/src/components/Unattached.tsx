@@ -33,7 +33,7 @@ export function Unattached() {
         textAlign: "center",
       }}
     >
-      <div style={{ color: "var(--rule-strong)" }}>
+      <div style={{ color: "var(--line-strong)" }}>
         <Sigil size={72} />
       </div>
 

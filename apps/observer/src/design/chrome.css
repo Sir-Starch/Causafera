@@ -26,9 +26,8 @@
   gap: var(--s3);
   padding-inline: var(--s3);
   min-width: 0;
-  border-bottom: 1px solid var(--rule);
-  background: linear-gradient(180deg, rgb(17 24 35 / 92%), rgb(11 16 22 / 92%));
-  backdrop-filter: blur(6px);
+  border-bottom: 1px solid var(--line);
+  background: var(--plate-fill-solid);
 }
 
 .meridian__brand {
@@ -36,7 +35,7 @@
   align-items: center;
   gap: var(--s2);
   padding-right: var(--s3);
-  border-right: 1px solid var(--rule-faint);
+  border-right: 1px solid var(--line-faint);
   flex-shrink: 0;
 }
 
@@ -86,7 +85,7 @@
   align-items: baseline;
   gap: var(--s2);
   padding-inline: var(--s2);
-  border-left: 1px solid var(--rule-faint);
+  border-left: 1px solid var(--line-faint);
   flex-shrink: 0;
 }
 
@@ -99,11 +98,12 @@
   font-variant-numeric: tabular-nums;
   font-size: 1.25rem;
   line-height: 1;
-  color: var(--ink);
+  color: var(--ink-dim);
 }
 
+/* A running clock is inked; a held one is not. */
 .meridian__clock[data-live="true"] {
-  color: var(--beacon);
+  color: var(--ink-bright);
 }
 
 /* ---- Rail -------------------------------------------------------------- */
@@ -113,8 +113,8 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
-  border-right: 1px solid var(--rule);
-  background: linear-gradient(180deg, rgb(13 19 27 / 72%), rgb(8 12 18 / 72%));
+  border-right: 1px solid var(--line);
+  background: var(--plate-fill);
 }
 
 .rail__nav {
@@ -132,7 +132,6 @@
   gap: var(--s3);
   padding: var(--s2) var(--s2);
   border: 0;
-  border-radius: var(--radius);
   background: transparent;
   color: var(--ink-dim);
   text-align: left;
@@ -146,20 +145,19 @@
   inset-block: 0.375rem;
   left: 0;
   width: 2px;
-  border-radius: 2px;
-  background: var(--sig-trace);
+  background: var(--ink-bright);
   transform: scaleY(0);
   transform-origin: center;
   transition: transform var(--dur) var(--ease-survey);
 }
 
 .rail__item:hover {
-  background: rgb(167 190 205 / 5%);
+  background: rgb(214 228 234 / 4%);
   color: var(--ink);
 }
 
 .rail__item[aria-current="page"] {
-  background: rgb(40 165 159 / 8%);
+  background: rgb(214 228 234 / 7%);
   color: var(--ink);
 }
 
@@ -175,7 +173,7 @@
 }
 
 .rail__item[aria-current="page"] .rail__index {
-  color: var(--sig-trace);
+  color: var(--ink);
 }
 
 .rail__label {
@@ -215,7 +213,7 @@
 .rail__divider {
   height: 1px;
   margin: var(--s2) var(--s3);
-  background: var(--rule-faint);
+  background: var(--line-faint);
 }
 
 .rail__register {
@@ -227,7 +225,7 @@
 
 .rail__foot {
   padding: var(--s3);
-  border-top: 1px solid var(--rule-faint);
+  border-top: 1px solid var(--line-faint);
   display: flex;
   flex-direction: column;
   gap: var(--s2);
@@ -258,7 +256,7 @@
   justify-content: space-between;
   gap: var(--s6);
   padding-bottom: var(--s3);
-  border-bottom: 1px solid var(--rule-faint);
+  border-bottom: 1px solid var(--line-faint);
 }
 
 .area-head__titles {
@@ -312,8 +310,8 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  border-left: 1px solid var(--rule);
-  background: linear-gradient(180deg, rgb(13 19 27 / 76%), rgb(8 12 18 / 76%));
+  border-left: 1px solid var(--line);
+  background: var(--plate-fill);
 }
 
 .dock[hidden] {
@@ -326,7 +324,7 @@
   justify-content: space-between;
   gap: var(--s2);
   padding: var(--s3) var(--s3) var(--s2);
-  border-bottom: 1px solid var(--rule-faint);
+  border-bottom: 1px solid var(--line-faint);
 }
 
 .dock__body {
@@ -347,8 +345,8 @@
   align-items: center;
   gap: var(--s4);
   padding-inline: var(--s3);
-  border-top: 1px solid var(--rule);
-  background: rgb(8 12 18 / 88%);
+  border-top: 1px solid var(--line);
+  background: var(--plate-fill-solid);
   font-size: var(--t-micro);
   letter-spacing: var(--track-wide);
   color: var(--ink-faint);
@@ -400,7 +398,6 @@
     right: 0;
     z-index: 40;
     width: min(var(--dock-width), 88vw);
-    box-shadow: var(--lift-2);
   }
 }
 

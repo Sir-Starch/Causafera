@@ -17,7 +17,7 @@ import { SurveyArea, SurveyDock } from "./areas/SurveyArea";
 import { CommandPalette } from "./components/CommandPalette";
 import { Notice } from "./components/primitives";
 import { Marginalia, Meridian, Rail } from "./components/shell";
-import { TerraMarks } from "./components/Sigil";
+import { TerraIncognita } from "./components/TerraIncognita";
 import { Unattached } from "./components/Unattached";
 import { session, useCopy, useSession } from "./observer/instance";
 import { AREA_IDS, INITIAL_WORKSPACE, type AreaId, type AreaProps, type WorkspaceState } from "./workspace";
@@ -112,7 +112,7 @@ export function App() {
   return (
     <>
       <div className="terra" aria-hidden="true" />
-      <TerraMarks />
+      <TerraIncognita />
 
       <div className="shell" data-rail={workspace.railCollapsed ? "collapsed" : "expanded"}>
         <Meridian

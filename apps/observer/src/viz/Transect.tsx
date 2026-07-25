@@ -14,7 +14,14 @@
 import { useCallback, useState } from "react";
 
 import type { Atlas, ChunkRecord } from "../observer/models";
-import { CanvasSurface, MONO_FONT, MONO_FONT_SM, readPalette, type Frame } from "./canvas";
+import {
+  CanvasSurface,
+  MONO_FONT,
+  MONO_FONT_SM,
+  hatchPattern,
+  readPalette,
+  type Frame,
+} from "./canvas";
 import { linearScale, niceTicks, normalise } from "./scale";
 import { withAlpha } from "./ChartRecorder";
 
@@ -117,7 +124,7 @@ export function Transect({ atlas, selectedKey, onSelect, labels, ariaLabel }: Tr
       // Datum: real zero elevation.
       if (atlas.elevationMin < 0 && atlas.elevationMax > 0) {
         const y = Math.round(elevation(0)) + 0.5;
-        context.strokeStyle = withAlpha(palette.beacon!, 0.34);
+        context.strokeStyle = withAlpha(palette.mark!, 0.34);
         context.setLineDash([5, 4]);
         context.lineWidth = 1;
         context.beginPath();
@@ -127,7 +134,7 @@ export function Transect({ atlas, selectedKey, onSelect, labels, ariaLabel }: Tr
         context.setLineDash([]);
         context.font = MONO_FONT_SM;
         context.textAlign = "left";
-        context.fillStyle = withAlpha(palette.beacon!, 0.7);
+        context.fillStyle = withAlpha(palette.mark!, 0.7);
         context.fillText(labels.datum, AXIS_WIDTH + 2, y - 6);
       }
 
@@ -156,16 +163,13 @@ export function Transect({ atlas, selectedKey, onSelect, labels, ariaLabel }: Tr
         const selected = chunk.key === selectedKey;
         const active = selected || hovered?.chunk.key === chunk.key;
 
-        // Relief band: the measured elevation range of the chunk.
+        // Relief band: the measured elevation range, hatched like a section drawing.
         const top = elevation(chunk.maximumElevationMm);
         const bottom = elevation(chunk.minimumElevationMm);
-        const gradient = context.createLinearGradient(0, top, 0, bottom);
-        gradient.addColorStop(0, withAlpha(palette.inkDim!, 0.3));
-        gradient.addColorStop(1, withAlpha(palette.inkDim!, 0.08));
-        context.fillStyle = gradient;
+        context.fillStyle = hatchPattern(context, withAlpha(palette.inkDim!, active ? 0.4 : 0.26), 7);
         context.fillRect(x, top, width, Math.max(2, bottom - top));
 
-        context.strokeStyle = active ? palette.beacon! : withAlpha(palette.inkDim!, 0.55);
+        context.strokeStyle = active ? palette.mark! : withAlpha(palette.inkDim!, 0.55);
         context.lineWidth = active ? 1.5 : 1;
         context.beginPath();
         context.moveTo(x, Math.round(top) + 0.5);
@@ -189,17 +193,19 @@ export function Transect({ atlas, selectedKey, onSelect, labels, ariaLabel }: Tr
           context.strokeRect(x + 1.5, pipY + 0.5, 3, 5);
         }
 
-        // Mana register: one sequential hue, magnitude by fill.
+        // Mana register: one sequential hue, magnitude by fill, inside a ruled channel.
         const manaFraction = normalise(chunk.manaTotal, 0, atlas.manaMax);
-        context.fillStyle = withAlpha(palette.ramp700!, 0.35);
-        context.fillRect(x, manaTop + 5, width, REGISTERS.mana - 10);
+        context.strokeStyle = palette.ruleFaint!;
+        context.lineWidth = 1;
+        context.strokeRect(x + 0.5, manaTop + 5.5, width - 1, REGISTERS.mana - 11);
         context.fillStyle = rampColor(manaFraction, palette);
         context.fillRect(x, manaTop + 5, width * manaFraction, REGISTERS.mana - 10);
 
         // Population register.
         const populationFraction = normalise(chunk.populationTotal, 0, atlas.populationMax);
-        context.fillStyle = withAlpha(palette.life!, 0.16);
-        context.fillRect(x, populationTop + 5, width, REGISTERS.population - 10);
+        context.strokeStyle = palette.ruleFaint!;
+        context.lineWidth = 1;
+        context.strokeRect(x + 0.5, populationTop + 5.5, width - 1, REGISTERS.population - 11);
         if (chunk.populationTotal > 0) {
           context.fillStyle = palette.life!;
           context.fillRect(
@@ -249,7 +255,7 @@ export function Transect({ atlas, selectedKey, onSelect, labels, ariaLabel }: Tr
 
         // Selection reads as a coordinate lock, not a filled highlight.
         if (selected) {
-          context.strokeStyle = palette.beacon!;
+          context.strokeStyle = palette.mark!;
           context.lineWidth = 1;
           const armX = Math.min(10, width / 3);
           const boxTop = reliefTop + 1;

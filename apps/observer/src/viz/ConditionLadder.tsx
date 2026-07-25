@@ -78,10 +78,12 @@ export function ConditionLadder({
         const py = Math.round(y(tick)) + 0.5;
         context.strokeStyle = palette.ruleGhost!;
         context.lineWidth = 1;
+        context.setLineDash([1, 3]);
         context.beginPath();
         context.moveTo(PADDING.left, py);
         context.lineTo(PADDING.left + plotWidth, py);
         context.stroke();
+        context.setLineDash([]);
         context.fillStyle = palette.inkGhost!;
         context.fillText(axisLabel(tick), PADDING.left - 8, py);
       }
@@ -91,10 +93,12 @@ export function ConditionLadder({
       for (const tick of niceTicks(extent.tickMin, extent.tickMax, 5)) {
         const px = Math.round(x(tick)) + 0.5;
         context.strokeStyle = palette.ruleGhost!;
+        context.setLineDash([1, 3]);
         context.beginPath();
         context.moveTo(px, PADDING.top);
         context.lineTo(px, PADDING.top + plotHeight);
         context.stroke();
+        context.setLineDash([]);
         context.fillStyle = palette.inkGhost!;
         context.fillText(axisLabel(tick), px, PADDING.top + plotHeight + 6);
       }
@@ -109,7 +113,7 @@ export function ConditionLadder({
       for (const ladder of ladders) {
         const selected = ladder.key === selectedKey;
         const dimmed = selectedKey !== undefined && !selected;
-        const color = selected ? palette.beacon! : palette.physical!;
+        const color = selected ? palette.mark! : palette.physical!;
         const alpha = dimmed ? 0.32 : 1;
 
         // Step-after: a condition holds until the next committed transition.
@@ -143,7 +147,7 @@ export function ConditionLadder({
           }
           if (step.manaEffectTraceId !== undefined) {
             context.fillStyle = withAlpha(palette.mana!, alpha);
-            context.strokeStyle = palette.sheet!;
+            context.strokeStyle = palette.paper!;
             context.lineWidth = 1.5;
             context.beginPath();
             context.moveTo(px, py - 4.5);
@@ -170,7 +174,7 @@ export function ConditionLadder({
           context.font = MONO_FONT;
           context.textAlign = "left";
           context.textBaseline = "middle";
-          context.fillStyle = selected ? palette.beacon! : withAlpha(palette.inkFaint!, alpha);
+          context.fillStyle = selected ? palette.mark! : withAlpha(palette.inkFaint!, alpha);
           context.fillText(labelFor(ladder), PADDING.left + plotWidth + 8, y(last.afterCondition));
         }
       }
@@ -278,7 +282,7 @@ export function ConditionLadder({
               </div>
             )}
             {probe.step.contactTraceId !== undefined && (
-              <div className="chart__probe-row" style={{ ["--signal" as string]: "var(--rule-bright)" }}>
+              <div className="chart__probe-row" style={{ ["--signal" as string]: "var(--line-bright)" }}>
                 <span className="chart__probe-mark" />
                 <span>{probeLabels.contact}</span>
                 <b>#{probe.step.contactTraceId.toString()}</b>

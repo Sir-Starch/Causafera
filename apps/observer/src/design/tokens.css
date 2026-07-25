@@ -1,37 +1,45 @@
 /*
  * Causafera Observer — design tokens.
  *
- * Midnight cartography: a dark chart surface, engraved typographic hierarchy, and a
- * semantic signal palette in which every hue means one simulation quantity.
+ * A black outline atlas: white ink on black chart paper, hairline rules, hatching for
+ * unsurveyed ground. Nothing glows, nothing is glass, nothing has a gradient except the
+ * paper itself.
  *
- * The six signal hues were generated in OKLCH and validated as a categorical palette
- * against the `--sheet` surface (lightness band, chroma floor, protan/deutan separation,
- * normal-vision separation, contrast). Do not hand-edit them; regenerate and revalidate.
+ * Colour discipline: the interface chrome is monochrome ink. Hue is reserved entirely for
+ * measured quantities, so a coloured mark on screen always means a simulation quantity and
+ * never decoration. The six signal hues were generated in OKLCH and validated as a
+ * categorical palette against the sheet (lightness band, chroma floor, protan/deutan
+ * separation, normal-vision separation, contrast). Do not hand-edit them; regenerate and
+ * revalidate.
  */
 
 :root {
   color-scheme: dark;
 
-  /* ---- Chart material ------------------------------------------------- */
-  --void: #070a0e;
-  --sheet: #0b1016;
-  --sheet-raised: #111823;
-  --sheet-sunken: #080c12;
-  --sheet-overlay: #141c27;
-  --plate: #0d131b;
+  /* ---- Chart paper ---------------------------------------------------- */
+  --paper-deep: #040506;
+  --paper: #07080a;
+  --paper-plate: #0a0c0e;
+  --paper-inset: #050607;
+  --paper-overlay: #0e1113;
 
-  /* ---- Survey rules --------------------------------------------------- */
-  --rule-ghost: rgb(167 190 205 / 5%);
-  --rule-faint: rgb(167 190 205 / 9%);
-  --rule: rgb(167 190 205 / 15%);
-  --rule-strong: rgb(167 190 205 / 26%);
-  --rule-bright: rgb(196 216 228 / 42%);
+  /* Plate fill: flat, slightly opaque, so the sheet reads through without harming text. */
+  --plate-fill: rgb(6 7 9 / 74%);
+  --plate-fill-solid: rgb(6 7 9 / 92%);
 
   /* ---- Ink ------------------------------------------------------------ */
-  --ink: #e4eaee;
-  --ink-dim: #9baab6;
-  --ink-faint: #6b7a86;
-  --ink-ghost: #4a565f;
+  --ink: #e2e8ea;
+  --ink-dim: #9aa5aa;
+  --ink-faint: #6d767b;
+  --ink-ghost: #4b5256;
+  --ink-bright: #f2f7f8;
+
+  /* ---- Hairlines ------------------------------------------------------ */
+  --line-ghost: rgb(214 228 234 / 5%);
+  --line-faint: rgb(214 228 234 / 10%);
+  --line: rgb(214 228 234 / 17%);
+  --line-strong: rgb(214 228 234 / 30%);
+  --line-bright: rgb(230 242 246 / 58%);
 
   /* ---- Signal palette — one hue per simulation quantity --------------- */
   --sig-mana: #c28614;
@@ -41,13 +49,13 @@
   --sig-physical: #4791ce;
   --sig-refused: #ce533e;
 
-  /* Wash variants for fills beneath the stroke of the same signal. */
-  --sig-mana-wash: rgb(194 134 20 / 16%);
-  --sig-trace-wash: rgb(40 165 159 / 16%);
-  --sig-resolution-wash: rgb(147 110 206 / 16%);
-  --sig-life-wash: rgb(75 164 92 / 16%);
-  --sig-physical-wash: rgb(71 145 206 / 16%);
-  --sig-refused-wash: rgb(206 83 62 / 16%);
+  /* Washes stay faint: a signal is drawn, not flooded. */
+  --sig-mana-wash: rgb(194 134 20 / 12%);
+  --sig-trace-wash: rgb(40 165 159 / 12%);
+  --sig-resolution-wash: rgb(147 110 206 / 12%);
+  --sig-life-wash: rgb(75 164 92 / 12%);
+  --sig-physical-wash: rgb(71 145 206 / 12%);
+  --sig-refused-wash: rgb(206 83 62 / 12%);
 
   /* ---- Sequential ramp (single hue, magnitude) ------------------------ */
   --ramp-100: #edd3b0;
@@ -64,9 +72,6 @@
   --state-unsupported: #d03b3b;
   --state-unknown: #7f8f9b;
 
-  /* ---- Accent used only for focus and the live carrier ---------------- */
-  --beacon: #6fd8cf;
-
   /* ---- Typography ----------------------------------------------------- */
   --font-display: "Iowan Old Style", "Palatino Linotype", Palatino, "URW Palladio L",
     "DejaVu Serif", Georgia, "Times New Roman", serif;
@@ -82,7 +87,7 @@
   --t-display: 1.688rem;
   --t-hero: 2.5rem;
 
-  --track-caps: 0.14em;
+  --track-caps: 0.16em;
   --track-wide: 0.06em;
 
   /* ---- Space ---------------------------------------------------------- */
@@ -96,9 +101,9 @@
   --s10: 2.5rem;
   --s12: 3rem;
 
-  /* ---- Geometry ------------------------------------------------------- */
-  --radius: 3px;
-  --radius-lg: 4px;
+  /* ---- Geometry — engraved plates have square corners ----------------- */
+  --radius: 0;
+  --radius-lg: 0;
   --rail-width: 14.5rem;
   --rail-width-collapsed: 3.5rem;
   --dock-width: 21.5rem;
@@ -110,10 +115,6 @@
   --dur-fast: 110ms;
   --dur: 180ms;
   --dur-slow: 420ms;
-
-  /* ---- Elevation ------------------------------------------------------ */
-  --lift-1: 0 1px 0 rgb(255 255 255 / 3%) inset, 0 8px 24px -16px rgb(0 0 0 / 90%);
-  --lift-2: 0 1px 0 rgb(255 255 255 / 4%) inset, 0 24px 48px -24px rgb(0 0 0 / 92%);
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -12,7 +12,7 @@
 import { useCallback, useMemo, useState } from "react";
 
 import { SIGNAL_VARIABLE, type Series } from "../observer/models";
-import { CanvasSurface, MONO_FONT, readPalette, type Frame } from "./canvas";
+import { CanvasSurface, MONO_FONT, hatchPattern, readPalette, type Frame } from "./canvas";
 import { axisLabel, linearScale, niceTicks } from "./scale";
 
 const PADDING = { top: 12, right: 14, bottom: 20, left: 46 };
@@ -102,10 +102,12 @@ export function ChartRecorder({
         const position = Math.round(y(tick)) + 0.5;
         context.strokeStyle = tick === 0 ? palette.ruleFaint! : palette.ruleGhost!;
         context.lineWidth = 1;
+        context.setLineDash(tick === 0 ? [] : [1, 3]);
         context.beginPath();
         context.moveTo(PADDING.left, position);
         context.lineTo(PADDING.left + plotWidth, position);
         context.stroke();
+        context.setLineDash([]);
         context.fillStyle = palette.inkGhost!;
         context.fillText(valueFormat(tick), PADDING.left - 8, position);
       }
@@ -116,10 +118,12 @@ export function ChartRecorder({
       for (const tick of niceTicks(domain.tickMin, domain.tickMax, 5)) {
         const position = Math.round(x(tick)) + 0.5;
         context.strokeStyle = palette.ruleGhost!;
+        context.setLineDash([1, 3]);
         context.beginPath();
         context.moveTo(position, PADDING.top);
         context.lineTo(position, PADDING.top + plotHeight);
         context.stroke();
+        context.setLineDash([]);
         context.fillStyle = palette.inkGhost!;
         context.fillText(axisLabel(tick), position, PADDING.top + plotHeight + 5);
       }
@@ -139,10 +143,7 @@ export function ChartRecorder({
         if (points.length === 0) return;
 
         if (fillFirst && index === 0 && points.length > 1) {
-          const gradient = context.createLinearGradient(0, PADDING.top, 0, PADDING.top + plotHeight);
-          gradient.addColorStop(0, withAlpha(color, 0.22));
-          gradient.addColorStop(1, withAlpha(color, 0));
-          context.fillStyle = gradient;
+          context.fillStyle = hatchPattern(context, withAlpha(color, 0.45), 6);
           context.beginPath();
           context.moveTo(x(points[0]!.ticks), y(Math.max(0, domain.valueMin)));
           for (const point of points) context.lineTo(x(point.ticks), y(point.value));
@@ -152,7 +153,7 @@ export function ChartRecorder({
         }
 
         context.strokeStyle = color;
-        context.lineWidth = 2;
+        context.lineWidth = 1.5;
         context.lineJoin = "round";
         context.lineCap = "round";
         context.setLineDash(entry.dashed === true ? [4, 3] : []);
@@ -169,7 +170,7 @@ export function ChartRecorder({
         // Leading mark: the most recent received frame, ringed against the surface.
         const last = points[points.length - 1]!;
         context.fillStyle = color;
-        context.strokeStyle = palette.sheet!;
+        context.strokeStyle = palette.paper!;
         context.lineWidth = 2;
         context.beginPath();
         context.arc(x(last.ticks), y(last.value), 2.75, 0, Math.PI * 2);
@@ -190,7 +191,7 @@ export function ChartRecorder({
         for (const reading of probe.values) {
           const color = signalColor(reading.signal, palette);
           context.fillStyle = color;
-          context.strokeStyle = palette.sheet!;
+          context.strokeStyle = palette.paper!;
           context.lineWidth = 2;
           context.beginPath();
           context.arc(px, y(reading.value), 3.5, 0, Math.PI * 2);

@@ -79,11 +79,25 @@ Pause is local: the UI stops requesting tick batches.
 
 ## Presentation
 
-The visual system is midnight cartography applied to a scientific instrument: a dark chart surface
-with a graticule and grain, engraved typographic hierarchy, and a six-hue signal palette in which
-each hue is reserved for one simulation quantity — mana, causal traces, resolution, population,
-physical events, refusals. Evidence states use a separate reserved status palette and always pair a
-hue with a word; `Unknown` is drawn as hatched unsurveyed ground rather than as an error.
+The visual system is a black outline atlas: white ink on black chart paper, hairline rules, square
+corners, and hatching for unsurveyed ground. Nothing glows, nothing is glass, nothing carries a
+gradient except the paper itself.
+
+Beneath the whole application lies the chart sheet (`src/components/TerraIncognita.tsx`): an SVG
+outline map with coastlines, engraved water lining, interior contour rings, a graticule, portolan
+rhumb lines from two compass nodes, depth soundings, a compass rose, and coastlines that break into
+survey dashes where the survey was never closed. It is generated from fixed sums of sinusoids, so it
+is identical in every session and cannot be mistaken for data (INV-022). Plates sit on it with a
+flat, partly transparent fill, so the sheet reads through without harming text.
+
+Colour is disciplined: **the interface chrome is monochrome ink, and hue is reserved entirely for
+measured quantities**. A coloured mark on screen therefore always means a simulation quantity and
+never decoration. Six signal hues carry mana, causal traces, resolution, population, physical events
+and refusals. Evidence states use a separate reserved status palette and always pair a hue with a
+word; `Unknown` is drawn as hatched unsurveyed ground rather than as an error.
+
+Selection and activity are drawn, not lit: the run control inverts to paper-on-ink while advancing,
+a followed trace anchor is inked solid, a selected register row is ruled, and focus is a hairline.
 
 The signal palette was generated in OKLCH and validated as a categorical palette against the chart
 surface for lightness band, chroma floor, protanopia and deuteranopia separation, normal-vision
@@ -100,6 +114,11 @@ Charts are drawn on a 2D canvas with device-pixel scaling. WebGPU is not used: t
 scale does not warrant it, and the documented visualisation direction favours 2D and restrained
 2.5D. Every recorder carries a single value axis; two magnitudes get two recorders rather than two
 scales.
+
+Chart surfaces follow the same line-work discipline: dotted grids, hairline strokes, and **engraved
+hatching** instead of gradient washes beneath a curve or across a relief band. Hatching keeps the
+plate reading as drawn line-work and survives printing and forced colours, which a translucent fill
+does not.
 
 The chart profile draws active chunks as a stacked register — relief, mana, population, causal
 activity — in chart coordinate order. It is a profile, not a map: adjacency is ordering, not

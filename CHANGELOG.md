@@ -335,7 +335,10 @@ This project follows a structured changelog format. Each entry includes:
 - Added a command palette and keyboard navigation across areas, transport, and the inspector dock;
 - Rendered material surface gate deltas, which the protocol previously delivered without a consumer;
 - Added a development-only replay channel and a render smoke check driven by captured real protocol bytes (`cargo run -p causafera-observer --example capture_replay`), giving the frontend its first automated verification; both are excluded from production builds and marked in the interface (`INV-039`);
-- Recorded the observer projections the frontend is waiting on (`docs/ui/observer-projection-gaps.md`).
+- Recorded the observer projections the frontend is waiting on (`docs/ui/observer-projection-gaps.md`);
+- Reworked the visual system into a black outline atlas: an SVG terra incognita chart sheet beneath the application (coastlines, water lining, contour rings, graticule, rhumb lines, soundings, compass rose, and survey-dashed coasts where the survey was never closed), generated from fixed sums of sinusoids so it is identical in every session and cannot be mistaken for data;
+- Removed glow, glass, gradient and rounded-corner treatments from the interface chrome; plates are hairline-framed regions of the sheet with registration ticks, charts use dotted grids and engraved hatching instead of gradient washes;
+- Reserved hue entirely for measured quantities: the chrome is monochrome ink, so a coloured mark always denotes a simulation quantity. Selection, activity and focus are drawn rather than lit.
 
 ## Categories
 

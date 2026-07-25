@@ -13,7 +13,7 @@ export function Sigil({ size = 26 }: { size?: number }) {
       <circle cx="12" cy="12" r="5.5" stroke="currentColor" strokeWidth="1" opacity="0.3" />
       <path d="M12 1.5v21M1.5 12h21" stroke="currentColor" strokeWidth="0.75" opacity="0.28" />
       <path d="M12 2.5 15 12l-3 9.5L9 12z" fill="currentColor" opacity="0.9" />
-      <circle cx="12" cy="12" r="1.35" fill="var(--void)" />
+      <circle cx="12" cy="12" r="1.35" fill="var(--paper-deep)" />
     </svg>
   );
 }
@@ -91,19 +91,3 @@ export function ResetMark() {
   );
 }
 
-/** Marginal survey lines drawn behind the shell; pure chart furniture, never data. */
-export function TerraMarks() {
-  return (
-    <svg className="terra-marks" aria-hidden="true" preserveAspectRatio="none">
-      <defs>
-        <pattern id="terra-graduations" width="120" height="8" patternUnits="userSpaceOnUse">
-          <path d="M0 8V4M30 8V6M60 8V4M90 8V6" stroke="currentColor" strokeWidth="1" />
-        </pattern>
-      </defs>
-      <rect x="0" y="0" width="100%" height="8" fill="url(#terra-graduations)" opacity="0.7" />
-      <g transform="translate(0, -8)">
-        <rect x="0" y="100%" width="100%" height="8" fill="url(#terra-graduations)" opacity="0.5" />
-      </g>
-    </svg>
-  );
-}
