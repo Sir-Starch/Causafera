@@ -18,6 +18,21 @@ Before making any changes, read:
 ## Core Rules
 
 - Use an ExecPlan for multi-stage work (see `PLANS.md`).
+- Never run worktree-discarding Git commands during implementation. This includes `git checkout`
+  on paths, `git restore`, `git reset`, `git clean`, and any equivalent command that can overwrite
+  uncommitted work. Recovery must use read-only object inspection plus an explicit file allowlist;
+  do not revert or replace files outside that allowlist.
+- Writing subagents must not run Git commands unless their task is explicitly Git-only. Delegation
+  prompts must state this prohibition; the lead agent owns integration, recovery, staging, and
+  commits.
+- For an accepted ExecPlan, create local checkpoint commits after each independently verified green
+  wave. Never carry multiple completed implementation waves only in the working tree, and never
+  checkpoint a RED, uncompilable, or partially integrated state. Pair implementation with its
+  direct tests and record the checkpoint hash and verification evidence in the ExecPlan Progress
+  section.
+- Before every checkpoint, inspect status and diffs, stage only the wave's explicit allowlist, and
+  rerun its focused verification. If checkpoint commits are explicitly prohibited, stop after one
+  green wave and request authorization before beginning another wave.
 - Never introduce semantic domain enums merely for convenience.
 - Never use English labels as authoritative simulation meaning.
 - Never directly expose Ground Truth to agents.
