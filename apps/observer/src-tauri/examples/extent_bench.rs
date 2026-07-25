@@ -129,6 +129,52 @@ fn main() {
 
     // Where does the mana actually sit? A blob would be contiguous; a plane would be one
     // layer; source-local would be a handful of scattered points.
+    // Correctness before appearance: is the field conserved as the lattice refines? If the
+    // same total mana is divided into more integer cells, some floor to zero and the total
+    // falls. That would make the physics lattice-dependent, which is a simulation defect and
+    // not a rendering one.
+    println!("\nconservation across the lattice, 192 ticks");
+    println!(
+        "{:>6} {:>14} {:>12} {:>12} {:>10}",
+        "extent", "total mana", "vs extent 3", "max cell", "min non-zero",
+    );
+    let mut baseline = 0i128;
+    for extent in [3u8, 4, 6, 8, 12, 16] {
+        let mut config = RuntimeConfig::new(7);
+        config.chunk_extent = extent;
+        config.actor_count = 8;
+        config.sensor_count = 2;
+        config.bootstrap_population = 512;
+        config.mana_parameters.effect_threshold = 1;
+        config.mana_parameters.effect_hysteresis = 0;
+        let mut runtime = Runtime::new(config).expect("runtime");
+        runtime.run_ticks(192).expect("ticks");
+        let data = runtime.export_snapshot().expect("snapshot");
+        let mut total = 0i128;
+        let mut max_cell = 0i64;
+        let mut min_non_zero = i64::MAX;
+        for field in &data.mana.fields {
+            for value in &field.intensity {
+                total += i128::from(*value);
+                max_cell = max_cell.max(*value);
+                if *value != 0 {
+                    min_non_zero = min_non_zero.min(value.abs());
+                }
+            }
+        }
+        if extent == 3 {
+            baseline = total;
+        }
+        println!(
+            "{:>6} {:>14} {:>11.1}% {:>12} {:>10}",
+            extent,
+            total,
+            100.0 * total as f64 / baseline.max(1) as f64,
+            max_cell,
+            if min_non_zero == i64::MAX { 0 } else { min_non_zero },
+        );
+    }
+
     // The map reduces the volume to a plan view, so the honest metric is the column field:
     // how many columns carry mana, and whether that field is smooth enough to draw.
     println!("\nplan view after 192 ticks: the field the map would actually draw");

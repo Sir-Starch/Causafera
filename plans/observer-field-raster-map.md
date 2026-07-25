@@ -307,10 +307,28 @@ the full width and decay upward through z — layer counts 28, 24, 15, 8, 3, 0, 
 a field anchored near the ground should look like. The coverage figures are about how much of a
 finer lattice that gradient reaches, not about whether the field has structure.
 
-One caveat the mana domain should check before acting on this: intensity is an integer, and the
-same total mana spread over more cells will floor to zero in more of them. Part of the coverage
-loss at high extent may be quantisation rather than physics, in which case a finer lattice needs a
-finer intensity unit, not just more cells.
+**Conservation was checked, and the coarse lattice is the inaccurate one.** Total mana after 192
+ticks:
+
+| `chunk_extent` | Total mana | Against extent 3 | Smallest non-zero cell |
+|---|---|---|---|
+| 3 | 27 176 | 100 % | 28 |
+| 4 | 24 218 | 89.1 % | 4 |
+| 6 | 24 330 | 89.5 % | 7 |
+| 8 | 24 421 | 89.9 % | 7 |
+| 12 | 24 433 | 89.9 % | 5 |
+| 16 | 24 433 | 89.9 % | 5 |
+
+The total converges from extent 4 upward and is flat by 8 — the behaviour a correct discretisation
+of a continuous field should show. Extent 3 sits 11 % above the converged value, so the default
+lattice **overestimates total mana**, and the smallest non-zero cell stays at 4 … 7 rather than
+approaching 1, so nothing is being lost to integer flooring. An earlier note in this plan
+suspected quantisation; the measurement rules it out.
+
+That reverses the argument. Falling coverage is not a defect: a zero cell is a place where mana is
+zero, which is a legitimate physical state, and full coverage at extent 3 is an artefact of a
+lattice too coarse to resolve the field. The case for extent 4 to 6 is **accuracy first**, with a
+better map as the consequence rather than the reason.
 - Frontend: time to decode and blit one chunk raster, and steady-state paint time for a viewport of
   nine chunks at cell zoom, on the software-rendering profile as the pessimistic case.
 
@@ -409,6 +427,15 @@ generation, which is the prerequisite for a landcover lens, and a mana-domain it
   live; only its lattice is coarse. The measurements above put the useful range at 4 to 6 and rule
   out 16 and 32 on both cost and coverage. Acting on that is a mana-domain decision with its own
   determinism and fixture consequences, so this plan supplies the evidence and stops there.
+- **The lattice stays square; the diffusion kernel is what should change.** A hexagonal tiling
+  answers a two-dimensional question, and the field in question is volumetric: mana is
+  `chunk_extent³` and local physical space is full 3D. Hexagonal prisms keep the z anisotropy and
+  buy nothing, and true 3D isotropy would need a close-packed lattice, not hexagons. The measured
+  defect is that `neighbor_indices` returns the six axis neighbours, so a source spreads on the L1
+  ball rather than a sphere; a distance-weighted 26-neighbour stencil fixes that on the existing
+  lattice without touching `LocalCoord::flat_index`, `MaterialSurfaceId::cell_index`, terrain,
+  resolution, population attribution, the persistence format, every digest and fixture, the
+  observer protocol and the frontend. Recorded as `TODO-MANA-003`.
 - **Surface materials excluded.** Measured at 6.5 % same-material neighbours against 6.2 %
   expected from chance. Drawing that as landcover would show the world as having regions it does
   not have, which is the same failure as substituting data. Revisit when geography generates

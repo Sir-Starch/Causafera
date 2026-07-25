@@ -637,7 +637,7 @@
 **Phase:** Detailed Development — Mana
 **Priority:** Medium
 **Dependencies:** TODO-OBS-001
-**Goal:** Decide whether the mana field should run at a finer lattice than `chunk_extent` 3, on measured evidence
+**Goal:** Decide whether the mana field should run at a finer lattice than `chunk_extent` 3, on measured evidence. The accuracy argument leads: the default lattice overestimates total mana by 11% against the value the finer lattices converge on
 **Acceptance Criteria:** A decision recorded either way with its reasoning, against the measurements already taken in `plans/observer-field-raster-map.md`; if the extent rises, regenerated fixtures and replay evidence ship with it
 **Performance Requirements:** The mana volume grows with the cube of the extent — 3 to 8 is a factor of nineteen, 3 to 32 a factor of 1214 — so no extent change is accepted without measurements
 **Determinism Requirements:** Changing the extent changes state hashes by construction; any change ships with regenerated fixtures and replay evidence
@@ -645,7 +645,52 @@
 **Observer Implications:** The map's mana lens reports `preview` while the lattice needs upsampling and `observed` when it does not, so a finer lattice improves the map with no frontend change
 **Explanation Implications:** A finer lattice gives mana claims finer spatial evidence
 **Out of Scope:** Changing mana propagation rules, response parameters, or the gate model
-**Evidence:** `apps/observer/src-tauri/examples/extent_bench.rs` measures the plan-view column field the map draws. Extent 4 gives 78% more columns at 95.8% coverage and 14% more tick cost; extent 6 quadruples detail at 57.4% coverage; extent 16 leaves 9.4% coverage at three times the tick cost. Coverage plateaus rather than filling with more ticks. Open question: intensity is an integer, so part of the coverage loss at high extent may be quantisation rather than physics
+**Evidence:** `apps/observer/src-tauri/examples/extent_bench.rs`. Total mana converges from extent 4 upward and is flat by 8 (24 218, 24 330, 24 421, 24 433, 24 433) while extent 3 gives 27 176 — 11% high. The smallest non-zero cell stays at 4-7, so nothing is lost to integer flooring. Separately, the same tool measures the plan-view column field the map draws. Extent 4 gives 78% more columns at 95.8% coverage and 14% more tick cost; extent 6 quadruples detail at 57.4% coverage; extent 16 leaves 9.4% coverage at three times the tick cost. Coverage plateaus rather than filling with more ticks. Open question: intensity is an integer, so part of the coverage loss at high extent may be quantisation rather than physics
+
+## TODO-MANA-002: Inter-Chunk Mana Flux
+**Status:** Pending
+**Phase:** Detailed Development — Mana
+**Priority:** High
+**Dependencies:** None
+**Goal:** Let mana cross chunk boundaries, so the field is continuous across the chart rather than reset at every chunk edge
+**Acceptance Criteria:** A gradient spanning a chunk boundary evolves as one field; a source near an edge raises intensity in the neighbouring chunk; total mana across the active set is conserved by the transfer
+**Performance Requirements:** Boundary exchange cost measured against the current per-chunk propagation
+**Determinism Requirements:** Exchange order is canonical and independent of chunk iteration order; replay-identical
+**Ontology Implications:** Chunk boundaries are containment and resolution boundaries, not physical barriers (INV-037). A no-flux wall at every chunk edge gives them physical meaning they must not have
+**Observer Implications:** The map currently draws three fields that cannot influence each other; after this it draws one field
+**Explanation Implications:** Mana claims spanning a boundary become meaningful
+**Out of Scope:** Cross-chart transfer, changing the diffusion or decay parameters
+**Evidence:** `ManaField::neighbor_indices` clips at the chunk edge (`if x > 0`, `if x + 1 < side`), and `ManaFieldSet` propagates each field independently with no coupling term. Every chunk boundary is therefore a reflecting wall
+
+## TODO-MANA-003: Isotropic Diffusion Kernel
+**Status:** Pending
+**Phase:** Detailed Development — Mana
+**Priority:** Medium
+**Dependencies:** TODO-MANA-002
+**Goal:** Make mana diffusion approximately isotropic, so a point source spreads as a sphere rather than along the lattice axes
+**Acceptance Criteria:** A single source in an empty field produces a distribution whose iso-surfaces are measurably closer to spherical than to the current octahedron; measured with an axis-versus-diagonal spread ratio
+**Performance Requirements:** The larger stencil's cost measured against the current six-neighbour form
+**Determinism Requirements:** Weights are exact rationals or fixed-point; no floating point in the authoritative path
+**Ontology Implications:** The lattice is a discretisation of continuous space; a field that spreads faster along axes than diagonals makes the discretisation physically visible
+**Observer Implications:** Isolines on the map become round rather than diamond-shaped
+**Explanation Implications:** Spatial mana claims stop depending on lattice orientation
+**Out of Scope:** Changing the lattice geometry itself; see the decision recorded in `plans/observer-field-raster-map.md`
+**Evidence:** `neighbor_indices` returns the six axis neighbours only, so diffusion propagates on the L1 ball
+
+## TODO-WORLD-001: Chunk Activation Beyond Bootstrap
+**Status:** Pending
+**Phase:** Detailed Development — World
+**Priority:** Medium
+**Dependencies:** None
+**Goal:** Allow the active chunk set to change during a run, so the world is not permanently exactly the chunks chosen at bootstrap
+**Acceptance Criteria:** A chunk can be activated and deactivated during a run with canonical ordering; deactivation preserves conserved quantities; replay-identical
+**Performance Requirements:** Activation cost measured; the active set stays bounded
+**Determinism Requirements:** Activation is driven by simulation state, never by observer attention (INV-013)
+**Ontology Implications:** Activation is a resolution decision and may change detail, never topology or geometry (INV-037)
+**Observer Implications:** The chart extent becomes something that changes during a run, which the map already handles — it culls by viewport and draws unsurveyed ground beyond the received extent
+**Explanation Implications:** None
+**Out of Scope:** Observer-driven activation, cross-chart activation
+**Evidence:** `RuntimeConfig::validate` builds the active set once from `active_chunk_keys`; no activation or deactivation path exists in the runtime
 
 ## TODO-UI-004: Observer Projection Requests
 **Status:** Pending
