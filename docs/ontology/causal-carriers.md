@@ -95,6 +95,8 @@ must equal exactly zero. Chunk boundaries are not physical barriers for thermal 
 cross-chart transport is deferred. Temperature is derived only at observer/Explanation boundaries
 and is not authoritative simulation state. Transfer receipts record signed face fluxes and
 reservoir scheduled/accepted/rejected amounts; a `ThermalConservationReceipt` records the zero
-residual and before/after totals for each batch.
+residual and before/after totals for each batch. Canonically ordered boundary records retain every
+same-chart face whose neighbor lies outside the active region, using the frozen post-injection
+pre-state; they are replaced only after a successful batch commit and persist in section `0x000E`.
 
 RFC-GEO-002 clarifies spatial carrier addressing: global geography is chart-qualified surface state, while local physics uses bounded Euclidean 3D frames. Bare chunks are local-chart addresses. Chart seams and local-frame bounds require explicit transforms; containment and resolution cannot manufacture geometric adjacency.
