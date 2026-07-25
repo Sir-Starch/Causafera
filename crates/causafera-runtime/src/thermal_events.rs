@@ -146,12 +146,11 @@ fn conservation_parents(
         parents.insert(state.thermal_fields.conservation_last_change());
     }
     for id in accepted.keys() {
-        if let Some(reservoir) = state.thermal_reservoirs.get(id) {
-            if state.thermal_fields.batch_sequence() == 0
-                || reservoir.last_change == reservoir.bootstrap_trace
-            {
-                parents.insert(reservoir.bootstrap_trace);
-            }
+        if let Some(reservoir) = state.thermal_reservoirs.get(id)
+            && (state.thermal_fields.batch_sequence() == 0
+                || reservoir.last_change == reservoir.bootstrap_trace)
+        {
+            parents.insert(reservoir.bootstrap_trace);
         }
     }
     parents.into_iter().collect()

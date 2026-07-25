@@ -149,7 +149,7 @@ crates provide save/resume, experiments, interpretation, and read-only inspectio
 ## Prerequisites
 
 - Git;
-- Rust 1.85.0 with `rustfmt` and Clippy, from `rust-toolchain.toml`;
+- Rust 1.97.1 with `rustfmt` and Clippy, from `rust-toolchain.toml`;
 - Node.js 20.x or 22.x (Node.js 21.x is outside the locked Vite toolchain's supported engine
   range);
 - pnpm 9.15.9.

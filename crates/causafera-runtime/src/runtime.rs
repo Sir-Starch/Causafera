@@ -2311,12 +2311,12 @@ fn import_thermal_snapshot(
             ));
         }
     }
-    if let Some(last_trace) = conservation_receipts.keys().next_back() {
-        if *last_trace != thermal_fields.conservation_last_change() {
-            return Err(RuntimeError::InvalidSnapshot(
-                "thermal conservation anchor does not match latest receipt",
-            ));
-        }
+    if let Some(last_trace) = conservation_receipts.keys().next_back()
+        && *last_trace != thermal_fields.conservation_last_change()
+    {
+        return Err(RuntimeError::InvalidSnapshot(
+            "thermal conservation anchor does not match latest receipt",
+        ));
     }
 
     let mut receipts = BTreeMap::<TraceId, Vec<ThermalCellTransferReceipt>>::new();
