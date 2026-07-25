@@ -284,6 +284,7 @@
 .table-frame {
   overflow: auto;
   max-height: var(--table-height, 26rem);
+  contain: paint;
   border-top: 1px solid var(--line-faint);
 }
 

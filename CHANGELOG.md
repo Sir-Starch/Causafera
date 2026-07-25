@@ -347,7 +347,10 @@ This project follows a structured changelog format. Each entry includes:
 - Documented the lens contract and its promotion recipe (`docs/ui/map-lenses.md`);
 - Rebuilt the meridian bar as one strip of equal-height cells divided by hairlines, with a single standard control shape throughout the chrome, a one-line digest run, and no connection word while the link is simply working;
 - Gave both side panels identical behaviour: one standard collapse control that stays visible when collapsed, and a drag handle for width;
-- Moved hover explanations into a portal so a panel with clipping can no longer cut one in half.
+- Moved hover explanations into a portal so a panel with clipping can no longer cut one in half;
+- Stopped the desktop launcher from disabling compositing and forcing software GL by default, which made the shell markedly slower than the same build in a browser; the narrow XWayland and DMABUF workaround remains, and the heavy profile is available through `CAUSAFERA_SOFTWARE_RENDER=1`;
+- Painted the chart sheet once into a bitmap instead of keeping roughly a hundred masked vector paths and a filtered noise layer live beneath a translucent scrolling workspace;
+- Bounded repaint to the scrolling regions with `contain: paint`, and stopped republishing map hover readings that had not changed.
 
 ## Categories
 

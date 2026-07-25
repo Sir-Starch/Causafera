@@ -111,6 +111,15 @@ labels after IR decoding.
 
 ### Charts
 
+### Paint cost
+
+Three rules keep the interface responsive under a compositor and survivable without one. The chart
+sheet behind the application is painted once into a bitmap rather than kept as live vector art —
+about a hundred masked paths under a translucent scrolling workspace would otherwise be
+re-rasterised on every frame. The scrolling regions carry `contain: paint`, which bounds repaint to
+their own boxes. And interaction state is published only when it changes: pointer movement over the
+map repaints the canvas when the reading under the cursor differs, not on every event.
+
 Charts are drawn on a 2D canvas with device-pixel scaling. WebGPU is not used: the current data
 scale does not warrant it, and the documented visualisation direction favours 2D and restrained
 2.5D. Every recorder carries a single value axis; two magnitudes get two recorders rather than two
@@ -177,9 +186,20 @@ pnpm --dir apps/observer desktop
 ```
 
 Linux uses the installed WebKitGTK 4.1 stack through Tauri 2. When both Wayland and X11 are
-available, the `desktop` launcher automatically selects XWayland with software rendering. This
-avoids WebKitGTK protocol failures observed with some NVIDIA and remote-desktop configurations.
-It changes only presentation and cannot affect simulation state.
+available, the `desktop` launcher selects XWayland and disables the DMABUF renderer. That is the
+narrow fix for the WebKitGTK protocol failures seen on some NVIDIA and remote-desktop
+configurations, and it costs nothing at run time.
+
+Compositing and GPU rendering stay on. Turning them off — which the launcher used to do by
+default — disables layer compositing, so every scroll repaints the whole window on the CPU and the
+desktop shell becomes markedly slower than the same build in a browser. If a machine still fails
+with them on:
+
+```text
+CAUSAFERA_SOFTWARE_RENDER=1 pnpm --dir apps/observer desktop
+```
+
+Neither switch changes presentation semantics and neither can affect simulation state.
 
 Native Wayland remains available for platform testing:
 

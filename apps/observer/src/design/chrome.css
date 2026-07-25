@@ -229,6 +229,7 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  contain: paint;
   padding: 0 var(--s3) var(--s3);
 }
 
@@ -254,6 +255,9 @@
   overflow-y: auto;
   overflow-x: hidden;
   scroll-behavior: smooth;
+  /* Bounds repaint to this box while scrolling, which matters most on builds
+     without layer compositing. */
+  contain: paint;
 }
 
 .workspace__inner {
@@ -405,6 +409,7 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  contain: paint;
   padding: var(--s3);
   display: flex;
   flex-direction: column;

@@ -69,8 +69,6 @@ export interface HoverReading {
   chunk?: ChunkRecord;
   cell?: { x: number; y: number };
   value?: string;
-  screenX: number;
-  screenY: number;
 }
 
 export function ChartMap({
@@ -89,6 +87,7 @@ export function ChartMap({
   const [viewport, setViewport] = useState<Viewport>({ x: 0, y: 0, scale: 1 });
   const [hover, setHover] = useState<{ chunkX: number; chunkY: number } | undefined>();
   const dragRef = useRef<{ x: number; y: number; moved: boolean } | undefined>(undefined);
+  const publishedRef = useRef<HoverReading | undefined>(undefined);
   const fittedRef = useRef(false);
 
   const chunkIndex = useMemo(() => {
@@ -502,8 +501,6 @@ export function ChartMap({
         chunk,
         cell: cell === undefined ? undefined : { x: cell.cellX, y: cell.cellY },
         value: raw === undefined || field === undefined ? undefined : field.format(raw),
-        screenX,
-        screenY,
       };
     },
     [chunkIndex, primaryLayers.field, screen, viewport],
@@ -552,12 +549,28 @@ export function ChartMap({
           return;
         }
         const reading = readAt(event.clientX - rect.left, event.clientY - rect.top);
-        setHover(
-          reading === undefined
-            ? undefined
-            : { chunkX: reading.chunkX, chunkY: reading.chunkY },
+        // Both of these drive a render and one repaints the whole canvas, so only publish a
+        // reading when it actually says something different.
+        setHover((current) =>
+          reading !== undefined &&
+          current?.chunkX === reading.chunkX &&
+          current.chunkY === reading.chunkY
+            ? current
+            : reading === undefined
+              ? undefined
+              : { chunkX: reading.chunkX, chunkY: reading.chunkY },
         );
-        onHover(reading);
+        const previous = publishedRef.current;
+        if (
+          previous?.chunkX !== reading?.chunkX ||
+          previous?.chunkY !== reading?.chunkY ||
+          previous?.cell?.x !== reading?.cell?.x ||
+          previous?.cell?.y !== reading?.cell?.y ||
+          previous?.value !== reading?.value
+        ) {
+          publishedRef.current = reading;
+          onHover(reading);
+        }
       }}
       onPointerUp={(event) => {
         const drag = dragRef.current;
@@ -579,6 +592,7 @@ export function ChartMap({
       }}
       onPointerLeave={() => {
         dragRef.current = undefined;
+        publishedRef.current = undefined;
         setHover(undefined);
         onHover(undefined);
       }}
