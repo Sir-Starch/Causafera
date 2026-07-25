@@ -74,7 +74,7 @@ bypass missing causal evidence.
 
 ## Validation
 
-The repository pins Rust 1.85.0 and uses Node.js 20.x or 22.x with pnpm 9.15.9 in CI.
+The repository pins Rust 1.97.1 and uses Node.js 20.x or 22.x with pnpm 9.15.9 in CI.
 
 Rust checks:
 

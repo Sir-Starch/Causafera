@@ -7,6 +7,8 @@ pub const MATERIAL_SURFACE_DELTA_SCHEMA_V1: u32 = 1;
 pub const MATERIAL_SURFACE_DELTA_SCHEMA_V2: u32 = 2;
 pub const MATERIAL_SURFACE_DELTA_SCHEMA_V3: u32 = 3;
 pub const MAX_MATERIAL_SURFACE_DELTAS: usize = 64;
+pub const THERMAL_DELTA_SCHEMA_V1: u32 = 1;
+pub const MAX_THERMAL_DELTAS: usize = 64;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[repr(u32)]
@@ -114,6 +116,10 @@ pub struct ObserverSnapshot {
     pub population_movements: u64,
     pub bytes_per_chunk: u64,
     pub latest_trace: TraceId,
+    pub thermal_total_cell_energy: i128,
+    pub thermal_total_reservoir_budget: i128,
+    pub thermal_active_chunk_count: u32,
+    pub thermal_active_cell_count: u32,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -123,6 +129,8 @@ pub struct ObserverWorldSnapshot {
     pub material_surface_delta_schema_version: u32,
     pub material_surface_deltas: Vec<MaterialSurfaceDelta>,
     pub material_surface_gate_deltas: Vec<MaterialSurfaceGateDelta>,
+    pub thermal_delta_schema_version: u32,
+    pub thermal_deltas: Vec<ThermalFieldDelta>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -161,6 +169,22 @@ pub struct MaterialSurfaceGateDelta {
     pub gate_transition_trace_id: TraceId,
     pub contact_trace_id: Option<TraceId>,
     pub transition_tick: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ThermalFieldDelta {
+    pub chart_id: u64,
+    pub chunk_x: i32,
+    pub chunk_y: i32,
+    pub chunk_z: i32,
+    pub cell_ordinal: u16,
+    pub pre_state_energy: i64,
+    pub post_state_energy: i64,
+    pub reservoir_scheduled_injection: i64,
+    pub reservoir_accepted_injection: i64,
+    pub reservoir_rejected_injection: i64,
+    pub net_face_flux: i64,
+    pub face_count: u32,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

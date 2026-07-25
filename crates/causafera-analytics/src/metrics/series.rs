@@ -177,10 +177,7 @@ fn stable_transition_count(checkpoints: &[AnalyticsCheckpoint]) -> Option<u64> {
 }
 
 fn u64_to_i64_saturating(value: u64) -> i64 {
-    match i64::try_from(value) {
-        Ok(value) => value,
-        Err(_) => i64::MAX,
-    }
+    i64::try_from(value).unwrap_or(i64::MAX)
 }
 
 fn u64_to_f64_saturating(value: u64) -> f64 {

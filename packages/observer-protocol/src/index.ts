@@ -2,6 +2,8 @@
 export const OBSERVER_PROTOCOL_V1 = 1;
 export const MAX_MATERIAL_SURFACE_DELTAS = 64;
 export const MATERIAL_SURFACE_DELTA_SCHEMA_V3 = 3;
+export const MAX_THERMAL_DELTAS = 64;
+export const THERMAL_DELTA_SCHEMA_V1 = 1;
 
 export interface ConnectRequest {
   supportedProtocolVersions: number[];
@@ -58,6 +60,10 @@ export interface RuntimeSummary {
   populationMovements: bigint;
   bytesPerChunk: bigint;
   latestTraceId: bigint;
+  thermalTotalCellEnergy: bigint;
+  thermalTotalReservoirBudget: bigint;
+  thermalActiveChunkCount: number;
+  thermalActiveCellCount: number;
 }
 
 export interface WorldChunkSnapshot {
@@ -66,6 +72,8 @@ export interface WorldChunkSnapshot {
   materialSurfaceDeltaSchemaVersion: number;
   materialSurfaceDeltas: MaterialSurfaceDelta[];
   materialSurfaceGateDeltas: MaterialSurfaceGateDelta[];
+  thermalDeltaSchemaVersion: number;
+  thermalDeltas: ThermalFieldDelta[];
 }
 
 export interface MaterialSurfaceDelta {
@@ -102,6 +110,21 @@ export interface MaterialSurfaceGateDelta {
   gateTransitionTraceId: bigint;
   contactTraceId?: bigint;
   transitionTick: bigint;
+}
+
+export interface ThermalFieldDelta {
+  chartId: bigint;
+  chunkX: number;
+  chunkY: number;
+  chunkZ: number;
+  cellOrdinal: number;
+  preStateEnergy: bigint;
+  postStateEnergy: bigint;
+  reservoirScheduledInjection: bigint;
+  reservoirAcceptedInjection: bigint;
+  reservoirRejectedInjection: bigint;
+  netFaceFlux: bigint;
+  faceCount: number;
 }
 
 export interface SpatialChunkSummary {
@@ -246,11 +269,15 @@ export function decodeRuntimeSummary(input: Uint8Array): RuntimeSummary {
   const values = new Map<number, bigint>();
   let physicalDigest: Uint8Array = new Uint8Array();
   let historyDigest: Uint8Array = new Uint8Array();
+  let thermalTotalCellEnergy = 0n;
+  let thermalTotalReservoirBudget = 0n;
   while (!cursor.empty) {
     const [field, wire] = cursor.key();
     if (wire === 0) values.set(field, cursor.varint());
     else if (wire === 2 && field === 3) physicalDigest = cursor.bytes();
     else if (wire === 2 && field === 4) historyDigest = cursor.bytes();
+    else if (wire === 2 && field === 24) thermalTotalCellEnergy = decodeZigzagI128(cursor.bytes());
+    else if (wire === 2 && field === 25) thermalTotalReservoirBudget = decodeZigzagI128(cursor.bytes());
     else cursor.skip(wire);
   }
   if (physicalDigest.length !== 32 || historyDigest.length !== 32) {
@@ -281,6 +308,10 @@ export function decodeRuntimeSummary(input: Uint8Array): RuntimeSummary {
     populationMovements: value(21),
     bytesPerChunk: value(22),
     latestTraceId: value(23),
+    thermalTotalCellEnergy,
+    thermalTotalReservoirBudget,
+    thermalActiveChunkCount: Number(values.get(26) ?? 0n),
+    thermalActiveCellCount: Number(values.get(27) ?? 0n),
   };
 }
 
@@ -290,8 +321,11 @@ export function decodeWorldChunkSnapshot(input: Uint8Array): WorldChunkSnapshot 
   const chunks: SpatialChunkSummary[] = [];
   const materialSurfaceDeltaBytes: Uint8Array[] = [];
   const materialSurfaceGateDeltas: MaterialSurfaceGateDelta[] = [];
+  const thermalDeltaBytes: Uint8Array[] = [];
   let materialSurfaceDeltaSchemaVersion = 0;
   let schemaVersionSeen = false;
+  let thermalDeltaSchemaVersion = 0;
+  let thermalSchemaVersionSeen = false;
   while (!cursor.empty) {
     const [field, wire] = cursor.key();
     if (field === 1 && wire === 0) simulationTicks = cursor.varint();
@@ -319,11 +353,32 @@ export function decodeWorldChunkSnapshot(input: Uint8Array): WorldChunkSnapshot 
         materialSurfaceGateDeltas.push(decodeMaterialSurfaceGateDelta(delta));
       }
     }
+    else if (field === 6 && wire === 2) {
+      const delta = cursor.bytes();
+      if (thermalDeltaBytes.length < MAX_THERMAL_DELTAS) {
+        thermalDeltaBytes.push(delta);
+      }
+    }
+    else if (field === 6) throw new Error("unexpected wire type for ThermalFieldDelta field 6");
+    else if (field === 7 && wire === 0) {
+      if (thermalSchemaVersionSeen) throw new Error("duplicate WorldChunkSnapshot field 7");
+      const version = cursor.varint();
+      if (version > 0xFFFFFFFFn) throw new Error("WorldChunkSnapshot thermal schema version overflows u32");
+      thermalDeltaSchemaVersion = Number(version);
+      thermalSchemaVersionSeen = true;
+    }
+    else if (field === 7) throw new Error("duplicate WorldChunkSnapshot field 7");
     else cursor.skip(wire);
   }
   if (simulationTicks === undefined) throw new Error("missing WorldChunkSnapshot field 1");
   const materialSurfaceDeltas = materialSurfaceDeltaBytes.map((delta) =>
     decodeMaterialSurfaceDelta(delta, materialSurfaceDeltaSchemaVersion)
+  );
+  if (thermalDeltaBytes.length > 0 && thermalDeltaSchemaVersion < THERMAL_DELTA_SCHEMA_V1) {
+    throw new Error("ThermalFieldDelta field 6 is not allowed for schema version " + thermalDeltaSchemaVersion);
+  }
+  const thermalDeltas = thermalDeltaBytes.map((delta) =>
+    decodeThermalFieldDelta(delta, thermalDeltaSchemaVersion)
   );
   return {
     simulationTicks,
@@ -331,6 +386,8 @@ export function decodeWorldChunkSnapshot(input: Uint8Array): WorldChunkSnapshot 
     materialSurfaceDeltaSchemaVersion,
     materialSurfaceDeltas,
     materialSurfaceGateDeltas,
+    thermalDeltaSchemaVersion,
+    thermalDeltas,
   };
 }
 
@@ -459,6 +516,28 @@ function decodeMaterialSurfaceGateDelta(input: Uint8Array): MaterialSurfaceGateD
     gateTransitionTraceId: value(11),
     contactTraceId: values.get(12),
     transitionTick: value(13),
+  };
+}
+
+function decodeThermalFieldDelta(input: Uint8Array, schemaVersion: number): ThermalFieldDelta {
+  if (schemaVersion < THERMAL_DELTA_SCHEMA_V1) {
+    throw new Error("ThermalFieldDelta fields are not allowed for schema version " + schemaVersion);
+  }
+  const values = decodeVarintFields(input);
+  const value = requiredValue(values, "ThermalFieldDelta");
+  return {
+    chartId: value(1),
+    chunkX: Number(zigzagDecode(value(2))),
+    chunkY: Number(zigzagDecode(value(3))),
+    chunkZ: Number(zigzagDecode(value(4))),
+    cellOrdinal: Number(value(5)),
+    preStateEnergy: zigzagDecode(value(6)),
+    postStateEnergy: zigzagDecode(value(7)),
+    reservoirScheduledInjection: zigzagDecode(value(8)),
+    reservoirAcceptedInjection: zigzagDecode(value(9)),
+    reservoirRejectedInjection: zigzagDecode(value(10)),
+    netFaceFlux: zigzagDecode(value(11)),
+    faceCount: Number(value(12)),
   };
 }
 
@@ -622,6 +701,25 @@ function requiredValue(values: Map<number, bigint>, name: string): (field: numbe
 
 function zigzagDecode(value: bigint): bigint {
   return (value >> 1n) ^ -(value & 1n);
+}
+
+function decodeZigzagI128(input: Uint8Array): bigint {
+  let encoded = 0n;
+  const maximum = (1n << 128n) - 1n;
+  for (let index = 0; index < input.length; index += 1) {
+    const byte = input[index];
+    if (byte === undefined) throw new Error("truncated i128 zigzag varint");
+    const shift = BigInt(index) * 7n;
+    if (shift >= 128n) throw new Error("i128 zigzag varint overflows");
+    const part = BigInt(byte & 0x7f);
+    if (part > (maximum >> shift)) throw new Error("i128 zigzag varint overflows");
+    encoded |= part << shift;
+    if ((byte & 0x80) === 0) {
+      if (index + 1 !== input.length) throw new Error("invalid i128 zigzag varint");
+      return zigzagDecode(encoded);
+    }
+  }
+  throw new Error("invalid i128 zigzag varint");
 }
 
 function fieldVarint(output: number[], field: number, value: bigint): void {

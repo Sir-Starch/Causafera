@@ -1,37 +1,98 @@
-# Causafera
+<div align="center">
 
-Causafera is an experimental causal world-simulation engine intended to model a persistent
-fantasy world with rare arrivals from other worlds (isekai). It studies how physical processes,
-bounded subjective agents, language, institutions, history, and an information-sensitive mana
-field interact to produce traceable, reconstructable outcomes.
+<h1 id="causafera">Causafera</h1>
 
-> **Status: Experimental pre-alpha.** This repository is public source, not a product, binary
-> distribution, production service, or scientific-model release. The Foundation Era contracts and
-> a bounded causal loop are implemented; simulation depth is uneven and many domains remain
-> incomplete.
+<p><strong>A deterministic causal simulation engine for persistent fantasy worlds.</strong></p>
 
-## What Causafera is
+<p>
+  Causafera models how physical processes, bounded subjective agents, language, institutions,<br>
+  history, and an information-sensitive mana field interact to produce traceable outcomes.
+</p>
 
-Causafera explores a specific question: can a persistent world produce surprising social,
-linguistic, biological, geographic, and magic-like outcomes from lower-level causes — while
-retaining enough provenance to explain what happened?
+<p>
+  <a href="docs/index.md"><strong>Documentation</strong></a>
+  ·
+  <a href="docs/roadmap/roadmap.md"><strong>Roadmap</strong></a>
+  ·
+  <a href="CONTRIBUTING.md"><strong>Contributing</strong></a>
+  ·
+  <a href="SECURITY.md"><strong>Security</strong></a>
+</p>
+
+<p>
+  <a href="docs/roadmap/roadmap.md">
+    <img alt="Project status: experimental pre-alpha" src="https://img.shields.io/badge/status-experimental%20pre--alpha-E67E22?style=flat-square">
+  </a>
+  <a href="rust-toolchain.toml">
+    <img alt="Rust 2024" src="https://img.shields.io/badge/Rust-2024-000000?style=flat-square&amp;logo=rust&amp;logoColor=white">
+  </a>
+  <a href="https://v2.tauri.app/">
+    <img alt="Tauri 2" src="https://img.shields.io/badge/Tauri-2-24C8DB?style=flat-square&amp;logo=tauri&amp;logoColor=white">
+  </a>
+  <a href="LICENSE">
+    <img alt="Software license: AGPL-3.0-only" src="https://img.shields.io/badge/software-AGPL--3.0--only-663399?style=flat-square">
+  </a>
+  <a href="LICENSE-CC-BY-SA-4.0">
+    <img alt="Documentation license: CC BY-SA 4.0" src="https://img.shields.io/badge/docs-CC%20BY--SA%204.0-1769AA?style=flat-square&amp;logo=creativecommons&amp;logoColor=white">
+  </a>
+</p>
+
+<sub>
+  <a href="#overview">Overview</a> ·
+  <a href="#causal-model">Causal model</a> ·
+  <a href="#project-status">Status</a> ·
+  <a href="#architecture">Architecture</a> ·
+  <a href="#quick-start">Quick start</a> ·
+  <a href="#validation">Validation</a> ·
+  <a href="#repository-layout">Repository</a> ·
+  <a href="#licenses">Licenses</a>
+</sub>
+
+</div>
+
+> [!WARNING]
+> **Causafera is experimental pre-alpha software.** This repository is source code, not a
+> finished product, binary distribution, production service, playable game, or scientific-model
+> release. The Foundation Era contracts and a bounded causal loop are implemented, but simulation
+> depth remains uneven and many domains are incomplete.
+
+## Overview
+
+Causafera explores a specific question:
+
+> Can a persistent world produce surprising social, linguistic, biological, geographic, and
+> magic-like outcomes from lower-level causes while retaining enough provenance to explain what
+> happened?
 
 The intended setting is a coherent fantasy world rather than a generic real-world model. Magic,
 cultures, languages, institutions, technologies, and history should arise through the same causal
-framework rather than preset narrative or semantic rules.
+framework instead of preset narrative rules or semantic shortcuts.
 
-Rare isekai arrivals — individuals displaced from other worlds — are part of the world model.
-They are physical and historical events within the simulation, not protagonists exempt from its
-rules. Memories and outside knowledge do not automatically grant capabilities, technologies,
-authority, skills, or immunity from local causality.
+Rare **isekai arrivals**, individuals displaced from other worlds, are physical and historical
+events within the simulation. They are not protagonists exempt from its rules. Memories and
+outside knowledge do not automatically grant capabilities, technologies, authority, skills, or
+immunity from local causality.
 
-World state persists independently of any observer or inhabitant. Agents do not read that
-authoritative state directly. They receive bounded physical signals and construct subjective
-scenes, memories, concepts, beliefs, and causal hypotheses that may be incomplete or wrong.
-Their interpretations influence behaviour; repeated behaviour creates physical and informational
-patterns; those patterns feed back into later world state.
+### At a glance
 
-The central causal loop:
+| Concern | Causafera's approach |
+| --- | --- |
+| World state | Persistent and observer-independent |
+| Agents | Bounded perception, subjective scenes, fallible beliefs |
+| Execution | Deterministic scheduling, explicit random streams, reproducible replay |
+| Cross-domain effects | Physical and informational causal carriers, not semantic labels |
+| Magic | An information-sensitive physical substrate responding to measurable structure |
+| Explanation | Typed, evidence-bearing provenance downstream of authoritative state |
+| Observation | Read-only derived tooling that cannot become simulation truth |
+
+## Causal model
+
+World state persists independently of any observer or inhabitant. Agents cannot read authoritative
+state directly. They receive bounded physical signals and construct subjective scenes, memories,
+concepts, beliefs, and causal hypotheses that may be incomplete or wrong.
+
+Those interpretations influence behaviour. Repeated behaviour creates durable physical and
+informational patterns, which feed back into later world state:
 
 ```text
 persistent world state
@@ -43,20 +104,20 @@ persistent world state
     -> changed observations and future beliefs
 ```
 
-Mana is an information-sensitive physical substrate. It responds to measurable recurrence, timing,
-synchronization, geometry, frequency, and persistent structure — not to prayer, law, professions,
-words, beliefs, classes, skills, or other semantic labels.
+Mana is an information-sensitive physical substrate. It responds to measurable recurrence,
+timing, synchronization, geometry, frequency, and persistent structure, not to prayer, law,
+professions, words, beliefs, classes, skills, or other semantic labels.
 
-## Why causal depth matters
+### Why causal depth matters
 
-When a simulation routes effects through semantic shortcuts — "the blacksmith has Smithing 5, so
-the sword gets +2 quality" — outcomes are predetermined by the label vocabulary. Causafera
-replaces that pipeline with layered physical, cognitive, and informational causation where each
-domain carries its own state and communicates through causal carriers rather than labels.
+A shortcut such as "the blacksmith has Smithing 5, so the sword gets +2 quality" predetermines the
+outcome through label vocabulary. Causafera replaces that pipeline with layered physical,
+cognitive, and informational causation. Each domain owns its state and communicates through causal
+carriers rather than labels.
 
-This makes outcomes reconstructable. When something unexpected happens, the provenance chain
-traces back through perception, belief formation, behavioural decisions, material processes, and
-geographic conditions to specific prior causes — including causes the agents themselves
+This makes unexpected outcomes reconstructable. A provenance chain can trace an authoritative
+change through perception, belief formation, behavioural decisions, material processes, and
+geographic conditions to specific prior causes, including causes the agents themselves
 misunderstood.
 
 ## Design principles
@@ -74,58 +135,54 @@ misunderstood.
   The Explanation Engine renders typed, evidence-bearing interpretations without mutating the
   simulation.
 - **Non-authoritative observation.** The observer protocol, desktop UI, classifications, locale,
-  and visual presentation are read-only derived tooling — they cannot become simulation truth.
+  and visual presentation are read-only derived tooling and cannot become simulation truth.
 - **Evidence before scale or emergence claims.** Digests prove equality or divergence, not physical
   distance. Performance and emergence claims require representative reproducible evidence.
 
-The non-negotiable rules are maintained in the
+The non-negotiable rules are defined in the
 [architecture invariants](docs/architecture/invariants.md).
 
-## What exists today
+## Project status
 
-The completed Foundation Era (Phases 0–26) provides minimum validated contracts and selected
+The completed **Foundation Era (Phases 0–26)** provides minimum validated contracts and selected
 executable paths. It does not represent mature simulation depth across every domain.
 
-**Working infrastructure:**
+### Implemented foundations
 
-- a Rust 2024 workspace with deterministic scheduler phases and explicit random-stream rules;
-- append-only causal events and provenance, canonical state digests, replay checks, and
-  deterministic snapshot save/resume;
-- a Tauri 2 and React desktop observer consuming versioned Protocol Buffer data rather than
-  direct runtime storage.
+- Rust 2024 workspace with deterministic scheduler phases and explicit random-stream rules.
+- Append-only causal events and provenance.
+- Canonical state digests, replay checks, and deterministic snapshot save/resume.
+- Tauri 2 and React desktop observer consuming versioned Protocol Buffer data instead of direct
+  runtime storage.
+- Bounded contracts for physical space, geography, biology, perception, subjective scenes,
+  cognition, language, practices, epistemics, social records, economy, city infrastructure,
+  historical bootstrap, isekai transfer, and metaphysical experiments.
+- Fixed-point mana field responding to non-semantic recurrence, synchronization, timing, and
+  spatial pattern structure.
+- Causal-resolution and long-run experiment infrastructure, Explanation IR, observer protocol,
+  and bounded observer-overhead measurement.
 
-**Bounded domain contracts** — minimum validated type structures, invariants, and boundaries for
-physical space, geography, biology, perception, subjective scenes, cognition, language, practices,
-epistemics, social records, economy, city infrastructure, historical bootstrap, isekai transfer,
-and metaphysical experiments. These contracts establish architectural boundaries; most do not yet
-represent deep simulation.
-
-**Executable paths** — a fixed-point mana field responding to non-semantic recurrence,
-synchronization, timing, and spatial pattern structure; causal-resolution and long-run experiment
-infrastructure; Explanation IR; observer protocol; and bounded observer overhead measurement.
-
-Current maturity levels and gaps are listed in the
+These contracts establish architectural boundaries. Most domains do not yet represent deep
+simulation. Current maturity levels are tracked in the
 [domain coverage matrix](docs/ontology/domain-coverage-matrix.md).
 
-## What remains incomplete
+### Major incomplete areas
 
-Major gaps include:
-
-- durable geology, hydrology, climate, ecology, materials, energy, and multiscale geographic
-  processes;
-- deeply integrated morphology, physiology, development, heredity, reproduction, disease,
-  demography, and population conservation;
-- long-lived cognition, grounded learning, conversation, language diffusion, institutions,
-  production, maintenance, governance, and historical synthesis;
-- validated cross-domain mana effects over representative physical carriers;
-- production bootstrap paths free of fixture/demo construction;
-- domain-valid recovery metrics, counterfactuals, causal queries, uncertainty reporting, and
-  observer inspection coverage;
-- representative long runs, performance envelopes, provenance-growth measurements, and evidence
+- Durable geology, hydrology, climate, ecology, materials, energy, and multiscale geographic
+  processes.
+- Deeply integrated morphology, physiology, development, heredity, reproduction, disease,
+  demography, and population conservation.
+- Long-lived cognition, grounded learning, conversation, language diffusion, institutions,
+  production, maintenance, governance, and historical synthesis.
+- Validated cross-domain mana effects over representative physical carriers.
+- Production bootstrap paths free of fixture or demonstration construction.
+- Domain-valid recovery metrics, counterfactuals, causal queries, uncertainty reporting, and
+  observer inspection coverage.
+- Representative long runs, performance envelopes, provenance-growth measurements, and evidence
   for nontrivial emergence.
 
-Optional LLM wording is not implemented or scheduled. It remains behind a terminal maturity gate
-and would be removable, non-authoritative, and downstream of deterministic Explanation.
+Optional LLM wording is neither implemented nor scheduled. It remains behind a terminal maturity
+gate and would be removable, non-authoritative, and downstream of deterministic Explanation.
 
 ## Architecture
 
@@ -139,26 +196,36 @@ domain state and physical carriers
     -> non-authoritative Tauri / React observer
 ```
 
-The workspace is split into domain crates. `causafera-types`, `causafera-core`, and the domain
-crates define validated primitives and operations; `causafera-runtime` composes authoritative
-execution; `causafera-persistence`, `causafera-lab`, `causafera-explanation`, and the observer
-crates provide save/resume, experiments, interpretation, and read-only inspection. See the
-[documentation index](docs/index.md) and
+The workspace is split into domain crates:
+
+- `causafera-types`, `causafera-core`, and the domain crates define validated primitives and
+  operations.
+- `causafera-runtime` composes authoritative execution.
+- `causafera-persistence`, `causafera-lab`, `causafera-explanation`, and the observer crates provide
+  save/resume, experiments, interpretation, and read-only inspection.
+
+For the full design, see the [documentation index](docs/index.md),
+[architecture invariants](docs/architecture/invariants.md), and
 [Detailed Development rebaseline](docs/architecture/detailed-development-rebaseline.md).
 
-## Prerequisites
+## Quick start
 
-- Git;
-- Rust 1.85.0 with `rustfmt` and Clippy, from `rust-toolchain.toml`;
-- Node.js 20.x or 22.x (Node.js 21.x is outside the locked Vite toolchain's supported engine
-  range);
-- pnpm 9.15.9.
+### Prerequisites
+
+| Dependency | Required version |
+| --- | --- |
+| Git | Current supported release |
+| Rust | 1.97.1 with `rustfmt` and Clippy, pinned by `rust-toolchain.toml` |
+| Node.js | 20.x or 22.x; Node.js 21.x is outside the locked Vite engine range |
+| pnpm | 9.15.9 |
 
 Building the desktop observer on Linux additionally requires GTK 3, WebKitGTK 4.1, Ayatana
-AppIndicator 3, and librsvg development packages. Other platforms require the normal
+AppIndicator 3, and librsvg development packages. Other platforms require the standard
 [Tauri 2 prerequisites](https://v2.tauri.app/start/prerequisites/).
 
-## Quick start
+### Verify the workspace
+
+From the repository root:
 
 ```bash
 cargo metadata --format-version 1 --no-deps
@@ -168,12 +235,12 @@ pnpm install --frozen-lockfile
 pnpm build
 ```
 
-The `doctor` command verifies core runtime identities and determinism prerequisites. The test
-suite is substantial; the repository is experimental and does not install a playable game.
+The `doctor` command verifies core runtime identities and determinism prerequisites. The test suite
+is substantial; these commands validate the repository but do not install a playable game.
 
-## Desktop observer
+### Run the desktop observer
 
-After installing dependencies and the platform prerequisites:
+After installing the platform prerequisites:
 
 ```bash
 pnpm --dir apps/observer desktop
@@ -181,11 +248,11 @@ pnpm --dir apps/observer desktop
 
 The process is long-running; stop it with `Ctrl+C`. Browser-only Vite mode intentionally cannot
 replace the Tauri transport with demonstration data. See the
-[observer application guide](docs/ui/observer-application.md) for data-flow and platform details.
+[observer application guide](docs/ui/observer-application.md) for data flow and platform details.
 
 ## Validation
 
-Rust formatting, linting, and tests:
+### Rust
 
 ```bash
 cargo fmt --all -- --check
@@ -195,7 +262,7 @@ cargo test --workspace --no-default-features
 cargo run -p xtask -- ci
 ```
 
-Frontend:
+### Frontend
 
 ```bash
 pnpm install --frozen-lockfile
@@ -204,60 +271,76 @@ pnpm typecheck
 pnpm build
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the full validation suite including audit-tool tests
-and dependency advisory checks. The GitHub workflow runs equivalent Rust and frontend gates.
+[CONTRIBUTING.md](CONTRIBUTING.md) contains the complete validation suite, including audit-tool
+tests and dependency advisory checks. GitHub Actions runs equivalent Rust and frontend gates.
 
-No advisory-free, supported binary, or production-security claim is made. Known dependency
-advisories and persistence threat-model limitations are documented in [SECURITY.md](SECURITY.md).
+> [!NOTE]
+> The project makes no advisory-free, supported-binary, or production-security claim. Known
+> dependency advisories and persistence threat-model limitations are documented in
+> [SECURITY.md](SECURITY.md).
 
-## Repository structure
+## Repository layout
 
 | Path | Purpose |
 | --- | --- |
-| `crates/` | Authoritative Rust types, domain contracts, runtime, persistence, analytics, CLI, and lab |
+| `crates/` | Authoritative Rust types, domains, runtime, persistence, analytics, CLI, and lab |
 | `apps/observer/` | Tauri 2 and React desktop observer |
 | `packages/observer-protocol/` | TypeScript Protocol Buffer decoding and observer protocol types |
 | `proto/` | Versioned observer Protocol Buffer schemas |
 | `tests/` | Cross-crate architecture and determinism tests |
 | `tools/xtask/` | Canonical Rust CI orchestration |
 | `tools/audit/` | Reproducible maturity-audit schemas, fixtures, and regression tests |
-| `docs/` | Vision, invariants, architecture, ontology, subsystem, roadmap, ADR, and RFC documentation |
+| `docs/` | Vision, invariants, architecture, ontology, subsystems, roadmap, ADRs, and RFCs |
 | `plans/` | Accepted, active, draft, and completed ExecPlans |
 
 ## Roadmap
 
-Causafera is in the open-ended Detailed Development Program. Work is sequenced by accepted
+Causafera is in the open-ended **Detailed Development Program**. Work is sequenced through accepted,
 bounded ExecPlans rather than a promised final phase number:
 
-1. deepen authoritative simulation and real cross-domain coupling;
-2. keep Explanation and analytics causally inspectable as capabilities mature;
-3. add bounded observer read models required for validation;
-4. batch coherent UI milestones after read models stabilize;
-5. consider optional LLM surface wording only after the terminal maturity gate.
+1. Deepen authoritative simulation and real cross-domain coupling.
+2. Keep Explanation and analytics causally inspectable as capabilities mature.
+3. Add bounded observer read models required for validation.
+4. Batch coherent UI milestones after read models stabilize.
+5. Consider optional LLM surface wording only after the terminal maturity gate.
 
-See the [roadmap](docs/roadmap/roadmap.md) for the authoritative status and the
-[documentation index](docs/index.md) for the full documentation tree.
+The [roadmap](docs/roadmap/roadmap.md) is the authoritative status source. The
+[documentation index](docs/index.md) provides the complete documentation tree.
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for development workflow, architectural requirements,
-validation commands, and CLA details.
+Read [CONTRIBUTING.md](CONTRIBUTING.md) before proposing changes. It defines the development
+workflow, architectural requirements, validation commands, and Contributor License Agreement
+requirements.
 
 External code contributions are not currently accepted until the CLA acceptance workflow is
 configured. Issues and evidence-backed design discussion remain welcome.
 
-- [Security policy](SECURITY.md) — vulnerability reporting and known limitations
-- [Support guidance](SUPPORT.md) — issue filing and scope
-- [Contributor License Agreement](CLA.md)
+| Resource | Purpose |
+| --- | --- |
+| [Contributing guide](CONTRIBUTING.md) | Development workflow and validation requirements |
+| [Security policy](SECURITY.md) | Vulnerability reporting and known limitations |
+| [Support guidance](SUPPORT.md) | Issue filing, questions, and project scope |
+| [Contributor License Agreement](CLA.md) | Terms governing accepted contributions |
 
 ## Licenses
 
-- Functional software material — Rust, JavaScript, TypeScript, scripts, schemas, manifests, CI
-  configuration, and machine-readable software configuration — is licensed under
+Causafera uses separate licenses for software and explanatory documentation:
+
+- **Software:** Rust, JavaScript, TypeScript, scripts, schemas, manifests, CI configuration, and
+  machine-readable software configuration are licensed under
   [GNU AGPL v3.0 only](LICENSE) (`AGPL-3.0-only`).
-- Prose and non-functional explanatory documentation is licensed under
+- **Documentation:** Prose and non-functional explanatory documentation are licensed under
   [Creative Commons Attribution-ShareAlike 4.0 International](LICENSE-CC-BY-SA-4.0)
   (`CC BY-SA 4.0`), unless a file states otherwise.
 - Third-party dependencies retain their own licenses.
 - Contributions are governed by the existing [CLA](CLA.md) plus the applicable public outbound
   license. The CLA does not replace those licenses or transfer contributor copyright.
+
+---
+
+<div align="center">
+  <sub>
+    <a href="#causafera">Back to top</a>
+  </sub>
+</div>

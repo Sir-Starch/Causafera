@@ -1,4 +1,41 @@
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
+
+/// Non-negative fixed-point thermal energy in the carrier's base unit.
+///
+/// `i64::MAX` is the maximum so every cell value remains representable while
+/// transfer arithmetic can use `i128` without narrowing.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ThermalEnergy(i64);
+
+impl ThermalEnergy {
+    pub const ZERO: Self = Self(0);
+    pub const MAX: Self = Self(i64::MAX);
+
+    pub const fn new(value: i64) -> Result<Self, ThermalEnergyError> {
+        if value < 0 {
+            Err(ThermalEnergyError::NegativeValue(value))
+        } else {
+            Ok(Self(value))
+        }
+    }
+
+    pub const fn get(self) -> i64 {
+        self.0
+    }
+}
+
+impl std::fmt::Display for ThermalEnergy {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(formatter, "{}", self.0)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Error, PartialEq, Eq)]
+pub enum ThermalEnergyError {
+    #[error("thermal energy cannot be negative: {0}")]
+    NegativeValue(i64),
+}
 
 /// Temperature in Kelvin.
 ///
@@ -152,6 +189,18 @@ mod tests {
     fn temperature_celsius_conversion() {
         let t = Temperature::new(273.15);
         assert!((t.celsius()).abs() < f64::EPSILON * 10.0);
+    }
+
+    #[test]
+    fn thermal_energy_rejects_negative_values() {
+        // Given: a fixed-point value below the conserved carrier's lower bound.
+        let negative = -1;
+
+        // When: the value is parsed as authoritative thermal energy.
+        let result = ThermalEnergy::new(negative);
+
+        // Then: construction rejects the invalid carrier value.
+        assert_eq!(result, Err(ThermalEnergyError::NegativeValue(negative)));
     }
 
     #[test]
