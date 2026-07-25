@@ -326,6 +326,35 @@ This project follows a structured changelog format. Each entry includes:
 - Fixed four thermal snapshot-import integrity gaps found by independent review: unchecked receipt signed-flux transitions, an unbound latest-batch receipt/current-field-energy binding, unchecked reservoir-budget subtraction, and duplicated boundary-neighbor geometry in `causafera-runtime` now reusing `causafera-domains`' authoritative `ThermalFieldSet::boundary_neighbor_keys`; also closed a follow-up gap where non-latest-batch transfer receipts did not bounds-check `cell_index` against the field. See `TODO-THERMAL-006` for the remaining, out-of-scope aggregate conservation-total cross-validation gap.
 - Bumped the pinned Rust toolchain from 1.85.0 to 1.97.1 (`rust-toolchain.toml`) to track the newest stable release. The repository's `rust` CI job installs `dtolnay/rust-toolchain` with no explicit `toolchain` input, so it always resolves to the current stable release regardless of `rust-toolchain.toml`; this bump brings local/`rust-toolchain.toml` reproducibility back in line with what CI already runs, rather than pinning CI backward. Fixed the resulting new lints: two `clippy::manual_unwrap_or` occurrences (`causafera-analytics`, `causafera-lab`), one `clippy::useless_conversion`-style explicit `.into_iter()` on a `zip` argument (`causafera-cognition`), and four `clippy::collapsible_if` occurrences rewritten using stable 2024-edition let-chains (`causafera-runtime`).
 
+#### UI
+
+- Rebuilt the observer frontend as a five-area analytical instrument (Observatory, Survey, Flux, Assay, Instrument), replacing the Phase 26 three-view shell and its vanilla stylesheet;
+- Introduced a design token system and component library implementing the midnight-cartography direction: chart-surface treatment, engraved typographic hierarchy, coordinate-lock selection, and hatched unsurveyed states;
+- Introduced a six-hue signal palette in which each hue is reserved for one simulation quantity, generated in OKLCH and validated for lightness band, chroma floor, protanopia and deuteranopia separation, normal-vision separation, and contrast against the chart surface;
+- Replaced the session hook with a session controller over a selector store, adding a feed demand registry so a closed panel produces no observer traffic (`docs/observer/backpressure.md`);
+- Added canvas visualisation: a single-axis chart recorder with crosshair probing, a stacked chart profile of active chunks, and the material surface condition ladder with provenance markers;
+- Added a capability register presenting every defined observable with its state and maturity, replacing silent omission of unavailable data;
+- Added the Instrument exchange log reporting real transport byte counts, durations, and outcomes;
+- Added a command palette and keyboard navigation across areas, transport, and the inspector dock;
+- Rendered material surface gate deltas, which the protocol previously delivered without a consumer;
+- Added a development-only replay channel and a render smoke check driven by captured real protocol bytes (`cargo run -p causafera-observer --example capture_replay`), giving the frontend its first automated verification; both are excluded from production builds and marked in the interface (`INV-039`);
+- Recorded the observer projections the frontend is waiting on (`docs/ui/observer-projection-gaps.md`);
+- Reworked the visual system into a black outline atlas: an SVG terra incognita chart sheet beneath the application (coastlines, water lining, contour rings, graticule, rhumb lines, soundings, compass rose, and survey-dashed coasts where the survey was never closed), generated from fixed sums of sinusoids so it is identical in every session and cannot be mistaken for data;
+- Removed glow, glass, gradient and rounded-corner treatments from the interface chrome; plates are hairline-framed regions of the sheet with registration ticks, charts use dotted grids and engraved hatching instead of gradient washes;
+- Reserved hue entirely for measured quantities: the chrome is monochrome ink, so a coloured mark always denotes a simulation quantity. Selection, activity and focus are drawn rather than lit;
+- Added the chart instrument: a pannable, zoomable canvas map of one chart's chunk lattice with viewport culling, three levels of detail, spatial selection down to the 32³ cell lattice, and unsurveyed hatching beyond the received extent;
+- Added an extensible analytical lens architecture (`apps/observer/src/map`) in which a lens supplies fields, proportional symbols, cell marks, vectors and isolines, and the renderer knows nothing about any domain — connecting a future domain is a catalogue entry, not a renderer change;
+- Declared lens availability as part of the contract: observed, partial, preview and awaiting are drawn differently, and an awaiting lens renders the chart as unsurveyed while naming the read model it needs;
+- Isolated observer-side constructions in `src/map/preview.ts` (inverse-distance interpolation with marching-squares isolines, neighbour-difference vectors), clipped to the charted extent so a construction never paints knowledge over unsurveyed ground;
+- Replaced the Survey area with the Chart area, folding the chart profile and chunk register beneath the map as supporting reads of the same selection;
+- Documented the lens contract and its promotion recipe (`docs/ui/map-lenses.md`);
+- Rebuilt the meridian bar as one strip of equal-height cells divided by hairlines, with a single standard control shape throughout the chrome, a one-line digest run, and no connection word while the link is simply working;
+- Gave both side panels identical behaviour: one standard collapse control that stays visible when collapsed, and a drag handle for width;
+- Moved hover explanations into a portal so a panel with clipping can no longer cut one in half;
+- Stopped the desktop launcher from disabling compositing and forcing software GL by default, which made the shell markedly slower than the same build in a browser; the narrow XWayland and DMABUF workaround remains, and the heavy profile is available through `CAUSAFERA_SOFTWARE_RENDER=1`;
+- Painted the chart sheet once into a bitmap instead of keeping roughly a hundred masked vector paths and a filtered noise layer live beneath a translucent scrolling workspace;
+- Bounded repaint to the scrolling regions with `contain: paint`, and stopped republishing map hover readings that had not changed.
+
 ## Categories
 
 - **ARCH** - Architecture

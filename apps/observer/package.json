@@ -12,7 +12,9 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "smoke": "node scripts/render-smoke.mjs",
+    "capture": "cargo run -q -p causafera-observer --example capture_replay -- dev/replay/capture.json"
   },
   "dependencies": {
     "@causafera/observer-protocol": "workspace:*",
@@ -26,6 +28,7 @@
     "@typescript-eslint/eslint-plugin": "^8.64.0",
     "@typescript-eslint/parser": "^8.64.0",
     "@vitejs/plugin-react": "^4.3.0",
+    "esbuild": "^0.25.0",
     "eslint": "^8.57.1",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.3",
