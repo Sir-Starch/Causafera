@@ -114,9 +114,16 @@ export function cssColor(name: string, fallback: string): string {
   return value.length > 0 ? value : fallback;
 }
 
-/** Read the whole palette once per draw rather than per mark. */
+let paletteCache: Record<string, string> | undefined;
+
+/**
+ * The design tokens do not change at runtime, so the palette is resolved once. Without the
+ * cache every draw forced a style recalculation for each of twenty custom properties, on a
+ * surface that repaints on every received frame.
+ */
 export function readPalette(): Record<string, string> {
-  return {
+  if (paletteCache !== undefined) return paletteCache;
+  paletteCache = {
     ink: cssColor("--ink", "#e4eaee"),
     inkDim: cssColor("--ink-dim", "#9baab6"),
     inkFaint: cssColor("--ink-faint", "#6b7a86"),
@@ -139,6 +146,7 @@ export function readPalette(): Record<string, string> {
     ramp700: cssColor("--ramp-700", "#5f4110"),
     paper: cssColor("--paper", "#07080a"),
   };
+  return paletteCache;
 }
 
 /**
@@ -148,26 +156,35 @@ export function readPalette(): Record<string, string> {
  * the plate reading as line-work, and it survives printing and forced-colours far better than
  * a translucent fill.
  */
+const hatchTiles = new Map<string, HTMLCanvasElement>();
+
 export function hatchPattern(
   context: CanvasRenderingContext2D,
   color: string,
   spacing = 5,
   width = 0.7,
 ): CanvasPattern | string {
-  const tile = document.createElement("canvas");
-  const size = spacing * 2;
-  tile.width = size;
-  tile.height = size;
-  const tileContext = tile.getContext("2d");
-  if (tileContext === null) return color;
-  tileContext.strokeStyle = color;
-  tileContext.lineWidth = width;
-  tileContext.beginPath();
-  for (let offset = -size; offset <= size * 2; offset += spacing) {
-    tileContext.moveTo(offset, -1);
-    tileContext.lineTo(offset + size + 1, size + 1);
+  // The tile is cached; the pattern is not, because a CanvasPattern belongs to the context
+  // that created it and the map draws into a different one than the charts do.
+  const key = `${color}|${spacing}|${width}`;
+  let tile = hatchTiles.get(key);
+  if (tile === undefined) {
+    tile = document.createElement("canvas");
+    const size = spacing * 2;
+    tile.width = size;
+    tile.height = size;
+    const tileContext = tile.getContext("2d");
+    if (tileContext === null) return color;
+    tileContext.strokeStyle = color;
+    tileContext.lineWidth = width;
+    tileContext.beginPath();
+    for (let offset = -size; offset <= size * 2; offset += spacing) {
+      tileContext.moveTo(offset, -1);
+      tileContext.lineTo(offset + size + 1, size + 1);
+    }
+    tileContext.stroke();
+    hatchTiles.set(key, tile);
   }
-  tileContext.stroke();
   return context.createPattern(tile, "repeat") ?? color;
 }
 

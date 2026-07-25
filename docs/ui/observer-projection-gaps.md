@@ -51,9 +51,9 @@ are new. Bounding must be explicit — ancestry is unbounded in principle.
 requested chunk, bounded by cell count.
 
 **Why:** the runtime holds both fields; the observer receives chunk totals and one peak value. The
-chart profile currently shows a chunk as a single mana magnitude. With a per-cell projection the
-Survey area gains a real field plate rather than a summary bar, and the existing canvas layer can
-render it without new infrastructure.
+map currently tints a whole chunk with one value and hatches the cell lattice to say so. With a
+per-cell projection the Chart area gains a real field plate at cell scale, and the existing lens and
+canvas layers render it without new infrastructure.
 
 **Effort:** medium. A 32³ chunk is 32768 cells, so the projection needs a slice or downsample
 contract rather than a full dump.
@@ -78,6 +78,27 @@ depends on decisions about which entity attributes are observable at all, and it
 back door to Ground Truth identity (INV-027).
 
 **Effort:** high, and it needs a contract decision before an implementation.
+
+## 7. Lenses awaiting a read model
+
+The chart instrument lists every one of these as an `awaiting` lens: selectable, described, and
+stating what it needs. Connecting one is a small frontend change once its projection exists — see
+the promotion recipe in `docs/ui/map-lenses.md`.
+
+| Lens | Needs |
+|------|-------|
+| Agents | `EntitySummary` read model with a spatial address; item 6 above |
+| Knowledge and belief | Subjective scene and belief read models; cognition is at contract level |
+| Language | Lexeme projection; the language domain is not coupled to the runtime |
+| Social structure | Agent-inferred structure and a read model |
+| Practices | Embodied practice execution and transmission |
+| Economy | City and material read models |
+| Ecology | The domain itself; documented but not implemented |
+| Provenance graph | Item 3 above — a bounded ancestry query |
+
+Two further lenses would move from `preview` to `observed` on existing requests: the interpolated
+isolines become real terrain contours with item 4 (per-cell fields), and the mana gradient becomes a
+measured flux if a transport term between chunks is ever projected.
 
 ## Not requested
 

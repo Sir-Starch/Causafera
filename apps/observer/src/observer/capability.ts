@@ -15,6 +15,7 @@
  */
 
 import type { ObserverLocale } from "./format";
+import type { AreaId } from "../workspace";
 
 export type CapabilityState =
   | "live" //             real data through the current protocol, rendered here
@@ -31,7 +32,7 @@ export interface CapabilityEntry {
   title: Record<ObserverLocale, string>;
   detail: Record<ObserverLocale, string>;
   /** Area of the application that reads it, when something reads it. */
-  area?: string;
+  area?: AreaId;
 }
 
 export interface CapabilityGroup {
@@ -110,7 +111,7 @@ export const CAPABILITY_REGISTER: CapabilityGroup[] = [
         state: "bounded",
         domainMaturity: 2,
         observerMaturity: 4,
-        area: "survey",
+        area: "chart",
         title: { "ru-RU": "Проекция чанков карты", "en-US": "Chart-qualified chunk projection" },
         detail: {
           "ru-RU":

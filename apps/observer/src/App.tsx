@@ -10,10 +10,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { AssayArea, AssayDock } from "./areas/AssayArea";
+import { ChartArea, ChartDock } from "./areas/ChartArea";
 import { FluxArea, FluxDock } from "./areas/FluxArea";
 import { InstrumentArea, InstrumentDock } from "./areas/InstrumentArea";
 import { StationArea, StationDock } from "./areas/StationArea";
-import { SurveyArea, SurveyDock } from "./areas/SurveyArea";
 import { CommandPalette } from "./components/CommandPalette";
 import { Notice } from "./components/primitives";
 import { Marginalia, Meridian, Rail } from "./components/shell";
@@ -27,7 +27,7 @@ const AREAS: Record<
   { view: (props: AreaProps) => JSX.Element; dock: (props: AreaProps) => JSX.Element | null }
 > = {
   station: { view: StationArea, dock: StationDock },
-  survey: { view: SurveyArea, dock: SurveyDock },
+  chart: { view: ChartArea, dock: ChartDock },
   flux: { view: FluxArea, dock: FluxDock },
   assay: { view: AssayArea, dock: AssayDock },
   instrument: { view: InstrumentArea, dock: InstrumentDock },

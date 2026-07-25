@@ -1,6 +1,8 @@
 /** Workspace state shared between an area and its inspector dock. */
 
-export const AREA_IDS = ["station", "survey", "flux", "assay", "instrument"] as const;
+import { DEFAULT_OVERLAYS, DEFAULT_PRIMARY_LENS } from "./map/lenses";
+
+export const AREA_IDS = ["station", "chart", "flux", "assay", "instrument"] as const;
 
 export type AreaId = (typeof AREA_IDS)[number];
 
@@ -8,8 +10,16 @@ export interface WorkspaceState {
   area: AreaId;
   dockOpen: boolean;
   railCollapsed: boolean;
-  /** Chunk selected on the chart profile or in the register. */
+  /** Chunk selected on the map, the chart profile or in the register. */
   selectedChunk?: string;
+  /** Cell selected inside a chunk, once the map is zoomed to the lattice. */
+  selectedCell?: { chunkKey: string; x: number; y: number };
+  /** The base field drawn by the map. */
+  primaryLens: string;
+  /** Lenses drawn over the base field. */
+  overlayLenses: string[];
+  /** Which face of the chart inspector is showing. */
+  dockView?: "selection" | "catalogue";
   /** Material surface selected on the condition ladder. */
   selectedSurface?: string;
   /** A trace anchor being followed across the ledger and the claim list. */
@@ -20,6 +30,8 @@ export const INITIAL_WORKSPACE: WorkspaceState = {
   area: "station",
   dockOpen: true,
   railCollapsed: false,
+  primaryLens: DEFAULT_PRIMARY_LENS,
+  overlayLenses: [...DEFAULT_OVERLAYS],
 };
 
 export interface AreaProps {

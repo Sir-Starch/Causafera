@@ -131,7 +131,7 @@ export function FluxArea({ workspace, update }: AreaProps) {
               traceRate: copy.station.traces,
               manaCellRate: copy.station.manaCellChanges,
             }}
-            emptyLabel={copy.survey.noWorld}
+            emptyLabel={copy.chart.noWorld}
             valueFormat={(value) => value.toFixed(0)}
           />
         </Panel>
@@ -151,7 +151,7 @@ export function FluxArea({ workspace, update }: AreaProps) {
               committedRate: copy.station.committed,
               rejectedRate: copy.station.rejected,
             }}
-            emptyLabel={copy.survey.noWorld}
+            emptyLabel={copy.chart.noWorld}
             valueFormat={(value) => value.toFixed(1)}
           />
         </Panel>
@@ -160,7 +160,7 @@ export function FluxArea({ workspace, update }: AreaProps) {
           variant="flush"
           title={copy.station.resolutionRelevance}
           eyebrow={copy.common.projection}
-          lede={copy.survey.resolution}
+          lede={copy.chart.resolution}
         >
           <ChartRecorder
             series={resolutionSeries}
@@ -168,7 +168,7 @@ export function FluxArea({ workspace, update }: AreaProps) {
             label={copy.station.resolutionRelevance}
             tickLabel={copy.transport.ticks}
             legendLabels={{ relevance: copy.station.resolutionRelevance }}
-            emptyLabel={copy.survey.noWorld}
+            emptyLabel={copy.chart.noWorld}
             fillFirst
           />
           <p className="chart__caption">
@@ -220,7 +220,7 @@ export function FluxArea({ workspace, update }: AreaProps) {
             labelFor={ladderLabel}
             probeLabels={{
               condition: copy.flux.condition,
-              mana: copy.survey.mana,
+              mana: copy.chart.mana,
               localMana: copy.flux.localMana,
               contact: copy.flux.contact,
             }}
@@ -260,7 +260,7 @@ export function FluxArea({ workspace, update }: AreaProps) {
                     <th className="num">{copy.flux.tick}</th>
                     <th>{copy.flux.surface}</th>
                     <th className="num">{copy.flux.condition}</th>
-                    <th className="num">{copy.survey.mana}</th>
+                    <th className="num">{copy.chart.mana}</th>
                     <th className="num">{copy.flux.localMana}</th>
                     <th>{copy.assay.traces}</th>
                   </tr>
@@ -419,11 +419,11 @@ export function FluxDock({ workspace, update }: AreaProps) {
         }
       >
         <Fields>
-          <Field label={copy.survey.chart}>#{ladder.chartId.toString()}</Field>
-          <Field label={copy.survey.surfaceCell}>
+          <Field label={copy.chart.chart}>#{ladder.chartId.toString()}</Field>
+          <Field label={copy.chart.surfaceCell}>
             {ladder.cell.x}, {ladder.cell.y}, {ladder.cell.z}
           </Field>
-          <Field label={copy.survey.transitions}>{ladder.steps.length}</Field>
+          <Field label={copy.chart.transitions}>{ladder.steps.length}</Field>
           <Field label={copy.flux.condition}>
             {ladder.minCondition} → {ladder.maxCondition}
           </Field>
@@ -433,7 +433,7 @@ export function FluxDock({ workspace, update }: AreaProps) {
           <Field label={copy.flux.manaEffect}>{ladder.manaEffects}</Field>
           <Field label={copy.flux.localMana}>{ladder.localManaEvents}</Field>
           {last !== undefined && (
-            <Field label={copy.survey.mana}>{formatInteger(last.manaTotal, locale)}</Field>
+            <Field label={copy.chart.mana}>{formatInteger(last.manaTotal, locale)}</Field>
           )}
         </Fields>
       </Panel>

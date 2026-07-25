@@ -1,0 +1,596 @@
+/* Causafera Observer — the chart table, its lens dock and its legend cartouche. */
+
+/* ---- Lens dock: floating instrument keys over the chart --------------- */
+
+.lens-dock {
+  position: absolute;
+  top: var(--s2);
+  left: var(--s2);
+  z-index: 4;
+  max-width: calc(100% - 12rem);
+}
+
+.lens-dock__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  background: rgb(5 6 7 / 92%);
+}
+
+.lens-dock__label {
+  padding: 0 0.5rem 0 0.375rem;
+  font-size: var(--t-micro);
+  font-weight: 600;
+  letter-spacing: var(--track-caps);
+  text-transform: uppercase;
+  color: var(--ink-ghost);
+  cursor: default;
+  white-space: nowrap;
+}
+
+.lens-dock__group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+/* A hairline between domains: the groups must not read as one undifferentiated row. */
+.lens-dock__group + .lens-dock__group {
+  margin-left: 0.5rem;
+  padding-left: 0.5625rem;
+  border-left: 1px solid var(--line);
+}
+
+.lens-dock__divider {
+  width: 1px;
+  align-self: stretch;
+  margin: 1px 0.5rem;
+  background: var(--line-strong);
+}
+
+.lens-dock__key {
+  display: grid;
+  place-items: center;
+  position: relative;
+  width: 1.75rem;
+  height: 1.75rem;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--ink-faint);
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--ease-survey),
+    border-color var(--dur-fast) var(--ease-survey),
+    background var(--dur-fast) var(--ease-survey);
+}
+
+.lens-dock__key:hover {
+  border-color: var(--line-strong);
+  color: var(--ink);
+}
+
+/* The base field is one choice, and reads as ink on paper reversed. */
+.lens-dock__key[data-role="primary"][aria-pressed="true"] {
+  background: var(--signal);
+  border-color: var(--signal);
+  color: var(--paper-deep);
+}
+
+/* An overlay is a switch: the glyph takes its signal and a lit foot rule. */
+.lens-dock__key[data-role="overlay"][aria-pressed="true"] {
+  border-color: var(--line-strong);
+  color: var(--signal);
+}
+
+.lens-dock__key[data-role="overlay"][aria-pressed="true"]::after {
+  content: "";
+  position: absolute;
+  inset-inline: 4px;
+  bottom: 2px;
+  height: 2px;
+  background: var(--signal);
+}
+
+/* Availability is drawn into the frame of the key. */
+.lens-dock__key[data-availability="partial"]::before,
+.lens-dock__key[data-availability="preview"]::before {
+  content: "";
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 4px;
+  height: 4px;
+  border: 1px solid currentcolor;
+}
+
+.lens-dock__key[data-availability="partial"]::before {
+  background: linear-gradient(135deg, currentcolor 0 50%, transparent 50% 100%);
+}
+
+.lens-dock__key--catalogue {
+  color: var(--ink-ghost);
+  border-style: dashed;
+  border-color: var(--line-faint);
+}
+
+.lens-dock__catalogue-mark {
+  font-size: 0.875rem;
+  line-height: 1;
+}
+
+/* The hint carries the name the glyph does not spell out. */
+.lens-dock__hint {
+  position: absolute;
+  top: calc(100% + 5px);
+  transform: translateX(-50%);
+  z-index: 5;
+  width: max-content;
+  max-width: 19rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1875rem;
+  padding: var(--s2) var(--s3);
+  border: 1px solid var(--line-strong);
+  background: var(--paper-overlay);
+  pointer-events: none;
+}
+
+.lens-dock__hint-role {
+  font-size: var(--t-micro);
+  letter-spacing: var(--track-caps);
+  text-transform: uppercase;
+  color: var(--ink-ghost);
+}
+
+.lens-dock__hint strong {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: var(--t-body);
+  color: var(--ink);
+}
+
+.lens-dock__hint p {
+  font-family: var(--font-display);
+  font-size: var(--t-micro);
+  line-height: 1.55;
+  color: var(--ink-faint);
+}
+
+.lens-dock__hint-caveat {
+  padding-left: var(--s2);
+  border-left: 1px dashed var(--line);
+}
+
+/* ---- Lens catalogue rows in the inspector ----------------------------- */
+
+.lens-entry__head {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.lens-entry__mark {
+  display: grid;
+  place-items: center;
+  width: 1.375rem;
+  height: 1.375rem;
+  flex-shrink: 0;
+  border: 1px solid var(--line-faint);
+  color: var(--signal);
+}
+
+.lens-entry__mark[data-availability="preview"] {
+  border-style: dotted;
+}
+
+.lens-entry__mark[data-availability="awaiting"] {
+  border-style: dashed;
+  color: var(--ink-ghost);
+}
+
+.lens-entry__name {
+  flex: 1;
+  font-size: var(--t-small);
+  min-width: 0;
+}
+
+.lens-entry__head[aria-pressed="true"] .lens-entry__mark {
+  border-color: var(--signal);
+}
+
+
+/* ---- Chart frame ------------------------------------------------------- */
+
+/*
+ * One screenful. The heading and the lens bar take what they need — they reflow at narrow
+ * widths — and the chart absorbs the remainder, so the map is never pushed below the fold.
+ */
+.chart-stage {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
+  min-height: calc(100vh - 7.5rem);
+}
+
+.chart-frame {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 17rem;
+  max-height: 46rem;
+  border: 1px solid var(--line);
+  background: var(--paper-inset);
+  overflow: hidden;
+}
+
+.chart-frame::before,
+.chart-frame::after {
+  content: "";
+  position: absolute;
+  z-index: 3;
+  width: 11px;
+  height: 11px;
+  pointer-events: none;
+  border-color: var(--line-strong);
+  border-style: solid;
+}
+
+.chart-frame::before {
+  top: 0;
+  left: 0;
+  border-width: 1px 0 0 1px;
+}
+
+.chart-frame::after {
+  right: 0;
+  bottom: 0;
+  border-width: 0 1px 1px 0;
+}
+
+.chart-frame__empty,
+.chart-frame__awaiting {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: grid;
+  place-items: center;
+  padding: var(--s6);
+  background: rgb(5 6 7 / 82%);
+}
+
+.chart-frame__awaiting > * {
+  max-width: 34rem;
+}
+
+.chart-frame__readout {
+  position: absolute;
+  top: var(--s2);
+  right: var(--s2);
+  z-index: 3;
+  z-index: 3;
+  display: flex;
+  gap: var(--s3);
+  padding: 0.25rem var(--s2);
+  border: 1px solid var(--line-faint);
+  background: rgb(5 6 7 / 88%);
+  font-size: var(--t-micro);
+  color: var(--ink-dim);
+  pointer-events: none;
+}
+
+.chart-map {
+  position: absolute;
+  inset: 0;
+  cursor: grab;
+  touch-action: none;
+  outline: none;
+}
+
+.chart-map:active {
+  cursor: grabbing;
+}
+
+.chart-map:focus-visible {
+  outline: 1px solid var(--ink-bright);
+  outline-offset: -2px;
+}
+
+.chart-map canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* ---- Controls: rose, scale bar, zoom ----------------------------------- */
+
+.chart-map__controls {
+  position: absolute;
+  right: var(--s2);
+  bottom: var(--s2);
+  z-index: 3;
+  display: flex;
+  align-items: flex-end;
+  gap: var(--s3);
+}
+
+.chart-map__rose {
+  color: var(--ink-faint);
+  opacity: 0.75;
+}
+
+.chart-map__scale {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: var(--t-micro);
+  color: var(--ink-faint);
+  padding-bottom: 0.25rem;
+}
+
+.chart-map__scale-bar {
+  height: 6px;
+  border: 1px solid var(--ink-faint);
+  border-top: 0;
+  min-width: 1.5rem;
+}
+
+.chart-map__zoom {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.chart-map__zoom .btn {
+  background: rgb(5 6 7 / 88%);
+}
+
+/* ---- Legend cartouche -------------------------------------------------- */
+
+.chart-map__legend {
+  position: absolute;
+  left: var(--s2);
+  bottom: var(--s2);
+  z-index: 3;
+  width: min(17rem, 42%);
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  padding: var(--s2) var(--s3) var(--s3);
+  border: 1px solid var(--line);
+  background: rgb(5 6 7 / 90%);
+}
+
+.chart-map__legend-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s2);
+  padding-bottom: 0.25rem;
+  border-bottom: 1px solid var(--line-faint);
+}
+
+.chart-map__legend-fold {
+  border: 0;
+  background: transparent;
+  color: var(--ink-ghost);
+  font-size: var(--t-micro);
+  cursor: pointer;
+  padding: 0 0 0 var(--s2);
+}
+
+.chart-map__legend-fold:hover {
+  color: var(--ink);
+}
+
+.chart-map__legend[data-folded="true"] {
+  width: auto;
+}
+
+.chart-map__legend[data-folded="true"] > *:not(.chart-map__legend-head) {
+  display: none;
+}
+
+.chart-map__legend-title {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: var(--t-body);
+  color: var(--ink);
+}
+
+.chart-map__legend-note {
+  font-family: var(--font-display);
+  font-size: var(--t-micro);
+  line-height: 1.5;
+  color: var(--ink-faint);
+}
+
+.chart-map__legend-divider {
+  padding-top: 0.25rem;
+  border-top: 1px solid var(--line-ghost);
+}
+
+.chart-map__ramp {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.chart-map__ramp-bar {
+  display: flex;
+  height: 9px;
+  border: 1px solid var(--line-faint);
+}
+
+.chart-map__ramp-step {
+  flex: 1;
+  background: var(--signal);
+}
+
+.chart-map__ramp-scale {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--t-micro);
+  color: var(--ink-faint);
+}
+
+.chart-map__keys {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.chart-map__keys li {
+  display: flex;
+  align-items: center;
+  gap: 0.4375rem;
+  font-size: var(--t-micro);
+  color: var(--ink-dim);
+}
+
+.chart-map__keys li[data-availability="preview"] {
+  color: var(--ink-faint);
+}
+
+.chart-map__key-mark {
+  width: 10px;
+  height: 10px;
+  flex-shrink: 0;
+  color: var(--signal);
+}
+
+.chart-map__key-mark--circle {
+  border: 1px solid var(--signal);
+  border-radius: 50%;
+  background: var(--signal);
+  opacity: 0.55;
+}
+
+.chart-map__key-mark--diamond {
+  background: var(--signal);
+  opacity: 0.8;
+  clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+}
+
+.chart-map__key-mark--line {
+  height: 0;
+  border-top: 1px solid var(--signal);
+  align-self: center;
+}
+
+.chart-map__key-mark--arrow {
+  height: 0;
+  border-top: 1px solid var(--signal);
+  align-self: center;
+  position: relative;
+}
+
+.chart-map__key-mark--arrow::after {
+  content: "";
+  position: absolute;
+  right: -1px;
+  top: -3px;
+  border: 3px solid transparent;
+  border-left-color: var(--signal);
+}
+
+.chart-map__key-mark--empty {
+  border: 1px dashed var(--line-strong);
+}
+
+/* ---- Lens catalogue entries -------------------------------------------- */
+
+.lens-entry {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: var(--s2) 0;
+  border-bottom: 1px solid var(--line-ghost);
+}
+
+.lens-entry:last-child {
+  border-bottom: 0;
+}
+
+.lens-entry__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s2);
+}
+
+.lens-entry__detail {
+  font-family: var(--font-display);
+  font-size: var(--t-micro);
+  line-height: 1.55;
+  color: var(--ink-faint);
+}
+
+.lens-entry__caveat {
+  font-size: var(--t-micro);
+  line-height: 1.5;
+  color: var(--ink-ghost);
+  padding-left: var(--s2);
+  border-left: 1px dashed var(--line);
+}
+
+/* ---- Responsive -------------------------------------------------------- */
+
+/* A cramped chart keeps the ramp and the keys; the caveat prose lives in the catalogue too. */
+@media (width < 80rem) {
+  .chart-map__legend-note {
+    display: none;
+  }
+
+  .chart-map__legend {
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: auto;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--s2) var(--s3);
+    padding: var(--s2) var(--s3);
+    border-inline: 0;
+    border-bottom: 0;
+  }
+
+  .chart-map__legend-head,
+  .chart-map__legend-divider {
+    border: 0;
+    padding: 0;
+  }
+
+  .chart-map__ramp {
+    flex: 1 1 7rem;
+    max-width: 12rem;
+  }
+
+  .chart-map__keys {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: var(--s2);
+  }
+
+  .chart-map__controls {
+    bottom: 4rem;
+  }
+
+  .lens-dock {
+    max-width: calc(100% - 1rem);
+  }
+}
+
+@media (width < 62rem) {
+  .chart-stage {
+    min-height: calc(100vh - 6rem);
+  }
+}

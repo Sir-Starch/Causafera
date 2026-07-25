@@ -174,7 +174,7 @@ export function StationArea({ update, goTo }: AreaProps) {
             label={copy.station.field}
             tickLabel={copy.transport.ticks}
             legendLabels={{ manaTotal: copy.station.manaTotal, manaPeak: copy.station.manaPeak }}
-            emptyLabel={copy.survey.noWorld}
+            emptyLabel={copy.chart.noWorld}
             fillFirst
           />
         </Panel>
@@ -190,7 +190,7 @@ export function StationArea({ update, goTo }: AreaProps) {
             label={copy.station.accretion}
             tickLabel={copy.transport.ticks}
             legendLabels={{ traces: copy.station.traces }}
-            emptyLabel={copy.survey.noWorld}
+            emptyLabel={copy.chart.noWorld}
             fillFirst
           />
           <div className="cluster" style={{ marginTop: "var(--s2)" }}>
@@ -221,31 +221,31 @@ export function StationArea({ update, goTo }: AreaProps) {
       <div className="grid grid--wide-left">
         <Panel
           title={copy.station.chartStrip}
-          eyebrow={copy.survey.eyebrow}
+          eyebrow={copy.chart.eyebrow}
           lede={copy.station.chartStripLede}
           tools={
-            <button type="button" className="btn" onClick={() => goTo("survey")}>
-              {copy.areas.survey.name} →
+            <button type="button" className="btn" onClick={() => goTo("chart")}>
+              {copy.areas.chart.name} →
             </button>
           }
           flushBody
         >
           {atlas.chunks.length === 0 ? (
             <div style={{ padding: "var(--s3)" }}>
-              <p className="lede">{copy.survey.noWorld}</p>
+              <p className="lede">{copy.chart.noWorld}</p>
             </div>
           ) : (
             <Transect
               atlas={atlas}
               onSelect={(chunk) => {
                 update({ selectedChunk: chunk.key });
-                goTo("survey");
+                goTo("chart");
               }}
               labels={{
-                relief: copy.survey.elevation,
-                mana: copy.survey.mana,
-                population: copy.survey.population,
-                activity: copy.survey.events,
+                relief: copy.chart.elevation,
+                mana: copy.chart.mana,
+                population: copy.chart.population,
+                activity: copy.chart.events,
                 datum: "0 m",
               }}
               ariaLabel={copy.station.chartStrip}
@@ -273,7 +273,7 @@ export function StationArea({ update, goTo }: AreaProps) {
               committed: copy.station.committed,
               rejected: copy.station.rejected,
             }}
-            emptyLabel={copy.survey.noWorld}
+            emptyLabel={copy.chart.noWorld}
           />
         </Panel>
       </div>
@@ -324,9 +324,9 @@ export function StationArea({ update, goTo }: AreaProps) {
                 <thead>
                   <tr>
                     <th className="num">{copy.flux.tick}</th>
-                    <th>{copy.survey.chunk}</th>
+                    <th>{copy.chart.chunk}</th>
                     <th className="num">{copy.flux.condition}</th>
-                    <th className="num">{copy.survey.mana}</th>
+                    <th className="num">{copy.chart.mana}</th>
                     <th>{copy.flux.contact}</th>
                   </tr>
                 </thead>
@@ -415,7 +415,7 @@ export function StationDock() {
   const rates = useMemo(() => activityRates(history), [history]);
 
   if (summary === undefined) {
-    return <p className="lede">{copy.survey.noWorld}</p>;
+    return <p className="lede">{copy.chart.noWorld}</p>;
   }
 
   const rows: { id: string; label: string; signal: SignalId }[] = [

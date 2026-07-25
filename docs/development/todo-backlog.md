@@ -588,6 +588,20 @@
 **Explanation Implications:** Claim schemas render by schema ID with a generic fallback, so new schemas appear without frontend work; the authoritative Rust renderer is not reimplemented in TypeScript
 **Out of Scope:** Trace ancestry navigation, per-cell field plates, entity inspection, historical comparison, streaming subscriptions, WebGPU
 
+## TODO-UI-005: Chart Instrument and Analytical Lenses
+**Status:** Completed
+**Phase:** Detailed Development — Observer Surface
+**Priority:** High
+**Dependencies:** TODO-UI-003
+**Goal:** Make spatial observation a first-class instrument: an interactive map of the chunk lattice inspected through an extensible lens system that distinguishes measured, partial, constructed and unavailable information
+**Acceptance Criteria:** Pan, zoom and spatial selection to cell resolution; multiple meaningfully different lenses over real observer data; combined overlays; scale-aware representation; a lens contract the renderer does not know the domains of; unsurveyed ground drawn rather than blank
+**Performance Requirements:** Viewport culling independent of chart size; cached palette and hatch tiles; level of detail bound to legibility
+**Determinism Requirements:** Preview constructions are arithmetic over received values only and are clipped to the charted extent
+**Ontology Implications:** Lens names and availability labels are observer classifications; preview geometry is not a measurement and is marked wherever it appears
+**Observer Implications:** Every unavailable lens states the read model it needs (`docs/ui/observer-projection-gaps.md` §7)
+**Explanation Implications:** None; the map is a read surface
+**Out of Scope:** Joining charts into a global surface, agent-known perspectives, historical comparison, 3D terrain
+
 ## TODO-UI-004: Observer Projection Requests
 **Status:** Pending
 **Phase:** Detailed Development — Observer Surface

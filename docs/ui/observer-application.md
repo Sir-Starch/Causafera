@@ -32,6 +32,7 @@ an explicit unavailable state and never substitutes demonstration data.
 | Claim descriptors | `src/observer/claims.ts` | How to read each Explanation claim schema |
 | Design system | `src/design/*.css` | Tokens, chrome, surfaces, controls, data, charts |
 | Visualisation | `src/viz/*` | Canvas chart recorder, chart profile, condition ladder |
+| Map | `src/map/*` | Chart projection, lens catalogue, renderer, lens dock, legend |
 | Areas | `src/areas/*` | Observatory, Survey, Flux, Assay, Instrument |
 
 There is no state-management dependency. The store is about a hundred lines and is driven from
@@ -61,7 +62,7 @@ history, and every surface that plots it says so.
 | Area | Reads | Purpose |
 |------|-------|---------|
 | Observatory | Runtime summary, world chunks, transition window | Run identity, instrument cluster, mana field, causal accretion, action admission |
-| Survey | World chunks, transition window | Chart profile of active chunks, chunk register, chunk inspector |
+| Chart | World chunks, transition window | Interactive map of the chunk lattice under analytical lenses, plus the chart profile, chunk register and inspector |
 | Flux | Runtime summary series, transition window, gate window | Rate recorders, surface condition ladder, transition ledger, gate transitions |
 | Assay | Explanation IR | Typed claims with evidence state, confidence, comparison, trace anchors |
 | Instrument | Negotiation, exchange log, capability register | Protocol state, real transport measurements, coverage register |
@@ -124,11 +125,26 @@ The chart profile draws active chunks as a stacked register — relief, mana, po
 activity — in chart coordinate order. It is a profile, not a map: adjacency is ordering, not
 measured distance.
 
+### The chart instrument
+
+The Chart area is built around a pannable, zoomable plan view of one chart's chunk lattice, drawn
+on canvas with viewport culling and three levels of detail. Analytical lenses supply what it draws:
+a field, proportional symbols, cell marks at real lattice positions, vectors and isolines. Lens
+controls float on the chart as a dock of glyphs whose names and availability arrive on hover, and
+the legend sits on the chart as a cartouche.
+
+Every lens declares whether it is observed, partial, a preview construction, or awaiting a read
+model, and the interface draws that difference rather than footnoting it. Ground beyond the received
+extent is hatched as unsurveyed. See `docs/ui/map-lenses.md` for the contract and for how to connect
+a new domain.
+
 ## Keyboard
 
 | Key | Action |
 |-----|--------|
 | `1`–`5` | Go to area |
+| Drag / wheel / click | Pan, zoom and select on the chart |
+| Arrows, `+`, `−`, `0` | Pan, zoom and reframe the chart while it has focus |
 | `Space` | Run / hold |
 | `→` | Advance one batch |
 | `I` | Toggle the inspector dock |
@@ -185,6 +201,7 @@ capture is present.
 ## Related Documents
 
 - `docs/ui/views.md` — delivered and planned views
+- `docs/ui/map-lenses.md` — the map's lens contract and how to extend it
 - `docs/ui/observer-projection-gaps.md` — projections the frontend is waiting on
 - `docs/observer/architecture.md` — observer layer providing view data
 - `docs/observer/backpressure.md` — delivery policies and scoped subscriptions

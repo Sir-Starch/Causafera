@@ -11,6 +11,7 @@ import "./design/surfaces.css";
 import "./design/controls.css";
 import "./design/data.css";
 import "./design/viz.css";
+import "./design/map.css";
 
 const root = createRoot(document.getElementById("root") as HTMLElement);
 

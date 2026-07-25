@@ -30,7 +30,7 @@ import { AssayArea, AssayDock } from "../src/areas/AssayArea";
 import { FluxArea, FluxDock } from "../src/areas/FluxArea";
 import { InstrumentArea, InstrumentDock } from "../src/areas/InstrumentArea";
 import { StationArea, StationDock } from "../src/areas/StationArea";
-import { SurveyArea, SurveyDock } from "../src/areas/SurveyArea";
+import { ChartArea, ChartDock } from "../src/areas/ChartArea";
 import { Unattached } from "../src/components/Unattached";
 import { session } from "../src/observer/instance";
 import { AREA_IDS, type AreaId, type AreaProps } from "../src/workspace";
@@ -108,7 +108,7 @@ type AreaComponent = ComponentType<AreaProps>;
 
 const AREAS: Record<AreaId, { view: AreaComponent; dock: AreaComponent }> = {
   station: { view: StationArea, dock: StationDock },
-  survey: { view: SurveyArea, dock: SurveyDock },
+  chart: { view: ChartArea, dock: ChartDock },
   flux: { view: FluxArea, dock: FluxDock },
   assay: { view: AssayArea, dock: AssayDock },
   instrument: { view: InstrumentArea, dock: InstrumentDock },
@@ -151,7 +151,14 @@ for (const area of AREA_IDS) {
     session.store.patch({ locale });
     for (const [index, selection] of selections.entries()) {
       const props: AreaProps = {
-        workspace: { area, dockOpen: true, railCollapsed: false, ...selection },
+        workspace: {
+          area,
+          dockOpen: true,
+          railCollapsed: false,
+          primaryLens: "relief",
+          overlayLenses: ["population", "surface", "contours", "mana-gradient", "trace-anchors"],
+          ...selection,
+        },
         update: () => {},
         goTo: () => {},
       };

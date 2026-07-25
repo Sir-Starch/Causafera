@@ -338,7 +338,13 @@ This project follows a structured changelog format. Each entry includes:
 - Recorded the observer projections the frontend is waiting on (`docs/ui/observer-projection-gaps.md`);
 - Reworked the visual system into a black outline atlas: an SVG terra incognita chart sheet beneath the application (coastlines, water lining, contour rings, graticule, rhumb lines, soundings, compass rose, and survey-dashed coasts where the survey was never closed), generated from fixed sums of sinusoids so it is identical in every session and cannot be mistaken for data;
 - Removed glow, glass, gradient and rounded-corner treatments from the interface chrome; plates are hairline-framed regions of the sheet with registration ticks, charts use dotted grids and engraved hatching instead of gradient washes;
-- Reserved hue entirely for measured quantities: the chrome is monochrome ink, so a coloured mark always denotes a simulation quantity. Selection, activity and focus are drawn rather than lit.
+- Reserved hue entirely for measured quantities: the chrome is monochrome ink, so a coloured mark always denotes a simulation quantity. Selection, activity and focus are drawn rather than lit;
+- Added the chart instrument: a pannable, zoomable canvas map of one chart's chunk lattice with viewport culling, three levels of detail, spatial selection down to the 32³ cell lattice, and unsurveyed hatching beyond the received extent;
+- Added an extensible analytical lens architecture (`apps/observer/src/map`) in which a lens supplies fields, proportional symbols, cell marks, vectors and isolines, and the renderer knows nothing about any domain — connecting a future domain is a catalogue entry, not a renderer change;
+- Declared lens availability as part of the contract: observed, partial, preview and awaiting are drawn differently, and an awaiting lens renders the chart as unsurveyed while naming the read model it needs;
+- Isolated observer-side constructions in `src/map/preview.ts` (inverse-distance interpolation with marching-squares isolines, neighbour-difference vectors), clipped to the charted extent so a construction never paints knowledge over unsurveyed ground;
+- Replaced the Survey area with the Chart area, folding the chart profile and chunk register beneath the map as supporting reads of the same selection;
+- Documented the lens contract and its promotion recipe (`docs/ui/map-lenses.md`).
 
 ## Categories
 

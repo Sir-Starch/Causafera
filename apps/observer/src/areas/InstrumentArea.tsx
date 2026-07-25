@@ -227,11 +227,9 @@ export function InstrumentArea({ goTo }: AreaProps) {
                           <button
                             type="button"
                             className="trace-chip"
-                            onClick={() =>
-                              goTo(entry.area as Parameters<AreaProps["goTo"]>[0])
-                            }
+                            onClick={() => goTo(entry.area!)}
                           >
-                            {copy.areas[entry.area as keyof typeof copy.areas].name} →
+                            {copy.areas[entry.area].name} →
                           </button>
                         )}
                       </div>

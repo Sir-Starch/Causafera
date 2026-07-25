@@ -14,16 +14,23 @@ intensity, causal accretion as committed traces, and actor action admission as t
 of attempted actions. Carries a chart strip and a recent-transition preview that lead into the other
 areas, plus a summary of instrument coverage.
 
-### Survey
+### Chart
 
-Chart-qualified active chunks with real terrain elevation range, roughness, mana, resolution,
-population, activity, and trace anchors. The chart profile draws each chunk as a stacked register of
-relief, mana, population, and causal activity, in chart coordinate order. This is an objective
-observer projection, not agent knowledge and not a global planetary map; adjacency on the profile is
-coordinate ordering, not measured distance.
+The spatial instrument. A pannable, zoomable map of one chart's chunk lattice, inspected through
+analytical lenses: relief, elevation range, roughness, material surface, mana field, population,
+causal activity and causal resolution are drawn from real observer data; interpolated isolines and
+neighbour-difference vectors are observer-side preview constructions and are marked as such; agents,
+knowledge, language, social structure, practices, economy and ecology are listed as awaiting a read
+model and say what they are waiting for.
 
-The inspector decodes the material surface cell ordinal into its position inside the 32³ chunk
-lattice.
+Detail follows scale: a field of colour when chunks are small, chunk glyphs and values at reading
+size, and the 32³ cell lattice with marks at real cell positions when zoomed in. Ground beyond the
+received extent is hatched as unsurveyed. This is an objective observer projection, not agent
+knowledge and not a global planetary map; adjacency is coordinate ordering, not measured distance.
+
+The chart profile and the chunk register sit beneath the map as supporting reads of the same
+selection, and the inspector decodes the material surface cell ordinal into its position inside the
+32³ chunk lattice.
 
 ### Flux
 
@@ -90,6 +97,7 @@ Views are independent. Opening or closing a view must not affect simulation stat
 
 - `docs/ui/observer-application.md` - Frontend architecture and design system
 - `docs/ui/observer-projection-gaps.md` - Projections the frontend is waiting on
+- `docs/ui/map-lenses.md` - The map's lens contract and how to extend it
 - `docs/ui/map-perspectives.md` - Map rendering and perspectives
 - `docs/ui/language-inspection.md` - Language-specific UI features
 - `docs/observer/architecture.md` - Observer layer providing view data
