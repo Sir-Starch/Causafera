@@ -1,0 +1,200 @@
+/* Causafera Observer — element foundations and the terra incognita chart surface. */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--void);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--t-body);
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow: hidden;
+}
+
+h1,
+h2,
+h3,
+h4,
+p,
+dl,
+dd,
+figure {
+  margin: 0;
+}
+
+ul,
+ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+button,
+input,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 1px solid var(--beacon);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: rgb(111 216 207 / 24%);
+}
+
+/*
+ * The chart surface. Three static layers — a coarse graticule, a fine graticule, and a
+ * lamp gradient — plus one grain tile. No animation, no repaint cost after first paint.
+ */
+.terra {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(
+      120% 90% at 18% -10%,
+      rgb(40 165 159 / 7%) 0%,
+      rgb(40 165 159 / 0%) 55%
+    ),
+    radial-gradient(90% 70% at 88% 108%, rgb(147 110 206 / 5%) 0%, rgb(147 110 206 / 0%) 60%),
+    linear-gradient(180deg, #080d13 0%, var(--void) 46%, #05080b 100%);
+}
+
+.terra::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(to right, var(--rule-ghost) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--rule-ghost) 1px, transparent 1px),
+    linear-gradient(to right, rgb(167 190 205 / 3%) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(167 190 205 / 3%) 1px, transparent 1px);
+  background-size:
+    7.5rem 7.5rem,
+    7.5rem 7.5rem,
+    1.25rem 1.25rem,
+    1.25rem 1.25rem;
+  mask-image: radial-gradient(130% 110% at 30% 0%, #000 0%, rgb(0 0 0 / 35%) 70%, transparent 100%);
+}
+
+/* Grain: a single inline turbulence tile, rasterised once by the compositor. */
+.terra::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: 0.35;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23g)' opacity='0.16'/%3E%3C/svg%3E");
+}
+
+/* Marginal survey marks drawn into the empty edges of the shell. */
+.terra-marks {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  color: var(--rule-ghost);
+  opacity: 0.9;
+}
+
+/* ---- Typographic roles ------------------------------------------------ */
+
+.eyebrow {
+  font-family: var(--font-ui);
+  font-size: var(--t-micro);
+  font-weight: 600;
+  letter-spacing: var(--track-caps);
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.display {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: var(--t-display);
+  line-height: 1.15;
+  letter-spacing: -0.005em;
+  color: var(--ink);
+}
+
+.title {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: var(--t-title);
+  line-height: 1.2;
+  color: var(--ink);
+}
+
+.lede {
+  font-size: var(--t-small);
+  line-height: 1.55;
+  color: var(--ink-dim);
+  max-width: 62ch;
+}
+
+.numeric {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1, "zero" 1;
+  letter-spacing: -0.01em;
+}
+
+.muted {
+  color: var(--ink-faint);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ---- Scrollbars: thin survey tracks ----------------------------------- */
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--rule-strong) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--rule);
+  border: 2px solid transparent;
+  background-clip: content-box;
+  border-radius: 99px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--rule-strong);
+  background-clip: content-box;
+}

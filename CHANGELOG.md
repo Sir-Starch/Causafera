@@ -323,6 +323,20 @@ This project follows a structured changelog format. Each entry includes:
 - Tightened workspace internal visibility by removing unused `pub(crate)` modifiers;
 - Implemented deterministic binary persistence snapshot format v1 (`TODO-PERSIST-001`, `RFC-PERSIST-001`).
 
+#### UI
+
+- Rebuilt the observer frontend as a five-area analytical instrument (Observatory, Survey, Flux, Assay, Instrument), replacing the Phase 26 three-view shell and its vanilla stylesheet;
+- Introduced a design token system and component library implementing the midnight-cartography direction: chart-surface treatment, engraved typographic hierarchy, coordinate-lock selection, and hatched unsurveyed states;
+- Introduced a six-hue signal palette in which each hue is reserved for one simulation quantity, generated in OKLCH and validated for lightness band, chroma floor, protanopia and deuteranopia separation, normal-vision separation, and contrast against the chart surface;
+- Replaced the session hook with a session controller over a selector store, adding a feed demand registry so a closed panel produces no observer traffic (`docs/observer/backpressure.md`);
+- Added canvas visualisation: a single-axis chart recorder with crosshair probing, a stacked chart profile of active chunks, and the material surface condition ladder with provenance markers;
+- Added a capability register presenting every defined observable with its state and maturity, replacing silent omission of unavailable data;
+- Added the Instrument exchange log reporting real transport byte counts, durations, and outcomes;
+- Added a command palette and keyboard navigation across areas, transport, and the inspector dock;
+- Rendered material surface gate deltas, which the protocol previously delivered without a consumer;
+- Added a development-only replay channel and a render smoke check driven by captured real protocol bytes (`cargo run -p causafera-observer --example capture_replay`), giving the frontend its first automated verification; both are excluded from production builds and marked in the interface (`INV-039`);
+- Recorded the observer projections the frontend is waiting on (`docs/ui/observer-projection-gaps.md`).
+
 ## Categories
 
 - **ARCH** - Architecture

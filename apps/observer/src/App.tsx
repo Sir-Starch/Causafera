@@ -1,189 +1,159 @@
-import { useMemo, useState } from "react";
-import { digestHex, type SpatialChunkSummary } from "@causafera/observer-protocol";
+/**
+ * The observer shell.
+ *
+ * A meridian bar carrying run identity and transport, a navigation rail, one area workspace,
+ * a context inspector dock, and a marginalia strip reporting the live transport. The layout
+ * reorganises rather than shrinking: below 68rem the rail collapses to marks and the dock
+ * becomes an overlay; below 52rem the brand and digest plates give up their space first.
+ */
 
-import { CausalFlow } from "./components/CausalFlow";
-import { ConnectionStatus } from "./components/ConnectionStatus";
-import { ExplanationPanel } from "./components/ExplanationPanel";
-import { InspectorPanel } from "./components/InspectorPanel";
-import { MetricCard } from "./components/MetricCard";
-import { SimulationControls } from "./components/SimulationControls";
-import { TimelinePanel } from "./components/TimelinePanel";
-import { WorldViewport } from "./components/WorldViewport";
-import { copyFor } from "./i18n";
-import { chunkKey, useObserverSession } from "./useObserverSession";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
-type ViewId = "world" | "causality" | "explanation";
+import { AssayArea, AssayDock } from "./areas/AssayArea";
+import { FluxArea, FluxDock } from "./areas/FluxArea";
+import { InstrumentArea, InstrumentDock } from "./areas/InstrumentArea";
+import { StationArea, StationDock } from "./areas/StationArea";
+import { SurveyArea, SurveyDock } from "./areas/SurveyArea";
+import { CommandPalette } from "./components/CommandPalette";
+import { Notice } from "./components/primitives";
+import { Marginalia, Meridian, Rail } from "./components/shell";
+import { TerraMarks } from "./components/Sigil";
+import { Unattached } from "./components/Unattached";
+import { session, useCopy, useSession } from "./observer/instance";
+import { AREA_IDS, INITIAL_WORKSPACE, type AreaId, type AreaProps, type WorkspaceState } from "./workspace";
+
+const AREAS: Record<
+  AreaId,
+  { view: (props: AreaProps) => JSX.Element; dock: (props: AreaProps) => JSX.Element | null }
+> = {
+  station: { view: StationArea, dock: StationDock },
+  survey: { view: SurveyArea, dock: SurveyDock },
+  flux: { view: FluxArea, dock: FluxDock },
+  assay: { view: AssayArea, dock: AssayDock },
+  instrument: { view: InstrumentArea, dock: InstrumentDock },
+};
 
 export function App() {
-  const [view, setView] = useState<ViewId>("world");
-  const session = useObserverSession(view === "world");
-  const copy = copyFor(session.locale);
-  const [selectedKey, setSelectedKey] = useState<string>();
-  const selectedChunk = useMemo(
-    () => session.world?.chunks.find((chunk) => chunkKey(chunk) === selectedKey),
-    [selectedKey, session.world],
-  );
-  const navItems: { id: ViewId; label: string }[] = [
-    { id: "world", label: copy.world },
-    { id: "causality", label: copy.causality },
-    { id: "explanation", label: copy.explanation },
-  ];
+  const [workspace, setWorkspace] = useState<WorkspaceState>(INITIAL_WORKSPACE);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const copy = useCopy();
+  const connection = useSession((state) => state.connection);
+  const error = useSession((state) => state.error);
+  const hasSummary = useSession((state) => state.summary !== undefined);
 
-  const selectChunk = (chunk: SpatialChunkSummary) => {
-    setSelectedKey(chunkKey(chunk));
-  };
+  useEffect(() => {
+    session.start();
+  }, []);
+
+  const update = useCallback((patch: Partial<WorkspaceState>) => {
+    setWorkspace((current) => ({ ...current, ...patch }));
+  }, []);
+
+  const goTo = useCallback(
+    (area: AreaId) => {
+      setWorkspace((current) => ({ ...current, area }));
+      document.querySelector(".workspace")?.scrollTo({ top: 0 });
+    },
+    [],
+  );
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const typing =
+        target !== null && (target.tagName === "INPUT" || target.isContentEditable === true);
+
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setPaletteOpen((open) => !open);
+        return;
+      }
+      if (event.key === "Escape") {
+        setPaletteOpen(false);
+        return;
+      }
+      if (typing || event.ctrlKey || event.metaKey || event.altKey) return;
+
+      const areaIndex = Number.parseInt(event.key, 10) - 1;
+      if (Number.isInteger(areaIndex) && areaIndex >= 0 && areaIndex < AREA_IDS.length) {
+        event.preventDefault();
+        goTo(AREA_IDS[areaIndex]!);
+        return;
+      }
+      if (event.code === "Space") {
+        event.preventDefault();
+        session.toggleRun();
+        return;
+      }
+      if (event.key === "ArrowRight") {
+        event.preventDefault();
+        void session.step();
+        return;
+      }
+      if (event.key.toLowerCase() === "i") {
+        event.preventDefault();
+        setWorkspace((current) => ({ ...current, dockOpen: !current.dockOpen }));
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [goTo]);
+
+  const areaProps = useMemo<AreaProps>(
+    () => ({ workspace, update, goTo }),
+    [goTo, update, workspace],
+  );
+
+  const area = AREAS[workspace.area];
+  const AreaView = area.view;
+  const AreaDock = area.dock;
+  const attached = connection === "connected" || hasSummary;
 
   return (
-    <div className="app-shell">
-      <aside className="sidebar">
-        <div className="wordmark">
-          <span className="wordmark-mark" aria-hidden="true">O</span>
-          <div>
-            <strong>{copy.product}</strong>
-            <span>{copy.observer}</span>
-          </div>
-        </div>
+    <>
+      <div className="terra" aria-hidden="true" />
+      <TerraMarks />
 
-        <nav className="primary-nav" aria-label={copy.observer}>
-          {navItems.map((item, index) => (
-            <button
-              key={item.id}
-              type="button"
-              className={view === item.id ? "is-active" : undefined}
-              aria-current={view === item.id ? "page" : undefined}
-              onClick={() => setView(item.id)}
-            >
-              <span className="nav-index numeric">{String(index + 1).padStart(2, "0")}</span>
-              {item.label}
-            </button>
-          ))}
-        </nav>
-
-        <SimulationControls
-          connection={session.connection}
-          isPlaying={session.isPlaying}
-          playbackRate={session.playbackRate}
-          copy={copy}
-          onTogglePlayback={session.togglePlayback}
-          onStep={session.step}
-          onReset={session.reset}
-          onPlaybackRate={session.setPlaybackRate}
+      <div className="shell" data-rail={workspace.railCollapsed ? "collapsed" : "expanded"}>
+        <Meridian
+          workspace={workspace}
+          update={update}
+          onOpenPalette={() => setPaletteOpen(true)}
         />
+        <Rail workspace={workspace} goTo={goTo} update={update} />
 
-        <div className="sidebar-footer">
-          <span>{copy.protocol} v1</span>
-          <div className="locale-control" aria-label="Language">
-            <button
-              type="button"
-              className={session.locale === "ru-RU" ? "is-active" : undefined}
-              aria-pressed={session.locale === "ru-RU"}
-              onClick={() => session.setLocale("ru-RU")}
-            >
-              RU
-            </button>
-            <button
-              type="button"
-              className={session.locale === "en-US" ? "is-active" : undefined}
-              aria-pressed={session.locale === "en-US"}
-              onClick={() => session.setLocale("en-US")}
-            >
-              EN
-            </button>
-          </div>
-        </div>
-      </aside>
-
-      <div className="workspace">
-        <header className="topbar">
-          <ConnectionStatus
-            connection={session.connection}
-            isPlaying={session.isPlaying}
-            ticks={session.summary?.simulationTicks}
-            copy={copy}
-          />
-          <div className="topbar-digests">
-            {session.summary !== undefined && (
-              <>
-                <span title={digestHex(session.summary.physicalDigest)}>
-                  P · <b className="numeric">{digestHex(session.summary.physicalDigest, 4)}</b>
+        <main className="workspace">
+          <div className="workspace__inner">
+            {error !== undefined && attached && (
+              <Notice tone="alarm">
+                <span>
+                  <b>{copy.connection.errorTitle}.</b> {error}
                 </span>
-                <span title={digestHex(session.summary.historyDigest)}>
-                  H · <b className="numeric">{digestHex(session.summary.historyDigest, 4)}</b>
-                </span>
-              </>
+              </Notice>
             )}
+            {attached ? <AreaView {...areaProps} /> : <Unattached />}
           </div>
-        </header>
-
-        {session.error !== undefined && <div className="error-banner" role="alert">{session.error}</div>}
-
-        <main className="main-content">
-          <section className="view-content">
-            <div className="view-heading">
-              <div>
-                <span className="eyebrow">{copy.objectiveProjection}</span>
-                <h1>{navItems.find((item) => item.id === view)?.label}</h1>
-              </div>
-              <p>{copy.projectionNotice}</p>
-            </div>
-
-            {view === "world" && (
-              <>
-                <WorldViewport
-                  world={session.world}
-                  selectedKey={selectedKey}
-                  copy={copy}
-                  onSelect={selectChunk}
-                />
-                <TimelinePanel history={session.history} copy={copy} />
-              </>
-            )}
-            {view === "causality" && (
-              <>
-                <CausalFlow summary={session.summary} copy={copy} />
-                <TimelinePanel history={session.history} copy={copy} />
-              </>
-            )}
-            {view === "explanation" && (
-              <ExplanationPanel
-                report={session.explanation}
-                isAnalyzing={session.isAnalyzing}
-                locale={session.locale}
-                copy={copy}
-                onAnalyze={session.analyze}
-              />
-            )}
-          </section>
-
-          <aside className="detail-rail">
-            <div className="metric-grid">
-              <MetricCard label={copy.population} value={session.summary?.populationTotal.toString() ?? "—"} />
-              <MetricCard label={copy.actors} value={session.summary?.actorCount.toString() ?? "—"} />
-              <MetricCard label={copy.mana} value={session.summary?.manaTotal.toString() ?? "—"} detail={`max ${session.summary?.manaMaximum.toString() ?? "—"}`} />
-              <MetricCard label={copy.traces} value={session.summary?.causalTraceCount.toString() ?? "—"} />
-            </div>
-
-            <InspectorPanel chunk={selectedChunk} copy={copy} />
-
-            <section className="panel digest-panel">
-              <div className="panel-heading">
-                <span className="eyebrow">{copy.digest}</span>
-                <h2>Schema {session.summary?.digestSchemaVersion ?? "—"}</h2>
-              </div>
-              <dl>
-                <div>
-                  <dt>{copy.physicalDigest}</dt>
-                  <dd className="numeric">{session.summary === undefined ? "—" : digestHex(session.summary.physicalDigest, 8)}</dd>
-                </div>
-                <div>
-                  <dt>{copy.historyDigest}</dt>
-                  <dd className="numeric">{session.summary === undefined ? "—" : digestHex(session.summary.historyDigest, 8)}</dd>
-                </div>
-              </dl>
-            </section>
-          </aside>
         </main>
+
+        <aside className="dock" hidden={!workspace.dockOpen} aria-label={copy.meridian.inspector}>
+          <div className="dock__head">
+            <span className="eyebrow">{copy.areas[workspace.area].name}</span>
+            <button
+              type="button"
+              className="btn btn--ghost btn--icon"
+              onClick={() => update({ dockOpen: false })}
+              aria-label={copy.common.close}
+            >
+              ×
+            </button>
+          </div>
+          <div className="dock__body">{attached ? <AreaDock {...areaProps} /> : null}</div>
+        </aside>
+
+        <Marginalia />
       </div>
-    </div>
+
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} goTo={goTo} />
+    </>
   );
 }

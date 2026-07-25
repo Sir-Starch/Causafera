@@ -1,4 +1,4 @@
-# Phase 26 Observer Application
+# Observer Application
 
 The desktop observer is a Tauri 2 + React application in `apps/observer`. It is a read-only client
 of observer protocol v1, with a narrow exception for session execution controls that select the
@@ -11,30 +11,116 @@ Runtime / ExperimentRunner
     → ObserverSnapshot / ObserverWorldSnapshot / ExplanationReport
     → ProtocolHandler / ObserverStreamHub
     → protobuf v1 bytes through Tauri commands
-    → TypeScript decoder
-    → React view state
+    → TypeScript decoder (@causafera/observer-protocol)
+    → presentation models (src/observer/models.ts)
+    → React areas
 ```
 
 React never receives `Runtime`, `RuntimeState`, terrain storage, mana fields, actor state, or
 provenance stores. It receives decoded protobuf values only. The disconnected browser build shows
 an explicit unavailable state and never substitutes demonstration data.
 
+## Frontend Architecture
+
+| Layer | Location | Responsibility |
+|-------|----------|----------------|
+| Transport | `src/observer/transport.ts` | Byte channel, digest verification, exchange log |
+| Session | `src/observer/session.ts` | Connection lifecycle, run loop, bounded buffers |
+| Store | `src/observer/store.ts` | `useSyncExternalStore` container, feed demand registry |
+| Presentation models | `src/observer/models.ts` | Typed reductions of protocol payloads |
+| Capability register | `src/observer/capability.ts` | What the instrument can and cannot observe |
+| Claim descriptors | `src/observer/claims.ts` | How to read each Explanation claim schema |
+| Design system | `src/design/*.css` | Tokens, chrome, surfaces, controls, data, charts |
+| Visualisation | `src/viz/*` | Canvas chart recorder, chart profile, condition ladder |
+| Areas | `src/areas/*` | Observatory, Survey, Flux, Assay, Instrument |
+
+There is no state-management dependency. The store is about a hundred lines and is driven from
+outside React by the session controller, so the connection is not tied to component mounting.
+
+### Scoped feeds
+
+An area declares the feeds it needs with `useFeed`. The session polls the world query only while at
+least one mounted consumer demands it, which is the frontend half of the scoped-subscription rule
+in `docs/observer/backpressure.md`: a closed panel produces no traffic.
+
+### Bounded buffers
+
+| Buffer | Bound | Location |
+|--------|-------|----------|
+| Ticks per advance | 64 | `src-tauri/src/session.rs` |
+| Material surface transition window | 64 | `causafera-observer-api` |
+| Observer-side summary series | 256 frames | `HISTORY_CAPACITY` |
+| Exchange log | 120 entries | `EXCHANGE_CAPACITY` |
+| Runtime stream | capacity 1, latest-state-wins | `src-tauri/src/session.rs` |
+
+The summary series is presentation state assembled from received frames. It is not authoritative
+history, and every surface that plots it says so.
+
+## Areas
+
+| Area | Reads | Purpose |
+|------|-------|---------|
+| Observatory | Runtime summary, world chunks, transition window | Run identity, instrument cluster, mana field, causal accretion, action admission |
+| Survey | World chunks, transition window | Chart profile of active chunks, chunk register, chunk inspector |
+| Flux | Runtime summary series, transition window, gate window | Rate recorders, surface condition ladder, transition ledger, gate transitions |
+| Assay | Explanation IR | Typed claims with evidence state, confidence, comparison, trace anchors |
+| Instrument | Negotiation, exchange log, capability register | Protocol state, real transport measurements, coverage register |
+
+Areas are independent. Switching areas changes no simulation state and no other area.
+
 ## Session Envelope
 
 The default interactive session uses a real deterministic runtime with eight promoted actors, two
 sensors per actor, at most three active chunks in the demonstrated configuration, and a causal
 bootstrap population of 512. The comparative Explanation query runs the existing replay-verified
-192-tick control/intervention experiment within its 16-population in-memory experiment envelope.
+control/intervention experiment within its in-memory experiment envelope.
 
-Pause is local: the UI stops requesting tick batches. Tick batches are limited to 64 by the Rust
-session. The live summary stream uses `latest-state-wins` with capacity one. Client timeline history
-is a 96-entry FIFO.
+Pause is local: the UI stops requesting tick batches.
 
 ## Presentation
 
-The UI is a restrained dark scientific tool rather than a fictional control panel. Human labels,
-locale, color, selected view, selected chunk, plots, and animations are non-authoritative. Russian
-and English metadata map opaque Explanation schema IDs to presentation labels after IR decoding.
+The visual system is midnight cartography applied to a scientific instrument: a dark chart surface
+with a graticule and grain, engraved typographic hierarchy, and a six-hue signal palette in which
+each hue is reserved for one simulation quantity — mana, causal traces, resolution, population,
+physical events, refusals. Evidence states use a separate reserved status palette and always pair a
+hue with a word; `Unknown` is drawn as hatched unsurveyed ground rather than as an error.
+
+The signal palette was generated in OKLCH and validated as a categorical palette against the chart
+surface for lightness band, chroma floor, protanopia and deuteranopia separation, normal-vision
+separation, and contrast. Do not hand-edit the hues in `src/design/tokens.css`; regenerate and
+revalidate them.
+
+Human labels, locale, colour, selected area, selected chunk, plots, and animations are
+non-authoritative. Russian and English metadata map opaque Explanation schema IDs to presentation
+labels after IR decoding.
+
+### Charts
+
+Charts are drawn on a 2D canvas with device-pixel scaling. WebGPU is not used: the current data
+scale does not warrant it, and the documented visualisation direction favours 2D and restrained
+2.5D. Every recorder carries a single value axis; two magnitudes get two recorders rather than two
+scales.
+
+The chart profile draws active chunks as a stacked register — relief, mana, population, causal
+activity — in chart coordinate order. It is a profile, not a map: adjacency is ordering, not
+measured distance.
+
+## Keyboard
+
+| Key | Action |
+|-----|--------|
+| `1`–`5` | Go to area |
+| `Space` | Run / hold |
+| `→` | Advance one batch |
+| `I` | Toggle the inspector dock |
+| `Ctrl`/`Cmd` + `K` | Command palette |
+
+## Responsive Behaviour
+
+The shell reorganises rather than shrinking. Below 86rem the wordmark yields, below 76rem the
+digest plates yield, below 68rem the rail collapses to marks and the inspector becomes an overlay,
+and below 60rem the brand and locale control yield. The transport is the last control to lose
+space.
 
 ## Development
 
@@ -55,3 +141,31 @@ pnpm --dir apps/observer desktop:raw
 # or
 CAUSAFERA_NATIVE_WAYLAND=1 pnpm --dir apps/observer desktop
 ```
+
+### Capture and replay
+
+Frontend work often happens without a graphical session. The capture example drives the same
+`ObserverSession` the desktop shell uses and writes the protocol frames it produced:
+
+```text
+pnpm --dir apps/observer capture     # writes apps/observer/dev/replay/capture.json
+pnpm --dir apps/observer smoke       # renders every area against the capture
+pnpm --dir apps/observer dev         # browser session replaying the capture
+```
+
+The capture holds authentic deterministic runtime output, not fixture data, and it is decoded by
+the production codec. It is available in development builds only, the branch that loads it is
+compiled out of production bundles, and the interface marks a replaying session in the meridian
+bar, the marginalia strip, and the instrument area. When the capture is absent the observer
+reports itself unattached, as it must (INV-039).
+
+`pnpm --dir apps/observer smoke` server-renders every area and inspector dock, in both locales,
+with and without a selection, against real captured payloads. It exits successfully when no
+capture is present.
+
+## Related Documents
+
+- `docs/ui/views.md` — delivered and planned views
+- `docs/ui/observer-projection-gaps.md` — projections the frontend is waiting on
+- `docs/observer/architecture.md` — observer layer providing view data
+- `docs/observer/backpressure.md` — delivery policies and scoped subscriptions

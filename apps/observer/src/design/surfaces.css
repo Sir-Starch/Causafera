@@ -1,0 +1,348 @@
+/* Causafera Observer — panels, plates, marks, tags, and unsurveyed states. */
+
+.panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background:
+    linear-gradient(180deg, rgb(17 24 35 / 62%), rgb(11 16 22 / 72%));
+  box-shadow: var(--lift-1);
+}
+
+/* Corner ticks — a chart plate registered to its frame. */
+.panel::before,
+.panel::after {
+  content: "";
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  pointer-events: none;
+  border-color: var(--rule-strong);
+  border-style: solid;
+}
+
+.panel::before {
+  top: -1px;
+  left: -1px;
+  border-width: 1px 0 0 1px;
+}
+
+.panel::after {
+  right: -1px;
+  bottom: -1px;
+  border-width: 0 1px 1px 0;
+}
+
+.panel--flush {
+  background: transparent;
+  border-color: var(--rule-faint);
+  box-shadow: none;
+}
+
+.panel--accent {
+  border-color: rgb(40 165 159 / 28%);
+}
+
+.panel__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s3);
+  padding: var(--s3) var(--s3) var(--s2);
+}
+
+.panel__titles {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  min-width: 0;
+}
+
+.panel__titles h2,
+.panel__titles h3 {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: var(--t-lead);
+  line-height: 1.25;
+  color: var(--ink);
+}
+
+.panel__tools {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  flex-shrink: 0;
+}
+
+.panel__body {
+  padding: var(--s1) var(--s3) var(--s3);
+  min-width: 0;
+}
+
+.panel__body--flush {
+  padding: 0;
+}
+
+.panel__foot {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  padding: var(--s2) var(--s3);
+  border-top: 1px solid var(--rule-faint);
+  font-size: var(--t-micro);
+  letter-spacing: var(--track-wide);
+  color: var(--ink-ghost);
+}
+
+/* A rule with a centred label, in the manner of an atlas division. */
+.division {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  margin: var(--s2) 0;
+  color: var(--ink-ghost);
+  font-size: var(--t-micro);
+  letter-spacing: var(--track-caps);
+  text-transform: uppercase;
+}
+
+.division::before,
+.division::after {
+  content: "";
+  height: 1px;
+  flex: 1;
+  background: var(--rule-faint);
+}
+
+.division::before {
+  flex: 0 0 var(--s3);
+}
+
+/* ---- Tags -------------------------------------------------------------- */
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.0625rem 0.375rem;
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  background: rgb(167 190 205 / 4%);
+  font-size: var(--t-micro);
+  font-weight: 600;
+  letter-spacing: var(--track-wide);
+  text-transform: uppercase;
+  color: var(--ink-dim);
+  white-space: nowrap;
+}
+
+.tag__dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 1px;
+  background: currentcolor;
+  flex-shrink: 0;
+}
+
+.tag--supported {
+  border-color: rgb(12 163 12 / 42%);
+  background: rgb(12 163 12 / 10%);
+  color: #6ede6e;
+}
+
+.tag--partial {
+  border-color: rgb(250 178 25 / 42%);
+  background: rgb(250 178 25 / 10%);
+  color: #f5c661;
+}
+
+.tag--unsupported {
+  border-color: rgb(208 59 59 / 45%);
+  background: rgb(208 59 59 / 10%);
+  color: #ec8080;
+}
+
+/* Unknown is not a failure state — it is unsurveyed ground, and reads as hatching. */
+.tag--unknown {
+  border-style: dashed;
+  border-color: var(--rule-strong);
+  color: var(--ink-faint);
+  background-image: repeating-linear-gradient(
+    135deg,
+    rgb(167 190 205 / 7%) 0 2px,
+    transparent 2px 5px
+  );
+}
+
+.tag--live {
+  border-color: rgb(111 216 207 / 40%);
+  background: rgb(111 216 207 / 10%);
+  color: var(--beacon);
+}
+
+.tag--quiet {
+  border-color: var(--rule-faint);
+  background: transparent;
+  color: var(--ink-ghost);
+}
+
+/* ---- Maturity marks ---------------------------------------------------- */
+
+.maturity {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.maturity__pip {
+  width: 4px;
+  height: 10px;
+  border-radius: 1px;
+  background: var(--rule);
+}
+
+.maturity__pip[data-on="true"] {
+  background: var(--sig-trace);
+}
+
+/* ---- Unsurveyed / empty states ---------------------------------------- */
+
+.unsurveyed {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s2);
+  padding: var(--s5) var(--s4);
+  border: 1px dashed var(--rule);
+  border-radius: var(--radius);
+  color: var(--ink-faint);
+  background-image: repeating-linear-gradient(
+    135deg,
+    rgb(167 190 205 / 3.5%) 0 3px,
+    transparent 3px 9px
+  );
+}
+
+.unsurveyed h4 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: var(--t-body);
+  color: var(--ink-dim);
+}
+
+.unsurveyed p {
+  font-size: var(--t-small);
+  max-width: 52ch;
+  line-height: 1.55;
+}
+
+.unsurveyed--centred {
+  align-items: center;
+  text-align: center;
+}
+
+/* ---- Notice ------------------------------------------------------------ */
+
+.notice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s2);
+  padding: var(--s2) var(--s3);
+  border: 1px solid var(--rule);
+  border-left-width: 2px;
+  border-radius: var(--radius);
+  background: rgb(167 190 205 / 3%);
+  font-size: var(--t-small);
+  line-height: 1.5;
+  color: var(--ink-dim);
+}
+
+.notice--alarm {
+  border-color: rgb(208 59 59 / 40%);
+  border-left-color: var(--state-unsupported);
+  background: rgb(208 59 59 / 8%);
+  color: #f0b4b4;
+}
+
+.notice--caution {
+  border-color: rgb(250 178 25 / 34%);
+  border-left-color: var(--state-partial);
+  background: rgb(250 178 25 / 7%);
+}
+
+.notice--survey {
+  border-left-color: var(--sig-trace);
+}
+
+/* ---- Connection lamp --------------------------------------------------- */
+
+.lamp {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  font-size: var(--t-micro);
+  letter-spacing: var(--track-caps);
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+.lamp__mark {
+  position: relative;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1px solid currentcolor;
+}
+
+.lamp[data-state="connected"] {
+  color: var(--beacon);
+}
+
+.lamp[data-state="connected"] .lamp__mark::after {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  border-radius: 50%;
+  background: currentcolor;
+}
+
+.lamp[data-state="connecting"] {
+  color: var(--state-partial);
+}
+
+.lamp[data-state="connecting"] .lamp__mark {
+  border-style: dashed;
+  animation: lamp-sweep 1.6s linear infinite;
+}
+
+.lamp[data-state="error"] {
+  color: var(--state-unsupported);
+}
+
+.lamp[data-state="error"] .lamp__mark::after {
+  content: "";
+  position: absolute;
+  inset: 2px;
+  background: currentcolor;
+}
+
+.lamp[data-state="unavailable"] {
+  color: var(--ink-faint);
+}
+
+@keyframes lamp-sweep {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lamp[data-state="connecting"] .lamp__mark {
+    animation: none;
+  }
+}

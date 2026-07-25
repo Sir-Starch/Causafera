@@ -1,0 +1,362 @@
+/* Causafera Observer — controls. Precise, drawn, survey-instrument character. */
+
+.btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s2);
+  padding: 0.3125rem 0.75rem;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: rgb(167 190 205 / 4%);
+  color: var(--ink-dim);
+  font-size: var(--t-small);
+  font-weight: 500;
+  letter-spacing: var(--track-wide);
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    color var(--dur-fast) var(--ease-survey),
+    border-color var(--dur-fast) var(--ease-survey),
+    background var(--dur-fast) var(--ease-survey);
+}
+
+.btn:hover:not(:disabled) {
+  color: var(--ink);
+  border-color: var(--rule-strong);
+  background: rgb(167 190 205 / 8%);
+}
+
+.btn:active:not(:disabled) {
+  background: rgb(167 190 205 / 12%);
+}
+
+.btn:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
+.btn--primary {
+  border-color: rgb(40 165 159 / 45%);
+  background: rgb(40 165 159 / 12%);
+  color: var(--beacon);
+}
+
+.btn--primary:hover:not(:disabled) {
+  border-color: rgb(111 216 207 / 62%);
+  background: rgb(40 165 159 / 20%);
+  color: #97ece4;
+}
+
+.btn--ghost {
+  border-color: transparent;
+  background: transparent;
+}
+
+.btn--ghost:hover:not(:disabled) {
+  border-color: var(--rule);
+}
+
+.btn--icon {
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+}
+
+.btn--lg {
+  padding: 0.4375rem 0.875rem;
+  font-size: var(--t-body);
+}
+
+/* Transport cluster: the run control that survey work is paced by. */
+.transport {
+  display: flex;
+  align-items: center;
+  gap: var(--s1);
+  padding: 0.1875rem;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: rgb(8 12 18 / 60%);
+}
+
+.transport__run {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s2);
+  min-width: 5.25rem;
+  padding: 0.3125rem 0.625rem;
+  border: 1px solid rgb(40 165 159 / 40%);
+  border-radius: 2px;
+  background: rgb(40 165 159 / 12%);
+  color: var(--beacon);
+  font-size: var(--t-small);
+  font-weight: 600;
+  letter-spacing: var(--track-wide);
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-survey);
+}
+
+.transport__run[data-running="true"] {
+  border-color: rgb(250 178 25 / 45%);
+  background: rgb(250 178 25 / 12%);
+  color: var(--state-partial);
+}
+
+.transport__run:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Segmented control — batch size, locale, perspective. */
+.segmented {
+  display: inline-flex;
+  padding: 2px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: rgb(8 12 18 / 55%);
+}
+
+.segmented__option {
+  padding: 0.1875rem 0.5rem;
+  border: 0;
+  border-radius: 2px;
+  background: transparent;
+  color: var(--ink-faint);
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--ease-survey), background var(--dur-fast) var(--ease-survey);
+}
+
+.segmented__option:hover {
+  color: var(--ink-dim);
+}
+
+.segmented__option[aria-pressed="true"],
+.segmented__option[aria-selected="true"] {
+  background: rgb(167 190 205 / 10%);
+  color: var(--ink);
+}
+
+.segmented--text .segmented__option {
+  font-family: var(--font-ui);
+  font-size: var(--t-small);
+  letter-spacing: var(--track-wide);
+}
+
+/* Field input — seed entry and filters. */
+.input {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: rgb(8 12 18 / 60%);
+}
+
+.input:focus-within {
+  border-color: rgb(111 216 207 / 50%);
+}
+
+.input__label {
+  font-size: var(--t-micro);
+  letter-spacing: var(--track-caps);
+  text-transform: uppercase;
+  color: var(--ink-ghost);
+}
+
+.input input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  font-family: var(--font-mono);
+  font-size: var(--t-small);
+  color: var(--ink);
+  outline: none;
+}
+
+.input input::-webkit-outer-spin-button,
+.input input::-webkit-inner-spin-button {
+  appearance: none;
+  margin: 0;
+}
+
+.input--seed input {
+  width: 3.25rem;
+}
+
+/* Nested inside a transport cluster, the field borrows the cluster's frame. */
+.input--bare {
+  border: 0;
+  background: transparent;
+  padding-block: 0.1875rem;
+}
+
+.transport--reset {
+  gap: 0;
+}
+
+.input--search {
+  flex: 1;
+}
+
+/* Tabs — secondary navigation inside an area. */
+.tabs {
+  display: flex;
+  gap: var(--s1);
+  border-bottom: 1px solid var(--rule-faint);
+}
+
+.tabs__tab {
+  position: relative;
+  padding: var(--s2) var(--s3);
+  border: 0;
+  background: transparent;
+  color: var(--ink-faint);
+  font-size: var(--t-small);
+  letter-spacing: var(--track-wide);
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--ease-survey);
+}
+
+.tabs__tab::after {
+  content: "";
+  position: absolute;
+  inset-inline: var(--s2);
+  bottom: -1px;
+  height: 1px;
+  background: var(--sig-trace);
+  transform: scaleX(0);
+  transition: transform var(--dur) var(--ease-survey);
+}
+
+.tabs__tab:hover {
+  color: var(--ink-dim);
+}
+
+.tabs__tab[aria-selected="true"] {
+  color: var(--ink);
+}
+
+.tabs__tab[aria-selected="true"]::after {
+  transform: scaleX(1);
+}
+
+/* Row selection — a coordinate lock rather than a filled highlight. */
+.selectable {
+  position: relative;
+  cursor: pointer;
+}
+
+.selectable::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  pointer-events: none;
+  transition: border-color var(--dur-fast) var(--ease-survey);
+}
+
+.selectable:hover::before {
+  border-color: var(--rule);
+}
+
+.selectable[aria-selected="true"]::before,
+.selectable[data-selected="true"]::before {
+  border-color: rgb(40 165 159 / 55%);
+  box-shadow: 0 0 0 1px rgb(40 165 159 / 12%);
+}
+
+/* Command palette. */
+.palette-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  justify-items: center;
+  align-content: start;
+  padding-top: 12vh;
+  background: rgb(4 6 9 / 72%);
+  backdrop-filter: blur(3px);
+}
+
+.palette {
+  width: min(38rem, 92vw);
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius-lg);
+  background: var(--sheet-overlay);
+  box-shadow: var(--lift-2);
+  overflow: hidden;
+}
+
+.palette__field {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  padding: var(--s3);
+  border-bottom: 1px solid var(--rule-faint);
+}
+
+.palette__field input {
+  flex: 1;
+  border: 0;
+  background: transparent;
+  font-size: var(--t-lead);
+  color: var(--ink);
+  outline: none;
+}
+
+.palette__list {
+  max-height: 22rem;
+  overflow-y: auto;
+  padding: var(--s2);
+}
+
+.palette__item {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  width: 100%;
+  padding: var(--s2) var(--s3);
+  border: 0;
+  border-radius: 2px;
+  background: transparent;
+  color: var(--ink-dim);
+  text-align: left;
+  cursor: pointer;
+}
+
+.palette__item[data-active="true"] {
+  background: rgb(40 165 159 / 12%);
+  color: var(--ink);
+}
+
+.palette__item b {
+  font-weight: 500;
+}
+
+.palette__group {
+  padding: var(--s2) var(--s3) var(--s1);
+}
+
+.kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.25rem;
+  padding: 0.0625rem 0.25rem;
+  border: 1px solid var(--rule);
+  border-bottom-width: 2px;
+  border-radius: 3px;
+  background: rgb(167 190 205 / 5%);
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  color: var(--ink-faint);
+}

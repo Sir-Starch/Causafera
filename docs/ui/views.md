@@ -1,31 +1,56 @@
 # User Views
 
-The Phase 26 desktop observer delivers a bounded first set of views and preserves room for richer
-domain inspection.
+The desktop observer organises its delivered capability into five areas and preserves room for
+richer domain inspection. Areas are the top-level navigation; an inspector dock carries the
+selection context for whichever area is open.
 
-## Delivered Views
+## Delivered Areas
 
-### World
+### Observatory
+
+The primary surface. Run identity (seed, negotiated protocol, tick, digest anchors), the instrument
+cluster, and the three quantities that move in a live session: the mana field as total and peak cell
+intensity, causal accretion as committed traces, and actor action admission as the committed share
+of attempted actions. Carries a chart strip and a recent-transition preview that lead into the other
+areas, plus a summary of instrument coverage.
+
+### Survey
 
 Chart-qualified active chunks with real terrain elevation range, roughness, mana, resolution,
-population, activity, and trace anchors. This is an objective observer projection, not agent
-knowledge or a global planetary map.
+population, activity, and trace anchors. The chart profile draws each chunk as a stacked register of
+relief, mana, population, and causal activity, in chart coordinate order. This is an objective
+observer projection, not agent knowledge and not a global planetary map; adjacency on the profile is
+coordinate ordering, not measured distance.
 
-### Causality
+The inspector decodes the material surface cell ordinal into its position inside the 32³ chunk
+lattice.
 
-An aggregate physical → mana → resolution → action → population flow using current runtime counts.
-It is not yet an arbitrary provenance graph explorer.
+### Flux
 
-### Timeline and Inspector
+Causal activity over run time. Rate recorders over the observer-side summary series, the surface
+condition ladder — one step function per tracked material surface, with rings for contact traces,
+diamonds for mana physical effects, and squares for local mana coupling — and the bounded transition
+ledger. Selecting a trace anchor anywhere filters the ledger. That is the full extent of provenance
+navigation the current protocol supports, and the interface says so rather than implying an ancestry
+graph it cannot draw.
 
-A bounded client-side metric history and selected chunk details. Closing the World view stops world
-queries. Timeline state is rendering state, not authoritative history.
+Local mana gate transitions are shown with an explicit empty state: only transitions into the closed
+state are projected, so an empty list is an observation rather than a gap.
 
-### Explanation
+### Assay
 
-Typed claims from the replay-verified bounded experiment, including evidence state, confidence,
-comparison, checkpoint, and supporting trace count. The UI never invents a claim when the report is
-unavailable.
+Typed claims from the replay-verified bounded experiment, each with evidence state, confidence,
+comparison context, and its trace anchors, together on the same card (INV-026). Claim schemas carry
+presentation reading notes; an unregistered schema renders generically rather than disappearing. A
+claim marked `Unknown` is presented as a result — absence of evidence is not negative evidence — and
+an assay that describes an earlier tick is marked stale rather than silently redisplayed.
+
+### Instrument
+
+Protocol negotiation, the run bounds of the current configuration, a log of real exchanges with
+measured byte counts and durations, and the coverage register: every observable the project has
+defined, with its state (read, bounded, no projection, domain not ready) and its domain and observer
+maturity.
 
 ## Planned Rich Views
 
@@ -63,6 +88,8 @@ Views are independent. Opening or closing a view must not affect simulation stat
 
 ## Related Documents
 
+- `docs/ui/observer-application.md` - Frontend architecture and design system
+- `docs/ui/observer-projection-gaps.md` - Projections the frontend is waiting on
 - `docs/ui/map-perspectives.md` - Map rendering and perspectives
 - `docs/ui/language-inspection.md` - Language-specific UI features
 - `docs/observer/architecture.md` - Observer layer providing view data

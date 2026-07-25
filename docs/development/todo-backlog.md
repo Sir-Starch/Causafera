@@ -574,6 +574,34 @@
 **Explanation Implications:** Preserves schema, numeric value, evidence state, confidence, comparison, checkpoint, and trace count
 **Out of Scope:** Entity-per-DOM views, global planetary map, large-dataset WebGPU renderer, agent-known maps, LLM narrative, authoritative mutation
 
+## TODO-UI-003: Observer Instrument Frontend
+**Status:** Completed
+**Phase:** Detailed Development — Observer Surface
+**Priority:** High
+**Dependencies:** TODO-UI-002
+**Goal:** Replace the bounded first observer shell with a durable analytical instrument: a design system, a component library, a capability-aware application shell, and complete workflows over every capability the current protocol delivers
+**Acceptance Criteria:** Five independent areas over runtime summary, chart-qualified chunks, material surface and gate transitions, and Explanation IR; every unavailable observable stated in a capability register rather than omitted; evidence state, confidence, and trace anchors always presented together; no fabricated simulation data in any build
+**Performance Requirements:** Canvas rendering for chart surfaces, bounded observer-side buffers (256 summary frames, 120 exchanges), feed demand registry so closed panels issue no queries
+**Determinism Requirements:** Locale changes preserve physical/history digests; presentation carries no state
+**Ontology Implications:** Signal hues, area names, claim reading notes, and capability labels are observer classifications and never simulation meaning
+**Observer Implications:** First consumer of material surface gate deltas; documents required projections in `docs/ui/observer-projection-gaps.md`
+**Explanation Implications:** Claim schemas render by schema ID with a generic fallback, so new schemas appear without frontend work; the authoritative Rust renderer is not reimplemented in TypeScript
+**Out of Scope:** Trace ancestry navigation, per-cell field plates, entity inspection, historical comparison, streaming subscriptions, WebGPU
+
+## TODO-UI-004: Observer Projection Requests
+**Status:** Pending
+**Phase:** Detailed Development — Observer Surface
+**Priority:** Medium
+**Dependencies:** TODO-UI-003
+**Goal:** Deliver the observer projections the frontend is waiting on, in the order recorded in `docs/ui/observer-projection-gaps.md`
+**Acceptance Criteria:** Rendered explanation text transported rather than reimplemented; resolution policy thresholds projected; bounded trace ancestry query available; per-cell mana and resolution projection with an explicit bounding contract; `PerformanceMetrics` encoded
+**Performance Requirements:** Every new projection is explicitly bounded; no unbounded observer queue
+**Determinism Requirements:** New payloads are locale-invariant and reproduce identically for the same state
+**Ontology Implications:** Entity projection must not expose Ground Truth identity to agents or to observer classification feedback (INV-013, INV-027)
+**Observer Implications:** Each item requires an ExecPlan for the protocol change
+**Explanation Implications:** Rendered text remains non-authoritative and carries evidence state alongside it
+**Out of Scope:** Entity summaries pending a contract decision, historical queries pending persistence maturity
+
 ## TODO-DEPTH-001: Detailed Domain Maturity Audit and Sequencing
 **Status:** Pending
 **Phase:** Detailed Development — Program
