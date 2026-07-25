@@ -201,9 +201,10 @@ observable, and validated maturity levels. Foundation `Completed` labels are his
 statements, not claims that a whole domain is mature.
 
 Immediate program priorities are durable physical-state coupling, production historical bootstrap
-without fixtures, domain-valid recovery and phenomenon metrics, and causal/domain inspection. Two
-bounded vertical slices are complete: the actor/material/mana loop (`plans/actor-material-mana-loop.md`)
-and the local mana-material-surface coupling (`plans/local-mana-material-surface-coupling.md`).
+without fixtures, domain-valid recovery and phenomenon metrics, and causal/domain inspection. Three
+bounded vertical slices are complete: the actor/material/mana loop (`plans/actor-material-mana-loop.md`),
+the local mana-material-surface coupling (`plans/local-mana-material-surface-coupling.md`), and the
+bounded conserved thermal storage and same-chart transfer slice (`plans/conserved-thermal-energy-carrier.md`).
 The frozen-baseline maturity audit is paused after preserving its completed groundwork; it does not
 block accepted vertical-slice work.
 
