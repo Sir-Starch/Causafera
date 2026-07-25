@@ -6,10 +6,10 @@ use causafera_explanation::{
     NumericClaimValue,
 };
 use causafera_observer_api::{
-    MATERIAL_SURFACE_DELTA_SCHEMA_V3, MAX_MATERIAL_SURFACE_DELTAS, MaterialSurfaceDelta,
-    MaterialSurfaceGateDelta, OBSERVER_PROTOCOL_V1, ObserverChunkSummary, ObserverQuery,
-    ObserverResponse, ObserverSnapshot, ObserverWorldSnapshot, QueryKind, QueryStatus,
-    StreamEnvelope, StreamKind,
+    MATERIAL_SURFACE_DELTA_SCHEMA_V3, MAX_MATERIAL_SURFACE_DELTAS, MAX_THERMAL_DELTAS,
+    MaterialSurfaceDelta, MaterialSurfaceGateDelta, OBSERVER_PROTOCOL_V1, ObserverChunkSummary,
+    ObserverQuery, ObserverResponse, ObserverSnapshot, ObserverWorldSnapshot, QueryKind,
+    QueryStatus, StreamEnvelope, StreamKind, THERMAL_DELTA_SCHEMA_V1, ThermalFieldDelta,
 };
 use causafera_types::{ChunkId, ExperimentId, SimulationTime, TraceId};
 use thiserror::Error;
@@ -288,21 +288,37 @@ pub fn encode_observer_snapshot(snapshot: &ObserverSnapshot) -> Vec<u8> {
     ] {
         field_varint(&mut out, field, value);
     }
+    field_bytes(
+        &mut out,
+        24,
+        &encode_i128_zigzag(snapshot.thermal_total_cell_energy),
+    );
+    field_bytes(
+        &mut out,
+        25,
+        &encode_i128_zigzag(snapshot.thermal_total_reservoir_budget),
+    );
+    field_varint(&mut out, 26, u64::from(snapshot.thermal_active_chunk_count));
+    field_varint(&mut out, 27, u64::from(snapshot.thermal_active_cell_count));
     out
 }
 
 pub fn decode_observer_snapshot(bytes: &[u8]) -> Result<ObserverSnapshot, WireError> {
     let mut c = Cursor::new(bytes);
-    let mut values = [0_u64; 23];
-    let mut present = [false; 23];
+    let mut values = [0_u64; 27];
+    let mut present = [false; 27];
     let mut physical_digest = None;
     let mut history_digest = None;
+    let mut thermal_total_cell_energy = 0;
+    let mut thermal_total_reservoir_budget = 0;
     while !c.is_empty() {
         let (field, wire) = c.key()?;
         match (field, wire) {
             (3, WIRE_LEN) => physical_digest = Some(array32(c.bytes()?)?),
             (4, WIRE_LEN) => history_digest = Some(array32(c.bytes()?)?),
-            (1..=23, WIRE_VARINT) if field != 3 && field != 4 => {
+            (24, WIRE_LEN) => thermal_total_cell_energy = decode_i128_zigzag(c.bytes()?)?,
+            (25, WIRE_LEN) => thermal_total_reservoir_budget = decode_i128_zigzag(c.bytes()?)?,
+            (1..=27, WIRE_VARINT) => {
                 values[field as usize - 1] = c.varint()?;
                 present[field as usize - 1] = true;
             }
@@ -338,6 +354,10 @@ pub fn decode_observer_snapshot(bytes: &[u8]) -> Result<ObserverSnapshot, WireEr
         population_movements: values[20],
         bytes_per_chunk: values[21],
         latest_trace: TraceId::new(values[22]),
+        thermal_total_cell_energy,
+        thermal_total_reservoir_budget,
+        thermal_active_chunk_count: to_u32(values[25])?,
+        thermal_active_cell_count: to_u32(values[26])?,
     })
 }
 
@@ -396,6 +416,18 @@ pub fn encode_world_snapshot(snapshot: &ObserverWorldSnapshot) -> Vec<u8> {
             field_bytes(&mut out, 5, &encode_material_surface_gate_delta(delta));
         }
     }
+    if snapshot.thermal_delta_schema_version >= THERMAL_DELTA_SCHEMA_V1 {
+        for delta in snapshot.thermal_deltas.iter().take(MAX_THERMAL_DELTAS) {
+            field_bytes(&mut out, 6, &encode_thermal_field_delta(delta));
+        }
+    }
+    if snapshot.thermal_delta_schema_version != 0 {
+        field_varint(
+            &mut out,
+            7,
+            u64::from(snapshot.thermal_delta_schema_version),
+        );
+    }
     out
 }
 
@@ -405,8 +437,11 @@ pub fn decode_world_snapshot(bytes: &[u8]) -> Result<ObserverWorldSnapshot, Wire
     let mut chunks = Vec::new();
     let mut material_surface_delta_bytes = Vec::new();
     let mut material_surface_gate_deltas = Vec::new();
+    let mut thermal_delta_bytes = Vec::new();
     let mut material_surface_delta_schema_version = 0;
     let mut schema_version_seen = false;
+    let mut thermal_delta_schema_version = 0;
+    let mut thermal_schema_version_seen = false;
     while !cursor.is_empty() {
         let (field, wire) = cursor.key()?;
         match (field, wire) {
@@ -436,6 +471,18 @@ pub fn decode_world_snapshot(bytes: &[u8]) -> Result<ObserverWorldSnapshot, Wire
                 cursor.bytes()?;
             }
             (5, _) => return Err(WireError::UnexpectedFieldForSchema(5)),
+            (6, WIRE_LEN) if thermal_delta_bytes.len() < MAX_THERMAL_DELTAS => {
+                thermal_delta_bytes.push(cursor.bytes()?.to_vec())
+            }
+            (6, WIRE_LEN) => {
+                cursor.bytes()?;
+            }
+            (6, _) => return Err(WireError::UnexpectedFieldForSchema(6)),
+            (7, WIRE_VARINT) if !thermal_schema_version_seen => {
+                thermal_delta_schema_version = to_u32(cursor.varint()?)?;
+                thermal_schema_version_seen = true;
+            }
+            (7, _) => return Err(WireError::DuplicateField(7)),
             _ => cursor.skip(wire)?,
         }
     }
@@ -443,12 +490,72 @@ pub fn decode_world_snapshot(bytes: &[u8]) -> Result<ObserverWorldSnapshot, Wire
         .iter()
         .map(|bytes| decode_material_surface_delta(bytes, material_surface_delta_schema_version))
         .collect::<Result<Vec<_>, _>>()?;
+    if !thermal_delta_bytes.is_empty() && thermal_delta_schema_version < THERMAL_DELTA_SCHEMA_V1 {
+        return Err(WireError::UnexpectedFieldForSchema(6));
+    }
+    let thermal_deltas = thermal_delta_bytes
+        .iter()
+        .map(|bytes| decode_thermal_field_delta(bytes, thermal_delta_schema_version))
+        .collect::<Result<Vec<_>, _>>()?;
     Ok(ObserverWorldSnapshot {
         time: time.ok_or(WireError::MissingField(1))?,
         chunks,
         material_surface_delta_schema_version,
         material_surface_deltas,
         material_surface_gate_deltas,
+        thermal_delta_schema_version,
+        thermal_deltas,
+    })
+}
+
+fn encode_thermal_field_delta(delta: &ThermalFieldDelta) -> Vec<u8> {
+    let mut nested = Vec::new();
+    field_varint(&mut nested, 1, delta.chart_id);
+    field_varint(&mut nested, 2, zigzag(i64::from(delta.chunk_x)));
+    field_varint(&mut nested, 3, zigzag(i64::from(delta.chunk_y)));
+    field_varint(&mut nested, 4, zigzag(i64::from(delta.chunk_z)));
+    field_varint(&mut nested, 5, u64::from(delta.cell_ordinal));
+    field_varint(&mut nested, 6, zigzag(delta.pre_state_energy));
+    field_varint(&mut nested, 7, zigzag(delta.post_state_energy));
+    field_varint(&mut nested, 8, zigzag(delta.reservoir_scheduled_injection));
+    field_varint(&mut nested, 9, zigzag(delta.reservoir_accepted_injection));
+    field_varint(&mut nested, 10, zigzag(delta.reservoir_rejected_injection));
+    field_varint(&mut nested, 11, zigzag(delta.net_face_flux));
+    field_varint(&mut nested, 12, u64::from(delta.face_count));
+    nested
+}
+
+fn decode_thermal_field_delta(
+    bytes: &[u8],
+    schema_version: u32,
+) -> Result<ThermalFieldDelta, WireError> {
+    if schema_version < THERMAL_DELTA_SCHEMA_V1 {
+        return Err(WireError::UnexpectedFieldForSchema(6));
+    }
+    let mut cursor = Cursor::new(bytes);
+    let mut values = [None; 12];
+    while !cursor.is_empty() {
+        let (field, wire) = cursor.key()?;
+        if (1..=12).contains(&field) && wire == WIRE_VARINT {
+            values[field as usize - 1] = Some(cursor.varint()?);
+        } else {
+            cursor.skip(wire)?;
+        }
+    }
+    let value = |field: usize| values[field - 1].ok_or(WireError::MissingField(field as u32));
+    Ok(ThermalFieldDelta {
+        chart_id: value(1)?,
+        chunk_x: to_i32(unzigzag(value(2)?))?,
+        chunk_y: to_i32(unzigzag(value(3)?))?,
+        chunk_z: to_i32(unzigzag(value(4)?))?,
+        cell_ordinal: u16::try_from(value(5)?).map_err(|_| WireError::IntegerOverflow)?,
+        pre_state_energy: unzigzag(value(6)?),
+        post_state_energy: unzigzag(value(7)?),
+        reservoir_scheduled_injection: unzigzag(value(8)?),
+        reservoir_accepted_injection: unzigzag(value(9)?),
+        reservoir_rejected_injection: unzigzag(value(10)?),
+        net_face_flux: unzigzag(value(11)?),
+        face_count: to_u32(value(12)?)?,
     })
 }
 
@@ -989,6 +1096,43 @@ fn zigzag(value: i64) -> u64 {
     ((value << 1) ^ (value >> 63)) as u64
 }
 
+fn encode_i128_zigzag(value: i128) -> Vec<u8> {
+    let bits = u128::from_ne_bytes(value.to_ne_bytes());
+    let encoded = if value.is_negative() {
+        ((!bits) << 1) | 1
+    } else {
+        bits << 1
+    };
+    let mut bytes = Vec::new();
+    varint_u128(&mut bytes, encoded);
+    bytes
+}
+
+fn decode_i128_zigzag(bytes: &[u8]) -> Result<i128, WireError> {
+    let mut encoded = 0_u128;
+    for (index, byte) in bytes.iter().copied().enumerate() {
+        let shift = u32::try_from(index.checked_mul(7).ok_or(WireError::IntegerOverflow)?)
+            .map_err(|_| WireError::IntegerOverflow)?;
+        if shift >= 128 {
+            return Err(WireError::InvalidVarint);
+        }
+        let part = u128::from(byte & 0x7f);
+        if part > (u128::MAX >> shift) {
+            return Err(WireError::IntegerOverflow);
+        }
+        encoded |= part << shift;
+        if byte & 0x80 == 0 {
+            if index + 1 != bytes.len() {
+                return Err(WireError::InvalidVarint);
+            }
+            let sign = if encoded & 1 == 0 { 0 } else { u128::MAX };
+            let decoded = (encoded >> 1) ^ sign;
+            return Ok(i128::from_ne_bytes(decoded.to_ne_bytes()));
+        }
+    }
+    Err(WireError::InvalidVarint)
+}
+
 fn field_varint(out: &mut Vec<u8>, field: u32, value: u64) {
     varint(out, u64::from(field) << 3);
     varint(out, value);
@@ -1006,6 +1150,14 @@ fn field_fixed64(out: &mut Vec<u8>, field: u32, value: u64) {
 }
 
 fn varint(out: &mut Vec<u8>, mut value: u64) {
+    while value >= 0x80 {
+        out.push((value as u8 & 0x7f) | 0x80);
+        value >>= 7;
+    }
+    out.push(value as u8);
+}
+
+fn varint_u128(out: &mut Vec<u8>, mut value: u128) {
     while value >= 0x80 {
         out.push((value as u8 & 0x7f) | 0x80);
         value >>= 7;
@@ -1197,6 +1349,10 @@ mod tests {
             population_movements: 14,
             bytes_per_chunk: 15,
             latest_trace: TraceId::new(16),
+            thermal_total_cell_energy: i128::MAX,
+            thermal_total_reservoir_budget: 200,
+            thermal_active_chunk_count: 2,
+            thermal_active_cell_count: 54,
         }
     }
 
@@ -1279,6 +1435,8 @@ mod tests {
             material_surface_delta_schema_version: 0,
             material_surface_deltas: Vec::new(),
             material_surface_gate_deltas: Vec::new(),
+            thermal_delta_schema_version: 0,
+            thermal_deltas: Vec::new(),
         };
         let mut handler = ProtocolHandler::default();
         handler.set_world_snapshot(&expected);
@@ -1354,6 +1512,8 @@ mod tests {
                 contact_trace_id: None,
                 transition_tick: 9,
             }],
+            thermal_delta_schema_version: 0,
+            thermal_deltas: Vec::new(),
         };
         let mut handler = ProtocolHandler::default();
         handler.set_world_snapshot(&expected);
@@ -1463,6 +1623,8 @@ fn world_query_roundtrips_material_delta_mana_transition_trace() {
             local_mana_transition_trace_id: Some(TraceId::new(21)),
         }],
         material_surface_gate_deltas: Vec::new(),
+        thermal_delta_schema_version: 0,
+        thermal_deltas: Vec::new(),
     };
     let mut handler = ProtocolHandler::default();
     handler.set_world_snapshot(&expected);
@@ -1507,6 +1669,8 @@ fn decode_world_snapshot_rejects_gate_deltas_under_v2_schema() {
             local_mana_transition_trace_id: None,
         }],
         material_surface_gate_deltas: Vec::new(),
+        thermal_delta_schema_version: 0,
+        thermal_deltas: Vec::new(),
     };
     let mut encoded = encode_world_snapshot(&v2);
     assert_eq!(decode_world_snapshot(&encoded).unwrap(), v2);
@@ -1607,6 +1771,8 @@ fn decode_world_snapshot_rejects_duplicate_schema_version() {
             contact_trace_id: None,
             transition_tick: 10,
         }],
+        thermal_delta_schema_version: 0,
+        thermal_deltas: Vec::new(),
     };
     let mut encoded = encode_world_snapshot(&v3);
     assert_eq!(decode_world_snapshot(&encoded).unwrap(), v3);
