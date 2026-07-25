@@ -1,3 +1,4 @@
+use causafera_domains::ThermalConservationReceipt;
 use causafera_types::{ExperimentId, SimulationTime, TraceId};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -28,6 +29,8 @@ pub const MATERIAL_SURFACE_LOOP_MANA_TRANSITION_SCHEMA: ExplanationClaimSchemaId
     ExplanationClaimSchemaId::new(14);
 pub const MATERIAL_SURFACE_LOOP_LOCAL_MANA_TRANSITION_SCHEMA: ExplanationClaimSchemaId =
     ExplanationClaimSchemaId::new(15);
+pub const THERMAL_CARRIER_CONSERVATION_SCHEMA: ExplanationClaimSchemaId =
+    ExplanationClaimSchemaId::new(16);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -311,6 +314,46 @@ impl MaterialSurfaceLocalManaTransitionClaim {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ThermalCarrierConservationClaim {
+    pub receipt: ThermalConservationReceipt,
+    pub observation_start: SimulationTime,
+    pub observation_end: SimulationTime,
+    pub conservation_trace: TraceId,
+    pub reservoir_transfer_traces: Vec<TraceId>,
+    pub neighbor_transfer_traces: Vec<TraceId>,
+}
+
+impl ThermalCarrierConservationClaim {
+    pub fn to_explanation_claim(&self) -> Result<ExplanationClaim, ExplanationIrError> {
+        if self.receipt.residual != 0 {
+            return Err(ExplanationIrError::ThermalConservationResidual {
+                residual: self.receipt.residual,
+            });
+        }
+        let _window = NumericClaimValue::range(
+            i64::try_from(self.observation_start.raw())
+                .map_err(|_| ExplanationIrError::ObservationTimeOverflow)?,
+            i64::try_from(self.observation_end.raw())
+                .map_err(|_| ExplanationIrError::ObservationTimeOverflow)?,
+        )?;
+        let mut evidence_traces = Vec::with_capacity(
+            1 + self.reservoir_transfer_traces.len() + self.neighbor_transfer_traces.len(),
+        );
+        evidence_traces.push(self.conservation_trace);
+        evidence_traces.extend_from_slice(&self.reservoir_transfer_traces);
+        evidence_traces.extend_from_slice(&self.neighbor_transfer_traces);
+        ExplanationClaim::new(
+            THERMAL_CARRIER_CONSERVATION_SCHEMA,
+            NumericClaimValue::scalar(0),
+            ClaimConfidence::ONE,
+            evidence_traces,
+            ComparisonContext::None,
+            ClaimEvidenceState::Supported,
+        )
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum FrameAssessment {
     Supported,
@@ -431,11 +474,14 @@ pub enum ExplanationIrError {
     ReportWithoutFrames { experiment: ExperimentId },
     #[error("material-surface observation time exceeds Explanation IR range")]
     ObservationTimeOverflow,
+    #[error("thermal conservation receipt residual must be zero, got {residual}")]
+    ThermalConservationResidual { residual: i128 },
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use causafera_domains::ThermalConservationReceipt;
 
     #[test]
     fn claim_sorts_and_deduplicates_supporting_traces() {
@@ -536,5 +582,38 @@ mod tests {
         );
         assert_eq!(claims[4].evidence_state, ClaimEvidenceState::Supported);
         assert_eq!(claims[4].evidence_traces, vec![TraceId::new(23)]);
+    }
+
+    #[test]
+    fn thermal_conservation_claim_uses_authoritative_zero_residual() {
+        // Given: a committed receipt whose residual was checked by authoritative thermal evolution.
+        let receipt = ThermalConservationReceipt {
+            tick: 12,
+            total_cell_energy_before: 100,
+            total_cell_energy_after: 160,
+            total_reservoir_budget_before: 80,
+            total_reservoir_budget_after: 20,
+            residual: 0,
+        };
+        let claim = ThermalCarrierConservationClaim {
+            receipt,
+            observation_start: SimulationTime::new(11),
+            observation_end: SimulationTime::new(12),
+            conservation_trace: TraceId::new(31),
+            reservoir_transfer_traces: vec![TraceId::new(29)],
+            neighbor_transfer_traces: vec![TraceId::new(30)],
+        };
+
+        // When: the receipt is converted into a non-authoritative explanation claim.
+        let actual = claim.to_explanation_claim().unwrap();
+
+        // Then: the claim preserves the stored zero residual and all causal support.
+        assert_eq!(actual.schema, THERMAL_CARRIER_CONSERVATION_SCHEMA);
+        assert_eq!(actual.value, NumericClaimValue::scalar(0));
+        assert_eq!(actual.evidence_state, ClaimEvidenceState::Supported);
+        assert_eq!(
+            actual.evidence_traces,
+            vec![TraceId::new(29), TraceId::new(30), TraceId::new(31)]
+        );
     }
 }
