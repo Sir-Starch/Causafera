@@ -602,20 +602,20 @@
 **Explanation Implications:** None; the map is a read surface
 **Out of Scope:** Joining charts into a global surface, agent-known perspectives, historical comparison, 3D terrain
 
-## TODO-OBS-001: Terrain Raster Projection and Chart Shape
+## TODO-OBS-001: Field Raster Projection and Chart Shape
 **Status:** Pending
 **Phase:** Detailed Development — Observer Surface
 **Priority:** High
 **Dependencies:** TODO-UI-005
-**Goal:** Project the terrain carrier's per-cell field to the observer and let the active chunk set form an area, so the map renders measured relief rather than one aggregate per chunk
-**Acceptance Criteria:** A bounded per-chunk `TerrainRaster` query with runtime-computed detail levels; measured hypsometric tinting, hillshading and contours in the chart instrument; a config-gated two-dimensional active chunk shape that leaves every existing fixture digest unchanged
+**Goal:** Project the terrain carrier's and the mana field's per-cell lattices to the observer and let the active chunk set form an area, so the map renders measured relief and a measured mana field rather than one aggregate per chunk
+**Acceptance Criteria:** A bounded per-chunk `FieldRaster` query covering terrain elevation, terrain roughness and mana intensity, with runtime-computed detail levels for terrain; measured hypsometric tinting, hillshading and contours; a mana field lens whose availability derives from the received lattice edge; a config-gated two-dimensional active chunk shape that leaves every existing fixture digest unchanged
 **Performance Requirements:** Per-chunk requests only, delta-encoded elevation, viewport culling and a cache keyed by generation trace; encoded size and paint time measured before any scale claim
 **Determinism Requirements:** Read-only for stages 1-5; the active chunk shape defaults to the existing line so no replay fixture moves
 **Ontology Implications:** Downsampling and hillshading are presentation reductions and never re-enter the runtime (INV-022); surface materials are excluded until geography generates coherent regions
 **Observer Implications:** One additive query kind, one additive Tauri command, protocol stays v1
 **Explanation Implications:** None; generation provenance travels with the raster for future claims
-**Out of Scope:** Landcover from surface materials, per-cell mana and resolution, joined charts, terrain generation changes
-**Plan:** `plans/observer-terrain-raster-map.md`
+**Out of Scope:** Landcover from surface materials, per-cell causal resolution, raising `chunk_extent`, joined charts, terrain generation changes
+**Plan:** `plans/observer-field-raster-map.md`
 
 ## TODO-GEO-001: Coherent Surface Material Regions
 **Status:** Pending
@@ -627,10 +627,25 @@
 **Performance Requirements:** Generation cost measured against the current per-cell assignment
 **Determinism Requirements:** Same seed produces identical material fields
 **Ontology Implications:** Material regions are authoritative geography, not an observer classification
-**Observer Implications:** Unblocks a landcover lens, which `plans/observer-terrain-raster-map.md` deliberately excludes today
+**Observer Implications:** Unblocks a landcover lens, which `plans/observer-field-raster-map.md` deliberately excludes today
 **Explanation Implications:** Material regions become available as causal context for surface claims
 **Out of Scope:** Biome semantics, climate coupling, named regions
 **Evidence:** `apps/observer/src-tauri/examples/terrain_probe.rs` measures 6.5% same-material neighbours against 6.2% expected from chance over 16 materials
+
+## TODO-MANA-001: Mana Field Lattice Cost Decision
+**Status:** Pending
+**Phase:** Detailed Development — Mana
+**Priority:** Medium
+**Dependencies:** TODO-OBS-001
+**Goal:** Decide whether the mana field should run at a finer lattice than `chunk_extent` 3, on measured evidence
+**Acceptance Criteria:** Tick cost, resident memory and encoded raster size recorded at extents 3, 8 and 16 on the demonstration session; a decision recorded either way with its reasoning
+**Performance Requirements:** The mana volume grows with the cube of the extent — 3 to 8 is a factor of nineteen, 3 to 32 a factor of 1214 — so no extent change is accepted without measurements
+**Determinism Requirements:** Changing the extent changes state hashes by construction; any change ships with regenerated fixtures and replay evidence
+**Ontology Implications:** The field is already fully implemented and every cell is live with per-cell provenance; only its spatial lattice is coarse
+**Observer Implications:** The map's mana lens reports `preview` while the lattice needs upsampling and `observed` when it does not, so a finer lattice improves the map with no frontend change
+**Explanation Implications:** A finer lattice gives mana claims finer spatial evidence
+**Out of Scope:** Changing mana propagation rules, response parameters, or the gate model
+**Evidence:** `apps/observer/src-tauri/examples/field_probe.rs` measures 27 cells per chunk, all populated and traced, with a neighbour coherence ratio of 0.41-0.48
 
 ## TODO-UI-004: Observer Projection Requests
 **Status:** Pending
