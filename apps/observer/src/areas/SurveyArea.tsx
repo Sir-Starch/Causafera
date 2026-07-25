@@ -254,7 +254,7 @@ export function SurveyDock({ workspace }: AreaProps) {
               return (
                 <Field
                   key={ladder.key}
-                  label={`#${ladder.cellOrdinal} → (${cell.x} ${cell.y} ${cell.z}) / ${CHUNK_SIZE}³`}
+                  label={`#${ladder.cellOrdinal} → (${cell.x}, ${cell.y}, ${cell.z}) / ${CHUNK_SIZE}³`}
                 >
                   {last === undefined
                     ? copy.common.none

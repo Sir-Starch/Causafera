@@ -92,47 +92,46 @@ select {
 
 .terra-graticule {
   stroke-width: 0.7;
-  opacity: 0.075;
+  opacity: 0.04;
 }
 
 .terra-rhumbs {
   stroke-width: 0.5;
-  opacity: 0.05;
+  opacity: 0.026;
 }
 
 .terra-lining {
   stroke-width: 0.7;
-  opacity: 0.1;
+  opacity: 0.05;
 }
 
 .terra-contours {
   stroke-width: 0.7;
-  opacity: 0.13;
-  stroke-dasharray: none;
+  opacity: 0.065;
 }
 
 .terra-coast {
-  stroke-width: 1.3;
-  opacity: 0.22;
+  stroke-width: 1.1;
+  opacity: 0.115;
 }
 
 .terra-coast--open {
   stroke-dasharray: 7 9;
-  opacity: 0.15;
+  opacity: 0.08;
 }
 
 .terra-hatch-field {
-  opacity: 0.1;
+  opacity: 0.05;
 }
 
 .terra-soundings {
   stroke-width: 0.7;
-  opacity: 0.13;
+  opacity: 0.065;
 }
 
 .terra-rose {
   stroke-width: 0.7;
-  opacity: 0.14;
+  opacity: 0.075;
 }
 
 /* ---- Typographic roles ------------------------------------------------ */

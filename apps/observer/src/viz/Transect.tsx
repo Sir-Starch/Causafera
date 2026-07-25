@@ -29,7 +29,7 @@ const AXIS_WIDTH = 52;
 const RIGHT_PAD = 12;
 const TOP_PAD = 14;
 const COLUMN_GAP = 8;
-const MAX_COLUMN = 132;
+const MAX_COLUMN = 248;
 
 const REGISTERS = {
   relief: 168,
@@ -248,7 +248,7 @@ export function Transect({ atlas, selectedKey, onSelect, labels, ariaLabel }: Tr
         context.textBaseline = "top";
         context.fillStyle = active ? palette.ink! : palette.inkFaint!;
         context.fillText(
-          `${chunk.chunkX} ${chunk.chunkY} ${chunk.chunkZ}`,
+          `${chunk.chunkX}, ${chunk.chunkY}, ${chunk.chunkZ}`,
           x + width / 2,
           labelTop + 6,
         );

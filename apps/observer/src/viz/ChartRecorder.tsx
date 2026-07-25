@@ -256,7 +256,9 @@ export function ChartRecorder({
     });
   };
 
-  if (series.every((entry) => entry.points.length === 0)) {
+  // One sample is not a trace. Until a second frame arrives the plot would be a
+  // degenerate 0..1 axis, which reads as data that was never measured.
+  if (series.every((entry) => entry.points.length < 2)) {
     return <p className="chart__caption">{emptyLabel}</p>;
   }
 

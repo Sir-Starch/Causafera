@@ -17,10 +17,10 @@ const ru = {
 
   areas: {
     station: { name: "Обсерватория", note: "Состояние прогона" },
-    survey: { name: "Съёмка", note: "Карты и чанки" },
+    survey: { name: "Съёмка", note: "Карта и чанки" },
     flux: { name: "Поток", note: "Причинная активность" },
-    assay: { name: "Разбор", note: "Explanation IR" },
-    instrument: { name: "Приборы", note: "Протокол и охват" },
+    assay: { name: "Объяснение", note: "Explanation IR" },
+    instrument: { name: "Прибор", note: "Протокол и охват" },
   },
 
   connection: {
@@ -80,13 +80,13 @@ const ru = {
     field: "Поле маны",
     fieldLede:
       "Суммарная интенсивность и пиковая интенсивность ячейки. Наблюдателю проецируются только эти две величины поля.",
-    accretion: "Накопление причинности",
+    accretion: "Накопление трасс",
     accretionLede:
       "Число зафиксированных трасс и физических событий. Скорость вычислена наблюдателем между полученными кадрами.",
-    admission: "Приём действий акторов",
+    admission: "Допуск действий акторов",
     admissionLede:
       "Доля принятых попыток действия. Отклонение — нормальный результат проверки, а не ошибка.",
-    chartStrip: "Полоса карты",
+    chartStrip: "Профиль карты",
     chartStripLede: "Активные чанки в порядке координат карты. Высота показана как диапазон рельефа.",
     activity: "Недавние переходы",
     activityLede: "Последние записи ограниченного окна переходов материальной поверхности.",
@@ -97,8 +97,8 @@ const ru = {
     actors: "Акторы",
     activeChunks: "Активные чанки",
     traces: "Трассы",
-    manaTotal: "Мана, сумма",
-    manaPeak: "Пик ячейки",
+    manaTotal: "Суммарная мана",
+    manaPeak: "Пиковая ячейка",
     resolutionLevel: "Уровень разрешения",
     resolutionRelevance: "Релевантность",
     physicalEvents: "Физические события",
@@ -116,7 +116,7 @@ const ru = {
 
   survey: {
     title: "Съёмка",
-    eyebrow: "Чанки, привязанные к карте",
+    eyebrow: "Привязка к карте",
     lede:
       "Координаты чанков привязаны к карте и не образуют единой глобальной сетки. Соседство на полосе — это порядок координат, а не измеренное расстояние.",
     transect: "Профиль карты",
@@ -155,7 +155,7 @@ const ru = {
     recorderLede: "Величины сводки среды по тактам прогона.",
     rates: "Скорости",
     ratesLede: "Разность между двумя последними кадрами, нормированная на такт.",
-    ladder: "Лестница состояний поверхности",
+    ladder: "Ступени состояния поверхности",
     ladderLede:
       "Каждая линия — одна отслеживаемая поверхность. Ступень — зафиксированный переход состояния с привязкой к трассе.",
     ledger: "Журнал переходов",
@@ -182,14 +182,16 @@ const ru = {
     perTick: "/такт",
     cumulative: "накопительно",
     rate: "скорость",
+    quantity: "Величина",
+    total: "Всего",
   },
 
   assay: {
-    title: "Разбор",
+    title: "Объяснение",
     eyebrow: "Explanation IR",
     lede:
       "Объяснение не изменяет состояние и не является авторитетным. Каждое утверждение несёт состояние свидетельства, уверенность и якоря трасс.",
-    run: "Выполнить разбор",
+    run: "Выполнить анализ",
     running: "Выполняется…",
     experiment: "Эксперимент",
     checkpoint: "Контрольная точка",
@@ -203,7 +205,7 @@ const ru = {
     comparison: "Сравнение",
     traces: "Трассы",
     reading: "Как читать",
-    empty: "Разбор ещё не выполнялся",
+    empty: "Анализ ещё не выполнялся",
     emptyBody:
       "Ограниченный сравнительный эксперимент по контуру материальной поверхности выполняется по запросу и возвращает типизированный Explanation IR.",
     unknownTitle: "Неизвестно — это результат",
@@ -212,8 +214,8 @@ const ru = {
     unknownSchema: "Схема без описания в наблюдателе",
     unknownSchemaBody:
       "Значение показано как есть. Описание появится, когда схема будет зарегистрирована в наблюдателе.",
-    staleTitle: "Разбор относится к более раннему такту",
-    staleBody: "Прогон продвинулся после разбора. Выполните разбор снова для текущего состояния.",
+    staleTitle: "Анализ относится к более раннему такту",
+    staleBody: "Прогон продвинулся после анализа. Выполните анализ снова для текущего состояния.",
     frames: "Кадры",
     supported: "Подтверждено",
     partial: "Частично",
@@ -222,7 +224,7 @@ const ru = {
   },
 
   instrument: {
-    title: "Приборы",
+    title: "Прибор",
     eyebrow: "Протокол и охват",
     lede:
       "Состояние канала, согласованные возможности и честный реестр того, что прибор способен наблюдать сегодня.",
@@ -245,10 +247,10 @@ const ru = {
     register: "Реестр охвата",
     registerLede:
       "Состояние каждой наблюдаемой величины: читается сейчас, ограничена окном, ждёт проекции наблюдателя или зрелости домена.",
-    stateLive: "Читается",
+    stateLive: "Доступно",
     stateBounded: "Ограничено",
     stateAbsentProjection: "Нет проекции",
-    stateAbsentDomain: "Домен не готов",
+    stateAbsentDomain: "Домен не созрел",
     domainMaturity: "Зрелость домена",
     observerMaturity: "Зрелость наблюдателя",
     boundsTitle: "Границы прогона",
@@ -259,6 +261,7 @@ const ru = {
     boundExchanges: "Ёмкость журнала обмена",
     boundStreams: "Активных потоков",
     boundStreamsNote: "сводка среды, политика «последнее состояние»",
+    boundFrames: "Кадров в ряду",
   },
 
   palette: {
@@ -272,7 +275,7 @@ const ru = {
     of: "из",
     none: "—",
     close: "Закрыть",
-    derived: "производное от полученных кадров",
+    derived: "производные величины",
     bounded: "ограниченное окно",
     projection: "проекция наблюдателя",
     readOnly: "только чтение",
@@ -294,7 +297,7 @@ const en: Dictionary = {
     station: { name: "Observatory", note: "Run state" },
     survey: { name: "Survey", note: "Charts and chunks" },
     flux: { name: "Flux", note: "Causal activity" },
-    assay: { name: "Assay", note: "Explanation IR" },
+    assay: { name: "Explanation", note: "Explanation IR" },
     instrument: { name: "Instrument", note: "Protocol and coverage" },
   },
 
@@ -355,13 +358,13 @@ const en: Dictionary = {
     field: "Mana field",
     fieldLede:
       "Total intensity and peak cell intensity. These two are the only field quantities projected to the observer.",
-    accretion: "Causal accretion",
+    accretion: "Trace accretion",
     accretionLede:
       "Committed traces and physical events. The rate is computed by the observer between received frames.",
     admission: "Actor action admission",
     admissionLede:
       "Share of attempted actions that were committed. Rejection is a normal validation outcome, not an error.",
-    chartStrip: "Chart strip",
+    chartStrip: "Chart profile",
     chartStripLede: "Active chunks in chart coordinate order. Elevation is shown as a relief range.",
     activity: "Recent transitions",
     activityLede: "The latest records of the bounded material surface transition window.",
@@ -456,14 +459,16 @@ const en: Dictionary = {
     perTick: "/tick",
     cumulative: "cumulative",
     rate: "rate",
+    quantity: "Quantity",
+    total: "Total",
   },
 
   assay: {
-    title: "Assay",
+    title: "Explanation",
     eyebrow: "Explanation IR",
     lede:
       "Explanation never modifies state and is never authoritative. Every claim carries an evidence state, a confidence and its trace anchors.",
-    run: "Run the assay",
+    run: "Run the analysis",
     running: "Running…",
     experiment: "Experiment",
     checkpoint: "Checkpoint",
@@ -477,7 +482,7 @@ const en: Dictionary = {
     comparison: "Comparison",
     traces: "Traces",
     reading: "How to read it",
-    empty: "No assay has been run",
+    empty: "No analysis has been run",
     emptyBody:
       "The bounded comparative material-surface loop experiment runs on request and returns typed Explanation IR.",
     unknownTitle: "Unknown is a result",
@@ -486,8 +491,8 @@ const en: Dictionary = {
     unknownSchema: "Schema without an observer description",
     unknownSchemaBody:
       "The value is shown as received. A description appears once the schema is registered in the observer.",
-    staleTitle: "This assay describes an earlier tick",
-    staleBody: "The run advanced after the assay. Run it again for the current state.",
+    staleTitle: "This analysis describes an earlier tick",
+    staleBody: "The run advanced after the analysis. Run it again for the current state.",
     frames: "Frames",
     supported: "Supported",
     partial: "Partial",
@@ -519,10 +524,10 @@ const en: Dictionary = {
     register: "Coverage register",
     registerLede:
       "The state of every observable: read today, bounded to a window, waiting for an observer projection, or waiting for domain maturity.",
-    stateLive: "Read",
+    stateLive: "Available",
     stateBounded: "Bounded",
     stateAbsentProjection: "No projection",
-    stateAbsentDomain: "Domain not ready",
+    stateAbsentDomain: "Domain immature",
     domainMaturity: "Domain maturity",
     observerMaturity: "Observer maturity",
     boundsTitle: "Run bounds",
@@ -533,6 +538,7 @@ const en: Dictionary = {
     boundExchanges: "Exchange log capacity",
     boundStreams: "Active streams",
     boundStreamsNote: "runtime summary, latest-state-wins",
+    boundFrames: "Frames in the series",
   },
 
   palette: {
@@ -546,7 +552,7 @@ const en: Dictionary = {
     of: "of",
     none: "—",
     close: "Close",
-    derived: "derived from received frames",
+    derived: "derived quantities",
     bounded: "bounded window",
     projection: "observer projection",
     readOnly: "read only",

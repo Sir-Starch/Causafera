@@ -15,6 +15,7 @@ import {
   Field,
   Fields,
   Panel,
+  RateTable,
   Readout,
   Tag,
   TraceChip,
@@ -38,7 +39,7 @@ import { ChartRecorder } from "../viz/ChartRecorder";
 import type { AreaProps } from "../workspace";
 
 function ladderLabel(ladder: SurfaceLadder): string {
-  return `${ladder.chunkX} ${ladder.chunkY} ${ladder.chunkZ}·${ladder.cellOrdinal}`;
+  return `${ladder.chunkX}, ${ladder.chunkY}, ${ladder.chunkZ}·${ladder.cellOrdinal}`;
 }
 
 export function FluxArea({ workspace, update }: AreaProps) {
@@ -109,6 +110,7 @@ export function FluxArea({ workspace, update }: AreaProps) {
             unit={`${copy.station.traces.toLowerCase()}${copy.flux.perTick}`}
             signal="trace"
             size="hero"
+            align="end"
           />
         </div>
       </div>
@@ -273,7 +275,7 @@ export function FluxArea({ workspace, update }: AreaProps) {
                     >
                       <td className="num emphasis">{entry.tick}</td>
                       <td className="numeric">
-                        {entry.chunkX} {entry.chunkY} {entry.chunkZ} · #{entry.cellOrdinal}
+                        {entry.chunkX}, {entry.chunkY}, {entry.chunkZ} · #{entry.cellOrdinal}
                       </td>
                       <td className="num">
                         {entry.beforeCondition} → {entry.afterCondition}
@@ -311,23 +313,24 @@ export function FluxArea({ workspace, update }: AreaProps) {
 
         <div style={{ display: "flex", flexDirection: "column", gap: "var(--s4)" }}>
           <Panel variant="flush" title={copy.flux.rates} eyebrow={copy.common.derived}>
-            <Fields>
-              {rateRows.map((row) => {
+            <RateTable
+              columns={{
+                quantity: copy.flux.quantity,
+                rate: copy.flux.perTick,
+                total: copy.flux.total,
+              }}
+              rows={rateRows.map((row) => {
                 const rate = rates.get(row.id);
-                return (
-                  <Field key={row.id} label={row.label}>
-                    <span style={{ color: `var(--sig-${row.signal})` }}>
-                      {rate?.available === true ? rate.perTick.toFixed(2) : "—"}
-                    </span>
-                    <span className="muted">
-                      {" "}
-                      · {rate === undefined ? "—" : formatInteger(rate.total, locale)}
-                    </span>
-                  </Field>
-                );
+                return {
+                  id: row.id,
+                  label: row.label,
+                  signal: row.signal,
+                  rate: rate?.available === true ? rate.perTick.toFixed(2) : undefined,
+                  total: rate === undefined ? "—" : formatInteger(rate.total, locale),
+                };
               })}
-            </Fields>
-            <p className="chart__caption" style={{ marginTop: "var(--s2)" }}>
+            />
+            <p className="chart__caption" style={{ marginTop: "var(--s3)" }}>
               <Derived>{copy.marginalia.derivedHistory}</Derived>
             </p>
           </Panel>
@@ -404,7 +407,7 @@ export function FluxDock({ workspace, update }: AreaProps) {
       <Panel
         variant="flush"
         eyebrow={copy.flux.surface}
-        title={`${ladder.chunkX} ${ladder.chunkY} ${ladder.chunkZ} · #${ladder.cellOrdinal}`}
+        title={`${ladder.chunkX}, ${ladder.chunkY}, ${ladder.chunkZ} · #${ladder.cellOrdinal}`}
         tools={
           <button
             type="button"
@@ -418,7 +421,7 @@ export function FluxDock({ workspace, update }: AreaProps) {
         <Fields>
           <Field label={copy.survey.chart}>#{ladder.chartId.toString()}</Field>
           <Field label={copy.survey.surfaceCell}>
-            {ladder.cell.x} {ladder.cell.y} {ladder.cell.z}
+            {ladder.cell.x}, {ladder.cell.y}, {ladder.cell.z}
           </Field>
           <Field label={copy.survey.transitions}>{ladder.steps.length}</Field>
           <Field label={copy.flux.condition}>

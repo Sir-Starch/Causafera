@@ -6,7 +6,7 @@
  * status hues) stays consistent as areas are added.
  */
 
-import type { CSSProperties, ReactNode } from "react";
+import { Fragment, type CSSProperties, type ReactNode } from "react";
 
 import { SIGNAL_VARIABLE, SIGNAL_WASH, type SignalId } from "../observer/models";
 import type { StatusTone } from "../observer/claims";
@@ -81,6 +81,7 @@ interface ReadoutProps {
   note?: ReactNode;
   signal?: SignalId;
   size?: "default" | "compact" | "hero";
+  align?: "start" | "end";
   children?: ReactNode;
 }
 
@@ -91,11 +92,13 @@ export function Readout({
   note,
   signal,
   size = "default",
+  align = "start",
   children,
 }: ReadoutProps) {
   const classes = ["readout"];
   if (size === "compact") classes.push("readout--compact");
   if (size === "hero") classes.push("readout--hero");
+  if (align === "end") classes.push("readout--end");
   return (
     <div className={classes.join(" ")} style={signalStyle(signal)}>
       <span className="readout__label">{label}</span>
@@ -199,6 +202,32 @@ export function Meter({
           <span>{right}</span>
         </div>
       )}
+    </div>
+  );
+}
+
+/** Quantity, per-tick rate, running total — three aligned columns. */
+export function RateTable({
+  columns,
+  rows,
+}: {
+  columns: { quantity: string; rate: string; total: string };
+  rows: { id: string; label: string; signal: SignalId; rate?: string; total: string }[];
+}) {
+  return (
+    <div className="rates">
+      <div className="rates__head">
+        <span>{columns.quantity}</span>
+        <span>{columns.rate}</span>
+        <span>{columns.total}</span>
+      </div>
+      {rows.map((row) => (
+        <Fragment key={row.id}>
+          <span>{row.label}</span>
+          <b style={signalStyle(row.signal)}>{row.rate ?? "—"}</b>
+          <i>{row.total}</i>
+        </Fragment>
+      ))}
     </div>
   );
 }

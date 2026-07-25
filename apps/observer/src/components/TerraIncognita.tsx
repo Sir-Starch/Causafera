@@ -223,9 +223,9 @@ export function TerraIncognita() {
           <line x1="0" y1="0" x2="0" y2="9" stroke="currentColor" strokeWidth="0.6" opacity="0.5" />
         </pattern>
         <radialGradient id="terra-fade" cx="38%" cy="30%" r="78%">
-          <stop offset="0%" stopColor="#fff" stopOpacity="1" />
-          <stop offset="62%" stopColor="#fff" stopOpacity="0.55" />
-          <stop offset="100%" stopColor="#fff" stopOpacity="0.12" />
+          <stop offset="0%" stopColor="#fff" stopOpacity="0.85" />
+          <stop offset="62%" stopColor="#fff" stopOpacity="0.45" />
+          <stop offset="100%" stopColor="#fff" stopOpacity="0.08" />
         </radialGradient>
         <mask id="terra-mask">
           <rect width={WIDTH} height={HEIGHT} fill="url(#terra-fade)" />

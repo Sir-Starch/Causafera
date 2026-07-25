@@ -235,7 +235,7 @@ export function Rail({
         <ul style={{ display: "flex", flexDirection: "column", gap: 2, paddingTop: 6 }}>
           {(state.capabilities ?? []).map((capability) => (
             <li key={capability} className="numeric" style={{ fontSize: "var(--t-micro)", color: "var(--ink-faint)" }}>
-              <span style={{ color: "var(--sig-trace)" }}>▸ </span>
+              <span style={{ color: "var(--ink-ghost)" }}>— </span>
               {NEGOTIATED_CAPABILITY_NAMES[capability] ?? `#${capability}`}
             </li>
           ))}

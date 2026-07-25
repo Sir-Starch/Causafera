@@ -8,7 +8,16 @@
 
 import { useMemo } from "react";
 
-import { Panel, Readout, Meter, Derived, Tag, Fields, Field, DigestPlate } from "../components/primitives";
+import {
+  DigestPlate,
+  Field,
+  Fields,
+  Meter,
+  Panel,
+  RateTable,
+  Readout,
+  Tag,
+} from "../components/primitives";
 import { capabilityCounts } from "../observer/capability";
 import {
   formatCompact,
@@ -95,6 +104,7 @@ export function StationArea({ update, goTo }: AreaProps) {
             }
             signal="trace"
             size="hero"
+            align="end"
           />
         </div>
       </div>
@@ -167,14 +177,13 @@ export function StationArea({ update, goTo }: AreaProps) {
             emptyLabel={copy.survey.noWorld}
             fillFirst
           />
-          <p className="chart__caption">{copy.station.fieldLede}</p>
         </Panel>
 
         <Panel
           title={copy.station.accretion}
           eyebrow={copy.common.projection}
           lede={copy.station.accretionLede}
-          tools={<Derived>{copy.common.derived}</Derived>}
+          tools={<Tag tone="quiet">{copy.common.derived}</Tag>}
         >
           <ChartRecorder
             series={accretionSeries}
@@ -326,7 +335,7 @@ export function StationArea({ update, goTo }: AreaProps) {
                     <tr key={entry.id}>
                       <td className="num emphasis">{entry.tick}</td>
                       <td className="numeric">
-                        {entry.chunkX} {entry.chunkY} {entry.chunkZ}
+                        {entry.chunkX}, {entry.chunkY}, {entry.chunkZ}
                       </td>
                       <td className="num">
                         {entry.beforeCondition} → {entry.afterCondition}
@@ -425,24 +434,28 @@ export function StationDock() {
   return (
     <>
       <Panel variant="flush" title={copy.flux.rates} eyebrow={copy.common.derived} lede={copy.flux.ratesLede}>
-        <Fields>
-          {rows.map((row) => {
+        <RateTable
+          columns={{
+            quantity: copy.flux.quantity,
+            rate: copy.flux.perTick,
+            total: copy.flux.total,
+          }}
+          rows={rows.map((row) => {
             const rate = rates.get(row.id);
-            return (
-              <Field key={row.id} label={row.label}>
-                <span style={{ color: `var(--sig-${row.signal})` }}>
-                  {rate?.available === true ? rate.perTick.toFixed(2) : "—"}
-                </span>
-                <span className="muted"> · {rate === undefined ? "—" : rate.total.toString()}</span>
-              </Field>
-            );
+            return {
+              id: row.id,
+              label: row.label,
+              signal: row.signal,
+              rate: rate?.available === true ? rate.perTick.toFixed(2) : undefined,
+              total: rate === undefined ? "—" : formatInteger(rate.total, locale),
+            };
           })}
-        </Fields>
+        />
       </Panel>
 
       <Panel variant="flush" title={copy.instrument.boundsTitle} eyebrow={copy.common.bounded}>
         <Fields>
-          <Field label={copy.marginalia.exchanges}>{frames}</Field>
+          <Field label={copy.instrument.boundFrames}>{frames}</Field>
           <Field label={copy.station.bytesPerChunk}>{summary.bytesPerChunk.toString()}</Field>
           <Field label={copy.station.activeChunks}>
             {formatInteger(summary.activeChunkCount, locale)}

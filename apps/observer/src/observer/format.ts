@@ -60,7 +60,7 @@ export function formatChunkAddress(chunk: {
   chunkY: number;
   chunkZ: number;
 }): string {
-  return `C${chunk.chartId} · ${chunk.chunkX} ${chunk.chunkY} ${chunk.chunkZ}`;
+  return `C${chunk.chartId} · ${chunk.chunkX}, ${chunk.chunkY}, ${chunk.chunkZ}`;
 }
 
 /** Split a digest into byte pairs so divergence is visible without reading the whole hash. */

@@ -59,6 +59,72 @@
   letter-spacing: -0.02em;
 }
 
+/* A readout parked at the right edge of a heading aligns to that edge. */
+.readout--end {
+  align-items: flex-end;
+  text-align: right;
+}
+
+.readout--end .readout__label {
+  flex-direction: row-reverse;
+}
+
+/* A tabulated rate list: quantity, per-tick, total. */
+.rates {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  column-gap: var(--s3);
+  align-items: baseline;
+}
+
+.rates__head {
+  display: contents;
+}
+
+.rates__head span {
+  padding-bottom: 0.25rem;
+  border-bottom: 1px solid var(--line-faint);
+  font-size: var(--t-micro);
+  letter-spacing: var(--track-caps);
+  text-transform: uppercase;
+  color: var(--ink-ghost);
+}
+
+.rates__head span:not(:first-child),
+.rates > b,
+.rates > i {
+  text-align: right;
+}
+
+.rates > span,
+.rates > b,
+.rates > i {
+  padding: 0.3125rem 0;
+  border-bottom: 1px solid var(--line-ghost);
+  font-size: var(--t-small);
+}
+
+.rates > span {
+  color: var(--ink-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rates > b {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  color: var(--signal, var(--ink));
+}
+
+.rates > i {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-style: normal;
+  color: var(--ink-faint);
+}
+
 /* Instrument cluster — a row of readouts divided like an atlas margin. */
 .cluster {
   display: grid;
