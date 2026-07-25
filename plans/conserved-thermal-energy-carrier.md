@@ -906,17 +906,21 @@ Each scenario below names the exact test surface, command, and expected observab
   - `cargo test --workspace --all-features` passed.
   - `cargo test --workspace --no-default-features` passed.
   - `cargo run -p xtask -- ci` passed.
+  - `pnpm install --frozen-lockfile`, `pnpm lint`, `pnpm typecheck`, and `pnpm build` passed.
   - `pnpm --dir packages/observer-protocol typecheck` passed.
+  - Audit entry-point and link validators passed. `node tools/audit/run-source-tests.mjs` could not start because the locally installed `omo` 4.19.1 executable does not include the repository-audited `packages/lsp-daemon/dist/cli.js` provider layout; this is an environment/tool-distribution prerequisite, not a thermal test failure.
 - Causality clarification: Section 4.3 parent list is authoritative; Section 4.7 corrected from `2 + 6 + R` to `1 + 6 + R`; cell-change events do not cite the prior conservation event as a parent.
 - INV-037 compliance: thermal energy flows across same-chart chunk boundaries; boundaries are not physical barriers. The existing mana chunk-boundary seam is tracked as `TODO-MANA-002` and is not modified in this tranche.
 - Post-review V3 evidence: `outside_active_region_boundary_record` passes with no inactive-face flux, an exact same-chart boundary record, loaded-face evolution, and zero residual.
 - Post-review V15 evidence: `thermal::tests::atomic_failure_rollback` forces the real `CausalCommitError::UnknownCause` path and verifies unchanged trace store, fields and anchors, reservoirs and budgets, active region, parameters, transfer and conservation receipts, pending injections, boundary records, failure slot, and thermal-system time.
 - Post-review persistence evidence: six thermal persistence tests pass, including non-empty canonical boundary round-trip, malformed scalar/order/topology/pre-state rejection, and continuous/save-resume equality.
+- Manual external-driver evidence: a two-chunk run produced 54 domain boundary records and 126 runtime records, exact zero conservation residual, canonical thermal envelope bytes, and equal continuous/save-resume physical digests.
 - Local checkpoint history:
   - Process safety: `acb9a50`, `1775f31`.
   - Domain and types: `f219fcf`, `9c0cb1e`, `4c7275c`, `0900766`, `070ae7d`, `895ac63`.
   - Explanation, observer, runtime, persistence, and protocol: `6537730`, `64fa55c`, `3a531fc`, `b15cfc5`, `b1d62e9`.
   - Documentation currency: `410e197`, `4a554bb`, `2a92950`, `590c21b`, `681abb3`, `9beee01`, `4a9b9df`, `cd87121`.
+  - Post-review recovery and boundary-state corrections: `f742ba0`, `009b21d`, `b076385`, `4502b04`, `2b5a343`.
 
 ---
 
