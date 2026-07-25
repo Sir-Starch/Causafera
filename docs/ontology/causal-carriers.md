@@ -82,4 +82,19 @@ fixed-point cell transition may flow through the existing mana, material-surface
 and perception boundaries. Source record IDs, recipe hashes, and policy schemas remain engine-level
 provenance and never enter agent-facing state; the source does not carry semantic intent.
 
+The bounded conserved thermal carrier adds a second physical field carrier. A `ThermalFieldSet`
+stores fixed-point `ThermalEnergy` per cell with per-cell causal anchors. Energy enters only through
+finite `ThermalReservoir` records created during historical bootstrap; each reservoir commits a
+`Phase::Lifecycle` bootstrap event and a single-parent chain of `Phase::Physics` budget-reduction
+events. `ThermalReservoirSystem` proposes injections and `ThermalEvolutionSystem` computes
+conservative six-face diffusion from a frozen pre-state, including same-chart cross-chunk faces, and
+commits reservoir transfers, cell changes, and a conservation event in one atomic batch. The
+coefficient bound `transfer_fraction <= floor(THERMAL_SCALE / 6)` guarantees non-negative cell
+energy; exhaustive `i128` preflight guarantees no overflow; and the per-tick conservation residual
+must equal exactly zero. Chunk boundaries are not physical barriers for thermal energy (INV-037);
+cross-chart transport is deferred. Temperature is derived only at observer/Explanation boundaries
+and is not authoritative simulation state. Transfer receipts record signed face fluxes and
+reservoir scheduled/accepted/rejected amounts; a `ThermalConservationReceipt` records the zero
+residual and before/after totals for each batch.
+
 RFC-GEO-002 clarifies spatial carrier addressing: global geography is chart-qualified surface state, while local physics uses bounded Euclidean 3D frames. Bare chunks are local-chart addresses. Chart seams and local-frame bounds require explicit transforms; containment and resolution cannot manufacture geometric adjacency.
