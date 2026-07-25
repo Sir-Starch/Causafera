@@ -84,6 +84,22 @@ Culling is by viewport (`visibleChunks`), so a screenful costs the same whether 
 three chunks or thousands. The three-chunk demonstration configuration is not an assumption
 anywhere in the renderer.
 
+## Why the current map looks blocky
+
+Two reasons, both outside the frontend, both recorded in
+`docs/ui/observer-projection-gaps.md`:
+
+- **One value per chunk.** The terrain carrier holds a 32×32 raster of elevation, surface material
+  and roughness per chunk; the observer snapshot reduces it to a minimum, a maximum and a mean. A
+  flat tint is the honest rendering of one number over one area, and the cell lattice is hatched at
+  cell zoom to say exactly that. The interpolated contour lens exists because that is the most a
+  lens can honestly build from chunk aggregates, which is why it is marked `preview`.
+- **A line, not an area.** `active_chunk_keys` varies only x, so the active set is a strip of at
+  most nine chunks.
+
+Neither is a limit of the renderer. When the terrain raster is projected, a per-cell lens with
+hypsometric tinting and hillshading is a new catalogue entry, not a new map.
+
 ## What the map deliberately does not do
 
 - It does not join charts. One chart at one containment layer is projected at a time, because

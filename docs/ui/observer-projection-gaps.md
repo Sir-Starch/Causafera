@@ -45,18 +45,44 @@ into a walkable chain, which is the single largest analytical capability the obs
 **Effort:** medium. The store supports traversal; the query surface, wire encoding, and a decoder
 are new. Bounding must be explicit — ancestry is unbounded in principle.
 
-## 4. Per-cell mana and resolution fields
+## 4. Per-cell terrain raster
 
-**Needed:** a spatial read model projecting per-cell mana intensity and resolution relevance for a
-requested chunk, bounded by cell count.
+**This is the highest value per unit of work in the list, and the map is the reason.**
 
-**Why:** the runtime holds both fields; the observer receives chunk totals and one peak value. The
-map currently tints a whole chunk with one value and hatches the cell lattice to say so. With a
-per-cell projection the Chart area gains a real field plate at cell scale, and the existing lens and
-canvas layers render it without new infrastructure.
+**Needed:** the terrain carrier's existing per-cell arrays for a requested chunk —
+`elevations_mm`, `surface_materials` and `roughness_mm` from `TerrainCarrierSnapshot`.
 
-**Effort:** medium. A 32³ chunk is 32768 cells, so the projection needs a slice or downsample
-contract rather than a full dump.
+**Why:** the runtime already holds a complete raster. `TERRAIN_CELLS_PER_CHUNK` is
+`CHUNK_SIZE²` = 1024, so every chunk carries 1024 elevations, 1024 surface materials and 1024
+roughness values. `Runtime::observer_world_snapshot` collapses all of it to a minimum, a maximum
+and a mean (`runtime.rs`, the terrain block). The demonstration session has roughly 70 metres of
+relief inside a single chunk, and the observer sees two numbers.
+
+That aggregation, not the simulation, is why the map draws flat squares. With the raster
+projected, the same lens contract yields a real relief map: hypsometric tinting per cell,
+hillshading from the elevation gradient, measured contour lines in place of the interpolated
+preview, and a landcover map straight from `surface_materials`. No new frontend infrastructure is
+needed — the renderer already resolves marks at real cell positions, and a raster is a cheaper
+draw than the marks it already handles.
+
+**Effort:** low to medium, and much smaller than it looks. 1024 values per chunk is a few
+kilobytes before any encoding, and elevation delta-encodes well. The contract needs a per-chunk
+request and a downsample level for far zoom, not a whole-chart dump.
+
+**Related:** per-cell mana intensity and resolution relevance are the same shape of problem and
+should follow the same contract once terrain proves it.
+
+## 4b. Two-dimensional chunk activation
+
+**Needed:** `active_chunk_keys` to generate an area rather than a line.
+
+**Why:** it currently maps `(-radius..=radius)` over x only, with y and z pinned to zero, so the
+world is a one-dimensional strip of at most nine chunks. The map draws a row because a row is what
+exists. An area of chunks turns the same instrument into a map with shape, and nothing in the
+renderer assumes otherwise — it culls by viewport and is written for far larger charts.
+
+**Effort:** small in the runtime, but it is a simulation contract change and needs an ExecPlan.
+Bootstrap, population attribution and resolution all iterate the active set.
 
 ## 5. Performance telemetry
 
