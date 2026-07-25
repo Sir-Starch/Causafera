@@ -85,6 +85,22 @@ control/intervention Explanation run completed in 2.19 s. Build time, WebKit sta
 paint are excluded. These are single environment-specific diagnostics, not statistical latency,
 throughput, or population-scale claims; `TODO-PERF-001` remains pending.
 
+## Conserved Thermal Carrier Benchmark
+
+The thermal carrier workload is a fully populated `CHUNK_SIZE³` field plus one same-chart neighbor
+chunk, with a center-cell reservoir injection. Required measurements:
+
+- wall time per tick for `ThermalEvolutionSystem`;
+- cells updated per tick;
+- peak memory for thermal working buffers;
+- snapshot bytes per chunk;
+- provenance event count growth per tick;
+- observer query payload bytes for thermal summary.
+
+These are environment-specific baselines; no absolute latency claim is made without reference
+hardware. The benchmark harness, repeated measurements, and statistical reporting remain
+`TODO-PERF-001`.
+
 ## Reference Hardware
 
 - Linux;
