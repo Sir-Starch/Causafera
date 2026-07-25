@@ -117,7 +117,7 @@ export function ChartArea({ workspace, update }: AreaProps) {
           overlayIds={workspace.overlayLenses}
           onPrimary={(id) => update({ primaryLens: id })}
           onToggleOverlay={toggleOverlay}
-          onOpenCatalogue={() => update({ dockOpen: true, dockView: "catalogue" })}
+          onOpenCatalogue={() => update({ dockCollapsed: false, dockView: "catalogue" })}
           labels={{
             primary: copy.chart.lens,
             overlays: copy.chart.overlays,

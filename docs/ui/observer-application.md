@@ -147,15 +147,27 @@ a new domain.
 | Arrows, `+`, `−`, `0` | Pan, zoom and reframe the chart while it has focus |
 | `Space` | Run / hold |
 | `→` | Advance one batch |
-| `I` | Toggle the inspector dock |
+| `I` | Collapse or expand the inspector |
 | `Ctrl`/`Cmd` + `K` | Command palette |
+
+## Side panels
+
+The navigation rail and the inspector behave identically: a header carrying one standard collapse
+control, a drag handle on the inner edge for width, and a collapsed state that keeps its own expand
+control visible. Widths live in workspace state; the shell applies them as custom properties, so a
+panel never has a second source of truth for its size.
 
 ## Responsive Behaviour
 
 The shell reorganises rather than shrinking. Below 86rem the wordmark yields, below 76rem the
-digest plates yield, below 68rem the rail collapses to marks and the inspector becomes an overlay,
-and below 60rem the brand and locale control yield. The transport is the last control to lose
-space.
+digest run yields, below 68rem the rail collapses to marks and the inspector becomes an overlay,
+and below 60rem the brand yields. The transport is the last control to lose space. Beyond 132rem
+the workspace stops widening, because past that point the grids stretch panels rather than adding
+density.
+
+The meridian is one strip of equal-height cells divided by hairlines, and every control in the
+chrome is the same height with the same frame. The link state announces itself only when it is not
+simply working: an attached session shows the clock, not a status word.
 
 ## Development
 

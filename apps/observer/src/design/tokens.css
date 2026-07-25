@@ -102,6 +102,7 @@
   --s12: 3rem;
 
   /* ---- Geometry — engraved plates have square corners ----------------- */
+  --control-h: 1.625rem;
   --radius: 0;
   --radius-lg: 0;
   --rail-width: 14.5rem;

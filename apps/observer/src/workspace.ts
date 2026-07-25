@@ -8,8 +8,12 @@ export type AreaId = (typeof AREA_IDS)[number];
 
 export interface WorkspaceState {
   area: AreaId;
-  dockOpen: boolean;
+  /** Both side panels collapse to a strip that keeps its own expand control. */
+  dockCollapsed: boolean;
   railCollapsed: boolean;
+  /** Panel widths, in pixels, set by their drag handles. */
+  railWidth: number;
+  dockWidth: number;
   /** Chunk selected on the map, the chart profile or in the register. */
   selectedChunk?: string;
   /** Cell selected inside a chunk, once the map is zoomed to the lattice. */
@@ -28,8 +32,10 @@ export interface WorkspaceState {
 
 export const INITIAL_WORKSPACE: WorkspaceState = {
   area: "station",
-  dockOpen: true,
+  dockCollapsed: false,
   railCollapsed: false,
+  railWidth: 232,
+  dockWidth: 344,
   primaryLens: DEFAULT_PRIMARY_LENS,
   overlayLenses: [...DEFAULT_OVERLAYS],
 };

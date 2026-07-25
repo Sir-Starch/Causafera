@@ -153,8 +153,10 @@ for (const area of AREA_IDS) {
       const props: AreaProps = {
         workspace: {
           area,
-          dockOpen: true,
+          dockCollapsed: false,
           railCollapsed: false,
+          railWidth: 232,
+          dockWidth: 344,
           primaryLens: "relief",
           overlayLenses: ["population", "surface", "contours", "mana-gradient", "trace-anchors"],
           ...selection,

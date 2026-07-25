@@ -56,6 +56,10 @@ const ru = {
     digestNote: "Дайджест — идентичность состояния, а не мера расстояния.",
     locale: "Язык",
     inspector: "Инспектор",
+    areas: "Разделы",
+    collapse: "Свернуть панель",
+    expand: "Развернуть панель",
+    resize: "Ширина панели",
     palette: "Команды",
   },
 
@@ -355,6 +359,10 @@ const en: Dictionary = {
     digestNote: "A digest is state identity, never a distance measure.",
     locale: "Language",
     inspector: "Inspector",
+    areas: "Areas",
+    collapse: "Collapse panel",
+    expand: "Expand panel",
+    resize: "Panel width",
     palette: "Commands",
   },
 

@@ -1,5 +1,105 @@
 /* Causafera Observer — controls. Precise, drawn, survey-instrument character. */
 
+/*
+ * The standard control. Every interactive element in the chrome is one of these: the same
+ * height, the same frame, the same states. A group draws one frame around several of them.
+ */
+.control-group {
+  display: inline-flex;
+  align-items: stretch;
+  height: var(--control-h);
+  border: 1px solid var(--line);
+  background: rgb(4 5 6 / 55%);
+}
+
+.control {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  min-width: var(--control-h);
+  padding: 0 0.4375rem;
+  border: 0;
+  background: transparent;
+  color: var(--ink-dim);
+  font-size: var(--t-small);
+  letter-spacing: var(--track-wide);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--ease-survey), background var(--dur-fast) var(--ease-survey);
+}
+
+.control + .control {
+  border-left: 1px solid var(--line-faint);
+}
+
+.control:hover:not(:disabled) {
+  background: rgb(214 228 234 / 7%);
+  color: var(--ink);
+}
+
+.control:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.control[aria-pressed="true"],
+.control[data-active="true"] {
+  background: var(--ink-bright);
+  color: var(--paper-deep);
+}
+
+.control--wide {
+  min-width: 5rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.control--compact {
+  padding: 0 0.375rem;
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+}
+
+.control--field {
+  gap: 0.375rem;
+  cursor: text;
+}
+
+.control--field input {
+  width: 3rem;
+  border: 0;
+  background: transparent;
+  font-family: var(--font-mono);
+  font-size: var(--t-small);
+  color: var(--ink);
+  outline: none;
+}
+
+.control--field input::-webkit-outer-spin-button,
+.control--field input::-webkit-inner-spin-button {
+  appearance: none;
+  margin: 0;
+}
+
+.control__label {
+  font-size: var(--t-micro);
+  letter-spacing: var(--track-caps);
+  text-transform: uppercase;
+  color: var(--ink-ghost);
+}
+
+/* A control with no group around it, used in panel headers. */
+.control--quiet {
+  height: var(--control-h);
+  border: 1px solid transparent;
+}
+
+.control--quiet:hover {
+  border-color: var(--line);
+}
+
+
 .btn {
   position: relative;
   display: inline-flex;

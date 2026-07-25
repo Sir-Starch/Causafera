@@ -23,27 +23,41 @@
   grid-area: meridian;
   display: flex;
   align-items: stretch;
-  gap: var(--s3);
-  padding-inline: var(--s3);
   min-width: 0;
   border-bottom: 1px solid var(--line);
   background: var(--plate-fill-solid);
 }
 
-.meridian__brand {
+/* Cells are divided by hairlines rather than each carrying its own box. */
+.meridian__cell {
   display: flex;
   align-items: center;
   gap: var(--s2);
-  padding-right: var(--s3);
+  padding-inline: var(--s3);
   border-right: 1px solid var(--line-faint);
   flex-shrink: 0;
+}
+
+.meridian__cell:last-child {
+  border-right: 0;
+}
+
+.meridian__cell--brand {
+  gap: var(--s2);
+  padding-inline: var(--s3);
+}
+
+.meridian__key {
+  font-size: var(--t-micro);
+  font-weight: 600;
+  letter-spacing: var(--track-caps);
+  text-transform: uppercase;
+  color: var(--ink-ghost);
 }
 
 .meridian__sigil {
   display: grid;
   place-items: center;
-  width: 2rem;
-  height: 2rem;
   color: var(--sig-trace);
 }
 
@@ -69,34 +83,28 @@
   color: var(--ink-faint);
 }
 
-.meridian__group {
-  display: flex;
-  align-items: center;
-  gap: var(--s2);
-  flex-shrink: 0;
-}
-
 .meridian__spacer {
   flex: 1;
+  border-right: 1px solid var(--line-faint);
 }
 
-.meridian__readout {
-  display: flex;
-  align-items: baseline;
-  gap: var(--s2);
-  padding-inline: var(--s2);
-  border-left: 1px solid var(--line-faint);
-  flex-shrink: 0;
+.digest-run {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-family: var(--font-mono);
+  font-size: var(--t-small);
+  color: var(--ink-dim);
 }
 
-.meridian__readout--lead {
-  border-left: 0;
+.digest-run .meridian__key {
+  margin-right: 0.25rem;
 }
 
 .meridian__clock {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
-  font-size: 1.25rem;
+  font-size: 1.0625rem;
   line-height: 1;
   color: var(--ink-dim);
 }
@@ -109,6 +117,7 @@
 /* ---- Rail -------------------------------------------------------------- */
 
 .rail {
+  position: relative;
   grid-area: rail;
   display: flex;
   flex-direction: column;
@@ -205,8 +214,8 @@
 }
 
 .shell[data-rail="collapsed"] .rail__label,
-.shell[data-rail="collapsed"] .rail__foot,
-.shell[data-rail="collapsed"] .rail__register {
+.shell[data-rail="collapsed"] .rail__register,
+.shell[data-rail="collapsed"] .rail__divider {
   display: none;
 }
 
@@ -223,12 +232,17 @@
   padding: 0 var(--s3) var(--s3);
 }
 
-.rail__foot {
-  padding: var(--s3);
-  border-top: 1px solid var(--line-faint);
+.rail__capabilities {
   display: flex;
   flex-direction: column;
-  gap: var(--s2);
+  gap: 2px;
+  padding-top: var(--s2);
+  font-size: var(--t-micro);
+  color: var(--ink-faint);
+}
+
+.rail__capabilities span {
+  color: var(--ink-ghost);
 }
 
 /* ---- Workspace --------------------------------------------------------- */
@@ -248,6 +262,10 @@
   gap: var(--s4);
   padding: var(--s5) var(--s5) var(--s10);
   min-height: 100%;
+  /* Beyond this the grids stop adding density and just stretch each panel. */
+  max-width: 132rem;
+  margin-inline: auto;
+  width: 100%;
 }
 
 .area-head {
@@ -302,9 +320,74 @@
   }
 }
 
+/* ---- Side panels: one head, one collapse control, one drag handle ------ */
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  height: 2.25rem;
+  padding-inline: var(--s2);
+  border-bottom: 1px solid var(--line-faint);
+  flex-shrink: 0;
+}
+
+.dock .panel-head {
+  justify-content: flex-start;
+}
+
+.rail .panel-head {
+  justify-content: space-between;
+}
+
+.shell[data-rail="collapsed"] .rail .panel-head,
+.shell[data-dock="collapsed"] .dock .panel-head {
+  justify-content: center;
+  padding-inline: 0;
+}
+
+/* The handle is a hairline until it is wanted. */
+.resizer {
+  position: absolute;
+  inset-block: 0;
+  width: 7px;
+  z-index: 10;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.resizer[data-edge="right"] {
+  right: -4px;
+}
+
+.resizer[data-edge="left"] {
+  left: -4px;
+}
+
+.resizer::after {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  left: 3px;
+  width: 1px;
+  background: transparent;
+  transition: background var(--dur-fast) var(--ease-survey);
+}
+
+.resizer:hover::after,
+.resizer:focus-visible::after,
+.resizer:active::after {
+  background: var(--ink-bright);
+}
+
+.resizer:focus-visible {
+  outline: none;
+}
+
 /* ---- Inspector dock ---------------------------------------------------- */
 
 .dock {
+  position: relative;
   grid-area: dock;
   width: var(--dock-width);
   min-height: 0;
@@ -314,17 +397,8 @@
   background: var(--plate-fill);
 }
 
-.dock[hidden] {
-  display: none;
-}
-
-.dock__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--s2);
-  padding: var(--s3) var(--s3) var(--s2);
-  border-bottom: 1px solid var(--line-faint);
+.shell[data-dock="collapsed"] .dock {
+  width: 2.25rem;
 }
 
 .dock__body {
@@ -382,7 +456,6 @@
   }
 
   .shell .rail__label,
-  .shell .rail__foot,
   .shell .rail__register {
     display: none;
   }
@@ -410,7 +483,7 @@
 }
 
 @media (width < 76rem) {
-  .meridian__readout--optional {
+  .meridian__cell--optional {
     display: none;
   }
 }

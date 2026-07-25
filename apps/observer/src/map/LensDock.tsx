@@ -13,6 +13,8 @@
 
 import { useState } from "react";
 
+import { HoverCard, anchorOf, type HoverAnchor } from "../components/HoverCard";
+
 import { SIGNAL_VARIABLE } from "../observer/models";
 import type { ObserverLocale } from "../observer/format";
 import { AVAILABILITY_TITLE, LENS_GROUPS, canBePrimary, type Lens, type LensId } from "./lens";
@@ -32,7 +34,7 @@ interface LensDockProps {
 interface Hint {
   lens?: Lens;
   text?: string;
-  x: number;
+  anchor: HoverAnchor;
   role: string;
 }
 
@@ -52,15 +54,7 @@ export function LensDock({
   const awaitingCount = LENSES.filter((lens) => lens.availability === "awaiting").length;
 
   const show = (event: { currentTarget: HTMLElement }, role: string, lens?: Lens, text?: string) => {
-    const button = event.currentTarget;
-    const dock = button.closest(".lens-dock") as HTMLElement | null;
-    const offset =
-      dock === null
-        ? 0
-        : button.getBoundingClientRect().left -
-          dock.getBoundingClientRect().left +
-          button.offsetWidth / 2;
-    setHint({ lens, text, x: offset, role });
+    setHint({ lens, text, anchor: anchorOf(event.currentTarget), role });
   };
 
   return (
@@ -140,8 +134,8 @@ export function LensDock({
       </div>
 
       {hint !== undefined && (
-        <div className="lens-dock__hint" style={{ left: `${hint.x}px` }}>
-          <span className="lens-dock__hint-role">{hint.role}</span>
+        <HoverCard anchor={hint.anchor}>
+          <span className="hover-card__role">{hint.role}</span>
           {hint.lens === undefined ? (
             <strong>{hint.text}</strong>
           ) : (
@@ -155,11 +149,11 @@ export function LensDock({
               </span>
               <p>{hint.lens.detail[locale]}</p>
               {hint.lens.caveat !== undefined && (
-                <p className="lens-dock__hint-caveat">{hint.lens.caveat[locale]}</p>
+                <p className="hover-card__caveat">{hint.lens.caveat[locale]}</p>
               )}
             </>
           )}
-        </div>
+        </HoverCard>
       )}
     </div>
   );

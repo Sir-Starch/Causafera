@@ -344,7 +344,10 @@ This project follows a structured changelog format. Each entry includes:
 - Declared lens availability as part of the contract: observed, partial, preview and awaiting are drawn differently, and an awaiting lens renders the chart as unsurveyed while naming the read model it needs;
 - Isolated observer-side constructions in `src/map/preview.ts` (inverse-distance interpolation with marching-squares isolines, neighbour-difference vectors), clipped to the charted extent so a construction never paints knowledge over unsurveyed ground;
 - Replaced the Survey area with the Chart area, folding the chart profile and chunk register beneath the map as supporting reads of the same selection;
-- Documented the lens contract and its promotion recipe (`docs/ui/map-lenses.md`).
+- Documented the lens contract and its promotion recipe (`docs/ui/map-lenses.md`);
+- Rebuilt the meridian bar as one strip of equal-height cells divided by hairlines, with a single standard control shape throughout the chrome, a one-line digest run, and no connection word while the link is simply working;
+- Gave both side panels identical behaviour: one standard collapse control that stays visible when collapsed, and a drag handle for width;
+- Moved hover explanations into a portal so a panel with clipping can no longer cut one in half.
 
 ## Categories
 

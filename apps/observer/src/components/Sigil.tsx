@@ -91,3 +91,23 @@ export function ResetMark() {
   );
 }
 
+
+/** The one collapse/expand mark both side panels use. */
+export function Chevron({ direction }: { direction: "left" | "right" }) {
+  return (
+    <svg
+      width="11"
+      height="11"
+      viewBox="0 0 12 12"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      style={{ transform: direction === "right" ? "scaleX(-1)" : undefined }}
+    >
+      <path d="M7.5 2.5 4 6l3.5 3.5" />
+    </svg>
+  );
+}

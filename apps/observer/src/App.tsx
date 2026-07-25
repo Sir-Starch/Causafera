@@ -16,6 +16,8 @@ import { InstrumentArea, InstrumentDock } from "./areas/InstrumentArea";
 import { StationArea, StationDock } from "./areas/StationArea";
 import { CommandPalette } from "./components/CommandPalette";
 import { Notice } from "./components/primitives";
+import { Resizer } from "./components/Resizer";
+import { Chevron } from "./components/Sigil";
 import { Marginalia, Meridian, Rail } from "./components/shell";
 import { TerraIncognita } from "./components/TerraIncognita";
 import { Unattached } from "./components/Unattached";
@@ -92,7 +94,7 @@ export function App() {
       }
       if (event.key.toLowerCase() === "i") {
         event.preventDefault();
-        setWorkspace((current) => ({ ...current, dockOpen: !current.dockOpen }));
+        setWorkspace((current) => ({ ...current, dockCollapsed: !current.dockCollapsed }));
       }
     };
     window.addEventListener("keydown", onKey);
@@ -114,12 +116,16 @@ export function App() {
       <div className="terra" aria-hidden="true" />
       <TerraIncognita />
 
-      <div className="shell" data-rail={workspace.railCollapsed ? "collapsed" : "expanded"}>
-        <Meridian
-          workspace={workspace}
-          update={update}
-          onOpenPalette={() => setPaletteOpen(true)}
-        />
+      <div
+        className="shell"
+        data-rail={workspace.railCollapsed ? "collapsed" : "expanded"}
+        data-dock={workspace.dockCollapsed ? "collapsed" : "expanded"}
+        style={{
+          ["--rail-width" as string]: `${workspace.railWidth}px`,
+          ["--dock-width" as string]: `${workspace.dockWidth}px`,
+        }}
+      >
+        <Meridian onOpenPalette={() => setPaletteOpen(true)} />
         <Rail workspace={workspace} goTo={goTo} update={update} />
 
         <main className="workspace">
@@ -135,19 +141,39 @@ export function App() {
           </div>
         </main>
 
-        <aside className="dock" hidden={!workspace.dockOpen} aria-label={copy.meridian.inspector}>
-          <div className="dock__head">
-            <span className="eyebrow">{copy.areas[workspace.area].name}</span>
+        <aside className="dock" aria-label={copy.meridian.inspector}>
+          {!workspace.dockCollapsed && (
+            <Resizer
+              edge="left"
+              value={workspace.dockWidth}
+              min={240}
+              max={560}
+              onChange={(dockWidth) => update({ dockWidth })}
+              label={copy.meridian.resize}
+            />
+          )}
+          <div className="panel-head">
             <button
               type="button"
-              className="btn btn--ghost btn--icon"
-              onClick={() => update({ dockOpen: false })}
-              aria-label={copy.common.close}
+              className="control control--quiet"
+              aria-expanded={!workspace.dockCollapsed}
+              onClick={() => update({ dockCollapsed: !workspace.dockCollapsed })}
+              title={
+                workspace.dockCollapsed ? copy.meridian.expand : copy.meridian.collapse
+              }
+              aria-label={
+                workspace.dockCollapsed ? copy.meridian.expand : copy.meridian.collapse
+              }
             >
-              ×
+              <Chevron direction={workspace.dockCollapsed ? "left" : "right"} />
             </button>
+            {!workspace.dockCollapsed && (
+              <span className="eyebrow">{copy.areas[workspace.area].name}</span>
+            )}
           </div>
-          <div className="dock__body">{attached ? <AreaDock {...areaProps} /> : null}</div>
+          {!workspace.dockCollapsed && (
+            <div className="dock__body">{attached ? <AreaDock {...areaProps} /> : null}</div>
+          )}
         </aside>
 
         <Marginalia />
