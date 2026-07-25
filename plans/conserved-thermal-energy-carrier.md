@@ -890,6 +890,9 @@ Each scenario below names the exact test surface, command, and expected observab
   - Added authoritative `batch_sequence` and `conservation_last_change` fields to `ThermalFieldSet`, with persistence and digest inclusion.
   - Extended `ThermalCellTransferReceipt` to record `scheduled_injection`, `accepted_injection`, `rejected_injection`, and optional `transfer_trace_id` for every reservoir targeting a cell.
 - **2026-07-23:** Implementation pre-flight: resolved a drafting inconsistency between Section 4.3 and Section 4.7. The explicit Section 4.3 parent-trace list is authoritative; cell-change events do not cite the prior conservation event as a parent. Section 4.7 corrected from `2 + 6 + R` to `1 + 6 + R`, and Section 4.3 now explicitly excludes `conservation_last_change` as a causal parent.
+- **2026-07-25:** Independent review found two completion blockers: V3 did not retain outside-active-region boundary records, and V15 covered domain preflight failure rather than a real runtime causal-batch rejection. Both blockers were reopened for test-first correction.
+- **2026-07-25:** A writing subagent discarded uncommitted runtime integration with worktree-destructive Git commands. Exact recovery used OpenCode snapshot tree `948399d8695ea58ce2263ab23e7b82d87bdfdbfa` and an explicit ten-file blob allowlist; no unrelated dirty path was replaced. `AGENTS.md` and `PLANS.md` now forbid worktree-discarding Git during implementation and require verified green-wave checkpoint commits.
+- **2026-07-25:** Boundary records are current-committed-batch authoritative state. They use the frozen post-injection/pre-diffusion cell value, are strictly ordered by `(cell, neighbor)`, replace the prior batch atomically after successful causal commit, persist in required section `0x000E` major V1, and contribute once to physical digest V5.
 
 ## Progress
 
@@ -906,6 +909,14 @@ Each scenario below names the exact test surface, command, and expected observab
   - `pnpm --dir packages/observer-protocol typecheck` passed.
 - Causality clarification: Section 4.3 parent list is authoritative; Section 4.7 corrected from `2 + 6 + R` to `1 + 6 + R`; cell-change events do not cite the prior conservation event as a parent.
 - INV-037 compliance: thermal energy flows across same-chart chunk boundaries; boundaries are not physical barriers. The existing mana chunk-boundary seam is tracked as `TODO-MANA-002` and is not modified in this tranche.
+- Post-review V3 evidence: `outside_active_region_boundary_record` passes with no inactive-face flux, an exact same-chart boundary record, loaded-face evolution, and zero residual.
+- Post-review V15 evidence: `thermal::tests::atomic_failure_rollback` forces the real `CausalCommitError::UnknownCause` path and verifies unchanged trace store, fields and anchors, reservoirs and budgets, active region, parameters, transfer and conservation receipts, pending injections, boundary records, failure slot, and thermal-system time.
+- Post-review persistence evidence: six thermal persistence tests pass, including non-empty canonical boundary round-trip, malformed scalar/order/topology/pre-state rejection, and continuous/save-resume equality.
+- Local checkpoint history:
+  - Process safety: `acb9a50`, `1775f31`.
+  - Domain and types: `f219fcf`, `9c0cb1e`, `4c7275c`, `0900766`, `070ae7d`, `895ac63`.
+  - Explanation, observer, runtime, persistence, and protocol: `6537730`, `64fa55c`, `3a531fc`, `b15cfc5`, `b1d62e9`.
+  - Documentation currency: `410e197`, `4a554bb`, `2a92950`, `590c21b`, `681abb3`, `9beee01`, `4a9b9df`, `cd87121`.
 
 ---
 
