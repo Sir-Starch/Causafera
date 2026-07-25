@@ -388,9 +388,10 @@
 **Performance Requirements:** Comparable to current dense stencil; benchmark before claims
 **Determinism Requirements:** Identical input configuration and seed produce identical traces
 **Ontology Implications:** Chunk boundaries are containment/resolution, not physical barriers (INV-037)
-**Observer Implications:** Update observer deltas if cross-chunk mana changes the visible per-chunk totals
+**Observer Implications:** Update observer deltas if cross-chunk mana changes the visible per-chunk totals; the map currently draws each chunk's mana as an independent field, so the observer surface gains one continuous field per active set once this lands
 **Explanation Implications:** Preserve trace-backed cell-change causality across chunk boundaries
 **Out of Scope:** Cross-chart transport, new scheduler phase, material response, climate
+**Evidence:** `ManaField::neighbor_indices` clips at the chunk edge (`if x > 0`, `if x + 1 < side`), and `ManaFieldSet` propagates each field independently with no coupling term — confirmed by `apps/observer/src-tauri/examples/extent_bench.rs`, which finds mana totals converge across `chunk_extent` with no cross-chunk term at all. Every chunk boundary is a reflecting wall today (see `plans/observer-field-raster-map.md`)
 
 ## TODO-THERMAL-001: Cross-Chart Thermal Transport
 **Status:** Pending
@@ -716,7 +717,7 @@
 **Out of Scope:** Landcover from surface materials, per-cell causal resolution, raising `chunk_extent`, joined charts, terrain generation changes
 **Plan:** `plans/observer-field-raster-map.md`
 
-## TODO-GEO-001: Coherent Surface Material Regions
+## TODO-GEO-004: Coherent Surface Material Regions
 **Status:** Pending
 **Phase:** Detailed Development — Geography
 **Priority:** Medium
@@ -731,7 +732,7 @@
 **Out of Scope:** Biome semantics, climate coupling, named regions
 **Evidence:** `apps/observer/src-tauri/examples/terrain_probe.rs` measures 6.5% same-material neighbours against 6.2% expected from chance over 16 materials
 
-## TODO-MANA-001: Mana Field Lattice Cost Decision
+## TODO-MANA-004: Mana Field Lattice Cost Decision
 **Status:** Pending
 **Phase:** Detailed Development — Mana
 **Priority:** Medium
@@ -745,21 +746,6 @@
 **Explanation Implications:** A finer lattice gives mana claims finer spatial evidence
 **Out of Scope:** Changing mana propagation rules, response parameters, or the gate model
 **Evidence:** `apps/observer/src-tauri/examples/extent_bench.rs`. Total mana converges from extent 4 upward and is flat by 8 (24 218, 24 330, 24 421, 24 433, 24 433) while extent 3 gives 27 176 — 11% high. The smallest non-zero cell stays at 4-7, so nothing is lost to integer flooring. Separately, the same tool measures the plan-view column field the map draws. Extent 4 gives 78% more columns at 95.8% coverage and 14% more tick cost; extent 6 quadruples detail at 57.4% coverage; extent 16 leaves 9.4% coverage at three times the tick cost. Coverage plateaus rather than filling with more ticks. Open question: intensity is an integer, so part of the coverage loss at high extent may be quantisation rather than physics
-
-## TODO-MANA-002: Inter-Chunk Mana Flux
-**Status:** Pending
-**Phase:** Detailed Development — Mana
-**Priority:** High
-**Dependencies:** None
-**Goal:** Let mana cross chunk boundaries, so the field is continuous across the chart rather than reset at every chunk edge
-**Acceptance Criteria:** A gradient spanning a chunk boundary evolves as one field; a source near an edge raises intensity in the neighbouring chunk; total mana across the active set is conserved by the transfer
-**Performance Requirements:** Boundary exchange cost measured against the current per-chunk propagation
-**Determinism Requirements:** Exchange order is canonical and independent of chunk iteration order; replay-identical
-**Ontology Implications:** Chunk boundaries are containment and resolution boundaries, not physical barriers (INV-037). A no-flux wall at every chunk edge gives them physical meaning they must not have
-**Observer Implications:** The map currently draws three fields that cannot influence each other; after this it draws one field
-**Explanation Implications:** Mana claims spanning a boundary become meaningful
-**Out of Scope:** Cross-chart transfer, changing the diffusion or decay parameters
-**Evidence:** `ManaField::neighbor_indices` clips at the chunk edge (`if x > 0`, `if x + 1 < side`), and `ManaFieldSet` propagates each field independently with no coupling term. Every chunk boundary is therefore a reflecting wall
 
 ## TODO-MANA-003: Isotropic Diffusion Kernel
 **Status:** Pending
@@ -776,7 +762,7 @@
 **Out of Scope:** Changing the lattice geometry itself; see the decision recorded in `plans/observer-field-raster-map.md`
 **Evidence:** `neighbor_indices` returns the six axis neighbours only, so diffusion propagates on the L1 ball
 
-## TODO-WORLD-001: Chunk Activation Beyond Bootstrap
+## TODO-WORLD-002: Chunk Activation Beyond Bootstrap
 **Status:** Pending
 **Phase:** Detailed Development — World
 **Priority:** Medium

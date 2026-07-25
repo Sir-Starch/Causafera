@@ -238,7 +238,7 @@ a configuration of an existing mechanism, not a new spatial primitive.
    at stated intensity levels, and availability derived from the received edge length rather than
    hard-coded. Selecting a trace anywhere in the interface highlights the cells it last changed.
 8. **`chunk_extent` cost evidence.** Measured; see the results below. No default is changed by
-   this plan, and the measurements now inform `TODO-MANA-001` rather than await it.
+   this plan, and the measurements now inform `TODO-MANA-004` rather than await it.
 9. **Active chunk shape.** `ActiveChunkShape` in `RuntimeConfig`, `Disc` in the observer session,
    and the determinism evidence in the verification section.
 
