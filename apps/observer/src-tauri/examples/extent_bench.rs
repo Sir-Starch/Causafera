@@ -16,7 +16,14 @@ const TICKS: u64 = 48;
 fn main() {
     println!(
         "{:>6} {:>10} {:>12} {:>10} {:>12} {:>10} {:>9} {:>9}",
-        "extent", "cells/chunk", "mana cells", "build ms", "48 ticks ms", "ms/tick", "populated", "coherence",
+        "extent",
+        "cells/chunk",
+        "mana cells",
+        "build ms",
+        "48 ticks ms",
+        "ms/tick",
+        "populated",
+        "coherence",
     );
 
     for extent in [3u8, 4, 6, 8, 12, 16, 24, 32] {
@@ -96,7 +103,10 @@ fn main() {
     // propagates a fixed number of cells per tick rather than a fixed distance, the lattice
     // silently changes how fast mana moves through the world.
     println!("\nfill over time");
-    println!("{:>6} {:>8} {:>11} {:>10}", "extent", "ticks", "populated", "ms/tick");
+    println!(
+        "{:>6} {:>8} {:>11} {:>10}",
+        "extent", "ticks", "populated", "ms/tick"
+    );
     for extent in [3u8, 8, 16] {
         for ticks in [48u64, 192, 768] {
             let mut config = RuntimeConfig::new(7);
@@ -171,7 +181,11 @@ fn main() {
             total,
             100.0 * total as f64 / baseline.max(1) as f64,
             max_cell,
-            if min_non_zero == i64::MAX { 0 } else { min_non_zero },
+            if min_non_zero == i64::MAX {
+                0
+            } else {
+                min_non_zero
+            },
         );
     }
 
@@ -220,7 +234,8 @@ fn main() {
             }
             for y in 0..edge {
                 for x in 1..edge {
-                    deltas += (columns[y * edge + x] as f64 - columns[y * edge + x - 1] as f64).abs();
+                    deltas +=
+                        (columns[y * edge + x] as f64 - columns[y * edge + x - 1] as f64).abs();
                     pairs += 1.0;
                 }
             }
@@ -270,7 +285,12 @@ fn main() {
             "  chunk {:?} per-z {:?} bbox x{}..{} y{}..{} z{}..{}",
             field.chunk.chunk,
             per_layer,
-            bounds[0], bounds[1], bounds[2], bounds[3], bounds[4], bounds[5],
+            bounds[0],
+            bounds[1],
+            bounds[2],
+            bounds[3],
+            bounds[4],
+            bounds[5],
         );
     }
 }

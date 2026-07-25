@@ -103,7 +103,12 @@ fn main() {
         let max = cells.iter().copied().max().unwrap_or(0);
         let n = cells.len() as f64;
         let mean = cells.iter().map(|v| *v as f64).sum::<f64>() / n;
-        let sigma = (cells.iter().map(|v| (*v as f64 - mean).powi(2)).sum::<f64>() / n).sqrt();
+        let sigma = (cells
+            .iter()
+            .map(|v| (*v as f64 - mean).powi(2))
+            .sum::<f64>()
+            / n)
+            .sqrt();
 
         // Neighbour coherence along x, over the 3D lattice.
         let at = |x: usize, y: usize, z: usize| cells[z * extent * extent + y * extent + x] as f64;
