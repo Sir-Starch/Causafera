@@ -1,5 +1,9 @@
 use crate::*;
 use causafera_core::*;
+use causafera_domains::{
+    THERMAL_SCALE, ThermalEnergy, ThermalField, ThermalFieldSet, ThermalReservoir,
+    ThermalReservoirId, ThermalReservoirSchedule,
+};
 use causafera_types::*;
 use thiserror::Error;
 
@@ -33,6 +37,20 @@ pub struct MaterialSurfaceBootstrapStage {
     pub initial_condition: i64,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ThermalReservoirBootstrap {
+    pub id: ThermalReservoirId,
+    pub target: causafera_domains::ThermalCellKey,
+    pub budget: ThermalEnergy,
+    pub schedule: ThermalReservoirSchedule,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ThermalReservoirBootstrapStage {
+    pub stage: HistoricalStageId,
+    pub reservoirs: Vec<ThermalReservoirBootstrap>,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct HistoricalBootstrapPlan {
     pub physical_geography_init: TerrainBootstrapStage,
@@ -40,6 +58,7 @@ pub struct HistoricalBootstrapPlan {
     pub population_lifecycle: PopulationLifecycleStage,
     pub actor_promotion: ActorPromotionStage,
     pub material_activity: MaterialActivityStage,
+    pub thermal_reservoirs: ThermalReservoirBootstrapStage,
 }
 
 pub trait HistoricalBootstrapAdapter {
@@ -67,16 +86,17 @@ impl HistoricalBootstrapAdapter for HistoricalBootstrapPlan {
         traces.extend(self.population_lifecycle.bootstrap(state)?);
         traces.extend(self.actor_promotion.bootstrap(state)?);
         traces.extend(self.material_activity.bootstrap(state)?);
+        traces.extend(self.thermal_reservoirs.bootstrap(state)?);
         Ok(traces)
     }
 }
 
 impl HistoricalBootstrapPlan {
-    pub(crate) fn for_runtime_config(config: &RuntimeConfig) -> Self {
+    pub(crate) fn for_runtime_config(config: &RuntimeConfig) -> Result<Self, BootstrapError> {
         let terrain_seed = match config.carrier_adapter {
             CarrierAdapterConfig::TerrainSeed { terrain_seed } => terrain_seed,
         };
-        Self {
+        Ok(Self {
             physical_geography_init: TerrainBootstrapStage {
                 stage: HistoricalStageId::new(1),
                 terrain_seed,
@@ -97,7 +117,23 @@ impl HistoricalBootstrapPlan {
                 stage: HistoricalStageId::new(5),
                 flow_units: 1,
             },
-        }
+            thermal_reservoirs: ThermalReservoirBootstrapStage {
+                stage: HistoricalStageId::new(6),
+                reservoirs: vec![ThermalReservoirBootstrap {
+                    id: ThermalReservoirId::new(1),
+                    target: causafera_domains::ThermalCellKey::new(
+                        ChartChunkCoord::new(config.chart_id, ChunkCoord::new(0, 0, 0)),
+                        0,
+                    ),
+                    budget: ThermalEnergy::new(THERMAL_SCALE)
+                        .map_err(|_| BootstrapError::InvalidThermalReservoir)?,
+                    schedule: ThermalReservoirSchedule::PerTick(
+                        ThermalEnergy::new(THERMAL_SCALE / 8)
+                            .map_err(|_| BootstrapError::InvalidThermalReservoir)?,
+                    ),
+                }],
+            },
+        })
     }
 }
 
@@ -260,10 +296,116 @@ impl HistoricalBootstrapAdapter for MaterialActivityStage {
     }
 }
 
+impl HistoricalBootstrapAdapter for ThermalReservoirBootstrapStage {
+    fn bootstrap(&self, state: &mut RuntimeState) -> Result<Vec<TraceId>, BootstrapError> {
+        let chunks = state.active_chunks.keys().copied().collect::<Vec<_>>();
+        let mut traces = Vec::with_capacity(chunks.len() + self.reservoirs.len());
+        let mut fields = Vec::with_capacity(chunks.len());
+        for (ordinal, chunk) in chunks.iter().copied().enumerate() {
+            let trace = commit_bootstrap_stage_event(
+                state,
+                self.stage,
+                chunk,
+                ordinal as u64,
+                THERMAL_FIELD_BOOTSTRAP_EVENT_KIND,
+                THERMAL_CARRIER_OBJECT_KIND,
+                THERMAL_ENERGY_PROPERTY,
+                fingerprint_u64(0x1410, 0),
+                fingerprint_u64(0x1410, chart_chunk_hash(chunk)),
+            )?;
+            fields.push(
+                ThermalField::new(chunk, state.config.chunk_extent, trace)
+                    .map_err(RuntimeError::from)?,
+            );
+            traces.push(trace);
+        }
+        let conservation_last_change = traces
+            .last()
+            .copied()
+            .ok_or(BootstrapError::InvalidThermalReservoir)?;
+        state.thermal_fields =
+            ThermalFieldSet::new(fields, conservation_last_change).map_err(RuntimeError::from)?;
+
+        let mut reservoirs = self.reservoirs.clone();
+        reservoirs.sort_unstable_by_key(|reservoir| reservoir.id);
+        for (ordinal, reservoir) in reservoirs.into_iter().enumerate() {
+            if !state.active_chunks.contains_key(&reservoir.target.chunk) {
+                return Err(BootstrapError::ThermalReservoirOutsideActiveRegion {
+                    target_chunk: reservoir.target.chunk,
+                });
+            }
+            if usize::from(reservoir.target.cell_index)
+                >= usize::from(state.config.chunk_extent).pow(3)
+            {
+                return Err(BootstrapError::InvalidThermalReservoir);
+            }
+            if state.thermal_reservoirs.contains_key(&reservoir.id) {
+                return Err(BootstrapError::DuplicateThermalReservoir { id: reservoir.id });
+            }
+            let trace = commit_thermal_reservoir_bootstrap_event(
+                state,
+                self.stage,
+                ordinal as u64,
+                reservoir,
+            )?;
+            state.thermal_reservoirs.insert(
+                reservoir.id,
+                ThermalReservoir {
+                    id: reservoir.id,
+                    target: reservoir.target,
+                    budget: reservoir.budget,
+                    schedule: reservoir.schedule,
+                    bootstrap_trace: trace,
+                    last_change: trace,
+                },
+            );
+            traces.push(trace);
+        }
+        Ok(traces)
+    }
+}
+
 #[derive(Clone, Debug, Error, PartialEq, Eq)]
 pub enum BootstrapError {
     #[error(transparent)]
     Runtime(#[from] RuntimeError),
+    #[error("thermal reservoir target lies outside the active region: {target_chunk:?}")]
+    ThermalReservoirOutsideActiveRegion { target_chunk: ChartChunkCoord },
+    #[error("thermal reservoir bootstrap configuration is invalid")]
+    InvalidThermalReservoir,
+    #[error("thermal reservoir ID is duplicated: {id:?}")]
+    DuplicateThermalReservoir { id: ThermalReservoirId },
+}
+
+fn commit_thermal_reservoir_bootstrap_event(
+    state: &mut RuntimeState,
+    stage: HistoricalStageId,
+    ordinal: u64,
+    reservoir: ThermalReservoirBootstrap,
+) -> Result<TraceId, RuntimeError> {
+    let event = CausalEventProposal::new(
+        EventProposalKey::new(BOOTSTRAP_SYSTEM_ID, stage.raw(), ordinal),
+        EventKindId::new(THERMAL_RESERVOIR_BOOTSTRAP_EVENT_KIND),
+        vec![state.latest_physical_trace],
+        vec![CausalEffect::new(
+            CausalTarget::new(
+                StateObjectKindId::new(THERMAL_RESERVOIR_OBJECT_KIND),
+                reservoir.id.raw(),
+                StatePropertyId::new(THERMAL_RESERVOIR_BUDGET_PROPERTY),
+            ),
+            fingerprint_u64(0x1411, 0),
+            fingerprint_u64(
+                0x1411,
+                reservoir.budget.get() as u64
+                    ^ cell_object_id(reservoir.target.chunk, reservoir.target.cell_index),
+            ),
+        )?],
+    )?;
+    let trace = state
+        .traces
+        .commit_batch(SimulationTime::new(0), Phase::Lifecycle, vec![event])?[0];
+    state.latest_physical_trace = trace;
+    Ok(trace)
 }
 
 #[allow(clippy::too_many_arguments)]

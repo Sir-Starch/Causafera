@@ -47,6 +47,11 @@ message RuntimeSummary {
   uint64 population_movements = 21;
   uint64 bytes_per_chunk = 22;
   uint64 latest_trace_id = 23;
+  // ZigZag-encoded i128 varints for exact conserved-carrier totals.
+  bytes thermal_total_cell_energy = 24;
+  bytes thermal_total_reservoir_budget = 25;
+  uint32 thermal_active_chunk_count = 26;
+  uint32 thermal_active_cell_count = 27;
 }
 
 message WorldChunkSnapshot {
@@ -55,6 +60,8 @@ message WorldChunkSnapshot {
   repeated MaterialSurfaceDelta material_surface_deltas = 3;
   uint32 material_surface_delta_schema_version = 4;
   repeated MaterialSurfaceGateDelta material_surface_gate_deltas = 5;
+  repeated ThermalFieldDelta thermal_deltas = 6;
+  uint32 thermal_delta_schema_version = 7;
 }
 
 message MaterialSurfaceDelta {
@@ -91,4 +98,19 @@ message MaterialSurfaceGateDelta {
   uint64 gate_transition_trace_id = 11;
   optional uint64 contact_trace_id = 12;
   uint64 transition_tick = 13;
+}
+
+message ThermalFieldDelta {
+  uint64 chart_id = 1;
+  sint32 chunk_x = 2;
+  sint32 chunk_y = 3;
+  sint32 chunk_z = 4;
+  uint32 cell_ordinal = 5;
+  sint64 pre_state_energy = 6;
+  sint64 post_state_energy = 7;
+  sint64 reservoir_scheduled_injection = 8;
+  sint64 reservoir_accepted_injection = 9;
+  sint64 reservoir_rejected_injection = 10;
+  sint64 net_face_flux = 11;
+  uint32 face_count = 12;
 }

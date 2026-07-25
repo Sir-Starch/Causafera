@@ -143,6 +143,14 @@ impl LocalCoord {
     }
 }
 
+pub const fn flat_index(position: LocalCoord, extent: u8) -> Option<usize> {
+    if extent == 0 || position.x >= extent || position.y >= extent || position.z >= extent {
+        return None;
+    }
+    let size = extent as usize;
+    Some(position.z as usize * size * size + position.y as usize * size + position.x as usize)
+}
+
 impl std::fmt::Debug for LocalCoord {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "LocalCoord({}, {}, {})", self.x, self.y, self.z)

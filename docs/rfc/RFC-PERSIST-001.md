@@ -186,6 +186,15 @@ The first complete runtime snapshot includes separate bounded sections for:
       recipe hash, and policy schema before authoritative installation;
     - unsupported major versions fail closed.
 
+14. **Conserved thermal carrier** (`0x000E`, current major V1)
+    - fixed-point cell energy, causal anchors, active/resident chunk sets, finite reservoirs,
+      transfer receipts, and exact per-batch conservation receipts;
+    - canonically ordered current-batch boundary records for same-chart faces outside the active
+      region, including the frozen post-injection/pre-diffusion source energy;
+    - import reconstructs the complete expected boundary face set and rejects missing, extra,
+      duplicate, unsorted, cross-chart, nonadjacent, wrong-face, or pre-state-mismatched records;
+    - incomplete payloads, unsupported major versions, and trailing bytes fail closed.
+
 ### Authoritative / non-authoritative boundary
 
 **Authoritative (must persist):**
@@ -289,6 +298,7 @@ Failure leaves the prior completed snapshot intact. Temporary-file cleanup is be
 | population_aggregates | 0x0009 | conserved quantities |
 | aggregate_actor_pool | 0x0009 | membership |
 | executed experiment-recipe mana source receipts | 0x000D | bounded source execution state and replay guard |
+| thermal fields, reservoirs, receipts, and current boundary records | 0x000E | conserved energy state, causal anchors, and active-region boundary evidence |
 
 ### HistoryDigest contributors
 

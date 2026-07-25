@@ -14,6 +14,8 @@ mod resolution;
 pub mod runtime;
 pub mod snapshot_sections;
 mod snapshots;
+mod thermal;
+mod thermal_events;
 
 pub use actors::*;
 pub use benchmark::*;
@@ -31,3 +33,4 @@ pub(crate) use resolution::*;
 pub use runtime::*;
 pub use snapshot_sections::*;
 pub use snapshots::*;
+pub(crate) use thermal::*;

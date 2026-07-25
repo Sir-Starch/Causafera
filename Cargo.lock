@@ -420,6 +420,7 @@ dependencies = [
  "causafera-language",
  "causafera-types",
  "causafera-world",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
@@ -434,6 +435,7 @@ name = "causafera-explanation"
 version = "0.1.0"
 dependencies = [
  "causafera-core",
+ "causafera-domains",
  "causafera-types",
  "serde",
  "thiserror 2.0.19",

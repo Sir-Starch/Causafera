@@ -9,11 +9,11 @@ use causafera_resolution::{
     ChannelWeight, ResolutionEntry, ResolutionFieldSnapshot, ResolutionPolicySnapshot,
 };
 use causafera_types::{
-    AngularVelocity, AttentionTargetId, ChartChunkCoord, ChunkCoord, Direction3D, EventId,
-    EventKindId, FeatureRelation, FeatureValue, LocalCoord, ManaFieldId, PerceivedObjectId,
-    PerceptId, PhysicalPatternId, ResolutionChannelId, ResolutionFieldId, SelfAssociationId,
-    SimulationTime, SpatialChartId, StateObjectKindId, StatePropertyId, SubjectiveBodyPartId,
-    TraceId, Velocity, WorldCoord,
+    AngularVelocity, AttentionTargetId, CHUNK_SIZE, ChartChunkCoord, ChunkCoord, Direction3D,
+    EventId, EventKindId, FeatureRelation, FeatureValue, LocalCoord, ManaFieldId,
+    PerceivedObjectId, PerceptId, PhysicalPatternId, ResolutionChannelId, ResolutionFieldId,
+    SelfAssociationId, SimulationTime, SpatialChartId, StateObjectKindId, StatePropertyId,
+    SubjectiveBodyPartId, ThermalEnergy, TraceId, Velocity, WorldCoord,
 };
 
 use crate::{
@@ -29,7 +29,11 @@ use crate::{
     PerceivedSelf, PhysicalCountersSnapshot, PopulationAggregate, PopulationAggregateSnapshot,
     RuntimeConfig, RuntimeRecipeSnapshot, RuntimeSnapshotData, RuntimeState, SensorAperture,
     SensorKindId, SpatialChunkSnapshot, SubjectiveSceneSnapshot, SubjectiveTarget,
-    SystemRegistrationSnapshot, TerrainCarrierSnapshot,
+    SystemRegistrationSnapshot, TerrainCarrierSnapshot, ThermalActiveRegionSnapshot,
+    ThermalBoundaryRecordSnapshot, ThermalCellTransferReceiptSnapshot,
+    ThermalConservationReceiptSnapshot, ThermalFaceRecordSnapshot, ThermalFieldSetSnapshot,
+    ThermalFieldSnapshot, ThermalReservoirScheduleSnapshot, ThermalReservoirSnapshot,
+    ThermalReservoirTransferRecordSnapshot, ThermalSnapshot,
 };
 
 pub const SECTION_RUNTIME_RECIPE: u16 = 0x0001;
@@ -45,13 +49,16 @@ pub const SECTION_CAUSAL_TRACES: u16 = 0x000A;
 pub const SECTION_EXPERIMENT_MANIFEST: u16 = 0x000B;
 pub const MATERIAL_SURFACE_SECTION_ID: u16 = 0x000C;
 pub const SECTION_EXPERIMENT_RECIPE_MANA_SOURCE_RECEIPTS: u16 = 0x000D;
+pub const THERMAL_SECTION_ID: u16 = 0x000E;
 
 const RUNTIME_RECIPE_SECTION_MAJOR: u16 = 4;
 const MANA_SECTION_MAJOR: u16 = 2;
 const PHYSICAL_COUNTERS_SECTION_MAJOR: u16 = 3;
 const MATERIAL_SURFACE_SECTION_MAJOR: u16 = 2;
 pub const EXPERIMENT_RECIPE_MANA_SOURCE_RECEIPTS_SECTION_MAJOR: u16 = 1;
+pub const THERMAL_SECTION_MAJOR: u16 = 1;
 const CURRENT_SECTION_MINOR: u16 = 0;
+const MAX_THERMAL_BOUNDARY_RECORDS: usize = 1_000_000;
 
 /// Encode a `CausalTraceSnapshot` into section bytes.
 pub fn encode_trace_section(snapshot: &CausalTraceSnapshot) -> Vec<u8> {
@@ -442,6 +449,241 @@ pub fn decode_mana_section(bytes: &[u8]) -> Result<ManaFieldSetSnapshot, Persist
     reject_unsorted_chunks(fields.iter().map(|entry| entry.chunk))?;
     require_empty(&dec)?;
     Ok(ManaFieldSetSnapshot { fields })
+}
+
+pub fn encode_thermal_section(snapshot: &ThermalSnapshot) -> Vec<u8> {
+    let mut buf = Vec::new();
+    let mut enc = LittleEndianEncoder::new(&mut buf);
+    enc.write_i64(snapshot.parameters.transfer_fraction);
+    enc.write_i64(snapshot.parameters.heat_capacity);
+    enc.write_i64(snapshot.parameters.scale);
+    enc.write_u64(snapshot.field_set.batch_sequence);
+    enc.write_u64(snapshot.field_set.conservation_last_change.raw());
+    enc.write_u64(snapshot.field_set.fields.len() as u64);
+    for field in &snapshot.field_set.fields {
+        encode_chart_chunk(&mut enc, field.chunk);
+        enc.write_u8(field.extent);
+        enc.write_u64(field.energy.len() as u64);
+        for energy in &field.energy {
+            enc.write_i64(*energy);
+        }
+        enc.write_u64(field.last_change.len() as u64);
+        for trace in &field.last_change {
+            enc.write_u64(trace.raw());
+        }
+        enc.write_u64(field.last_change_before.len() as u64);
+        for energy in &field.last_change_before {
+            enc.write_i64(*energy);
+        }
+    }
+    encode_thermal_chunk_set(&mut enc, &snapshot.active_region.active_chunks);
+    encode_thermal_chunk_set(&mut enc, &snapshot.active_region.resident_chunks);
+    enc.write_u64(snapshot.reservoirs.len() as u64);
+    for reservoir in &snapshot.reservoirs {
+        enc.write_u64(reservoir.id.raw());
+        encode_thermal_cell_key(&mut enc, reservoir.target);
+        enc.write_i64(reservoir.budget);
+        encode_thermal_reservoir_schedule(&mut enc, reservoir.schedule);
+        enc.write_u64(reservoir.bootstrap_trace.raw());
+        enc.write_u64(reservoir.last_change.raw());
+    }
+    enc.write_u64(snapshot.receipt_batches.len() as u64);
+    for trace in &snapshot.receipt_batches {
+        enc.write_u64(trace.raw());
+    }
+    enc.write_u64(snapshot.transfer_receipts.len() as u64);
+    for receipt in &snapshot.transfer_receipts {
+        enc.write_u64(receipt.conservation_trace.raw());
+        encode_thermal_cell_key(&mut enc, receipt.cell);
+        enc.write_i64(receipt.pre_state);
+        enc.write_i64(receipt.post_state);
+        encode_option_trace(&mut enc, receipt.cell_change_trace_id);
+        enc.write_u64(receipt.faces.len() as u64);
+        for face in &receipt.faces {
+            encode_thermal_face_record(&mut enc, *face);
+        }
+        enc.write_u64(receipt.reservoirs.len() as u64);
+        for reservoir in &receipt.reservoirs {
+            encode_thermal_reservoir_transfer_record(&mut enc, *reservoir);
+        }
+    }
+    enc.write_u64(snapshot.conservation_receipts.len() as u64);
+    for receipt in &snapshot.conservation_receipts {
+        enc.write_u64(receipt.trace.raw());
+        enc.write_u64(receipt.tick);
+        encode_i128(&mut enc, receipt.total_cell_energy_before);
+        encode_i128(&mut enc, receipt.total_cell_energy_after);
+        encode_i128(&mut enc, receipt.total_reservoir_budget_before);
+        encode_i128(&mut enc, receipt.total_reservoir_budget_after);
+        encode_i128(&mut enc, receipt.residual);
+    }
+    enc.write_u64(snapshot.boundary_records.len() as u64);
+    for record in &snapshot.boundary_records {
+        encode_thermal_cell_key(&mut enc, record.cell);
+        encode_thermal_cell_key(&mut enc, record.neighbor);
+        enc.write_i64(record.cell_pre_state);
+    }
+    buf
+}
+
+pub fn decode_thermal_section(bytes: &[u8]) -> Result<ThermalSnapshot, PersistenceError> {
+    let mut dec = LittleEndianDecoder::new(bytes);
+    let parameters = causafera_domains::ThermalParameters {
+        transfer_fraction: dec.read_i64()?,
+        heat_capacity: dec.read_i64()?,
+        scale: dec.read_i64()?,
+    }
+    .validate()
+    .map_err(|error| PersistenceError::codec(format!("invalid thermal parameters: {error}")))?;
+    let batch_sequence = dec.read_u64()?;
+    let conservation_last_change = TraceId::new(dec.read_u64()?);
+    let field_count = read_count(&mut dec, 65_536, "thermal field")?;
+    let mut fields = Vec::with_capacity(field_count);
+    for _ in 0..field_count {
+        let chunk = decode_chart_chunk(&mut dec)?;
+        let extent = dec.read_u8()?;
+        let volume = thermal_field_volume(extent)?;
+        let energy = decode_thermal_energy_vec(&mut dec, volume, "thermal energy")?;
+        let trace_count = read_count(&mut dec, volume, "thermal last-change trace")?;
+        if trace_count != volume {
+            return Err(PersistenceError::codec(
+                "thermal last-change trace count does not match extent",
+            ));
+        }
+        let mut last_change = Vec::with_capacity(trace_count);
+        for _ in 0..trace_count {
+            last_change.push(TraceId::new(dec.read_u64()?));
+        }
+        let last_change_before =
+            decode_thermal_energy_vec(&mut dec, volume, "thermal prior energy")?;
+        fields.push(ThermalFieldSnapshot {
+            chunk,
+            extent,
+            energy,
+            last_change,
+            last_change_before,
+        });
+    }
+    reject_unsorted_chunks(fields.iter().map(|field| field.chunk))?;
+    let active_region = ThermalActiveRegionSnapshot {
+        active_chunks: decode_thermal_chunk_set(&mut dec, "thermal active chunk")?,
+        resident_chunks: decode_thermal_chunk_set(&mut dec, "thermal resident chunk")?,
+    };
+    let reservoir_count = read_count(&mut dec, 65_536, "thermal reservoir")?;
+    let mut reservoirs = Vec::with_capacity(reservoir_count);
+    for _ in 0..reservoir_count {
+        reservoirs.push(ThermalReservoirSnapshot {
+            id: causafera_domains::ThermalReservoirId::new(dec.read_u64()?),
+            target: decode_thermal_cell_key(&mut dec)?,
+            budget: decode_thermal_energy(&mut dec)?,
+            schedule: decode_thermal_reservoir_schedule(&mut dec)?,
+            bootstrap_trace: TraceId::new(dec.read_u64()?),
+            last_change: TraceId::new(dec.read_u64()?),
+        });
+    }
+    reject_unsorted_ids(reservoirs.iter().map(|reservoir| reservoir.id.raw()))?;
+    let receipt_batch_count = read_count(&mut dec, 1_000_000, "thermal receipt batch")?;
+    let mut receipt_batches = Vec::with_capacity(receipt_batch_count);
+    for _ in 0..receipt_batch_count {
+        receipt_batches.push(TraceId::new(dec.read_u64()?));
+    }
+    reject_unsorted_ids(receipt_batches.iter().copied().map(TraceId::raw))?;
+    let transfer_receipt_count = read_count(&mut dec, 1_000_000, "thermal transfer receipt")?;
+    let mut transfer_receipts = Vec::with_capacity(transfer_receipt_count);
+    let mut previous_receipt_key = None;
+    for _ in 0..transfer_receipt_count {
+        let conservation_trace = TraceId::new(dec.read_u64()?);
+        let cell = decode_thermal_cell_key(&mut dec)?;
+        let key = (conservation_trace, cell);
+        if previous_receipt_key.is_some_and(|previous| previous >= key) {
+            return Err(PersistenceError::codec(
+                "thermal transfer receipts must be strictly ordered",
+            ));
+        }
+        previous_receipt_key = Some(key);
+        let pre_state = decode_thermal_energy(&mut dec)?;
+        let post_state = decode_thermal_energy(&mut dec)?;
+        let cell_change_trace_id = decode_option_trace(&mut dec)?;
+        let face_count = read_count(&mut dec, 6, "thermal face receipt")?;
+        let mut faces = Vec::with_capacity(face_count);
+        for _ in 0..face_count {
+            faces.push(decode_thermal_face_record(&mut dec)?);
+        }
+        let reservoir_record_count = read_count(&mut dec, 65_536, "thermal reservoir receipt")?;
+        let mut reservoir_records = Vec::with_capacity(reservoir_record_count);
+        for _ in 0..reservoir_record_count {
+            reservoir_records.push(decode_thermal_reservoir_transfer_record(&mut dec)?);
+        }
+        reject_unsorted_ids(reservoir_records.iter().map(|record| record.id.raw()))?;
+        transfer_receipts.push(ThermalCellTransferReceiptSnapshot {
+            conservation_trace,
+            cell,
+            pre_state,
+            post_state,
+            cell_change_trace_id,
+            faces,
+            reservoirs: reservoir_records,
+        });
+    }
+    let conservation_count = read_count(&mut dec, 1_000_000, "thermal conservation receipt")?;
+    let mut conservation_receipts = Vec::with_capacity(conservation_count);
+    let mut previous_trace = None;
+    for _ in 0..conservation_count {
+        let trace = TraceId::new(dec.read_u64()?);
+        if previous_trace.is_some_and(|previous| previous >= trace) {
+            return Err(PersistenceError::codec(
+                "thermal conservation receipts must be strictly trace ordered",
+            ));
+        }
+        previous_trace = Some(trace);
+        conservation_receipts.push(ThermalConservationReceiptSnapshot {
+            trace,
+            tick: dec.read_u64()?,
+            total_cell_energy_before: decode_i128(&mut dec)?,
+            total_cell_energy_after: decode_i128(&mut dec)?,
+            total_reservoir_budget_before: decode_i128(&mut dec)?,
+            total_reservoir_budget_after: decode_i128(&mut dec)?,
+            residual: decode_i128(&mut dec)?,
+        });
+    }
+    let boundary_count = read_count(
+        &mut dec,
+        MAX_THERMAL_BOUNDARY_RECORDS,
+        "thermal boundary record",
+    )?;
+    let mut boundary_records = Vec::with_capacity(boundary_count);
+    let mut previous_boundary_key = None;
+    for _ in 0..boundary_count {
+        let cell = decode_thermal_cell_key(&mut dec)?;
+        let neighbor = decode_thermal_cell_key(&mut dec)?;
+        let key = (cell, neighbor);
+        if previous_boundary_key.is_some_and(|previous| previous >= key) {
+            return Err(PersistenceError::codec(
+                "thermal boundary records must be strictly ordered",
+            ));
+        }
+        previous_boundary_key = Some(key);
+        boundary_records.push(ThermalBoundaryRecordSnapshot {
+            cell,
+            neighbor,
+            cell_pre_state: decode_thermal_energy(&mut dec)?,
+        });
+    }
+    require_empty(&dec)?;
+    Ok(ThermalSnapshot {
+        parameters,
+        field_set: ThermalFieldSetSnapshot {
+            fields,
+            batch_sequence,
+            conservation_last_change,
+        },
+        active_region,
+        reservoirs,
+        receipt_batches,
+        transfer_receipts,
+        conservation_receipts,
+        boundary_records,
+    })
 }
 
 pub fn encode_resolution_section(
@@ -1916,6 +2158,152 @@ fn decode_history_digest(
     })
 }
 
+fn encode_thermal_chunk_set(enc: &mut LittleEndianEncoder<'_>, chunks: &[ChartChunkCoord]) {
+    enc.write_u64(chunks.len() as u64);
+    for chunk in chunks {
+        encode_chart_chunk(enc, *chunk);
+    }
+}
+
+fn decode_thermal_chunk_set(
+    dec: &mut LittleEndianDecoder<'_>,
+    label: &str,
+) -> Result<Vec<ChartChunkCoord>, PersistenceError> {
+    let count = read_count(dec, 65_536, label)?;
+    let mut chunks = Vec::with_capacity(count);
+    for _ in 0..count {
+        chunks.push(decode_chart_chunk(dec)?);
+    }
+    reject_unsorted_chunks(chunks.iter().copied())?;
+    Ok(chunks)
+}
+
+fn encode_thermal_cell_key(
+    enc: &mut LittleEndianEncoder<'_>,
+    key: causafera_domains::ThermalCellKey,
+) {
+    encode_chart_chunk(enc, key.chunk);
+    enc.write_u16(key.cell_index);
+}
+
+fn decode_thermal_cell_key(
+    dec: &mut LittleEndianDecoder<'_>,
+) -> Result<causafera_domains::ThermalCellKey, PersistenceError> {
+    Ok(causafera_domains::ThermalCellKey::new(
+        decode_chart_chunk(dec)?,
+        dec.read_u16()?,
+    ))
+}
+
+fn encode_thermal_reservoir_schedule(
+    enc: &mut LittleEndianEncoder<'_>,
+    schedule: ThermalReservoirScheduleSnapshot,
+) {
+    match schedule {
+        ThermalReservoirScheduleSnapshot::PerTick(amount) => {
+            enc.write_u8(1);
+            enc.write_i64(amount);
+        }
+        ThermalReservoirScheduleSnapshot::OneShot => enc.write_u8(2),
+    }
+}
+
+fn decode_thermal_reservoir_schedule(
+    dec: &mut LittleEndianDecoder<'_>,
+) -> Result<ThermalReservoirScheduleSnapshot, PersistenceError> {
+    match dec.read_u8()? {
+        1 => Ok(ThermalReservoirScheduleSnapshot::PerTick(
+            decode_thermal_energy(dec)?,
+        )),
+        2 => Ok(ThermalReservoirScheduleSnapshot::OneShot),
+        value => Err(PersistenceError::codec(format!(
+            "unknown thermal reservoir schedule {value}"
+        ))),
+    }
+}
+
+fn encode_thermal_face_record(
+    enc: &mut LittleEndianEncoder<'_>,
+    record: ThermalFaceRecordSnapshot,
+) {
+    encode_thermal_cell_key(enc, record.neighbor);
+    enc.write_i64(record.signed_flux);
+    enc.write_i64(record.neighbor_pre_state);
+}
+
+fn decode_thermal_face_record(
+    dec: &mut LittleEndianDecoder<'_>,
+) -> Result<ThermalFaceRecordSnapshot, PersistenceError> {
+    Ok(ThermalFaceRecordSnapshot {
+        neighbor: decode_thermal_cell_key(dec)?,
+        signed_flux: dec.read_i64()?,
+        neighbor_pre_state: decode_thermal_energy(dec)?,
+    })
+}
+
+fn encode_thermal_reservoir_transfer_record(
+    enc: &mut LittleEndianEncoder<'_>,
+    record: ThermalReservoirTransferRecordSnapshot,
+) {
+    enc.write_u64(record.id.raw());
+    enc.write_i64(record.scheduled_injection);
+    enc.write_i64(record.accepted_injection);
+    enc.write_i64(record.rejected_injection);
+    encode_option_trace(enc, record.transfer_trace_id);
+}
+
+fn decode_thermal_reservoir_transfer_record(
+    dec: &mut LittleEndianDecoder<'_>,
+) -> Result<ThermalReservoirTransferRecordSnapshot, PersistenceError> {
+    Ok(ThermalReservoirTransferRecordSnapshot {
+        id: causafera_domains::ThermalReservoirId::new(dec.read_u64()?),
+        scheduled_injection: decode_thermal_energy(dec)?,
+        accepted_injection: decode_thermal_energy(dec)?,
+        rejected_injection: decode_thermal_energy(dec)?,
+        transfer_trace_id: decode_option_trace(dec)?,
+    })
+}
+
+fn decode_thermal_energy(dec: &mut LittleEndianDecoder<'_>) -> Result<i64, PersistenceError> {
+    let value = dec.read_i64()?;
+    ThermalEnergy::new(value)
+        .map_err(|error| PersistenceError::codec(format!("invalid thermal energy: {error}")))?;
+    Ok(value)
+}
+
+fn decode_thermal_energy_vec(
+    dec: &mut LittleEndianDecoder<'_>,
+    expected: usize,
+    label: &str,
+) -> Result<Vec<i64>, PersistenceError> {
+    let count = read_count(dec, expected, label)?;
+    if count != expected {
+        return Err(PersistenceError::codec(format!(
+            "{label} count does not match thermal field extent"
+        )));
+    }
+    let mut values = Vec::with_capacity(count);
+    for _ in 0..count {
+        values.push(decode_thermal_energy(dec)?);
+    }
+    Ok(values)
+}
+
+fn thermal_field_volume(extent: u8) -> Result<usize, PersistenceError> {
+    if extent == 0 || extent > CHUNK_SIZE {
+        return Err(PersistenceError::codec("thermal field extent is invalid"));
+    }
+    Ok(usize::from(extent).pow(3))
+}
+
+fn encode_i128(enc: &mut LittleEndianEncoder<'_>, value: i128) {
+    enc.write_fixed(&value.to_le_bytes());
+}
+
+fn decode_i128(dec: &mut LittleEndianDecoder<'_>) -> Result<i128, PersistenceError> {
+    Ok(i128::from_le_bytes(*dec.read_fixed::<16>()?))
+}
+
 fn encode_chart_chunk(enc: &mut LittleEndianEncoder<'_>, chunk: ChartChunkCoord) {
     enc.write_u64(chunk.chart.raw());
     enc.write_u32(chunk.chunk.x as u32);
@@ -2171,6 +2559,16 @@ pub fn assemble_envelope(data: &RuntimeSnapshotData) -> Result<SnapshotEnvelope,
         },
     );
     sections.insert(
+        u64::from(THERMAL_SECTION_ID),
+        SectionPayload {
+            section_major: THERMAL_SECTION_MAJOR,
+            section_minor: CURRENT_SECTION_MINOR,
+            flags: 0,
+            decoded_size_limit: 0,
+            bytes: encode_thermal_section(&data.thermal),
+        },
+    );
+    sections.insert(
         u64::from(SECTION_RESOLUTION_FIELD),
         SectionPayload {
             section_major: 1,
@@ -2306,6 +2704,13 @@ pub fn assemble_envelope(data: &RuntimeSnapshotData) -> Result<SnapshotEnvelope,
 pub fn disassemble_envelope(
     envelope: &SnapshotEnvelope,
 ) -> Result<RuntimeSnapshotData, PersistenceError> {
+    for schema_id in envelope.sections.keys().copied() {
+        if !is_known_section(schema_id) {
+            return Err(PersistenceError::codec(format!(
+                "unknown authoritative section {schema_id:#06x}"
+            )));
+        }
+    }
     if envelope.header.physical_digest_schema != crate::CURRENT_DIGEST_SCHEMA_VERSION.raw()
         || envelope.header.history_digest_schema != crate::CURRENT_DIGEST_SCHEMA_VERSION.raw()
     {
@@ -2334,6 +2739,11 @@ pub fn disassemble_envelope(
     )?;
     let mana = decode_mana_section(
         required_section(envelope, SECTION_MANA_FIELDS, MANA_SECTION_MAJOR)?
+            .bytes
+            .as_slice(),
+    )?;
+    let thermal = decode_thermal_section(
+        required_section(envelope, THERMAL_SECTION_ID, THERMAL_SECTION_MAJOR)?
             .bytes
             .as_slice(),
     )?;
@@ -2435,6 +2845,7 @@ pub fn disassemble_envelope(
         recipe,
         spatial,
         mana,
+        thermal,
         resolution,
         resolution_policy,
         pattern_history,
@@ -2448,6 +2859,26 @@ pub fn disassemble_envelope(
         experiment_recipe_mana_source_receipts,
         experiment_manifest,
     })
+}
+
+fn is_known_section(schema_id: u64) -> bool {
+    matches!(
+        schema_id,
+        id if id == u64::from(SECTION_RUNTIME_RECIPE)
+            || id == u64::from(SECTION_SPATIAL_CHUNKS)
+            || id == u64::from(SECTION_MANA_FIELDS)
+            || id == u64::from(SECTION_RESOLUTION_FIELD)
+            || id == u64::from(SECTION_PATTERN_HISTORY)
+            || id == u64::from(SECTION_PHYSICAL_COUNTERS)
+            || id == u64::from(SECTION_ACTOR_OBJECTIVE)
+            || id == u64::from(SECTION_ACTOR_SUBJECTIVE)
+            || id == u64::from(SECTION_POPULATION_BOOTSTRAP)
+            || id == u64::from(SECTION_CAUSAL_TRACES)
+            || id == u64::from(SECTION_EXPERIMENT_MANIFEST)
+            || id == u64::from(MATERIAL_SURFACE_SECTION_ID)
+            || id == u64::from(SECTION_EXPERIMENT_RECIPE_MANA_SOURCE_RECEIPTS)
+            || id == u64::from(THERMAL_SECTION_ID)
+    )
 }
 
 fn required_section(

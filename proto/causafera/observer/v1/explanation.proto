@@ -1,6 +1,8 @@
 syntax = "proto3";
 package causafera.observer.v1;
 
+// Explanation claim schema ID 16 is THERMAL_CARRIER_CONSERVATION_SCHEMA.
+
 enum EvidenceState {
   EVIDENCE_STATE_UNSPECIFIED = 0;
   EVIDENCE_STATE_SUPPORTED = 1;

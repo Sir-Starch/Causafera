@@ -9,6 +9,7 @@ rust-version.workspace = true
 [dependencies]
 causafera-types = { workspace = true }
 causafera-core = { workspace = true }
+causafera-domains = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
 

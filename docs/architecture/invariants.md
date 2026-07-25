@@ -173,3 +173,7 @@ An agent-perspective explanation must be time-specific (e.g., “Why did agent A
 ## INV-042: Architecture remains modular and cohesive
 
 Runtime implementation must remain modular and cohesive. Distinct domain or execution concerns should be localized in appropriate modules rather than accumulated in a shared catch-all file. File size alone is not a violation when the contained implementation remains conceptually cohesive.
+
+## INV-043: The world is one coherent spatial system
+
+Cells and chunks are a deterministic discretization of one shared spatial world, not isolated voxel islands. Physical fields may have local state and must potentially interact across space. Any missing transport, adjacency, carrier, terrain, material, or energy mechanism is to be identified as an unimplemented physical process rather than intentionally impossible. The engine must not rely on chunk boundaries as absolute physical barriers unless caused by explicitly modeled physical occlusion.
