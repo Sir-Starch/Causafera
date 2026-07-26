@@ -27,7 +27,6 @@ import {
   type LensLayers,
   type LensSurface,
 } from "./lens";
-import { lensLayers } from "./lenses";
 import { fieldBounds, renderSurface } from "./surface";
 import {
   CELLS_PER_EDGE,
@@ -93,7 +92,9 @@ export interface ChartMapLabels {
 interface ChartMapProps {
   context: LensContext;
   primary?: Lens;
-  overlays: Lens[];
+  /** Resolved once by the area, which also needs them for the legend. */
+  primaryLayers: LensLayers;
+  overlayLayers: { lens: Lens; layers: LensLayers }[];
   selection: MapSelection;
   onSelect(selection: MapSelection): void;
   onHover(hover: HoverReading | undefined): void;
@@ -112,7 +113,8 @@ export interface HoverReading {
 export function ChartMap({
   context,
   primary,
-  overlays,
+  primaryLayers,
+  overlayLayers,
   selection,
   onSelect,
   onHover,
@@ -135,15 +137,6 @@ export function ChartMap({
   }, [context.atlas]);
 
   const extent = useMemo(() => extentOf(context.atlas.chunks), [context.atlas]);
-
-  const primaryLayers = useMemo<LensLayers>(
-    () => (primary === undefined ? {} : lensLayers(primary, context)),
-    [primary, context],
-  );
-  const overlayLayers = useMemo(
-    () => overlays.map((lens) => ({ lens, layers: lensLayers(lens, context) })),
-    [overlays, context],
-  );
 
   /* ------------------------------------------------------------ sizing -- */
 
@@ -349,6 +342,19 @@ export function ChartMap({
         if (primary !== undefined && primary.cellProjection === "none" && field !== undefined) {
           context2d.fillStyle = hatchPattern(context2d, withAlpha(signal, 0.16), 10, 0.7);
           for (const { x, y, size } of drawn) context2d.fillRect(x, y, size, size);
+          // Hatching alone is a convention; at cell scale there is room to name it.
+          context2d.font = MONO_FONT_SM;
+          context2d.textAlign = "center";
+          context2d.textBaseline = "middle";
+          for (const { x, y, size } of drawn) {
+            const caption = labels.chunkAggregate.toUpperCase();
+            const width = context2d.measureText(caption).width;
+            if (width + 12 > size) break;
+            context2d.fillStyle = withAlpha(palette.paper!, 0.86);
+            context2d.fillRect(x + size / 2 - width / 2 - 4, y + size / 2 - 7, width + 8, 14);
+            context2d.fillStyle = palette.inkFaint!;
+            context2d.fillText(caption, x + size / 2, y + size / 2);
+          }
         }
       }
 

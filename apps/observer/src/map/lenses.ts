@@ -604,7 +604,7 @@ export const LENSES: Lens[] = [
       );
       return {
         cells: cells.map((cell) => ({
-          chunkKey: `${cell.chunkX}:${cell.chunkY}`,
+          chunkKey: `${cell.chunkX}:${cell.chunkY}:0`,
           chunkX: cell.chunkX,
           chunkY: cell.chunkY,
           // The mana lattice is coarser than the cell lattice the marks are

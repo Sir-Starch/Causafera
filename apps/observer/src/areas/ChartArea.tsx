@@ -140,7 +140,8 @@ export function ChartArea({ workspace, update }: AreaProps) {
             <ChartMap
               context={context}
               primary={awaitingPrimary ? undefined : primary}
-              overlays={overlays}
+              primaryLayers={awaitingPrimary ? {} : primaryLayers}
+              overlayLayers={overlayLayers}
               selection={{ chunkKey: workspace.selectedChunk, cell: workspace.selectedCell }}
               onSelect={(selection) =>
                 update({ selectedChunk: selection.chunkKey, selectedCell: selection.cell })
