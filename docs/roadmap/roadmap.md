@@ -172,9 +172,10 @@ forbidden.
 Completed. The Tauri 2 desktop application runs a causally bootstrapped runtime, negotiates
 observer v1, consumes digest-anchored bounded runtime streams, queries chart-qualified world chunk
 projections, and renders typed Explanation IR. The delivered UI provides World, causal-loop,
-timeline, inspector, and comparative-explanation views in deterministic English/Russian
-presentation. Rich entity, language, society, historical comparison, and large-dataset WebGPU
-views remain incremental observer work.
+timeline, inspector, and comparative-explanation views in deterministic presentation across five
+locales (`en-US`, `ru-RU`, `zh-Hans`, `de-DE`, `es-ES`), covering UI chrome, locale-keyed observer
+metadata, and the authoritative Explanation renderer alike. Rich entity, language, society,
+historical comparison, and large-dataset WebGPU views remain incremental observer work.
 
 ## Foundation Era boundary
 
