@@ -1,0 +1,463 @@
+/* Causafera Observer — dense data surfaces: readouts, field lists, registers, ledgers. */
+
+/* ---- Readout: one measured quantity ----------------------------------- */
+
+.readout {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  min-width: 0;
+}
+
+.readout__label {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  font-size: var(--t-micro);
+  letter-spacing: var(--track-caps);
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.readout__label::before {
+  content: "";
+  width: 3px;
+  height: 9px;
+  background: var(--signal, var(--line-strong));
+  flex-shrink: 0;
+}
+
+.readout__value {
+  display: flex;
+  align-items: baseline;
+  gap: 0.375rem;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 1.375rem;
+  line-height: 1.1;
+  color: var(--ink);
+}
+
+.readout__unit {
+  font-size: var(--t-micro);
+  letter-spacing: var(--track-wide);
+  color: var(--ink-ghost);
+}
+
+.readout__note {
+  font-size: var(--t-micro);
+  color: var(--ink-ghost);
+  font-variant-numeric: tabular-nums;
+}
+
+.readout--compact .readout__value {
+  font-size: var(--t-lead);
+}
+
+.readout--hero .readout__value {
+  font-size: var(--t-hero);
+  letter-spacing: -0.02em;
+}
+
+/* A readout parked at the right edge of a heading aligns to that edge. */
+.readout--end {
+  align-items: flex-end;
+  text-align: right;
+}
+
+.readout--end .readout__label {
+  flex-direction: row-reverse;
+}
+
+/* A tabulated rate list: quantity, per-tick, total. */
+.rates {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  column-gap: var(--s3);
+  align-items: baseline;
+}
+
+.rates__head {
+  display: contents;
+}
+
+.rates__head span {
+  padding-bottom: 0.25rem;
+  border-bottom: 1px solid var(--line-faint);
+  font-size: var(--t-micro);
+  letter-spacing: var(--track-caps);
+  text-transform: uppercase;
+  color: var(--ink-ghost);
+}
+
+.rates__head span:not(:first-child),
+.rates > b,
+.rates > i {
+  text-align: right;
+}
+
+.rates > span,
+.rates > b,
+.rates > i {
+  padding: 0.3125rem 0;
+  border-bottom: 1px solid var(--line-ghost);
+  font-size: var(--t-small);
+}
+
+.rates > span {
+  color: var(--ink-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rates > b {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  color: var(--signal, var(--ink));
+}
+
+.rates > i {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-style: normal;
+  color: var(--ink-faint);
+}
+
+/* Instrument cluster — a row of readouts divided like an atlas margin. */
+.cluster {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
+  gap: 0;
+}
+
+.cluster > * {
+  padding: var(--s3);
+  border-left: 1px solid var(--line-faint);
+}
+
+.cluster > *:first-child {
+  border-left: 0;
+}
+
+@media (width < 60rem) {
+  .cluster > * {
+    border-left: 0;
+    border-top: 1px solid var(--line-faint);
+  }
+
+  .cluster > *:first-child {
+    border-top: 0;
+  }
+}
+
+/* ---- Field list: key / value pairs ------------------------------------ */
+
+.fields {
+  display: flex;
+  flex-direction: column;
+}
+
+.field {
+  display: grid;
+  grid-template-columns: minmax(6rem, auto) minmax(0, 1fr);
+  align-items: baseline;
+  gap: var(--s3);
+  padding: 0.3125rem 0;
+  border-bottom: 1px solid var(--line-ghost);
+}
+
+.field:last-child {
+  border-bottom: 0;
+}
+
+.field__key {
+  font-size: var(--t-small);
+  color: var(--ink-faint);
+  min-width: 0;
+}
+
+.field__value {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--t-small);
+  color: var(--ink);
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.field__value--text {
+  font-family: var(--font-ui);
+}
+
+.field--stacked {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.125rem;
+}
+
+.field--stacked .field__value {
+  text-align: left;
+}
+
+/* ---- Digest plate: identity, never a metric --------------------------- */
+
+.digest {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1875rem;
+  min-width: 0;
+}
+
+.digest__label {
+  font-size: var(--t-micro);
+  letter-spacing: var(--track-caps);
+  text-transform: uppercase;
+  color: var(--ink-ghost);
+}
+
+.digest__value {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  font-family: var(--font-mono);
+  font-size: var(--t-small);
+  color: var(--ink-dim);
+}
+
+/* Each byte pair gets its own cell, so a divergence is visible at a glance. */
+.digest__byte {
+  padding: 0.0625rem 0.1875rem;
+  border-bottom: 1px solid var(--line-faint);
+}
+
+/* A byte that moved since the previous frame is underscored, not lit. */
+.digest__byte[data-changed="true"] {
+  border-bottom-color: var(--ink-bright);
+  color: var(--ink-bright);
+}
+
+/* ---- Register: a scrollable list of surveyed records ------------------ */
+
+.register {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--line-ghost);
+}
+
+.register__row {
+  display: grid;
+  align-items: center;
+  gap: var(--s3);
+  padding: var(--s2) var(--s3);
+  border-bottom: 1px solid var(--line-ghost);
+  min-width: 0;
+}
+
+.register__row:last-child {
+  border-bottom: 0;
+}
+
+.register__primary {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  min-width: 0;
+}
+
+.register__name {
+  font-size: var(--t-small);
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.register__sub {
+  font-size: var(--t-micro);
+  color: var(--ink-ghost);
+  font-family: var(--font-mono);
+}
+
+/* ---- Table: the dense analytical surface ------------------------------ */
+
+.table-frame {
+  overflow: auto;
+  max-height: var(--table-height, 26rem);
+  contain: paint;
+  border-top: 1px solid var(--line-faint);
+}
+
+table.data {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: var(--t-small);
+}
+
+table.data thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: var(--s2) var(--s3);
+  border-bottom: 1px solid var(--line);
+  background: var(--paper-inset);
+  font-size: var(--t-micro);
+  font-weight: 600;
+  letter-spacing: var(--track-caps);
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  text-align: left;
+  white-space: nowrap;
+}
+
+table.data th.num,
+table.data td.num {
+  text-align: right;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+table.data tbody td {
+  padding: 0.3125rem var(--s3);
+  border-bottom: 1px solid var(--line-ghost);
+  color: var(--ink-dim);
+  white-space: nowrap;
+}
+
+table.data tbody tr:hover td {
+  background: rgb(214 228 234 / 4%);
+  color: var(--ink);
+}
+
+/* Selection is ruled, in the manner of a marked-up register. */
+table.data tbody tr[data-selected="true"] td {
+  background: rgb(214 228 234 / 7%);
+  color: var(--ink);
+  border-bottom-color: var(--line);
+}
+
+table.data tbody tr[data-selected="true"] td:first-child {
+  box-shadow: inset 2px 0 0 var(--ink-bright);
+}
+
+table.data td.emphasis {
+  color: var(--ink);
+}
+
+/* ---- Trace chip: a provenance anchor ---------------------------------- */
+
+.trace-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.0625rem 0.3125rem;
+  border: 1px solid var(--line);
+  background: transparent;
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  color: var(--ink-dim);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color var(--dur-fast) var(--ease-survey),
+    border-color var(--dur-fast) var(--ease-survey);
+}
+
+.trace-chip:hover {
+  border-color: var(--line-bright);
+  color: var(--ink);
+}
+
+/* A followed anchor is inked solid, the way a surveyor marks a fix. */
+.trace-chip[data-active="true"] {
+  border-color: var(--ink-bright);
+  background: var(--ink-bright);
+  color: var(--paper-deep);
+}
+
+.trace-chip--static {
+  cursor: default;
+}
+
+.trace-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+/* ---- Meter: a bounded proportion -------------------------------------- */
+
+.meter {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.meter__track {
+  position: relative;
+  height: 5px;
+  border: 1px solid var(--line-faint);
+  overflow: hidden;
+}
+
+.meter__fill {
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  background: var(--signal, var(--ink-dim));
+  transition: width var(--dur) var(--ease-survey);
+}
+
+.meter__ticks {
+  position: absolute;
+  inset: 0;
+  background-image: repeating-linear-gradient(
+    to right,
+    transparent 0 calc(25% - 1px),
+    var(--paper) calc(25% - 1px) 25%
+  );
+}
+
+.meter__caption {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--s2);
+  font-size: var(--t-micro);
+  color: var(--ink-ghost);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- Delta arrow ------------------------------------------------------- */
+
+.delta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.1875rem;
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  color: var(--ink-faint);
+}
+
+.delta[data-direction="up"],
+.delta[data-direction="down"] {
+  color: var(--ink-dim);
+}
+
+/* ---- Provenance ribbon: derived-not-authoritative marker -------------- */
+
+.derived {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: var(--t-micro);
+  letter-spacing: var(--track-wide);
+  color: var(--ink-ghost);
+}
+
+.derived::before {
+  content: "";
+  width: 10px;
+  height: 0;
+  border-top: 1px dashed var(--line-strong);
+}

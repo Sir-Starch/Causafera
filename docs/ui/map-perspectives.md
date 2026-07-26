@@ -33,10 +33,17 @@ Maps may be wrong. Examples:
 - An agent may misidentify a geographic feature type.
 - Different agents may use different naming conventions.
 
+The agent-known, organization-known and historical perspectives are present in the observer as
+`awaiting` lenses: each is listed in the lens catalogue and states the read model it needs, rather
+than being omitted or simulated. See `docs/ui/map-lenses.md`.
+
 ## Rendering
 
-The bounded Phase 26 view renders at most the active-chunk envelope as semantic controls. This is
-appropriate for the demonstrated three-chunk workload and preserves keyboard inspection.
+The Ground Truth perspective is rendered by the chart instrument: a canvas plan view of one chart's
+chunk lattice with viewport culling and three levels of detail, driven by the lens contract. It is
+written for a chart far larger than the demonstrated three-chunk workload — a screenful costs the
+same at any chart size — and keyboard inspection is preserved through the chunk register and the
+map's own arrow, zoom and reframe keys.
 
 Future large maps use WebGPU for:
 
