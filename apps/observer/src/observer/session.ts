@@ -277,14 +277,18 @@ export class ObserverSessionController {
   private async refreshRasters(world: WorldChunkSnapshot): Promise<void> {
     const client = this.client;
     if (client === undefined) return;
-    let changed = false;
-    for (const chunk of world.chunks) {
-      changed = (await this.fetchRaster(client, FieldRasterKind.ManaIntensity, chunk)) || changed;
-      const terrain = rasterKey(FieldRasterKind.TerrainElevation, chunk);
-      if (this.rasters.has(terrain)) continue;
-      changed =
-        (await this.fetchRaster(client, FieldRasterKind.TerrainElevation, chunk)) || changed;
-    }
+    // Issued together rather than one after another. The session serialises them
+    // on its own lock either way, but a frame of nine chunks otherwise pays the
+    // bridge's per-call overhead nine times end to end instead of once.
+    const wanted = world.chunks.flatMap((chunk) => {
+      const fields = [FieldRasterKind.ManaIntensity];
+      // Terrain is generated once and does not change per tick.
+      if (!this.rasters.has(rasterKey(FieldRasterKind.TerrainElevation, chunk))) {
+        fields.push(FieldRasterKind.TerrainElevation);
+      }
+      return fields.map((field) => this.fetchRaster(client, field, chunk));
+    });
+    const changed = (await Promise.all(wanted)).some(Boolean);
     if (changed) this.store.patch({ rasters: new Map(this.rasters) });
   }
 

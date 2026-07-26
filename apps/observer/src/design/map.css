@@ -172,18 +172,24 @@
  * One screenful. The heading and the lens bar take what they need — they reflow at narrow
  * widths — and the chart absorbs the remainder, so the map is never pushed below the fold.
  */
+/*
+ * The chart takes the first screenful and then some.
+ *
+ * The frame used to stop at 46rem, which on a tall display left the instrument
+ * floating in the top third of its own area. It now fills what the stage is
+ * given, and the stage is a screenful less the chrome above and below it.
+ */
 .chart-stage {
   display: flex;
   flex-direction: column;
-  gap: var(--s4);
-  min-height: calc(100vh - 7.5rem);
+  gap: var(--s3);
+  min-height: calc(100vh - var(--meridian-height) - var(--marginalia-height) - var(--s10));
 }
 
 .chart-frame {
   position: relative;
   flex: 1 1 auto;
   min-height: 17rem;
-  max-height: 46rem;
   border: 1px solid var(--line);
   background: var(--paper-inset);
   overflow: hidden;

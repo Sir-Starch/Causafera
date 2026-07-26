@@ -260,15 +260,22 @@
   contain: paint;
 }
 
+/*
+ * The workspace uses the width it is given.
+ *
+ * It used to cap itself and centre, which on a wide display left several hundred
+ * pixels of margin on each side of an instrument that wanted the room. The
+ * density argument for a cap holds for prose, not for panels: the area grids are
+ * `auto-fit`, so extra width becomes extra columns, and the chart becomes a
+ * larger chart. The side gutter is a hairline so a panel border does not fuse
+ * with the rail beside it.
+ */
 .workspace__inner {
   display: flex;
   flex-direction: column;
-  gap: var(--s4);
-  padding: var(--s5) var(--s5) var(--s10);
+  gap: var(--s3);
+  padding: var(--s3) var(--s2) var(--s6);
   min-height: 100%;
-  /* Beyond this the grids stop adding density and just stretch each panel. */
-  max-width: 132rem;
-  margin-inline: auto;
   width: 100%;
 }
 
@@ -500,6 +507,6 @@
   }
 
   .workspace__inner {
-    padding: var(--s4) var(--s3) var(--s8);
+    padding: var(--s3) var(--s2) var(--s6);
   }
 }

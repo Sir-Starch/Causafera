@@ -51,6 +51,8 @@ export interface ChartField {
   covered: Uint8Array;
   min: number;
   max: number;
+  /** True when every sample is the same value, so the range below is synthetic. */
+  uniform: boolean;
   /** How many chunks contributed. A field of one chunk is still a field. */
   patches: number;
 }
@@ -104,6 +106,7 @@ export function assembleField(patches: readonly FieldPatch[]): ChartField | unde
     min,
     // A field of one value would divide by zero everywhere downstream.
     max: max === min ? min + 1 : max,
+    uniform: max === min,
     patches: usable.length,
   };
 }
