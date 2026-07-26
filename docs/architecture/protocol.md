@@ -32,8 +32,14 @@ metrics.proto     - performance and telemetry data
 Generate Rust bindings for the simulation side and TypeScript bindings for the UI side. Do not manually duplicate schemas. The single source of truth is the `.proto` definition.
 
 The Rust and TypeScript v1 codecs cover negotiation, runtime-summary and chart-qualified
-world-chunk query/response, typed Explanation IR payloads, and stream envelopes. The Phase 26
-Tauri bridge transports only these bytes. Schema validity is checked with `protoc`; expanding
+world-chunk query/response, per-chunk field rasters, typed Explanation IR payloads, and stream
+envelopes. The Tauri bridge transports only these bytes.
+
+`FieldRaster` is the one request whose answer depends on what was asked rather than on when, so its
+parameters ride the query payload and the session answers it directly instead of from the payload
+cache the other kinds share. It stays additive: the version remains v1, capability negotiation
+advertises the kind so a client can tell whether a runtime supports it, and existing decoders skip
+what they do not know. Schema validity is checked with `protoc`; expanding
 either codec must begin with the v1 `.proto` files.
 
 ## What the Protocol Is Not

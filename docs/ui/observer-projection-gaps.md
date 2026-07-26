@@ -45,44 +45,40 @@ into a walkable chain, which is the single largest analytical capability the obs
 **Effort:** medium. The store supports traversal; the query surface, wire encoding, and a decoder
 are new. Bounding must be explicit — ancestry is unbounded in principle.
 
-## 4. Per-cell terrain raster
+## 4. Per-cell terrain raster — resolved
 
-**This is the highest value per unit of work in the list, and the map is the reason.**
+**Delivered** by `TODO-OBS-001`. The `FieldRaster` query projects the terrain carrier's
+`elevations_mm` and `roughness_mm` for one requested chunk, at the carrier's own 32 x 32 lattice or
+a block-mean reduction of it, with the generation trace travelling alongside. The map assembles
+every received lattice into one field over the surveyed extent and draws hypsometric tinting,
+hillshading and measured contours from it; the interpolated contour lens survives only as the
+fallback used where no raster has arrived.
 
-**Needed:** the terrain carrier's existing per-cell arrays for a requested chunk —
-`elevations_mm`, `surface_materials` and `roughness_mm` from `TerrainCarrierSnapshot`.
+`surface_materials` is deliberately still not projected. Measured at 6.5% same-material neighbours
+against 6.2% expected from chance, drawing it as landcover would show the world as having regions it
+does not have. `TODO-GEO-004` is the prerequisite.
 
-**Why:** the runtime already holds a complete raster. `TERRAIN_CELLS_PER_CHUNK` is
-`CHUNK_SIZE²` = 1024, so every chunk carries 1024 elevations, 1024 surface materials and 1024
-roughness values. `Runtime::observer_world_snapshot` collapses all of it to a minimum, a maximum
-and a mean (`runtime.rs`, the terrain block). The demonstration session has roughly 70 metres of
-relief inside a single chunk, and the observer sees two numbers.
+**Found while implementing it:** `terrain_cells` derives elevation from chunk-local coordinates
+only, so every chunk repeats the same diagonal ridge and a two-dimensional chart shows a thirty-metre
+scarp on every chunk boundary. The relief lens draws it and says in its caveat that the step is world
+state rather than a seam in the drawing, and the chart does not open on terrain contours because over
+this terrain they bunch along every boundary. Recorded as `TODO-GEO-005`.
 
-That aggregation, not the simulation, is why the map draws flat squares. With the raster
-projected, the same lens contract yields a real relief map: hypsometric tinting per cell,
-hillshading from the elevation gradient, measured contour lines in place of the interpolated
-preview, and a landcover map straight from `surface_materials`. No new frontend infrastructure is
-needed — the renderer already resolves marks at real cell positions, and a raster is a cheaper
-draw than the marks it already handles.
+## 4b. Two-dimensional chunk activation — resolved
 
-**Effort:** low to medium, and much smaller than it looks. 1024 values per chunk is a few
-kilobytes before any encoding, and elevation delta-encodes well. The contract needs a per-chunk
-request and a downsample level for far zoom, not a whole-chart dump.
+**Delivered** by `TODO-OBS-001`. `RuntimeConfig::active_chunk_shape` selects `Line` or `Area`;
+`Area` activates the square block of `(2 * radius + 1)²` chunks and the observer session opts into
+it, so the demonstration chart is nine chunks with shape rather than a strip of three. The default
+stays `Line`, so no recorded fixture or replay-verified experiment moved.
 
-**Related:** per-cell mana intensity and resolution relevance are the same shape of problem and
-should follow the same contract once terrain proves it.
+A Euclidean disc was considered and rejected: at radius 1 it is a five-chunk cross, and the
+observer's own bounds were already written for the nine-chunk block.
 
-## 4b. Two-dimensional chunk activation
-
-**Needed:** `active_chunk_keys` to generate an area rather than a line.
-
-**Why:** it currently maps `(-radius..=radius)` over x only, with y and z pinned to zero, so the
-world is a one-dimensional strip of at most nine chunks. The map draws a row because a row is what
-exists. An area of chunks turns the same instrument into a map with shape, and nothing in the
-renderer assumes otherwise — it culls by viewport and is written for far larger charts.
-
-**Effort:** small in the runtime, but it is a simulation contract change and needs an ExecPlan.
-Bootstrap, population attribution and resolution all iterate the active set.
+**Found while implementing it:** `chart_chunk_hash` sign-extended each axis, so a coordinate of −1
+became all ones on every axis and `(-1, -1, 0)` collided with `(0, 0, 0)`. Object identity is keyed
+by that hash, so the first area-shaped runtime was rejected by the mana cell validator. The x term is
+unchanged and the off-line terms are zero at zero, so every line-shaped chart keeps the identity it
+was recorded with.
 
 ## 5. Performance telemetry
 
@@ -122,9 +118,14 @@ the promotion recipe in `docs/ui/map-lenses.md`.
 | Ecology | The domain itself; documented but not implemented |
 | Provenance graph | Item 3 above — a bounded ancestry query |
 
-Two further lenses would move from `preview` to `observed` on existing requests: the interpolated
-isolines become real terrain contours with item 4 (per-cell fields), and the mana gradient becomes a
-measured flux if a transport term between chunks is ever projected.
+The terrain contour lens has since been promoted: item 4 landed, so it traces the measured elevation
+lattice and keeps the interpolation only as a fallback. The mana gradient would become a measured
+flux if a transport term between chunks were ever projected.
+
+The mana field lenses report their availability from the received lattice edge rather than from a
+constant, so they read `preview` while the field has to be upsampled to be drawn and `observed` when
+it does not. Raising `chunk_extent` promotes them with no frontend change; `TODO-MANA-004` decided
+to leave it at 3, so today they read `preview` and name the lattice in their caveat.
 
 ## Not requested
 

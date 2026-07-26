@@ -717,7 +717,7 @@
 **Out of Scope:** Traditional Chinese, right-to-left layout, locale-specific number and date formats beyond `Intl` grouping, translating protocol nouns, logs or domain identifiers
 
 ## TODO-OBS-001: Field Raster Projection and Chart Shape
-**Status:** Pending
+**Status:** Completed
 **Phase:** Detailed Development — Observer Surface
 **Priority:** High
 **Dependencies:** TODO-UI-005
@@ -730,6 +730,20 @@
 **Explanation Implications:** None; generation provenance travels with the raster for future claims
 **Out of Scope:** Landcover from surface materials, per-cell causal resolution, raising `chunk_extent`, joined charts, terrain generation changes
 **Plan:** `plans/observer-field-raster-map.md`
+**Evidence:** A `FieldRaster` query kind, its wire codec, a session bound and a TypeScript decoder;
+`ActiveChunkShape::Area` behind a config field with `Line` still the default. Measured on the
+demonstration session (seed 7, 48 ticks, nine chunks): terrain elevation with its roughness band
+encodes to 3 369 bytes per chunk against 8 192 bytes of raw arrays, the mana volume to 181 bytes per
+chunk, and the world-chunk snapshot the map already fetched is 1 874 bytes. The map assembles the
+received lattices into one field over the surveyed extent and draws hypsometric tinting, hillshading
+and measured contours from it; mana availability is derived from the received lattice edge and
+therefore reads `preview` at `chunk_extent` 3 and `observed` above it with no frontend change.
+
+Two defects surfaced only once the chart had two dimensions. `chart_chunk_hash` sign-extended each
+axis, so `(-1, -1, 0)` collided with `(0, 0, 0)` and the mana cell object identity validator rejected
+the first area-shaped runtime; the fix leaves every line-shaped chart with the identity it was
+recorded with. `terrain_cells` derives elevation from chunk-local coordinates only, which is recorded
+separately as `TODO-GEO-005`.
 
 ## TODO-GEO-004: Coherent Surface Material Regions
 **Status:** Pending
@@ -745,6 +759,21 @@
 **Explanation Implications:** Material regions become available as causal context for surface claims
 **Out of Scope:** Biome semantics, climate coupling, named regions
 **Evidence:** `apps/observer/src-tauri/examples/terrain_probe.rs` measures 6.5% same-material neighbours against 6.2% expected from chance over 16 materials. `TODO-MANA-004` reaches the same finding from the mana side and puts a cost on it: projected onto the mana lattice, the terrain's structural variation survives at only 1.32x to 2.75x what averaging pure noise would retain, and the ratio falls as the lattice refines. There is little coherent structure for a finer field to resolve, so this is the work that would make a finer mana lattice worth its cost rather than the other way round
+
+## TODO-GEO-005: Terrain Continuity Across Chunk Boundaries
+**Status:** Pending
+**Phase:** Detailed Development — Geography
+**Priority:** Medium
+**Dependencies:** None
+**Goal:** Generate elevation as a function of a cell's position in its chart rather than of its position in its chunk, so adjacent chunks meet
+**Acceptance Criteria:** Measured elevation step across a chunk boundary is of the same order as the step between neighbouring cells inside a chunk; the field stays deterministic from the world seed
+**Performance Requirements:** Generation cost measured against the current per-chunk assignment
+**Determinism Requirements:** Changing terrain changes state hashes by construction, so it ships with regenerated fixtures and replay evidence
+**Ontology Implications:** Terrain is authoritative geography; continuity between chunks is a property of the world, not of the drawing
+**Observer Implications:** The relief lens already draws the discontinuity and states that the step is world state rather than a seam. With this closed, terrain contours become a defensible default overlay, which they are not today
+**Explanation Implications:** None
+**Out of Scope:** Landforms, erosion, hydrology, biomes, raising the terrain lattice
+**Evidence:** `terrain_cells` in `crates/causafera-runtime/src/carrier.rs` computes `ridge = (x - y) * 17` from chunk-local `x` and `y` and takes the chunk only through the seed, so every chunk repeats the same diagonal ridge. Measured on the demonstration session at seed 7: the east edge of chunk (−1, 0) reads +13.1 m … +19.5 m against −13.5 m … −13.7 m on the abutting west edge of chunk (0, 0), a step of about thirty metres where the mean neighbour step inside a chunk is 1.6 m. `TODO-OBS-001` made this visible by giving the chart two dimensions and a per-cell projection; before that the map drew one tint per chunk and the strip was one chunk deep, so nothing showed it
 
 ## TODO-MANA-004: Mana Field Lattice Cost Decision
 **Status:** Completed — `chunk_extent` stays 3
