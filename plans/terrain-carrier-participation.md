@@ -237,13 +237,17 @@ three active chunks, against the same world with the carrier inert.
 
 | `chunk_extent` | samples/tick | inert ms/tick | standing ms/tick | overhead | inert changed cells/tick | standing |
 |---|---|---|---|---|---|---|
-| 3 (default) | 27 | 1.351 | 1.445 | **+7.0 %** | 72 | 74 |
+| 3 (default) | 27 | 1.351 | 1.445 | **+7.0 %** (see below) | 72 | 74 |
 | 6 | 108 | 2.563 | 9.050 | +253 % | 134 | 577 |
 | 8 | 192 | 3.326 | 17.667 | +431 % | 134 | 1088 |
 | 12 | 432 | 6.788 | 45.386 | +569 % | 134 | 2731 |
 
-At the default lattice the carrier costs 7 %, and the field was already fully live, so the two
-columns of changed cells agree. Above it the growth is not the carrier: it is that terrain
+At the default lattice the carrier costs single-digit percent, and the field was already fully live,
+so the two columns of changed cells agree. The overhead figure is timing noise sensitive and the
+table's single run overstates its own precision: re-running the same measurement six times gave
+7.0 %, 7.5 %, 7.6 %, 8.7 %, 9.4 % and 17.3 %. Read it as "under ten percent on a quiet machine, with
+outliers", not as a constant. The structural counts beside it are exact and reproduced identically
+on every run: 27 samples per tick, and 72 changed cells per tick inert against 74 standing. Above it the growth is not the carrier: it is that terrain
 populates cells which were previously dead, and the runtime commits one causal event per changed
 mana cell per tick. Per changed cell the cost does not rise — at extent 12, 0.052 ms per changed
 cell standing against 0.076 ms inert. The carrier's own work is the sample projection, which is
