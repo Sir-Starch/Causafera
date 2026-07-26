@@ -3,620 +3,136 @@
  *
  * Locale is presentation only. Switching it renegotiates the observer locale with the
  * protocol handler and changes nothing about simulation state or its digests
- * (INV-006, INV-007). No label in this file carries simulation meaning.
+ * (INV-006, INV-007). No label in these dictionaries carries simulation meaning.
+ *
+ * The English dictionary is the baseline: `Copy` is derived from it, so every other locale is
+ * checked against it by the compiler, and an unrecognised tag resolves to it rather than
+ * showing a key or an empty string.
+ *
+ * The chosen locale is remembered in `localStorage`; on a first run the observer reads the
+ * browser's language preferences instead. Neither path can reach authoritative state.
  */
 
 import type { ObserverLocale } from "../observer/format";
+import { de } from "./de";
+import type { Copy } from "./dictionary";
+import { en } from "./en";
+import { es } from "./es";
+import { ru } from "./ru";
+import { zhHans } from "./zh-Hans";
 
-export const LOCALES: readonly ObserverLocale[] = ["ru-RU", "en-US"];
+export type { Copy } from "./dictionary";
 
-const ru = {
-  product: "Causafera",
-  observer: "Наблюдатель",
-  tagline: "Инструмент причинного обследования",
+/** Display order in the language switcher. English leads because it is the fallback. */
+export const LOCALES: readonly ObserverLocale[] = ["en-US", "ru-RU", "zh-Hans", "de-DE", "es-ES"];
 
-  areas: {
-    station: { name: "Обсерватория", note: "Состояние прогона" },
-    chart: { name: "Карта", note: "Пространственный прибор" },
-    flux: { name: "Поток", note: "Причинная активность" },
-    assay: { name: "Объяснение", note: "Explanation IR" },
-    instrument: { name: "Прибор", note: "Протокол и охват" },
-  },
+export const FALLBACK_LOCALE: ObserverLocale = "en-US";
 
-  connection: {
-    idle: "Ожидание",
-    connecting: "Согласование",
-    connected: "На связи",
-    unavailable: "Нет моста",
-    error: "Сбой связи",
-    reconnect: "Переподключить",
-    unavailableTitle: "Наблюдатель не подключён к среде",
-    unavailableBody:
-      "Мост Tauri недоступен, поэтому авторитетных данных нет. Наблюдатель не подставляет демонстрационное состояние: пустой прибор честнее вымышленного показания.",
-    unavailableHint: "Запустите настольную оболочку командой pnpm --dir apps/observer desktop.",
-    errorTitle: "Обмен с наблюдателем прерван",
-  },
-
-  transport: {
-    run: "Пуск",
-    pause: "Пауза",
-    step: "Шаг",
-    reset: "Сброс",
-    seed: "Seed",
-    batch: "Пакет",
-    batchNote: "тактов за обмен",
-    ticks: "Такт",
-    sequence: "Кадр",
-    snapshot: "снимок",
-  },
-
-  meridian: {
-    physicalDigest: "Физическое состояние",
-    historyDigest: "История",
-    digestNote: "Дайджест — идентичность состояния, а не мера расстояния.",
-    locale: "Язык",
-    inspector: "Инспектор",
-    areas: "Разделы",
-    collapse: "Свернуть панель",
-    expand: "Развернуть панель",
-    resize: "Ширина панели",
-    palette: "Команды",
-  },
-
-  marginalia: {
-    protocol: "Протокол",
-    transport: "Канал",
-    lastExchange: "Последний обмен",
-    exchanges: "Обменов",
-    derivedHistory: "Ряд собран наблюдателем",
-    hint: "Ctrl+K — команды",
-    replay: "Воспроизведение записи",
-  },
-
-  station: {
-    title: "Обсерватория",
-    eyebrow: "Объективная проекция",
-    lede:
-      "Всё на этом экране — производная проекция авторитетного состояния. Это не знание агентов и не бесшовная карта планеты.",
-    identity: "Идентичность прогона",
-    identityLede: "Согласованный протокол, seed и якоря состояния текущего прогона.",
-    instruments: "Показания",
-    field: "Поле маны",
-    fieldLede:
-      "Суммарная интенсивность и пиковая интенсивность ячейки. Наблюдателю проецируются только эти две величины поля.",
-    accretion: "Накопление трасс",
-    accretionLede:
-      "Число зафиксированных трасс и физических событий. Скорость вычислена наблюдателем между полученными кадрами.",
-    admission: "Допуск действий акторов",
-    admissionLede:
-      "Доля принятых попыток действия. Отклонение — нормальный результат проверки, а не ошибка.",
-    chartStrip: "Профиль карты",
-    chartStripLede: "Активные чанки в порядке координат карты. Высота показана как диапазон рельефа.",
-    activity: "Недавние переходы",
-    activityLede: "Последние записи ограниченного окна переходов материальной поверхности.",
-    coverage: "Охват прибора",
-    coverageLede: "Что наблюдатель сейчас читает, а что ещё не спроецировано.",
-    openRegister: "Открыть реестр",
-    population: "Население",
-    actors: "Акторы",
-    activeChunks: "Активные чанки",
-    traces: "Трассы",
-    manaTotal: "Суммарная мана",
-    manaPeak: "Пиковая ячейка",
-    resolutionLevel: "Уровень разрешения",
-    resolutionRelevance: "Релевантность",
-    physicalEvents: "Физические события",
-    bytesPerChunk: "Байт на чанк",
-    latestTrace: "Последняя трасса",
-    committed: "Принято",
-    rejected: "Отклонено",
-    births: "Рождения",
-    deaths: "Смерти",
-    movements: "Перемещения",
-    manaCellChanges: "Изменения ячеек маны",
-    manaEffects: "Физические эффекты маны",
-    resolutionTransitions: "Переходы разрешения",
-  },
-
-  chart: {
-    title: "Карта",
-    eyebrow: "Пространственный прибор",
-    lede:
-      "Карта одного чарта на одном слое. Координаты чанков привязаны к чарту и не образуют единой глобальной сетки, а всё за пределами полученного контура — не обследованная земля, а не пустота.",
-    transectLede:
-      "Каждый столбец — чанк. Полоса показывает диапазон высот, заливка — суммарную ману, отметки — население, события и переходы поверхности.",
-    chunk: "Чанк",
-    chart: "Карта",
-    chartsPlural: "Карты",
-    chunksPlural: "Чанки",
-    elevation: "Высоты",
-    elevationRange: "Диапазон",
-    roughness: "Шероховатость",
-    mana: "Мана",
-    resolution: "Разрешение",
-    population: "Население",
-    events: "События",
-    transitions: "Переходы",
-    latestTrace: "Последняя трасса",
-    noWorld: "Проекция чанков ещё не получена",
-    noWorldBody: "Запрос WorldChunks выполняется, пока открыт этот раздел.",
-    surfaceCell: "Ячейка поверхности",
-    surfaceCellLede:
-      "Порядковый номер ячейки декодирован в позицию внутри решётки чанка 32³.",
-    metres: "м",
-    millimetres: "мм",
-    lens: "Линза",
-    overlays: "Наложения",
-    noOverlays: "нет",
-    awaitingChip: "ещё {n} — каталог",
-    legend: "Легенда",
-    noField: "Линза не строит поле по чанкам.",
-    unsurveyed: "Не обследовано",
-    unsurveyedShort: "не обследовано",
-    chunkAggregate: "Сводка по чанку, а не измерение ячейки",
-    scaleUnit: "чк",
-    north: "С",
-    cell: "Ячейка",
-    cellLede: "Позиция в решётке чанка 32³. Данных по этой ячейке наблюдатель не получает, кроме отмеченных поверхностей.",
-    readoutIdle: "Наведите на карту",
-    mapHint: "Тяните — панорама, колесо — масштаб, клик — выбор. Стрелки, +, −, 0 работают, когда карта в фокусе.",
-    profile: "Профиль карты",
-    profileLede: "Тот же выбор в виде разреза: диапазон высот, мана, население и активность по чанкам.",
-    register: "Реестр чанков",
-    catalogue: "Каталог линз",
-    selection: "Выбор",
-    selectPrompt: "Чанк не выбран",
-    selectPromptBody: "Выберите чанк на карте, в профиле или в реестре.",
-    noChart: "Карта ещё не получена",
-    noChartBody: "Проекция чанков придёт после подключения к среде. Наблюдатель не рисует местность, которой не получал.",
-  },
-
-  flux: {
-    title: "Поток",
-    eyebrow: "Причинная активность",
-    lede:
-      "Наблюдатель видит только те кадры, которые запросил. Скорости — средние между кадрами, а не мгновенные величины среды.",
-    recorder: "Самописец",
-    recorderLede: "Величины сводки среды по тактам прогона.",
-    rates: "Скорости",
-    ratesLede: "Разность между двумя последними кадрами, нормированная на такт.",
-    ladder: "Ступени состояния поверхности",
-    ladderLede:
-      "Каждая линия — одна отслеживаемая поверхность. Ступень — зафиксированный переход состояния с привязкой к трассе.",
-    ledger: "Журнал переходов",
-    ledgerLede: "Ограниченное окно последних переходов материальной поверхности.",
-    gates: "Затворы локальной маны",
-    gatesLede: "Наблюдателю проецируются только переходы затвора в закрытое состояние.",
-    noGates: "Переходов затвора в окне нет",
-    noGatesBody:
-      "Пустой список означает, что в наблюдаемом окне затворы не закрывались. Это результат наблюдения, а не пробел в данных.",
-    noLadder: "Переходов поверхности ещё нет",
-    noLadderBody: "Продвиньте прогон: переходы появляются по мере контактов акторов с поверхностью.",
-    filterTrace: "Фильтр по трассе",
-    clearFilter: "Снять фильтр",
-    clearSelection: "Снять выбор",
-    tick: "Такт",
-    surface: "Поверхность",
-    condition: "Состояние",
-    contact: "Контакт",
-    manaEffect: "Эффект маны",
-    manaTransition: "Переход маны",
-    localMana: "Локальная мана",
-    gateClosed: "закрыт",
-    gateOpen: "открыт",
-    perTick: "/такт",
-    cumulative: "накопительно",
-    rate: "скорость",
-    quantity: "Величина",
-    total: "Всего",
-  },
-
-  assay: {
-    title: "Объяснение",
-    eyebrow: "Explanation IR",
-    lede:
-      "Объяснение не изменяет состояние и не является авторитетным. Каждое утверждение несёт состояние свидетельства, уверенность и якоря трасс.",
-    run: "Выполнить анализ",
-    running: "Выполняется…",
-    experiment: "Эксперимент",
-    checkpoint: "Контрольная точка",
-    overall: "Итоговая оценка",
-    claims: "Утверждения",
-    claim: "Утверждение",
-    schema: "Схема",
-    value: "Значение",
-    confidence: "Уверенность",
-    evidence: "Свидетельства",
-    comparison: "Сравнение",
-    traces: "Трассы",
-    reading: "Как читать",
-    empty: "Анализ ещё не выполнялся",
-    emptyBody:
-      "Ограниченный сравнительный эксперимент по контуру материальной поверхности выполняется по запросу и возвращает типизированный Explanation IR.",
-    unknownTitle: "Неизвестно — это результат",
-    unknownBody:
-      "Отсутствие свидетельства не является отрицательным свидетельством. Утверждение со статусом «неизвестно» означает, что наблюдатель проверил и не нашёл достаточной опоры.",
-    unknownSchema: "Схема без описания в наблюдателе",
-    unknownSchemaBody:
-      "Значение показано как есть. Описание появится, когда схема будет зарегистрирована в наблюдателе.",
-    staleTitle: "Анализ относится к более раннему такту",
-    staleBody: "Прогон продвинулся после анализа. Выполните анализ снова для текущего состояния.",
-    frames: "Кадры",
-    supported: "Подтверждено",
-    partial: "Частично",
-    unsupported: "Не подтверждено",
-    unknown: "Неизвестно",
-  },
-
-  instrument: {
-    title: "Прибор",
-    eyebrow: "Протокол и охват",
-    lede:
-      "Состояние канала, согласованные возможности и честный реестр того, что прибор способен наблюдать сегодня.",
-    negotiation: "Согласование",
-    protocolVersion: "Версия протокола",
-    capabilities: "Возможности",
-    timeAtConnect: "Такт при подключении",
-    channel: "Канал",
-    log: "Журнал обмена",
-    logLede: "Реальные обмены с мостом наблюдателя: размер, длительность, результат.",
-    command: "Команда",
-    detail: "Деталь",
-    request: "Запрос",
-    response: "Ответ",
-    duration: "Длительность",
-    outcome: "Результат",
-    ok: "успех",
-    failed: "сбой",
-    noExchanges: "Обменов ещё не было",
-    register: "Реестр охвата",
-    registerLede:
-      "Состояние каждой наблюдаемой величины: читается сейчас, ограничена окном, ждёт проекции наблюдателя или зрелости домена.",
-    stateLive: "Доступно",
-    stateBounded: "Ограничено",
-    stateAbsentProjection: "Нет проекции",
-    stateAbsentDomain: "Домен не созрел",
-    domainMaturity: "Зрелость домена",
-    observerMaturity: "Зрелость наблюдателя",
-    boundsTitle: "Границы прогона",
-    boundsLede: "Явные ограничения текущей конфигурации наблюдателя.",
-    boundAdvance: "Максимум тактов за обмен",
-    boundDeltas: "Окно переходов поверхности",
-    boundHistory: "Ёмкость ряда наблюдателя",
-    boundExchanges: "Ёмкость журнала обмена",
-    boundStreams: "Активных потоков",
-    boundStreamsNote: "сводка среды, политика «последнее состояние»",
-    boundFrames: "Кадров в ряду",
-  },
-
-  palette: {
-    placeholder: "Перейти к разделу или выполнить действие",
-    areas: "Разделы",
-    actions: "Действия",
-    empty: "Ничего не найдено",
-  },
-
-  common: {
-    of: "из",
-    none: "—",
-    close: "Закрыть",
-    derived: "производные величины",
-    bounded: "ограниченное окно",
-    projection: "проекция наблюдателя",
-    readOnly: "только чтение",
-    total: "всего",
-    peak: "пик",
-    perTick: "на такт",
-    unavailableShort: "недоступно",
-  },
+/**
+ * How each locale names itself. A language switcher that labels languages in the language the
+ * reader has not chosen yet is useless to the reader who needs it most, so these are endonyms
+ * and are never translated.
+ */
+export const LOCALE_NAMES: Record<ObserverLocale, string> = {
+  "en-US": "English",
+  "ru-RU": "Русский",
+  "zh-Hans": "简体中文",
+  "de-DE": "Deutsch",
+  "es-ES": "Español",
 };
 
-type Dictionary = typeof ru;
-
-const en: Dictionary = {
-  product: "Causafera",
-  observer: "Observer",
-  tagline: "A causal survey instrument",
-
-  areas: {
-    station: { name: "Observatory", note: "Run state" },
-    chart: { name: "Chart", note: "Spatial instrument" },
-    flux: { name: "Flux", note: "Causal activity" },
-    assay: { name: "Explanation", note: "Explanation IR" },
-    instrument: { name: "Instrument", note: "Protocol and coverage" },
-  },
-
-  connection: {
-    idle: "Idle",
-    connecting: "Negotiating",
-    connected: "Attached",
-    unavailable: "No bridge",
-    error: "Link failure",
-    reconnect: "Reconnect",
-    unavailableTitle: "The observer is not attached to a runtime",
-    unavailableBody:
-      "The Tauri bridge is unavailable, so there is no authoritative data. The observer substitutes no demonstration state: an empty instrument is more honest than an invented reading.",
-    unavailableHint: "Start the desktop shell with pnpm --dir apps/observer desktop.",
-    errorTitle: "The observer exchange failed",
-  },
-
-  transport: {
-    run: "Run",
-    pause: "Hold",
-    step: "Step",
-    reset: "Reset",
-    seed: "Seed",
-    batch: "Batch",
-    batchNote: "ticks per exchange",
-    ticks: "Tick",
-    sequence: "Frame",
-    snapshot: "snapshot",
-  },
-
-  meridian: {
-    physicalDigest: "Physical state",
-    historyDigest: "History",
-    digestNote: "A digest is state identity, never a distance measure.",
-    locale: "Language",
-    inspector: "Inspector",
-    areas: "Areas",
-    collapse: "Collapse panel",
-    expand: "Expand panel",
-    resize: "Panel width",
-    palette: "Commands",
-  },
-
-  marginalia: {
-    protocol: "Protocol",
-    transport: "Channel",
-    lastExchange: "Last exchange",
-    exchanges: "Exchanges",
-    derivedHistory: "Series assembled by the observer",
-    hint: "Ctrl+K for commands",
-    replay: "Replaying a capture",
-  },
-
-  station: {
-    title: "Observatory",
-    eyebrow: "Objective projection",
-    lede:
-      "Everything on this screen is a derived projection of authoritative state. It is not agent knowledge and not a seamless planetary map.",
-    identity: "Run identity",
-    identityLede: "Negotiated protocol, seed and the state anchors of the current run.",
-    instruments: "Readings",
-    field: "Mana field",
-    fieldLede:
-      "Total intensity and peak cell intensity. These two are the only field quantities projected to the observer.",
-    accretion: "Trace accretion",
-    accretionLede:
-      "Committed traces and physical events. The rate is computed by the observer between received frames.",
-    admission: "Actor action admission",
-    admissionLede:
-      "Share of attempted actions that were committed. Rejection is a normal validation outcome, not an error.",
-    chartStrip: "Chart profile",
-    chartStripLede: "Active chunks in chart coordinate order. Elevation is shown as a relief range.",
-    activity: "Recent transitions",
-    activityLede: "The latest records of the bounded material surface transition window.",
-    coverage: "Instrument coverage",
-    coverageLede: "What the observer reads today, and what has no projection yet.",
-    openRegister: "Open the register",
-    population: "Population",
-    actors: "Actors",
-    activeChunks: "Active chunks",
-    traces: "Traces",
-    manaTotal: "Mana, total",
-    manaPeak: "Peak cell",
-    resolutionLevel: "Resolution level",
-    resolutionRelevance: "Relevance",
-    physicalEvents: "Physical events",
-    bytesPerChunk: "Bytes per chunk",
-    latestTrace: "Latest trace",
-    committed: "Committed",
-    rejected: "Rejected",
-    births: "Births",
-    deaths: "Deaths",
-    movements: "Movements",
-    manaCellChanges: "Mana cell changes",
-    manaEffects: "Mana physical effects",
-    resolutionTransitions: "Resolution transitions",
-  },
-
-  chart: {
-    title: "Chart",
-    eyebrow: "Spatial instrument",
-    lede:
-      "One chart at one containment layer. Chunk coordinates are chart-qualified and form no single global lattice, and everything beyond the received outline is unsurveyed ground rather than empty space.",
-    transectLede:
-      "Each column is a chunk. The band shows the elevation range, the fill shows total mana, and the marks show population, events and surface transitions.",
-    chunk: "Chunk",
-    chart: "Chart",
-    chartsPlural: "Charts",
-    chunksPlural: "Chunks",
-    elevation: "Elevation",
-    elevationRange: "Range",
-    roughness: "Roughness",
-    mana: "Mana",
-    resolution: "Resolution",
-    population: "Population",
-    events: "Events",
-    transitions: "Transitions",
-    latestTrace: "Latest trace",
-    noWorld: "No chunk projection received yet",
-    noWorldBody: "The WorldChunks query runs while this area is open.",
-    surfaceCell: "Surface cell",
-    surfaceCellLede: "The cell ordinal decoded to its position inside the 32³ chunk lattice.",
-    metres: "m",
-    millimetres: "mm",
-    lens: "Lens",
-    overlays: "Overlays",
-    noOverlays: "none",
-    awaitingChip: "{n} more — catalogue",
-    legend: "Legend",
-    noField: "This lens draws no field over chunks.",
-    unsurveyed: "Unsurveyed",
-    unsurveyedShort: "unsurveyed",
-    chunkAggregate: "A chunk aggregate, not a cell measurement",
-    scaleUnit: "chunks",
-    north: "N",
-    cell: "Cell",
-    cellLede: "A position in the 32³ chunk lattice. The observer receives no data for this cell beyond the tracked surfaces.",
-    readoutIdle: "Point at the chart",
-    mapHint: "Drag to pan, wheel to zoom, click to select. Arrows, +, − and 0 work while the chart has focus.",
-    profile: "Chart profile",
-    profileLede: "The same selection as a section: elevation range, mana, population and activity per chunk.",
-    register: "Chunk register",
-    catalogue: "Lens catalogue",
-    selection: "Selection",
-    selectPrompt: "No chunk selected",
-    selectPromptBody: "Select a chunk on the map, in the profile or in the register.",
-    noChart: "No chart received yet",
-    noChartBody: "The chunk projection arrives once the observer attaches. It never draws ground it was not given.",
-  },
-
-  flux: {
-    title: "Flux",
-    eyebrow: "Causal activity",
-    lede:
-      "The observer sees only the frames it asked for. Rates are averages across the gap between frames, not instantaneous runtime quantities.",
-    recorder: "Chart recorder",
-    recorderLede: "Runtime summary quantities against run ticks.",
-    rates: "Rates",
-    ratesLede: "The difference between the two most recent frames, normalised per tick.",
-    ladder: "Surface condition ladder",
-    ladderLede:
-      "Each line is one tracked surface. A step is a committed condition transition with its trace anchor.",
-    ledger: "Transition ledger",
-    ledgerLede: "The bounded window of recent material surface transitions.",
-    gates: "Local mana gates",
-    gatesLede: "Only gate transitions into the closed state are projected to the observer.",
-    noGates: "No gate transitions in the window",
-    noGatesBody:
-      "An empty list means no gate closed inside the observed window. That is an observation, not a gap in the data.",
-    noLadder: "No surface transitions yet",
-    noLadderBody: "Advance the run: transitions appear as actors make contact with the surface.",
-    filterTrace: "Trace filter",
-    clearFilter: "Clear filter",
-    clearSelection: "Clear selection",
-    tick: "Tick",
-    surface: "Surface",
-    condition: "Condition",
-    contact: "Contact",
-    manaEffect: "Mana effect",
-    manaTransition: "Mana transition",
-    localMana: "Local mana",
-    gateClosed: "closed",
-    gateOpen: "open",
-    perTick: "/tick",
-    cumulative: "cumulative",
-    rate: "rate",
-    quantity: "Quantity",
-    total: "Total",
-  },
-
-  assay: {
-    title: "Explanation",
-    eyebrow: "Explanation IR",
-    lede:
-      "Explanation never modifies state and is never authoritative. Every claim carries an evidence state, a confidence and its trace anchors.",
-    run: "Run the analysis",
-    running: "Running…",
-    experiment: "Experiment",
-    checkpoint: "Checkpoint",
-    overall: "Overall assessment",
-    claims: "Claims",
-    claim: "Claim",
-    schema: "Schema",
-    value: "Value",
-    confidence: "Confidence",
-    evidence: "Evidence",
-    comparison: "Comparison",
-    traces: "Traces",
-    reading: "How to read it",
-    empty: "No analysis has been run",
-    emptyBody:
-      "The bounded comparative material-surface loop experiment runs on request and returns typed Explanation IR.",
-    unknownTitle: "Unknown is a result",
-    unknownBody:
-      "Absence of evidence is not negative evidence. A claim marked unknown means the observer looked and found insufficient support.",
-    unknownSchema: "Schema without an observer description",
-    unknownSchemaBody:
-      "The value is shown as received. A description appears once the schema is registered in the observer.",
-    staleTitle: "This analysis describes an earlier tick",
-    staleBody: "The run advanced after the analysis. Run it again for the current state.",
-    frames: "Frames",
-    supported: "Supported",
-    partial: "Partial",
-    unsupported: "Unsupported",
-    unknown: "Unknown",
-  },
-
-  instrument: {
-    title: "Instrument",
-    eyebrow: "Protocol and coverage",
-    lede:
-      "Channel state, negotiated capabilities, and an honest register of what this instrument can observe today.",
-    negotiation: "Negotiation",
-    protocolVersion: "Protocol version",
-    capabilities: "Capabilities",
-    timeAtConnect: "Tick at connect",
-    channel: "Channel",
-    log: "Exchange log",
-    logLede: "Real exchanges with the observer bridge: size, duration, outcome.",
-    command: "Command",
-    detail: "Detail",
-    request: "Request",
-    response: "Response",
-    duration: "Duration",
-    outcome: "Outcome",
-    ok: "ok",
-    failed: "failed",
-    noExchanges: "No exchanges yet",
-    register: "Coverage register",
-    registerLede:
-      "The state of every observable: read today, bounded to a window, waiting for an observer projection, or waiting for domain maturity.",
-    stateLive: "Available",
-    stateBounded: "Bounded",
-    stateAbsentProjection: "No projection",
-    stateAbsentDomain: "Domain immature",
-    domainMaturity: "Domain maturity",
-    observerMaturity: "Observer maturity",
-    boundsTitle: "Run bounds",
-    boundsLede: "The explicit limits of the current observer configuration.",
-    boundAdvance: "Maximum ticks per exchange",
-    boundDeltas: "Surface transition window",
-    boundHistory: "Observer series capacity",
-    boundExchanges: "Exchange log capacity",
-    boundStreams: "Active streams",
-    boundStreamsNote: "runtime summary, latest-state-wins",
-    boundFrames: "Frames in the series",
-  },
-
-  palette: {
-    placeholder: "Go to an area or run an action",
-    areas: "Areas",
-    actions: "Actions",
-    empty: "Nothing found",
-  },
-
-  common: {
-    of: "of",
-    none: "—",
-    close: "Close",
-    derived: "derived quantities",
-    bounded: "bounded window",
-    projection: "observer projection",
-    readOnly: "read only",
-    total: "total",
-    peak: "peak",
-    perTick: "per tick",
-    unavailableShort: "unavailable",
-  },
+/** The two-letter mark shown on the compact switcher, mono-spaced and equal width. */
+export const LOCALE_MARKS: Record<ObserverLocale, string> = {
+  "en-US": "EN",
+  "ru-RU": "RU",
+  "zh-Hans": "中",
+  "de-DE": "DE",
+  "es-ES": "ES",
 };
 
-const dictionaries: Record<ObserverLocale, Dictionary> = { "ru-RU": ru, "en-US": en };
+const dictionaries: Record<ObserverLocale, Copy> = {
+  "en-US": en,
+  "ru-RU": ru,
+  "zh-Hans": zhHans,
+  "de-DE": de,
+  "es-ES": es,
+};
 
-export type Copy = Dictionary;
+const STORAGE_KEY = "causafera-observer-locale";
 
 export function copyFor(locale: ObserverLocale): Copy {
-  return dictionaries[locale];
+  return dictionaries[locale] ?? dictionaries[FALLBACK_LOCALE];
+}
+
+export function isObserverLocale(value: string): value is ObserverLocale {
+  return Object.prototype.hasOwnProperty.call(dictionaries, value);
+}
+
+/**
+ * Resolve any BCP-47-ish tag onto a supported locale.
+ *
+ * Matching is by primary subtag, with the script subtag deciding for Chinese: `zh`, `zh-CN`
+ * and `zh-Hans-CN` all resolve to `zh-Hans`, while a traditional-script tag does not — the
+ * observer has no traditional dictionary and claiming otherwise would be a lie about coverage.
+ */
+export function normaliseLocale(tag: string): ObserverLocale | undefined {
+  const clean = tag.trim().toLowerCase().replace(/_/g, "-");
+  if (clean.length === 0) return undefined;
+  if (isObserverLocale(tag)) return tag;
+  const [primary, ...rest] = clean.split("-");
+  switch (primary) {
+    case "en":
+      return "en-US";
+    case "ru":
+      return "ru-RU";
+    case "de":
+      return "de-DE";
+    case "es":
+      return "es-ES";
+    case "zh":
+      // Traditional script is not supported; only simplified tags resolve.
+      if (rest.includes("hant") || rest.includes("tw") || rest.includes("hk") || rest.includes("mo")) {
+        return undefined;
+      }
+      return "zh-Hans";
+    default:
+      return undefined;
+  }
+}
+
+/**
+ * The locale the observer opens in: a remembered choice first, then the browser's ordered
+ * language preferences, then English. Storage access is guarded because a sandboxed or
+ * private-mode window may refuse it, and a refused preference must not break the instrument.
+ */
+export function initialLocale(): ObserverLocale {
+  if (typeof window === "undefined") return FALLBACK_LOCALE;
+  const remembered = readStoredLocale();
+  if (remembered !== undefined) return remembered;
+  const preferences = window.navigator.languages ?? [window.navigator.language];
+  for (const tag of preferences) {
+    if (typeof tag !== "string") continue;
+    const matched = normaliseLocale(tag);
+    if (matched !== undefined) return matched;
+  }
+  return FALLBACK_LOCALE;
+}
+
+/** Remember an explicit choice. A storage failure is silent: the session still switches. */
+export function rememberLocale(locale: ObserverLocale): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(STORAGE_KEY, locale);
+  } catch {
+    // Private mode or a storage quota. The choice still applies to this session.
+  }
+}
+
+function readStoredLocale(): ObserverLocale | undefined {
+  try {
+    const stored = window.localStorage.getItem(STORAGE_KEY);
+    return stored === null ? undefined : normaliseLocale(stored);
+  } catch {
+    return undefined;
+  }
 }

@@ -86,6 +86,7 @@ Progress
 - [`plans/biological-mana-coupling.md`](plans/biological-mana-coupling.md) — accepted architecture with pending implementation stages for physical biological mana coupling and its downstream validation.
 - [`plans/local-mana-material-surface-coupling.md`](plans/local-mana-material-surface-coupling.md) — accepted bounded local mana-cell to material-surface coupling slice; replaces the global mana-total gate with per-surface local hysteresis.
 - [`plans/terrain-carrier-participation.md`](plans/terrain-carrier-participation.md) — accepted and implemented; the terrain carrier reaches the tick loop as a standing spatial structure, so the world seed varies the simulation (`TODO-RUNTIME-002`).
+- [`plans/observer-locale-coverage.md`](plans/observer-locale-coverage.md) — accepted and implemented; the observer presents itself in five locales across UI chrome, locale-keyed metadata and the authoritative Explanation renderer, with INV-007 covered across the whole set (`TODO-UI-006`).
 
 ## Draft Plans
 

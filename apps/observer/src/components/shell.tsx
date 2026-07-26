@@ -10,9 +10,15 @@
  * handle on the inner edge, and a collapsed state that keeps its expand control visible.
  */
 
-import { copyFor, LOCALES } from "../i18n";
+import { copyFor, LOCALE_MARKS, LOCALE_NAMES, LOCALES } from "../i18n";
 import { NEGOTIATED_CAPABILITY_NAMES } from "../observer/capability";
-import { digestPairs, formatBytes, formatDuration, formatInteger } from "../observer/format";
+import {
+  digestPairs,
+  formatBytes,
+  formatDuration,
+  formatInteger,
+  type ObserverLocale,
+} from "../observer/format";
 import { session, useActions, useSession } from "../observer/instance";
 import { BATCH_SIZES, type BatchSize } from "../observer/session";
 import { AREA_IDS, type AreaId, type WorkspaceState } from "../workspace";
@@ -152,18 +158,28 @@ export function Meridian({ onOpenPalette }: { onOpenPalette(): void }) {
       )}
 
       <div className="meridian__cell">
-        <div className="control-group" role="group" aria-label={copy.meridian.locale}>
-          {LOCALES.map((locale) => (
-            <button
-              key={locale}
-              type="button"
-              className="control control--compact"
-              aria-pressed={state.locale === locale}
-              onClick={() => session.setLocale(locale)}
+        {/*
+          Five languages are too many for one button each in a bar this dense, so the switcher
+          is a single cell. The options name themselves in their own language: a reader who
+          needs the switcher cannot be asked to recognise their language in a foreign one.
+        */}
+        <div className="control-group">
+          <label className="control control--select" title={copy.meridian.locale}>
+            <span className="control__label" aria-hidden="true">
+              {LOCALE_MARKS[state.locale]}
+            </span>
+            <select
+              value={state.locale}
+              aria-label={copy.meridian.locale}
+              onChange={(event) => session.setLocale(event.target.value as ObserverLocale)}
             >
-              {locale.slice(0, 2).toUpperCase()}
-            </button>
-          ))}
+              {LOCALES.map((locale) => (
+                <option key={locale} value={locale}>
+                  {LOCALE_NAMES[locale]}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
         <div className="control-group">
           <button

@@ -46,7 +46,7 @@ From `docs/architecture/detailed-development-rebaseline.md`:
 | Digest anchors | M3 | M4 — verified on every update | ✅ Verified | Yes |
 | Protocol negotiation | M3 | M4 — version + capabilities | ✅ Working | Yes |
 | Simulation control (pause/step/reset/seed) | M3 | M4 | ✅ Working | Yes |
-| Localization (ru-RU, en-US) | M4 | M4 — locale-invariant state | ✅ Working | Yes |
+| Localization (en-US, ru-RU, zh-Hans, de-DE, es-ES) | M4 | M4 — locale-invariant state, covered across the whole locale set | ✅ Working | Yes |
 | Observer stream hub + backpressure | M3 | M3 — capacity-1 used | Infrastructure only | Yes |
 
 ### Narrow but valid vertical slices

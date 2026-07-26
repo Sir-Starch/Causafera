@@ -702,6 +702,20 @@
 **Explanation Implications:** None; the map is a read surface
 **Out of Scope:** Joining charts into a global surface, agent-known perspectives, historical comparison, 3D terrain
 
+## TODO-UI-006: Five-Locale Observer Presentation
+**Status:** Completed
+**Phase:** Detailed Development — Observer Surface
+**Priority:** Medium
+**Dependencies:** TODO-UI-003, TODO-UI-005
+**Goal:** Present the whole observer surface in five languages without letting presentation reach authoritative state, and without leaving a layer half-translated
+**Acceptance Criteria:** `en-US`, `ru-RU`, `zh-Hans`, `de-DE` and `es-ES` cover UI chrome, locale-keyed observer metadata (claim descriptors, coverage register, lens catalogue) and the authoritative Rust Explanation renderer; the English dictionary is the derived baseline so a missing key fails compilation; an explicit choice persists across restarts and a first run follows browser preferences with an English fallback; unsupported tags including traditional Chinese fall back rather than being answered with the wrong script
+**Performance Requirements:** Static dictionaries with no runtime fetch; no effect on tick execution or wire encoding
+**Determinism Requirements:** INV-007 covered across the full locale set, comparing digests per tick and session payload bytes, not one locale pair
+**Ontology Implications:** Human languages remain non-authoritative presentation resources; a locale tag is presentation identity and never simulation identity
+**Observer Implications:** Locale travels to the protocol handler on connect and reaches nothing authoritative; the switcher is one meridian cell plus a command-palette entry per language
+**Explanation Implications:** Schema labels, evidence states, assessments and comparison contexts are localized in the authoritative Rust renderer; unregistered schemas keep their numeric identity in every locale
+**Out of Scope:** Traditional Chinese, right-to-left layout, locale-specific number and date formats beyond `Intl` grouping, translating protocol nouns, logs or domain identifiers
+
 ## TODO-OBS-001: Field Raster Projection and Chart Shape
 **Status:** Pending
 **Phase:** Detailed Development — Observer Surface

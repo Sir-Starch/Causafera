@@ -15,6 +15,7 @@
 import type { ExplanationReport, WorldChunkSnapshot } from "@causafera/observer-protocol";
 import type { RuntimeSummary } from "@causafera/observer-protocol";
 
+import { initialLocale, rememberLocale } from "../i18n";
 import { DemandRegistry, Store } from "./store";
 import {
   ObserverClient,
@@ -75,7 +76,8 @@ const initialState: SessionState = {
   analyzing: false,
   batch: 4,
   seed: 0,
-  locale: "ru-RU",
+  // A remembered choice, else the browser's language preferences, else English.
+  locale: initialLocale(),
 };
 
 export class ObserverSessionController {
@@ -145,6 +147,7 @@ export class ObserverSessionController {
   setLocale(locale: ObserverLocale): void {
     if (this.store.snapshot.locale === locale) return;
     this.store.patch({ locale });
+    rememberLocale(locale);
     // Renegotiating carries the observer locale to the protocol handler. It cannot change
     // any state hash (INV-007); it only tells the session which locale is observing.
     void this.client?.connect(locale).catch(() => {});

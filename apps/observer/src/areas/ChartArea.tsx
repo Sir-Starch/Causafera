@@ -26,6 +26,7 @@ import {
   formatCompact,
   formatInteger,
   formatMillimetresAsMetres,
+  type ObserverLocale,
 } from "../observer/format";
 import { useCopy, useFeed, useSession } from "../observer/instance";
 import {
@@ -409,7 +410,7 @@ function LensCatalogue({
   onPrimary,
   onToggleOverlay,
 }: {
-  locale: ReturnType<typeof useSession<"ru-RU" | "en-US">>;
+  locale: ObserverLocale;
   primaryId: string;
   overlayIds: readonly string[];
   onPrimary(id: string): void;

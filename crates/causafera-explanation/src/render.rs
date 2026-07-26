@@ -5,20 +5,70 @@ use crate::{
     NumericClaimValue,
 };
 
+/// The locales the observer may be rendered in.
+///
+/// This is presentation identity only. Rendering is deterministic within a locale and no
+/// authoritative state depends on which variant is chosen (INV-006, INV-007). English is the
+/// fallback for any tag that is not recognised, so an unsupported locale reads as English
+/// rather than as an empty or partially translated report.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ObserverLocale {
     En,
     Ru,
+    ZhHans,
+    De,
+    Es,
 }
 
 impl ObserverLocale {
-    pub fn parse(locale: &str) -> Self {
-        if locale.eq_ignore_ascii_case("ru") || locale.to_ascii_lowercase().starts_with("ru-") {
-            Self::Ru
-        } else {
-            Self::En
+    /// The order every translation table in this module is written in.
+    pub const ORDER: [Self; 5] = [Self::En, Self::Ru, Self::ZhHans, Self::De, Self::Es];
+
+    /// Position in `ORDER`, which is how the tables below are indexed.
+    const fn index(self) -> usize {
+        match self {
+            Self::En => 0,
+            Self::Ru => 1,
+            Self::ZhHans => 2,
+            Self::De => 3,
+            Self::Es => 4,
         }
     }
+
+    /// Resolve a locale tag by primary subtag, with the script deciding for Chinese.
+    ///
+    /// Traditional-script tags do not resolve to `ZhHans`: the project has no traditional
+    /// dictionary, and answering a `zh-Hant` request with simplified text would misstate what
+    /// the instrument actually covers.
+    pub fn parse(locale: &str) -> Self {
+        let lowered = locale.trim().to_ascii_lowercase().replace('_', "-");
+        let mut parts = lowered.split('-');
+        let Some(primary) = parts.next() else {
+            return Self::En;
+        };
+        let subtags: Vec<&str> = parts.collect();
+        match primary {
+            "ru" => Self::Ru,
+            "de" => Self::De,
+            "es" => Self::Es,
+            "zh" => {
+                if subtags
+                    .iter()
+                    .any(|tag| matches!(*tag, "hant" | "tw" | "hk" | "mo"))
+                {
+                    Self::En
+                } else {
+                    Self::ZhHans
+                }
+            }
+            _ => Self::En,
+        }
+    }
+}
+
+/// Pick a locale's entry out of a table written in `ObserverLocale::ORDER`.
+const fn pick(table: &[&'static str; 5], locale: ObserverLocale) -> &'static str {
+    table[locale.index()]
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -37,35 +87,25 @@ impl DeterministicExplanationRenderer {
         locale: ObserverLocale,
     ) -> RenderedExplanation {
         let mut text = String::new();
-        match locale {
-            ObserverLocale::En => {
-                writeln!(
-                    text,
-                    "Experiment {}. Assessment: {}.",
-                    report.experiment.raw(),
+        writeln!(
+            text,
+            "{}",
+            HEADING[locale.index()]
+                .replace("{experiment}", &report.experiment.raw().to_string())
+                .replace(
+                    "{assessment}",
                     assessment(report.overall_assessment, locale)
                 )
-                .unwrap();
-            }
-            ObserverLocale::Ru => {
-                writeln!(
-                    text,
-                    "Эксперимент {}. Оценка: {}.",
-                    report.experiment.raw(),
-                    assessment(report.overall_assessment, locale)
-                )
-                .unwrap();
-            }
-        }
+        )
+        .unwrap();
         for frame in &report.frames {
-            match locale {
-                ObserverLocale::En => {
-                    writeln!(text, "Tick {}:", frame.checkpoint_time.raw()).unwrap()
-                }
-                ObserverLocale::Ru => {
-                    writeln!(text, "Такт {}:", frame.checkpoint_time.raw()).unwrap()
-                }
-            }
+            writeln!(
+                text,
+                "{}",
+                TICK_HEADING[locale.index()]
+                    .replace("{tick}", &frame.checkpoint_time.raw().to_string())
+            )
+            .unwrap();
             for claim in &frame.claims {
                 render_claim(&mut text, claim, locale);
             }
@@ -77,66 +117,219 @@ impl DeterministicExplanationRenderer {
     }
 }
 
+/// The report's opening line. `{experiment}` and `{assessment}` are substituted in order.
+const HEADING: [&str; 5] = [
+    "Experiment {experiment}. Assessment: {assessment}.",
+    "Эксперимент {experiment}. Оценка: {assessment}.",
+    "实验 {experiment}。评估：{assessment}。",
+    "Experiment {experiment}. Bewertung: {assessment}.",
+    "Experimento {experiment}. Valoración: {assessment}.",
+];
+
+const TICK_HEADING: [&str; 5] = [
+    "Tick {tick}:",
+    "Такт {tick}:",
+    "第 {tick} 刻：",
+    "Takt {tick}:",
+    "Tic {tick}:",
+];
+
+/// One claim line. Every placeholder appears exactly once in every locale.
+const CLAIM_LINE: [&str; 5] = [
+    "- {name}: {value}; evidence {evidence}; confidence {confidence}%; {comparison}; traces {traces}.",
+    "- {name}: {value}; свидетельства: {evidence}; уверенность {confidence}%; {comparison}; трасс: {traces}.",
+    "- {name}：{value}；证据：{evidence}；置信度 {confidence}%；{comparison}；迹线 {traces} 条。",
+    "- {name}: {value}; Belege: {evidence}; Konfidenz {confidence} %; {comparison}; Spuren {traces}.",
+    "- {name}: {value}; evidencia: {evidence}; confianza {confidence} %; {comparison}; trazas {traces}.",
+];
+
 fn render_claim(out: &mut String, claim: &ExplanationClaim, locale: ObserverLocale) {
     let name = schema_name(claim.schema.raw(), locale);
     let value = numeric_value(claim.value);
     let evidence = evidence_state(claim.evidence_state, locale);
     let comparison = comparison_context(claim.comparison, locale);
     let confidence = (claim.confidence.raw() * 100.0).round() as u32;
-    match locale {
-        ObserverLocale::En => writeln!(
-            out,
-            "- {name}: {value}; evidence {evidence}; confidence {confidence}%; {comparison}; traces {}.",
-            claim.evidence_traces.len()
-        ).unwrap(),
-        ObserverLocale::Ru => writeln!(
-            out,
-            "- {name}: {value}; свидетельства: {evidence}; уверенность {confidence}%; {comparison}; трасс: {}.",
-            claim.evidence_traces.len()
-        ).unwrap(),
-    }
+    let line = CLAIM_LINE[locale.index()]
+        .replace("{name}", &name)
+        .replace("{value}", &value)
+        .replace("{evidence}", evidence)
+        .replace("{confidence}", &confidence.to_string())
+        .replace("{comparison}", &comparison)
+        .replace("{traces}", &claim.evidence_traces.len().to_string());
+    writeln!(out, "{line}").unwrap();
 }
 
+/// Registered claim schemas, in `ObserverLocale::ORDER`. An identifier absent from this table
+/// is rendered generically rather than hidden, so a new schema appears the moment it is emitted.
+const SCHEMA_NAMES: [(u64, [&str; 5]); 15] = [
+    (
+        1,
+        [
+            "reconstructability ratio",
+            "коэффициент реконструируемости",
+            "可重构性比率",
+            "Rekonstruierbarkeitsquotient",
+            "razón de reconstruibilidad",
+        ],
+    ),
+    (
+        2,
+        [
+            "path-dependence ratio",
+            "коэффициент зависимости от истории",
+            "路径依赖比率",
+            "Pfadabhängigkeitsquotient",
+            "razón de dependencia de trayectoria",
+        ],
+    ),
+    (
+        3,
+        [
+            "causal depth",
+            "каузальная глубина",
+            "因果深度",
+            "Kausaltiefe",
+            "profundidad causal",
+        ],
+    ),
+    (
+        4,
+        [
+            "temporal span",
+            "временной диапазон",
+            "时间跨度",
+            "zeitliche Spanne",
+            "extensión temporal",
+        ],
+    ),
+    (
+        5,
+        [
+            "counterfactual state distance",
+            "контрфактическое расстояние состояний",
+            "反事实状态距离",
+            "kontrafaktischer Zustandsabstand",
+            "distancia de estado contrafactual",
+        ],
+    ),
+    (
+        6,
+        [
+            "recovery distance",
+            "расстояние восстановления",
+            "恢复距离",
+            "Erholungsabstand",
+            "distancia de recuperación",
+        ],
+    ),
+    (
+        7,
+        [
+            "time to recovery",
+            "время до восстановления",
+            "恢复所需时间",
+            "Zeit bis zur Erholung",
+            "tiempo hasta la recuperación",
+        ],
+    ),
+    (
+        8,
+        [
+            "stability under active input",
+            "стабильность при активном воздействии",
+            "主动输入下的稳定性",
+            "Stabilität unter aktiver Einwirkung",
+            "estabilidad bajo entrada activa",
+        ],
+    ),
+    (
+        9,
+        [
+            "stability without active input",
+            "стабильность без активного воздействия",
+            "无主动输入时的稳定性",
+            "Stabilität ohne aktive Einwirkung",
+            "estabilidad sin entrada activa",
+        ],
+    ),
+    (
+        10,
+        [
+            "material-surface loop",
+            "цикл материальной поверхности",
+            "物质表面回路",
+            "materieller Oberflächenkreis",
+            "ciclo de superficie material",
+        ],
+    ),
+    (
+        11,
+        [
+            "material-surface observation window",
+            "окно наблюдения материальной поверхности",
+            "物质表面观测窗口",
+            "Beobachtungsfenster der materiellen Oberfläche",
+            "ventana de observación de superficie material",
+        ],
+    ),
+    (
+        12,
+        [
+            "material-surface repetition control",
+            "контроль повторяемости материальной поверхности",
+            "物质表面重复性对照",
+            "Wiederholungskontrolle der materiellen Oberfläche",
+            "control de repetición de superficie material",
+        ],
+    ),
+    (
+        13,
+        [
+            "material-surface mana context",
+            "мана-контекст материальной поверхности",
+            "物质表面魔力背景",
+            "Mana-Kontext der materiellen Oberfläche",
+            "contexto de maná de superficie material",
+        ],
+    ),
+    (
+        14,
+        [
+            "material-surface mana transition",
+            "переход маны материальной поверхности",
+            "物质表面魔力转变",
+            "Mana-Übergang der materiellen Oberfläche",
+            "transición de maná de superficie material",
+        ],
+    ),
+    (
+        15,
+        [
+            "material-surface local mana coupling",
+            "локальная связь маны материальной поверхности",
+            "物质表面局部魔力耦合",
+            "Kopplung des lokalen Mana an der materiellen Oberfläche",
+            "acoplamiento de maná local de superficie material",
+        ],
+    ),
+];
+
+/// The generic fallback. `{id}` keeps the schema identity visible in every locale.
+const GENERIC_SCHEMA: [&str; 5] = [
+    "claim schema {id} (generic renderer)",
+    "схема утверждения {id} (общий шаблон)",
+    "断言模式 {id}（通用渲染器）",
+    "Aussageschema {id} (generischer Renderer)",
+    "esquema de afirmación {id} (renderizador genérico)",
+];
+
 fn schema_name(id: u64, locale: ObserverLocale) -> String {
-    let known = match (id, locale) {
-        (1, ObserverLocale::En) => "reconstructability ratio",
-        (2, ObserverLocale::En) => "path-dependence ratio",
-        (3, ObserverLocale::En) => "causal depth",
-        (4, ObserverLocale::En) => "temporal span",
-        (5, ObserverLocale::En) => "counterfactual state distance",
-        (6, ObserverLocale::En) => "recovery distance",
-        (7, ObserverLocale::En) => "time to recovery",
-        (8, ObserverLocale::En) => "stability under active input",
-        (9, ObserverLocale::En) => "stability without active input",
-        (10, ObserverLocale::En) => "material-surface loop",
-        (11, ObserverLocale::En) => "material-surface observation window",
-        (12, ObserverLocale::En) => "material-surface repetition control",
-        (13, ObserverLocale::En) => "material-surface mana context",
-        (14, ObserverLocale::En) => "material-surface mana transition",
-        (15, ObserverLocale::En) => "material-surface local mana coupling",
-        (1, ObserverLocale::Ru) => "коэффициент реконструируемости",
-        (2, ObserverLocale::Ru) => "коэффициент зависимости от истории",
-        (3, ObserverLocale::Ru) => "каузальная глубина",
-        (4, ObserverLocale::Ru) => "временной диапазон",
-        (5, ObserverLocale::Ru) => "контрфактическое расстояние состояний",
-        (6, ObserverLocale::Ru) => "расстояние восстановления",
-        (7, ObserverLocale::Ru) => "время до восстановления",
-        (8, ObserverLocale::Ru) => "стабильность при активном воздействии",
-        (9, ObserverLocale::Ru) => "стабильность без активного воздействия",
-        (10, ObserverLocale::Ru) => "цикл материальной поверхности",
-        (11, ObserverLocale::Ru) => "окно наблюдения материальной поверхности",
-        (12, ObserverLocale::Ru) => "контроль повторяемости материальной поверхности",
-        (13, ObserverLocale::Ru) => "мана-контекст материальной поверхности",
-        (14, ObserverLocale::Ru) => "переход маны материальной поверхности",
-        (15, ObserverLocale::Ru) => "локальная связь маны материальной поверхности",
-        _ => {
-            return match locale {
-                ObserverLocale::En => format!("claim schema {id} (generic renderer)"),
-                ObserverLocale::Ru => format!("схема утверждения {id} (общий шаблон)"),
-            };
+    for (schema, names) in &SCHEMA_NAMES {
+        if *schema == id {
+            return pick(names, locale).to_owned();
         }
-    };
-    known.to_owned()
+    }
+    GENERIC_SCHEMA[locale.index()].replace("{id}", &id.to_string())
 }
 
 fn numeric_value(value: NumericClaimValue) -> String {
@@ -150,45 +343,102 @@ fn numeric_value(value: NumericClaimValue) -> String {
     }
 }
 
+const EVIDENCE_SUPPORTED: [&str; 5] = [
+    "supported",
+    "подтверждено",
+    "有支持",
+    "gestützt",
+    "respaldada",
+];
+
+const EVIDENCE_UNSUPPORTED: [&str; 5] = [
+    "unsupported",
+    "не подтверждено",
+    "无支持",
+    "nicht gestützt",
+    "sin respaldo",
+];
+
+const EVIDENCE_UNKNOWN: [&str; 5] = ["unknown", "неизвестно", "未知", "unbekannt", "desconocida"];
+
 fn evidence_state(state: ClaimEvidenceState, locale: ObserverLocale) -> &'static str {
-    match (state, locale) {
-        (ClaimEvidenceState::Supported, ObserverLocale::En) => "supported",
-        (ClaimEvidenceState::Unsupported, ObserverLocale::En) => "unsupported",
-        (ClaimEvidenceState::Unknown, ObserverLocale::En) => "unknown",
-        (ClaimEvidenceState::Supported, ObserverLocale::Ru) => "подтверждено",
-        (ClaimEvidenceState::Unsupported, ObserverLocale::Ru) => "не подтверждено",
-        (ClaimEvidenceState::Unknown, ObserverLocale::Ru) => "неизвестно",
-    }
+    let table = match state {
+        ClaimEvidenceState::Supported => &EVIDENCE_SUPPORTED,
+        ClaimEvidenceState::Unsupported => &EVIDENCE_UNSUPPORTED,
+        ClaimEvidenceState::Unknown => &EVIDENCE_UNKNOWN,
+    };
+    pick(table, locale)
 }
+
+const ASSESSMENT_SUPPORTED: [&str; 5] = [
+    "supported",
+    "подтверждено",
+    "有支持",
+    "gestützt",
+    "respaldada",
+];
+
+const ASSESSMENT_PARTIAL: [&str; 5] = [
+    "partial",
+    "частично подтверждено",
+    "部分支持",
+    "teilweise gestützt",
+    "parcialmente respaldada",
+];
+
+const ASSESSMENT_UNSUPPORTED: [&str; 5] = [
+    "unsupported",
+    "не подтверждено",
+    "无支持",
+    "nicht gestützt",
+    "sin respaldo",
+];
+
+const ASSESSMENT_UNKNOWN: [&str; 5] = ["unknown", "неизвестно", "未知", "unbekannt", "desconocida"];
 
 fn assessment(value: FrameAssessment, locale: ObserverLocale) -> &'static str {
-    match (value, locale) {
-        (FrameAssessment::Supported, ObserverLocale::En) => "supported",
-        (FrameAssessment::Partial, ObserverLocale::En) => "partial",
-        (FrameAssessment::Unsupported, ObserverLocale::En) => "unsupported",
-        (FrameAssessment::Unknown, ObserverLocale::En) => "unknown",
-        (FrameAssessment::Supported, ObserverLocale::Ru) => "подтверждено",
-        (FrameAssessment::Partial, ObserverLocale::Ru) => "частично подтверждено",
-        (FrameAssessment::Unsupported, ObserverLocale::Ru) => "не подтверждено",
-        (FrameAssessment::Unknown, ObserverLocale::Ru) => "неизвестно",
-    }
+    let table = match value {
+        FrameAssessment::Supported => &ASSESSMENT_SUPPORTED,
+        FrameAssessment::Partial => &ASSESSMENT_PARTIAL,
+        FrameAssessment::Unsupported => &ASSESSMENT_UNSUPPORTED,
+        FrameAssessment::Unknown => &ASSESSMENT_UNKNOWN,
+    };
+    pick(table, locale)
 }
 
+const COMPARISON_NONE: [&str; 5] = [
+    "no comparison",
+    "без сравнения",
+    "无对照",
+    "kein Vergleich",
+    "sin comparación",
+];
+
+/// `{cohort}` carries the cohort identity, which is data and never translated.
+const COMPARISON_MATCHED: [&str; 5] = [
+    "matched cohort {cohort}",
+    "сопоставленная когорта {cohort}",
+    "匹配队列 {cohort}",
+    "gepaarte Kohorte {cohort}",
+    "cohorte emparejada {cohort}",
+];
+
+const COMPARISON_COUNTERFACTUAL: [&str; 5] = [
+    "counterfactual cohort {cohort}",
+    "контрфактическая когорта {cohort}",
+    "反事实队列 {cohort}",
+    "kontrafaktische Kohorte {cohort}",
+    "cohorte contrafactual {cohort}",
+];
+
 fn comparison_context(value: ComparisonContext, locale: ObserverLocale) -> String {
-    match (value, locale) {
-        (ComparisonContext::None, ObserverLocale::En) => "no comparison".into(),
-        (ComparisonContext::None, ObserverLocale::Ru) => "без сравнения".into(),
-        (ComparisonContext::MatchedCohort { cohort }, ObserverLocale::En) => {
-            format!("matched cohort {}", cohort.raw())
+    match value {
+        ComparisonContext::None => pick(&COMPARISON_NONE, locale).to_owned(),
+        ComparisonContext::MatchedCohort { cohort } => {
+            pick(&COMPARISON_MATCHED, locale).replace("{cohort}", &cohort.raw().to_string())
         }
-        (ComparisonContext::MatchedCohort { cohort }, ObserverLocale::Ru) => {
-            format!("сопоставленная когорта {}", cohort.raw())
-        }
-        (ComparisonContext::Counterfactual { cohort }, ObserverLocale::En) => {
-            format!("counterfactual cohort {}", cohort.raw())
-        }
-        (ComparisonContext::Counterfactual { cohort }, ObserverLocale::Ru) => {
-            format!("контрфактическая когорта {}", cohort.raw())
+        ComparisonContext::Counterfactual { cohort } => {
+            pick(&COMPARISON_COUNTERFACTUAL, locale).replace("{cohort}", &cohort.raw().to_string())
         }
     }
 }
@@ -232,6 +482,96 @@ mod tests {
         assert_ne!(en.text, ru.text);
         assert!(en.text.contains("confidence 75%"));
         assert!(ru.text.contains("уверенность 75%"));
+    }
+
+    #[test]
+    fn every_locale_renders_deterministically_and_distinctly() {
+        // Given: one report and the full set of supported locales.
+        let renderer = DeterministicExplanationRenderer;
+        let report = report();
+
+        // When: each locale renders it twice.
+        let mut rendered = Vec::new();
+        for locale in ObserverLocale::ORDER {
+            let first = renderer.render(&report, locale);
+            let second = renderer.render(&report, locale);
+
+            // Then: rendering is a function of the report and the locale, nothing else.
+            assert_eq!(first, second, "{locale:?} did not render deterministically");
+            assert!(!first.text.is_empty(), "{locale:?} rendered nothing");
+            assert!(
+                !first.text.contains('{'),
+                "{locale:?} left an unsubstituted placeholder: {}",
+                first.text
+            );
+            rendered.push(first.text);
+        }
+
+        // Then: no two locales produce the same text, so none is silently untranslated.
+        for (index, text) in rendered.iter().enumerate() {
+            for (other_index, other) in rendered.iter().enumerate().skip(index + 1) {
+                assert_ne!(
+                    text,
+                    other,
+                    "locales {:?} and {:?} rendered identically",
+                    ObserverLocale::ORDER[index],
+                    ObserverLocale::ORDER[other_index]
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn locale_tags_resolve_by_primary_subtag_and_script() {
+        // Given: the tags the observer front end sends, plus bare and irregular forms.
+        for (tag, expected) in [
+            ("en-US", ObserverLocale::En),
+            ("en", ObserverLocale::En),
+            ("ru-RU", ObserverLocale::Ru),
+            ("ru", ObserverLocale::Ru),
+            ("zh-Hans", ObserverLocale::ZhHans),
+            ("zh", ObserverLocale::ZhHans),
+            ("zh-CN", ObserverLocale::ZhHans),
+            ("zh_hans_cn", ObserverLocale::ZhHans),
+            ("de-DE", ObserverLocale::De),
+            ("de", ObserverLocale::De),
+            ("es-ES", ObserverLocale::Es),
+            ("es-MX", ObserverLocale::Es),
+        ] {
+            assert_eq!(
+                ObserverLocale::parse(tag),
+                expected,
+                "tag {tag} misresolved"
+            );
+        }
+
+        // Then: traditional script and unknown tags fall back rather than claiming coverage.
+        for tag in ["zh-Hant", "zh-TW", "zh-HK", "fr-FR", "", "   ", "nonsense"] {
+            assert_eq!(
+                ObserverLocale::parse(tag),
+                ObserverLocale::En,
+                "tag {tag} should have fallen back to English"
+            );
+        }
+    }
+
+    #[test]
+    fn an_unregistered_schema_keeps_its_identity_in_every_locale() {
+        // Given: a claim carrying a schema the renderer does not know.
+        let mut report = report();
+        report.frames[0].claims[0].schema = ExplanationClaimSchemaId::new(4242);
+
+        // When: every locale renders it.
+        for locale in ObserverLocale::ORDER {
+            let rendered = DeterministicExplanationRenderer.render(&report, locale);
+
+            // Then: the numeric identity survives translation, so the schema stays traceable.
+            assert!(
+                rendered.text.contains("4242"),
+                "{locale:?} lost the schema identity: {}",
+                rendered.text
+            );
+        }
     }
 
     #[test]

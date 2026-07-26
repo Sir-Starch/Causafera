@@ -5,7 +5,17 @@
  * changes across locales in a way that could imply a different measured value (INV-006).
  */
 
-export type ObserverLocale = "ru-RU" | "en-US";
+/**
+ * The locales the observer presents itself in.
+ *
+ * These tags are presentation identity, not simulation identity. They travel to the protocol
+ * handler on connect so the runtime knows which locale is observing, and nothing downstream of
+ * that may branch on them in a way that reaches authoritative state (INV-006, INV-007).
+ *
+ * `zh-Hans` carries a script subtag rather than a region because the distinction that matters
+ * for Chinese is the script, not the country.
+ */
+export type ObserverLocale = "en-US" | "ru-RU" | "zh-Hans" | "de-DE" | "es-ES";
 
 const integerFormats = new Map<string, Intl.NumberFormat>();
 

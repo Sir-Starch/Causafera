@@ -7,14 +7,15 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { useActions, useCopy, useSession } from "../observer/instance";
+import { LOCALE_NAMES, LOCALES } from "../i18n";
+import { session, useActions, useCopy, useSession } from "../observer/instance";
 import { AREA_IDS, type AreaId } from "../workspace";
 import { AreaMark } from "./Sigil";
 import { Kbd } from "./primitives";
 
 interface Command {
   id: string;
-  group: "areas" | "actions";
+  group: "areas" | "actions" | "locales";
   label: string;
   hint?: string;
   area?: AreaId;
@@ -34,6 +35,7 @@ export function CommandPalette({
   const actions = useActions();
   const running = useSession((state) => state.running);
   const attached = useSession((state) => state.connection === "connected");
+  const current = useSession((state) => state.locale);
   const [query, setQuery] = useState("");
   const [cursor, setCursor] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -74,8 +76,20 @@ export function CommandPalette({
         run: actions.reconnect,
       });
     }
+    // Every language is reachable by typing its own name, so the switcher in the meridian is
+    // a convenience rather than the only way in.
+    for (const locale of LOCALES) {
+      if (locale === current) continue;
+      list.push({
+        id: `locale:${locale}`,
+        group: "locales",
+        label: LOCALE_NAMES[locale],
+        hint: copy.meridian.locale,
+        run: () => session.setLocale(locale),
+      });
+    }
     return list;
-  }, [actions, attached, copy, goTo, running]);
+  }, [actions, attached, copy, current, goTo, running]);
 
   const matches = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -104,6 +118,7 @@ export function CommandPalette({
   const groups: { id: Command["group"]; label: string }[] = [
     { id: "areas", label: copy.palette.areas },
     { id: "actions", label: copy.palette.actions },
+    { id: "locales", label: copy.palette.locales },
   ];
 
   return (
