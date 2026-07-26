@@ -123,9 +123,15 @@ specialisation of it. Same-tick co-occurrence therefore scores on both, for ever
 accepted model. An earlier draft of this section said terrain earns synchronisation and spatial
 credit only; that was wrong about which channels fire, and is corrected here.
 
-What matters is that none of it is credit for being re-read, and that is asserted rather than argued:
-`a_standing_carrier_is_never_paid_for_being_re_read` and
-`a_standing_carrier_earns_no_credit_for_regular_timing` hold the numbers below as committed tests.
+What matters is that none of it is credit for being re-read, and that is asserted rather than argued
+at both levels it can fail. `a_standing_carrier_is_never_paid_for_being_re_read` and
+`a_standing_carrier_earns_no_credit_for_regular_timing` hold the numbers below against the scorer.
+`standing_terrain_is_not_counted_as_a_physical_event` and
+`no_terrain_fingerprint_is_ever_retained_in_history` hold the wiring in `PhysicalPatternSystem`,
+which the scorer tests cannot see: the second runs a world with actors, so the history is full of
+change-driven samples, and asserts that not one terrain fingerprint is among them. Both were
+confirmed falsifiable by reinstating the retention in `PhysicalPatternSystem::execute`, which turns
+them red while leaving the two scorer tests green.
 
 Four columns sharing a fingerprint, emitted with no history, inject 492 whether the emission is read
 at tick 1, tick 5 or tick 50 — the response is exactly invariant to the read cadence. The same
@@ -157,8 +163,9 @@ the default extent. That is a resolution mismatch rather than physics, and it al
 - `source_ordinal` is the column ordinal, and `source_column` resolves it back to the patch of
   ground it summarises. `source_cell` and the per-cell raster the observer projects are unchanged;
 - `cause` is the terrain's own `generation_trace`, which is the truthful answer to why this
-  structure is here at this tick. A mana cell change therefore carries terrain generation in its
-  causal ancestry.
+  structure is here at this tick. A mana cell change that terrain drove therefore carries terrain
+  generation in its causal ancestry — see the Explanation impact section for the one path that still
+  commits a change with no ancestry at all, and which this carrier neither introduces nor repairs.
 
 The projection is derived once, in `TerrainCarrierAdapter::new`, because recomputing a static
 summary per tick is exactly what a standing carrier must not cost.
@@ -229,6 +236,13 @@ Direct acceptance coverage, in `crates/causafera-runtime/tests/terrain_carrier.r
 - `an_inert_terrain_carrier_leaves_an_empty_world_empty` — the recorded prior behaviour.
 - `terrain_participation_survives_a_snapshot_round_trip` — an inert world resumes inert, and a
   standing control confirms the flag is what makes the difference.
+
+Contract coverage for the standing carrier's response, in the same file:
+`a_standing_carrier_is_never_paid_for_being_re_read`,
+`a_standing_carrier_earns_no_credit_for_regular_timing`,
+`standing_terrain_is_not_counted_as_a_physical_event` and
+`no_terrain_fingerprint_is_ever_retained_in_history`. The first two pin the scorer's numbers, the
+last two pin the runtime wiring that decides what the scorer is given.
 
 Carrier coverage, in `crates/causafera-runtime/src/carrier.rs`:
 one sample per lattice column at extents 3, 4, 6 and 8; every terrain cell reaching exactly one
