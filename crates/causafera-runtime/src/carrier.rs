@@ -14,6 +14,11 @@ pub const MATERIAL_SURFACE_CARRIER_SCHEMA: CarrierAdapterSchemaId = CarrierAdapt
 
 const TERRAIN_PATTERN_DOMAIN: u64 = 0x5445_5252_4149_4E50;
 const MATERIAL_SURFACE_PATTERN_DOMAIN: u64 = 0x4D41_5453_5552_4643;
+/// Roughness is quantised into classes before it reaches a column fingerprint,
+/// so two columns of comparably rough ground share a pattern and the field's
+/// spatial-repetition channel can see them. A millimetre-exact mean would make
+/// every column unique and leave that channel permanently silent.
+const TERRAIN_ROUGHNESS_CLASS_MM: u64 = 32;
 const TERRAIN_GENERATOR: TerrainGeneratorFingerprint =
     TerrainGeneratorFingerprint::new(0x2405_0001);
 const TERRAIN_PARAMETERS: TerrainParameterFingerprint =
@@ -24,6 +29,13 @@ pub struct TerrainCarrierAdapter {
     pub(crate) chunk: ChartChunkCoord,
     pub(crate) terrain: TerrainChunk,
     pub(crate) field_extent: u8,
+    /// The lattice projection of `terrain`, derived once.
+    ///
+    /// It is a pure function of the terrain and the extent, so it is never
+    /// persisted and never compared: two adapters holding the same terrain at
+    /// the same extent hold the same columns by construction. Recomputing it
+    /// per tick is what a standing carrier must not cost.
+    columns: Vec<TerrainColumn>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -76,11 +88,13 @@ pub struct TerrainCarrierSnapshot {
 }
 
 impl TerrainCarrierAdapter {
-    pub const fn new(chunk: ChartChunkCoord, terrain: TerrainChunk, field_extent: u8) -> Self {
+    pub fn new(chunk: ChartChunkCoord, terrain: TerrainChunk, field_extent: u8) -> Self {
+        let columns = project_columns(&terrain, field_extent);
         Self {
             chunk,
             terrain,
             field_extent,
+            columns,
         }
     }
 
@@ -153,23 +167,105 @@ impl TerrainCarrierAdapter {
         Ok(Self::new(snapshot.chunk, terrain, snapshot.field_extent))
     }
 
-    fn sample_at(
-        &self,
-        time: SimulationTime,
-        cause: TraceId,
-        index: usize,
-    ) -> PhysicalPatternSample {
-        let cell = terrain_cell_at(&self.terrain, index);
-        PhysicalPatternSample {
-            chunk: self.chunk,
-            pattern: terrain_pattern(cell),
-            position: field_position(index, self.field_extent),
-            observed_at: time,
-            magnitude: terrain_magnitude(&self.terrain, index),
-            source_ordinal: index as u32,
-            cause,
-        }
+    /// The standing terrain structure, one column per plan-view cell of the
+    /// mana lattice.
+    ///
+    /// A column's block of ground is summarised, not decimated: every terrain
+    /// cell in the block contributes to the column's structure and to the
+    /// material it is counted as. Columns are in the lattice's canonical
+    /// row-major order, which is also `source_ordinal` order.
+    pub fn columns(&self) -> &[TerrainColumn] {
+        &self.columns
     }
+
+    /// The column a sample's `source_ordinal` came from, so a mana cell change
+    /// can be resolved back to the ground under it.
+    pub fn source_column(&self, source_ordinal: u32) -> Option<TerrainColumn> {
+        let index = usize::try_from(source_ordinal).ok()?;
+        self.columns.get(index).copied()
+    }
+}
+
+fn project_columns(terrain: &TerrainChunk, field_extent: u8) -> Vec<TerrainColumn> {
+    let extent = usize::from(field_extent);
+    let mut blocks = vec![ColumnAccumulator::default(); extent * extent];
+    for index in 0..TERRAIN_CELLS_PER_CHUNK {
+        let position = terrain_field_position(index, field_extent);
+        let column = usize::from(position.y) * extent + usize::from(position.x);
+        let cell = terrain_cell_at(terrain, index);
+        let block = &mut blocks[column];
+        block.cells += 1;
+        block.structure += u64::from(terrain_structure(terrain, index));
+        block.roughness += u64::from(cell.roughness.millimetres());
+        block.material_counts.push(cell.surface_material);
+    }
+    blocks
+        .into_iter()
+        .enumerate()
+        .map(|(column, block)| {
+            let cells = block.cells.max(1);
+            TerrainColumn {
+                ordinal: column as u32,
+                position: LocalCoord::new((column % extent) as u8, (column / extent) as u8, 0),
+                cell_count: block.cells,
+                dominant_material: dominant_material(&block.material_counts),
+                roughness_class: (block.roughness / cells as u64 / TERRAIN_ROUGHNESS_CLASS_MM)
+                    as u32,
+                structure: u32::try_from(block.structure / cells as u64).unwrap_or(u32::MAX),
+            }
+        })
+        .collect()
+}
+
+/// One plan-view column of the mana lattice, summarised from the terrain cells
+/// standing under it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TerrainColumn {
+    pub ordinal: u32,
+    pub position: LocalCoord,
+    pub cell_count: usize,
+    pub dominant_material: MaterialId,
+    pub roughness_class: u32,
+    /// Mean per-cell terrain structure: relief contrast, material discontinuity
+    /// and roughness. Featureless ground scores zero.
+    pub structure: u32,
+}
+
+impl TerrainColumn {
+    /// A fingerprint of the column's physical composition. It is derived from
+    /// surface material and roughness only, exactly as a single cell's
+    /// fingerprint is, so no label, concept or observer classification can
+    /// reach it.
+    pub fn pattern(self) -> PhysicalPatternId {
+        PhysicalPatternId::new(mix64(
+            TERRAIN_PATTERN_DOMAIN
+                ^ TERRAIN_CARRIER_SCHEMA.raw()
+                ^ self.dominant_material.raw().rotate_left(17)
+                ^ u64::from(self.roughness_class).rotate_left(41),
+        ))
+    }
+}
+
+#[derive(Clone, Default)]
+struct ColumnAccumulator {
+    cells: usize,
+    structure: u64,
+    roughness: u64,
+    material_counts: Vec<MaterialId>,
+}
+
+/// The most frequent surface material in a column, lowest identifier first on a
+/// tie so the choice never depends on iteration order.
+fn dominant_material(materials: &[MaterialId]) -> MaterialId {
+    let mut counts = std::collections::BTreeMap::<MaterialId, usize>::new();
+    for material in materials {
+        *counts.entry(*material).or_default() += 1;
+    }
+    counts
+        .into_iter()
+        .max_by_key(|(material, count)| (*count, std::cmp::Reverse(*material)))
+        .map(|(material, _)| material)
+        .unwrap_or(MaterialId::new(0))
 }
 
 impl PhysicalCarrierAdapter for TerrainCarrierAdapter {
@@ -177,9 +273,28 @@ impl PhysicalCarrierAdapter for TerrainCarrierAdapter {
         TERRAIN_CARRIER_SCHEMA
     }
 
+    /// Terrain presents its standing structure at the mana lattice's own
+    /// resolution.
+    ///
+    /// The field can only hold structure at its own lattice. Emitting one
+    /// sample per terrain cell would drive `CHUNK_SIZE²` samples into `extent²`
+    /// columns — over-sampling the lattice by a factor of a hundred at the
+    /// default extent, which is a resolution mismatch rather than physics, and
+    /// which would swamp the change-driven carriers sharing the stream.
     fn emit_samples(&self, time: SimulationTime, cause: TraceId) -> Vec<PhysicalPatternSample> {
-        (0..TERRAIN_CELLS_PER_CHUNK)
-            .map(|index| self.sample_at(time, cause, index))
+        self.columns
+            .iter()
+            .copied()
+            .filter(|column| column.structure > 0)
+            .map(|column| PhysicalPatternSample {
+                chunk: self.chunk,
+                pattern: column.pattern(),
+                position: column.position,
+                observed_at: time,
+                magnitude: column.structure,
+                source_ordinal: column.ordinal,
+                cause,
+            })
             .collect()
     }
 }
@@ -226,13 +341,18 @@ pub fn terrain_pattern(cell: TerrainCell) -> PhysicalPatternId {
     ))
 }
 
-fn terrain_magnitude(terrain: &TerrainChunk, index: usize) -> u32 {
+/// The physical structure a terrain cell carries: relief contrast against its
+/// neighbours, surface material discontinuity, and roughness.
+///
+/// There is no constant term. Featureless ground is not a physical pattern, and
+/// a floor under every cell would make a flat plain drive the field as hard as
+/// a ridge does.
+fn terrain_structure(terrain: &TerrainChunk, index: usize) -> u32 {
     let cell = terrain_cell_at(terrain, index);
     let contrast = elevation_contrast(terrain, index);
     let material_delta = material_difference(terrain, index);
     let roughness = cell.roughness.millimetres();
-    128_u32
-        .saturating_add(contrast / 32)
+    (contrast / 32)
         .saturating_add(material_delta.saturating_mul(16))
         .saturating_add(roughness)
 }
@@ -283,12 +403,29 @@ fn neighbor_indices(index: usize) -> Vec<usize> {
     neighbors
 }
 
-fn field_position(index: usize, extent: u8) -> LocalCoord {
+/// Project a terrain cell onto the mana lattice column that covers it.
+///
+/// Terrain is always `CHUNK_SIZE × CHUNK_SIZE` in plan view; the mana field is
+/// `extent³`. A cell belongs to the column whose block of the chunk contains it,
+/// so a contiguous patch of ground reaches one column and the landform's spatial
+/// structure survives the projection.
+fn terrain_field_position(index: usize, extent: u8) -> LocalCoord {
     let side = usize::from(CHUNK_SIZE);
     let extent = usize::from(extent);
-    let x = index % side;
-    let y = index / side;
-    LocalCoord::new((x % extent) as u8, (y % extent) as u8, 0)
+    let x = (index % side) * extent / side;
+    let y = (index / side) * extent / side;
+    LocalCoord::new(x as u8, y as u8, 0)
+}
+
+/// Decompose a mana cell index into its lattice position.
+fn field_position(index: usize, extent: u8) -> LocalCoord {
+    let extent = usize::from(extent);
+    let plane = extent * extent;
+    LocalCoord::new(
+        (index % extent) as u8,
+        ((index % plane) / extent) as u8,
+        (index / plane) as u8,
+    )
 }
 
 pub(crate) fn mix64(mut value: u64) -> u64 {
@@ -313,22 +450,144 @@ mod tests {
     use super::*;
     use causafera_types::ChunkCoord;
 
-    #[test]
-    fn terrain_adapter_emits_one_sample_per_cell() {
-        let chunk = ChartChunkCoord::new(
+    fn test_chunk() -> ChartChunkCoord {
+        ChartChunkCoord::new(
             causafera_types::SpatialChartId::new(1),
             ChunkCoord::new(0, 0, 0),
-        );
-        let adapter = TerrainCarrierAdapter::new(
-            chunk,
-            deterministic_terrain_chunk(7, chunk, TraceId::new(0)),
-            3,
-        );
+        )
+    }
 
-        let samples = adapter.emit_samples(SimulationTime::new(1), TraceId::new(0));
+    fn adapter(seed: u64, extent: u8) -> TerrainCarrierAdapter {
+        TerrainCarrierAdapter::new(
+            test_chunk(),
+            deterministic_terrain_chunk(seed, test_chunk(), TraceId::new(0)),
+            extent,
+        )
+    }
 
-        assert_eq!(samples.len(), TERRAIN_CELLS_PER_CHUNK);
-        assert!(samples.iter().all(|sample| sample.chunk == chunk));
-        assert!(samples.iter().any(|sample| sample.magnitude > 128));
+    #[test]
+    fn terrain_adapter_emits_one_sample_per_lattice_column() {
+        for extent in [3, 4, 6, 8] {
+            let adapter = adapter(7, extent);
+
+            let samples = adapter.emit_samples(SimulationTime::new(1), TraceId::new(0));
+
+            assert_eq!(samples.len(), usize::from(extent).pow(2));
+            assert!(samples.iter().all(|sample| sample.chunk == test_chunk()));
+            assert!(samples.iter().all(|sample| sample.position.z == 0));
+            assert!(samples.iter().all(|sample| sample.magnitude > 0));
+        }
+    }
+
+    #[test]
+    fn every_terrain_cell_reaches_exactly_one_column() {
+        for extent in [3, 4, 6, 8] {
+            let adapter = adapter(7, extent);
+            let columns = adapter.columns();
+
+            assert_eq!(columns.len(), usize::from(extent).pow(2));
+            assert_eq!(
+                columns
+                    .iter()
+                    .map(|column| column.cell_count)
+                    .sum::<usize>(),
+                TERRAIN_CELLS_PER_CHUNK
+            );
+            assert!(columns.iter().all(|column| column.cell_count > 0));
+        }
+    }
+
+    #[test]
+    fn a_column_summarises_a_contiguous_patch_of_ground() {
+        // A stride sample would put cells 0, extent, 2*extent … in one column
+        // and destroy the landform; a projection keeps neighbours together.
+        let extent = 4;
+        let side = usize::from(CHUNK_SIZE);
+        let block = side / usize::from(extent);
+        for index in 0..TERRAIN_CELLS_PER_CHUNK {
+            let position = terrain_field_position(index, extent);
+            assert_eq!(usize::from(position.x), (index % side) / block);
+            assert_eq!(usize::from(position.y), (index / side) / block);
+        }
+    }
+
+    #[test]
+    fn a_column_fingerprint_follows_its_composition_not_its_place() {
+        let adapter = adapter(7, 3);
+        let columns = adapter.columns();
+        let shared = columns
+            .iter()
+            .find(|column| {
+                columns.iter().any(|other| {
+                    other.ordinal != column.ordinal
+                        && other.dominant_material == column.dominant_material
+                        && other.roughness_class == column.roughness_class
+                })
+            })
+            .copied();
+
+        // Two columns of the same composition must be one repeated structure to
+        // the field, which is what its spatial channel measures.
+        if let Some(column) = shared {
+            let twin = columns
+                .iter()
+                .find(|other| {
+                    other.ordinal != column.ordinal
+                        && other.dominant_material == column.dominant_material
+                        && other.roughness_class == column.roughness_class
+                })
+                .expect("the twin was just found");
+            assert_eq!(column.pattern(), twin.pattern());
+        }
+
+        let different = columns
+            .iter()
+            .find(|other| other.dominant_material != columns[0].dominant_material);
+        if let Some(different) = different {
+            assert_ne!(columns[0].pattern(), different.pattern());
+        }
+    }
+
+    #[test]
+    fn a_sample_ordinal_resolves_back_to_the_ground_it_came_from() {
+        let adapter = adapter(11, 3);
+
+        let samples = adapter.emit_samples(SimulationTime::new(1), TraceId::new(3));
+        let sample = samples[4];
+        let column = adapter
+            .source_column(sample.source_ordinal)
+            .expect("an emitted ordinal resolves");
+
+        assert_eq!(column.position, sample.position);
+        assert_eq!(column.structure, sample.magnitude);
+        assert_eq!(column.pattern(), sample.pattern);
+    }
+
+    #[test]
+    fn featureless_ground_is_not_a_physical_pattern() {
+        let flat = TerrainChunk::from_cells(
+            test_chunk().chunk,
+            TerrainGenerationProvenance::new(
+                0,
+                TraceId::new(0),
+                TERRAIN_GENERATOR,
+                TERRAIN_PARAMETERS,
+                vec![TraceId::new(0)],
+            ),
+            vec![
+                TerrainCell::new(
+                    ElevationMm::new(1_000),
+                    MaterialId::new(1),
+                    RoughnessMm::new(0),
+                );
+                TERRAIN_CELLS_PER_CHUNK
+            ],
+        )
+        .expect("a uniform chunk is a complete chunk");
+
+        let samples = TerrainCarrierAdapter::new(test_chunk(), flat, 3)
+            .emit_samples(SimulationTime::new(1), TraceId::new(0));
+
+        assert!(samples.is_empty());
     }
 }

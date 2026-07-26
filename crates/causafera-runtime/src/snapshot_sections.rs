@@ -29,8 +29,8 @@ use crate::{
     PerceivedSelf, PhysicalCountersSnapshot, PopulationAggregate, PopulationAggregateSnapshot,
     RuntimeConfig, RuntimeRecipeSnapshot, RuntimeSnapshotData, RuntimeState, SensorAperture,
     SensorKindId, SpatialChunkSnapshot, SubjectiveSceneSnapshot, SubjectiveTarget,
-    SystemRegistrationSnapshot, TerrainCarrierSnapshot, ThermalActiveRegionSnapshot,
-    ThermalBoundaryRecordSnapshot, ThermalCellTransferReceiptSnapshot,
+    SystemRegistrationSnapshot, TerrainCarrierSnapshot, TerrainParticipation,
+    ThermalActiveRegionSnapshot, ThermalBoundaryRecordSnapshot, ThermalCellTransferReceiptSnapshot,
     ThermalConservationReceiptSnapshot, ThermalFaceRecordSnapshot, ThermalFieldSetSnapshot,
     ThermalFieldSnapshot, ThermalReservoirScheduleSnapshot, ThermalReservoirSnapshot,
     ThermalReservoirTransferRecordSnapshot, ThermalSnapshot,
@@ -51,7 +51,9 @@ pub const MATERIAL_SURFACE_SECTION_ID: u16 = 0x000C;
 pub const SECTION_EXPERIMENT_RECIPE_MANA_SOURCE_RECEIPTS: u16 = 0x000D;
 pub const THERMAL_SECTION_ID: u16 = 0x000E;
 
-const RUNTIME_RECIPE_SECTION_MAJOR: u16 = 4;
+/// Bumped to 5 when `RuntimeConfig` gained `terrain_participation`, which
+/// changes how the world evolves and so cannot be defaulted on read.
+const RUNTIME_RECIPE_SECTION_MAJOR: u16 = 5;
 const MANA_SECTION_MAJOR: u16 = 2;
 const PHYSICAL_COUNTERS_SECTION_MAJOR: u16 = 3;
 const MATERIAL_SURFACE_SECTION_MAJOR: u16 = 2;
@@ -1258,6 +1260,10 @@ fn encode_runtime_config(enc: &mut LittleEndianEncoder<'_>, config: &RuntimeConf
             enc.write_u64(terrain_seed);
         }
     }
+    enc.write_u8(match config.terrain_participation {
+        TerrainParticipation::Standing => 1,
+        TerrainParticipation::Inert => 2,
+    });
     enc.write_u8(config.actor_count);
     enc.write_u8(config.sensor_count);
     enc.write_i64(config.action_bounds);
@@ -1305,6 +1311,15 @@ fn decode_runtime_config(
         value => {
             return Err(PersistenceError::codec(format!(
                 "unknown carrier adapter {value}"
+            )));
+        }
+    };
+    config.terrain_participation = match dec.read_u8()? {
+        1 => TerrainParticipation::Standing,
+        2 => TerrainParticipation::Inert,
+        value => {
+            return Err(PersistenceError::codec(format!(
+                "unknown terrain participation {value}"
             )));
         }
     };
@@ -2950,7 +2965,11 @@ mod tests {
         config.mana_parameters.effect_threshold = 1;
         config.mana_parameters.effect_hysteresis = 0;
         let mut runtime = Runtime::new(config).unwrap();
-        runtime.run_ticks(16).unwrap();
+        // Long enough to hold more than one gate-driven transition. With
+        // terrain participating the field is already above the threshold when
+        // the first contact lands, so the first gate transition of the run has
+        // no plain contact before it.
+        runtime.run_ticks(48).unwrap();
         runtime.export_snapshot().unwrap()
     }
 
@@ -3145,7 +3164,7 @@ mod tests {
             .sections
             .get_mut(&u64::from(SECTION_RUNTIME_RECIPE))
             .expect("recipe section must exist")
-            .section_major = 5;
+            .section_major = 6;
 
         // Then: both unsupported required majors fail closed.
         assert!(disassemble_envelope(&v3).is_err());
@@ -3170,7 +3189,7 @@ mod tests {
             .sections
             .get_mut(&u64::from(SECTION_RUNTIME_RECIPE))
             .unwrap()
-            .section_major = 5;
+            .section_major = 6;
         let mut incompatible_material = envelope.clone();
         incompatible_material
             .sections
@@ -3181,7 +3200,7 @@ mod tests {
         // Then: current layout versions are explicit and incompatible authoritative bytes stop.
         assert_eq!(
             envelope.sections[&u64::from(SECTION_RUNTIME_RECIPE)].section_major,
-            4
+            5
         );
         assert_eq!(
             envelope.sections[&u64::from(SECTION_PHYSICAL_COUNTERS)].section_major,
@@ -3410,12 +3429,15 @@ mod tests {
     #[test]
     fn runtime_state_import_rejects_mana_effect_with_unrelated_contact_parent() {
         // Given: a generated mana transition, an earlier direct contact, and another surface.
+        // The last mana transition is taken rather than the first: the first can
+        // be the earliest transition of the run, and the crafted contact parent
+        // has to precede the transition it is grafted onto.
         let mut data = material_surface_loop_snapshot_data();
         let mana_index = data
             .material_surfaces
             .transitions
             .iter()
-            .position(|transition| transition.mana_effect_trace.is_some())
+            .rposition(|transition| transition.mana_effect_trace.is_some())
             .expect("production snapshot retains mana material transition");
         let mana_transition = data.material_surfaces.transitions[mana_index];
         let original_contact = mana_transition

@@ -99,4 +99,26 @@ residual and before/after totals for each batch. Canonically ordered boundary re
 same-chart face whose neighbor lies outside the active region, using the frozen post-injection
 pre-state; they are replaced only after a successful batch commit and persist in section `0x000E`.
 
+Terrain carrier participation adds the first standing physical carrier, and with it a boundary that
+the change-driven carriers did not need. A material surface, a recipe source, and a thermal
+reservoir all emit because something happened; terrain emits because something is there. That
+distinction is load-bearing. `PhysicalPatternHistory` and the `physical_events` count both retain
+change, so terrain samples enter `pending_samples` and neither of those: a structure that is merely
+still there has not happened again, and retaining it would let the recurrence and periodicity
+channels score how often the carrier is read rather than anything about the world. A standing
+carrier therefore earns only the response its within-tick structure supports — spatial repetition
+and synchronisation — which is exactly the channel RFC-MANA-001 provides for repeated spatial
+structure and which previously had no producer at all.
+
+The carrier presents its structure at the field's own lattice: one `PhysicalPatternSample` per
+plan-view column of the mana field, aggregated by block projection from the `CHUNK_SIZE²` terrain
+raster, carrying the column's mean relief contrast, material discontinuity and roughness as its
+magnitude, and a fingerprint of the column's dominant surface material and quantised roughness
+class. Featureless ground emits nothing. The fingerprint is composition, never a terrain type,
+biome, landcover class, or any other observer classification, and the sample's cause is the
+terrain's own generation trace, so a mana cell change can be traced to the generation of the ground
+under it. Whether the carrier reaches the tick loop is the persisted
+`RuntimeConfig::terrain_participation` contract rather than an accident of which system reads
+`carrier_adapters`.
+
 RFC-GEO-002 clarifies spatial carrier addressing: global geography is chart-qualified surface state, while local physics uses bounded Euclidean 3D frames. Bare chunks are local-chart addresses. Chart seams and local-frame bounds require explicit transforms; containment and resolution cannot manufacture geometric adjacency.

@@ -13,6 +13,7 @@ pub struct RuntimeConfig {
     pub pattern_schedule: PhysicalPatternSchedule,
     pub mana_parameters: ManaParameters,
     pub carrier_adapter: CarrierAdapterConfig,
+    pub terrain_participation: TerrainParticipation,
     pub actor_count: u8,
     pub sensor_count: u8,
     pub action_bounds: i64,
@@ -30,6 +31,30 @@ impl CarrierAdapterConfig {
     pub const fn terrain_seed(terrain_seed: u64) -> Self {
         Self::TerrainSeed { terrain_seed }
     }
+}
+
+/// Whether the terrain carrier reaches the tick loop.
+///
+/// Terrain is authoritative world state. A carrier that is generated, persisted
+/// and projected but never causally consumed is world content that exists
+/// without participating, so the participation is a stated contract rather than
+/// an accident of which system happens to read `carrier_adapters`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum TerrainParticipation {
+    /// The carrier presents its standing structure to the physical pattern
+    /// stream on every tick the pattern schedule emits.
+    ///
+    /// Terrain does not change in this milestone, so what varies between ticks
+    /// is not the structure but the field's response to it. The carrier is
+    /// still a standing physical presence, and the mana model's spatial and
+    /// recurrence channels exist to answer exactly that.
+    #[default]
+    Standing,
+    /// The carrier never reaches the tick loop. Terrain is then generated,
+    /// persisted and projected but causally inert, which is the behaviour
+    /// recorded in `TODO-RUNTIME-002` and is retained only so a configuration
+    /// can isolate the rest of the loop from terrain.
+    Inert,
 }
 
 impl RuntimeConfig {
@@ -53,6 +78,7 @@ impl RuntimeConfig {
                 effect_hysteresis: 2_000,
             },
             carrier_adapter: CarrierAdapterConfig::terrain_seed(world_seed),
+            terrain_participation: TerrainParticipation::Standing,
             actor_count: 0,
             sensor_count: 0,
             action_bounds: 8,

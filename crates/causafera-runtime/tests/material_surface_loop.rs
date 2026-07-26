@@ -11,7 +11,7 @@ use causafera_runtime::{
     EXPERIMENT_RECIPE_MANA_SOURCE_OBJECT_KIND, EXPERIMENT_RECIPE_MANA_SOURCE_POLICY_SCHEMA_V1,
     EXPERIMENT_RECIPE_MANA_SOURCE_PROPERTY, ExperimentRecipeManaSource,
     ExperimentRecipeManaSourceRecipe, MAX_RUNTIME_TICKS, Runtime, RuntimeConfig,
-    RuntimeSnapshotData, RuntimeState,
+    RuntimeSnapshotData, RuntimeState, TerrainParticipation,
 };
 use causafera_types::{ChartChunkCoord, ChunkCoord, SpatialChartId, TraceId};
 
@@ -158,9 +158,14 @@ fn actor_contact_material_surface_commits_causal_transition() {
 
 #[test]
 fn material_surface_loop_without_repetition_has_no_mana_material_consequence() {
-    // Given: a production runtime with exactly one contact-derived carrier sample available.
-    let mut runtime = Runtime::new(production_loop_config(972, true))
-        .expect("production runtime bootstrap must succeed");
+    // Given: a production runtime with exactly one contact-derived carrier sample
+    // available, and no other physical source. The terrain carrier is held inert
+    // so this measures the mana model's requirement for repetition rather than
+    // the field the standing ground already sustains, which the companion test
+    // below measures instead.
+    let mut config = production_loop_config(972, true);
+    config.terrain_participation = TerrainParticipation::Inert;
+    let mut runtime = Runtime::new(config).expect("production runtime bootstrap must succeed");
 
     // When: the scheduler reaches the first mana phase after one contact.
     runtime
@@ -179,6 +184,31 @@ fn material_surface_loop_without_repetition_has_no_mana_material_consequence() {
             .any(|record| record.surface.contact_count > 0)
     );
     assert!(!has_mana_material_consequence(&exported));
+}
+
+#[test]
+fn standing_terrain_sustains_the_field_a_contact_lands_in() {
+    // Given: the same production loop with the terrain carrier standing, and one
+    // with it inert.
+    let standing = production_loop_config(972, true);
+    let mut inert = standing.clone();
+    inert.terrain_participation = TerrainParticipation::Inert;
+
+    // When: both reach the first mana phase, before any contact has repeated.
+    let standing = Runtime::new(standing)
+        .expect("standing runtime must bootstrap")
+        .run_ticks(1)
+        .expect("standing loop must execute");
+    let inert = Runtime::new(inert)
+        .expect("inert runtime must bootstrap")
+        .run_ticks(1)
+        .expect("inert loop must execute");
+
+    // Then: the ground has already put mana in the world, and the empty world
+    // has none. Terrain is world state that participates, not world state that
+    // is merely stored.
+    assert_eq!(inert.mana_total, 0);
+    assert!(standing.mana_total > 0);
 }
 
 #[test]
