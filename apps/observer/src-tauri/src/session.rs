@@ -236,11 +236,18 @@ mod tests {
         );
     }
 
+    /// INV-007 across every locale the observer offers, not only the first two it shipped with.
+    ///
+    /// The payload is compared as well as the digests: a locale must not change the bytes the
+    /// session emits, or presentation would have leaked into the observer projection itself.
     #[test]
     fn locale_does_not_change_session_digests() {
-        let mut russian = ObserverSession::new(11).unwrap();
-        let mut english = ObserverSession::new(11).unwrap();
-        for (session, locale) in [(&mut russian, "ru-RU"), (&mut english, "en-US")] {
+        const LOCALES: [&str; 5] = ["en-US", "ru-RU", "zh-Hans", "de-DE", "es-ES"];
+
+        // Given: one session per locale, all from the same seed.
+        let mut envelopes = Vec::new();
+        for locale in LOCALES {
+            let mut session = ObserverSession::new(11).unwrap();
             session
                 .connect(&encode_connect_request(&ConnectRequest {
                     supported_versions: vec![1],
@@ -248,15 +255,30 @@ mod tests {
                 }))
                 .unwrap();
             session.open_runtime_stream().unwrap();
+
+            // When: each advances the same number of ticks.
+            envelopes.push((
+                locale,
+                decode_stream_envelope(&session.advance(8).unwrap()).unwrap(),
+            ));
         }
-        let russian = decode_stream_envelope(&russian.advance(8).unwrap()).unwrap();
-        let english = decode_stream_envelope(&english.advance(8).unwrap()).unwrap();
-        assert_eq!(
-            russian.header.physical_digest,
-            english.header.physical_digest
-        );
-        assert_eq!(russian.header.history_digest, english.header.history_digest);
-        assert_eq!(russian.payload, english.payload);
+
+        // Then: digests and payload bytes are identical across all of them.
+        let (first_locale, first) = &envelopes[0];
+        for (locale, envelope) in envelopes.iter().skip(1) {
+            assert_eq!(
+                first.header.physical_digest, envelope.header.physical_digest,
+                "physical digest diverged between {first_locale} and {locale}"
+            );
+            assert_eq!(
+                first.header.history_digest, envelope.header.history_digest,
+                "history digest diverged between {first_locale} and {locale}"
+            );
+            assert_eq!(
+                first.payload, envelope.payload,
+                "payload diverged between {first_locale} and {locale}"
+            );
+        }
     }
 
     #[test]
