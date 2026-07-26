@@ -19,9 +19,9 @@ use causafera_explanation::{
     MaterialSurfaceLoopClaim, NumericClaimValue, ThermalCarrierConservationClaim,
 };
 use causafera_observer_api::{
-    MATERIAL_SURFACE_DELTA_SCHEMA_V3, MAX_MATERIAL_SURFACE_DELTAS, MAX_THERMAL_DELTAS,
-    MaterialSurfaceDelta, MaterialSurfaceGateDelta, ObserverChunkSummary, ObserverWorldSnapshot,
-    THERMAL_DELTA_SCHEMA_V1, ThermalFieldDelta,
+    FieldRasterRequest, MATERIAL_SURFACE_DELTA_SCHEMA_V3, MAX_MATERIAL_SURFACE_DELTAS,
+    MAX_THERMAL_DELTAS, MaterialSurfaceDelta, MaterialSurfaceGateDelta, ObserverChunkSummary,
+    ObserverFieldRaster, ObserverWorldSnapshot, THERMAL_DELTA_SCHEMA_V1, ThermalFieldDelta,
 };
 use causafera_resolution::{ChannelWeight, ResolutionError, ResolutionField, ResolutionPolicy};
 use causafera_types::{
@@ -217,6 +217,19 @@ impl Runtime {
             return Err(error);
         }
         Ok(state.observer_world_snapshot(self.scheduler.current_time()))
+    }
+
+    /// One chunk of one spatial lattice, or nothing when the observer asked for
+    /// ground outside the active set.
+    pub fn observer_field_raster(
+        &self,
+        request: &FieldRasterRequest,
+    ) -> Result<Option<ObserverFieldRaster>, RuntimeError> {
+        let state = self.lock_state()?;
+        if let Some(error) = state.failure.clone() {
+            return Err(error);
+        }
+        Ok(state.observer_field_raster(request))
     }
 
     pub fn observer_material_surface_loop_explanation(
@@ -509,7 +522,11 @@ impl RuntimeState {
         )?;
         let root_trace =
             traces.commit_batch(SimulationTime::new(0), Phase::Physics, vec![root])?[0];
-        let active_chunk_keys = active_chunk_keys(config.chart_id, config.active_chunk_radius);
+        let active_chunk_keys = active_chunk_keys(
+            config.chart_id,
+            config.active_chunk_radius,
+            config.active_chunk_shape,
+        );
         let carrier_adapters = runtime_carrier_adapters(
             config.carrier_adapter,
             config.chunk_extent,
@@ -2839,11 +2856,29 @@ fn runtime_carrier_adapters(
     }
 }
 
-pub(crate) fn active_chunk_keys(chart_id: SpatialChartId, radius: u8) -> Vec<ChartChunkCoord> {
+/// The chunks a configuration activates around the chart origin.
+///
+/// A `Line` varies x only, which is the shape every existing fixture and replay
+/// was recorded against. An `Area` varies x and y together, which is what a map
+/// needs to have shape at all; it changes state hashes by construction, so it is
+/// opted into rather than defaulted to.
+pub(crate) fn active_chunk_keys(
+    chart_id: SpatialChartId,
+    radius: u8,
+    shape: ActiveChunkShape,
+) -> Vec<ChartChunkCoord> {
     let radius = i32::from(radius);
-    (-radius..=radius)
-        .map(|x| ChartChunkCoord::new(chart_id, ChunkCoord::new(x, 0, 0)))
-        .collect()
+    match shape {
+        ActiveChunkShape::Line => (-radius..=radius)
+            .map(|x| ChartChunkCoord::new(chart_id, ChunkCoord::new(x, 0, 0)))
+            .collect(),
+        ActiveChunkShape::Area => (-radius..=radius)
+            .flat_map(|y| {
+                (-radius..=radius)
+                    .map(move |x| ChartChunkCoord::new(chart_id, ChunkCoord::new(x, y, 0)))
+            })
+            .collect(),
+    }
 }
 
 #[cfg(test)]

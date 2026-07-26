@@ -1,11 +1,12 @@
 use causafera_observer_api::{
-    DeliveryPolicy, ObserverStreamHub, StreamError, StreamKind, StreamScope,
+    DeliveryPolicy, ObserverStreamHub, QueryKind, QueryStatus, StreamError, StreamKind, StreamScope,
 };
 use causafera_observer_wire::{
-    ProtocolHandler, WireError, decode_connect_request, encode_connect_response,
-    encode_observer_snapshot, encode_stream_envelope,
+    ProtocolHandler, WireError, decode_connect_request, decode_field_raster_request, decode_query,
+    encode_connect_response, encode_field_raster, encode_observer_snapshot, encode_query_response,
+    encode_stream_envelope,
 };
-use causafera_runtime::{Runtime, RuntimeConfig, RuntimeError};
+use causafera_runtime::{ActiveChunkShape, Runtime, RuntimeConfig, RuntimeError};
 use thiserror::Error;
 
 const RUNTIME_STREAM_ID: u64 = 1;
@@ -41,7 +42,37 @@ impl ObserverSession {
 
     pub fn query(&mut self, request: &[u8]) -> Result<Vec<u8>, SessionError> {
         self.refresh_protocol()?;
+        // A raster answer depends on what was asked rather than on when, so it
+        // cannot come from the payload cache the other kinds share.
+        let query = decode_query(request)?;
+        if query.kind == QueryKind::FieldRaster {
+            return self.field_raster(query.request_id, &query.payload);
+        }
         Ok(self.protocol.handle_query(request)?)
+    }
+
+    /// One chunk of one measured lattice.
+    ///
+    /// A malformed request is refused as invalid and a chunk outside the active
+    /// set as unavailable: the session states which of the two happened rather
+    /// than answering an unbounded read.
+    fn field_raster(&mut self, request_id: u64, payload: &[u8]) -> Result<Vec<u8>, SessionError> {
+        let request = match decode_field_raster_request(payload) {
+            Ok(request) => request,
+            Err(_) => {
+                return Ok(encode_query_response(
+                    request_id,
+                    QueryStatus::InvalidRequest,
+                    Vec::new(),
+                ));
+            }
+        };
+        Ok(match self.runtime.observer_field_raster(&request)? {
+            Some(raster) => {
+                encode_query_response(request_id, QueryStatus::Ok, encode_field_raster(&raster))
+            }
+            None => encode_query_response(request_id, QueryStatus::NotAvailable, Vec::new()),
+        })
     }
 
     pub fn open_runtime_stream(&mut self) -> Result<Vec<u8>, SessionError> {
@@ -112,6 +143,9 @@ fn session_config(seed: u64) -> RuntimeConfig {
     config.bootstrap_population = DEFAULT_POPULATION;
     config.mana_parameters.effect_threshold = 1;
     config.mana_parameters.effect_hysteresis = 0;
+    // A chart with one dimension is a strip, not a map. The observer opts into
+    // the square block; the default stays a line so no recorded fixture moves.
+    config.active_chunk_shape = ActiveChunkShape::Area;
     config
 }
 
@@ -132,13 +166,13 @@ pub enum SessionError {
 #[cfg(test)]
 mod tests {
     use causafera_observer_api::{
-        MATERIAL_SURFACE_DELTA_SCHEMA_V3, MAX_MATERIAL_SURFACE_DELTAS, OBSERVER_PROTOCOL_V1,
-        ObserverQuery, QueryKind, QueryStatus,
+        FieldRasterKind, FieldRasterRequest, MATERIAL_SURFACE_DELTA_SCHEMA_V3,
+        MAX_MATERIAL_SURFACE_DELTAS, OBSERVER_PROTOCOL_V1, ObserverQuery, QueryKind, QueryStatus,
     };
     use causafera_observer_wire::{
-        ConnectRequest, decode_connect_response, decode_explanation_report,
+        ConnectRequest, decode_connect_response, decode_explanation_report, decode_field_raster,
         decode_observer_snapshot, decode_response, decode_stream_envelope, decode_world_snapshot,
-        encode_connect_request, encode_query,
+        encode_connect_request, encode_field_raster_request, encode_query,
     };
     use causafera_types::SimulationTime;
 
@@ -279,6 +313,140 @@ mod tests {
                 "payload diverged between {first_locale} and {locale}"
             );
         }
+    }
+
+    fn raster_query(
+        session: &mut ObserverSession,
+        request_id: u64,
+        request: FieldRasterRequest,
+    ) -> causafera_observer_api::ObserverResponse {
+        decode_response(
+            &session
+                .query(&encode_query(&ObserverQuery::field_raster(
+                    request_id,
+                    encode_field_raster_request(&request),
+                )))
+                .unwrap(),
+        )
+        .unwrap()
+    }
+
+    fn terrain_request(chunk_x: i32, chunk_y: i32, detail_level: u8) -> FieldRasterRequest {
+        FieldRasterRequest {
+            chart_id: 1,
+            chunk_x,
+            chunk_y,
+            chunk_z: 0,
+            field: FieldRasterKind::TerrainElevation,
+            detail_level,
+        }
+    }
+
+    /// The map's own claim: what it draws is the carrier's lattice, unreduced.
+    #[test]
+    fn terrain_raster_projects_the_carrier_lattice_and_its_block_means() {
+        // Given: a live session with a two-dimensional chart.
+        let mut session = ObserverSession::new(21).unwrap();
+        session.open_runtime_stream().unwrap();
+
+        // When: the same chunk is requested at every detail level.
+        let full = raster_query(&mut session, 1, terrain_request(0, 0, 0));
+        let half = raster_query(&mut session, 2, terrain_request(0, 0, 1));
+        let quarter = raster_query(&mut session, 3, terrain_request(0, 0, 2));
+
+        // Then: level 0 is the carrier's own 32 x 32 field, and each further
+        // level is the block mean of the one above it.
+        assert_eq!(full.status, QueryStatus::Ok);
+        let full = decode_field_raster(&full.payload).unwrap();
+        assert_eq!((full.edge, full.depth), (32, 1));
+        assert_eq!(full.values.len(), 1_024);
+        assert_eq!(full.auxiliary.len(), 1_024);
+        assert!(full.generation_trace > 0);
+
+        let half = decode_field_raster(&half.payload).unwrap();
+        assert_eq!((half.edge, half.values.len()), (16, 256));
+        for row in 0..16 {
+            for column in 0..16 {
+                let block = [
+                    full.values[row * 2 * 32 + column * 2],
+                    full.values[row * 2 * 32 + column * 2 + 1],
+                    full.values[(row * 2 + 1) * 32 + column * 2],
+                    full.values[(row * 2 + 1) * 32 + column * 2 + 1],
+                ];
+                assert_eq!(
+                    half.values[row * 16 + column],
+                    block.iter().sum::<i64>() / 4
+                );
+            }
+        }
+
+        let quarter = decode_field_raster(&quarter.payload).unwrap();
+        assert_eq!((quarter.edge, quarter.values.len()), (8, 64));
+    }
+
+    #[test]
+    fn mana_raster_projects_the_volume_with_per_cell_provenance() {
+        let mut session = ObserverSession::new(22).unwrap();
+        session.open_runtime_stream().unwrap();
+        session.advance(8).unwrap();
+
+        let response = raster_query(
+            &mut session,
+            4,
+            FieldRasterRequest {
+                field: FieldRasterKind::ManaIntensity,
+                ..terrain_request(0, 0, 0)
+            },
+        );
+
+        assert_eq!(response.status, QueryStatus::Ok);
+        let raster = decode_field_raster(&response.payload).unwrap();
+        // The configured lattice, projected whole rather than reduced.
+        assert_eq!(raster.edge, raster.depth);
+        assert_eq!(raster.values.len(), raster.cell_count());
+        assert_eq!(raster.cell_traces.len(), raster.cell_count());
+        assert!(raster.values.iter().any(|value| *value > 0));
+        assert!(raster.cell_traces.iter().any(|trace| *trace > 0));
+    }
+
+    #[test]
+    fn raster_requests_are_bounded_by_the_active_set_and_the_detail_range() {
+        let mut session = ObserverSession::new(23).unwrap();
+        session.open_runtime_stream().unwrap();
+
+        // Ground the session never activated is unavailable, not fabricated.
+        assert_eq!(
+            raster_query(&mut session, 5, terrain_request(48, 0, 0)).status,
+            QueryStatus::NotAvailable
+        );
+        // A detail level outside the contract is a malformed request.
+        assert_eq!(
+            raster_query(&mut session, 6, terrain_request(0, 0, 7)).status,
+            QueryStatus::InvalidRequest
+        );
+    }
+
+    /// Two dimensions are what makes the chart a map; the shape is the session's
+    /// choice, so the session is where it is asserted.
+    #[test]
+    fn the_observer_session_charts_an_area_rather_than_a_strip() {
+        let mut session = ObserverSession::new(24).unwrap();
+        session.open_runtime_stream().unwrap();
+
+        let world = decode_world_snapshot(
+            &decode_response(
+                &session
+                    .query(&encode_query(&ObserverQuery::world_chunks(7)))
+                    .unwrap(),
+            )
+            .unwrap()
+            .payload,
+        )
+        .unwrap();
+
+        assert_eq!(world.chunks.len(), 9);
+        assert!(world.chunks.iter().any(|chunk| chunk.chunk_y != 0));
+        assert!(world.chunks.iter().all(|chunk| chunk.chunk_z == 0));
     }
 
     #[test]

@@ -6,8 +6,9 @@ use causafera_explanation::{
     NumericClaimValue,
 };
 use causafera_observer_api::{
-    MATERIAL_SURFACE_DELTA_SCHEMA_V3, MAX_MATERIAL_SURFACE_DELTAS, MAX_THERMAL_DELTAS,
-    MaterialSurfaceDelta, MaterialSurfaceGateDelta, OBSERVER_PROTOCOL_V1, ObserverChunkSummary,
+    FieldRasterKind, FieldRasterRequest, MATERIAL_SURFACE_DELTA_SCHEMA_V3,
+    MAX_MATERIAL_SURFACE_DELTAS, MAX_THERMAL_DELTAS, MaterialSurfaceDelta,
+    MaterialSurfaceGateDelta, OBSERVER_PROTOCOL_V1, ObserverChunkSummary, ObserverFieldRaster,
     ObserverQuery, ObserverResponse, ObserverSnapshot, ObserverWorldSnapshot, QueryKind,
     QueryStatus, StreamEnvelope, StreamKind, THERMAL_DELTA_SCHEMA_V1, ThermalFieldDelta,
 };
@@ -77,6 +78,7 @@ impl ProtocolHandler {
                 QueryKind::RuntimeSummary as u32,
                 QueryKind::ExplanationIr as u32,
                 QueryKind::WorldChunks as u32,
+                QueryKind::FieldRaster as u32,
             ],
         })
     }
@@ -107,6 +109,17 @@ impl ProtocolHandler {
         };
         Ok(encode_response(&response))
     }
+}
+
+/// Answer one query that carries parameters, which the payload cache cannot
+/// serve because its answer depends on what was asked rather than on when.
+pub fn encode_query_response(request_id: u64, status: QueryStatus, payload: Vec<u8>) -> Vec<u8> {
+    encode_response(&ObserverResponse {
+        request_id,
+        protocol_version: OBSERVER_PROTOCOL_V1,
+        status,
+        payload,
+    })
 }
 
 pub fn encode_query(query: &ObserverQuery) -> Vec<u8> {
@@ -506,6 +519,183 @@ pub fn decode_world_snapshot(bytes: &[u8]) -> Result<ObserverWorldSnapshot, Wire
         thermal_delta_schema_version,
         thermal_deltas,
     })
+}
+
+/* ------------------------------------------------------------ field raster -- */
+
+pub fn encode_field_raster_request(request: &FieldRasterRequest) -> Vec<u8> {
+    let mut out = Vec::new();
+    field_varint(&mut out, 1, request.chart_id);
+    field_varint(&mut out, 2, zigzag(i64::from(request.chunk_x)));
+    field_varint(&mut out, 3, zigzag(i64::from(request.chunk_y)));
+    field_varint(&mut out, 4, zigzag(i64::from(request.chunk_z)));
+    field_varint(&mut out, 5, request.field as u64);
+    field_varint(&mut out, 6, u64::from(request.detail_level));
+    out
+}
+
+pub fn decode_field_raster_request(bytes: &[u8]) -> Result<FieldRasterRequest, WireError> {
+    let mut cursor = Cursor::new(bytes);
+    let mut chart_id = None;
+    let mut chunk_x = 0_i32;
+    let mut chunk_y = 0_i32;
+    let mut chunk_z = 0_i32;
+    let mut field = None;
+    let mut detail_level = 0_u8;
+    while !cursor.is_empty() {
+        let (number, wire) = cursor.key()?;
+        match (number, wire) {
+            (1, WIRE_VARINT) => chart_id = Some(cursor.varint()?),
+            (2, WIRE_VARINT) => chunk_x = to_i32(unzigzag(cursor.varint()?))?,
+            (3, WIRE_VARINT) => chunk_y = to_i32(unzigzag(cursor.varint()?))?,
+            (4, WIRE_VARINT) => chunk_z = to_i32(unzigzag(cursor.varint()?))?,
+            (5, WIRE_VARINT) => field = Some(FieldRasterKind::try_from(to_u32(cursor.varint()?)?)?),
+            (6, WIRE_VARINT) => {
+                detail_level =
+                    u8::try_from(cursor.varint()?).map_err(|_| WireError::IntegerOverflow)?
+            }
+            _ => cursor.skip(wire)?,
+        }
+    }
+    let request = FieldRasterRequest {
+        chart_id: chart_id.ok_or(WireError::MissingField(1))?,
+        chunk_x,
+        chunk_y,
+        chunk_z,
+        field: field.ok_or(WireError::MissingField(5))?,
+        detail_level,
+    };
+    request.validate()?;
+    Ok(request)
+}
+
+/// The measured lattice, delta-encoded along its own scan order.
+///
+/// Elevation runs about seventy metres across a chunk with a mean neighbour step
+/// of 1.6 m, so successive differences are the natural encoding. The difference
+/// is taken with wrapping arithmetic and undone the same way, which round-trips
+/// every `i64` exactly instead of failing at the extremes.
+pub fn encode_field_raster(raster: &ObserverFieldRaster) -> Vec<u8> {
+    let mut out = Vec::new();
+    field_varint(&mut out, 1, raster.chart_id);
+    field_varint(&mut out, 2, zigzag(i64::from(raster.chunk_x)));
+    field_varint(&mut out, 3, zigzag(i64::from(raster.chunk_y)));
+    field_varint(&mut out, 4, zigzag(i64::from(raster.chunk_z)));
+    field_varint(&mut out, 5, raster.field as u64);
+    field_varint(&mut out, 6, u64::from(raster.detail_level));
+    field_varint(&mut out, 7, u64::from(raster.edge));
+    field_varint(&mut out, 8, u64::from(raster.depth));
+    field_bytes(&mut out, 9, &encode_delta_band(&raster.values));
+    if !raster.auxiliary.is_empty() {
+        field_bytes(&mut out, 10, &encode_delta_band(&raster.auxiliary));
+    }
+    if !raster.cell_traces.is_empty() {
+        let mut packed = Vec::new();
+        for trace in &raster.cell_traces {
+            varint(&mut packed, *trace);
+        }
+        field_bytes(&mut out, 11, &packed);
+    }
+    field_varint(&mut out, 12, raster.generation_trace);
+    out
+}
+
+pub fn decode_field_raster(bytes: &[u8]) -> Result<ObserverFieldRaster, WireError> {
+    let mut cursor = Cursor::new(bytes);
+    let mut chart_id = None;
+    let mut chunk_x = 0_i32;
+    let mut chunk_y = 0_i32;
+    let mut chunk_z = 0_i32;
+    let mut field = None;
+    let mut detail_level = 0_u8;
+    let mut edge = None;
+    let mut depth = None;
+    let mut values = Vec::new();
+    let mut auxiliary = Vec::new();
+    let mut cell_traces = Vec::new();
+    let mut generation_trace = 0_u64;
+    while !cursor.is_empty() {
+        let (number, wire) = cursor.key()?;
+        match (number, wire) {
+            (1, WIRE_VARINT) => chart_id = Some(cursor.varint()?),
+            (2, WIRE_VARINT) => chunk_x = to_i32(unzigzag(cursor.varint()?))?,
+            (3, WIRE_VARINT) => chunk_y = to_i32(unzigzag(cursor.varint()?))?,
+            (4, WIRE_VARINT) => chunk_z = to_i32(unzigzag(cursor.varint()?))?,
+            (5, WIRE_VARINT) => field = Some(FieldRasterKind::try_from(to_u32(cursor.varint()?)?)?),
+            (6, WIRE_VARINT) => {
+                detail_level =
+                    u8::try_from(cursor.varint()?).map_err(|_| WireError::IntegerOverflow)?
+            }
+            (7, WIRE_VARINT) => edge = Some(to_u32(cursor.varint()?)?),
+            (8, WIRE_VARINT) => depth = Some(to_u32(cursor.varint()?)?),
+            (9, WIRE_LEN) => values = decode_delta_band(cursor.bytes()?)?,
+            (10, WIRE_LEN) => auxiliary = decode_delta_band(cursor.bytes()?)?,
+            (11, WIRE_LEN) => {
+                let mut packed = Cursor::new(cursor.bytes()?);
+                while !packed.is_empty() {
+                    cell_traces.push(packed.varint()?);
+                }
+            }
+            (12, WIRE_VARINT) => generation_trace = cursor.varint()?,
+            _ => cursor.skip(wire)?,
+        }
+    }
+    let raster = ObserverFieldRaster {
+        chart_id: chart_id.ok_or(WireError::MissingField(1))?,
+        chunk_x,
+        chunk_y,
+        chunk_z,
+        field: field.ok_or(WireError::MissingField(5))?,
+        detail_level,
+        edge: edge.ok_or(WireError::MissingField(7))?,
+        depth: depth.ok_or(WireError::MissingField(8))?,
+        values,
+        auxiliary,
+        cell_traces,
+        generation_trace,
+    };
+    // A raster whose declared lattice does not match its payload cannot be drawn
+    // at real positions, and a renderer must never be left to guess the shape.
+    if raster.values.len() != raster.cell_count() {
+        return Err(WireError::InvalidFieldRasterLattice {
+            expected: raster.cell_count(),
+            received: raster.values.len(),
+        });
+    }
+    if !raster.auxiliary.is_empty() && raster.auxiliary.len() != raster.cell_count() {
+        return Err(WireError::InvalidFieldRasterLattice {
+            expected: raster.cell_count(),
+            received: raster.auxiliary.len(),
+        });
+    }
+    if !raster.cell_traces.is_empty() && raster.cell_traces.len() != raster.cell_count() {
+        return Err(WireError::InvalidFieldRasterLattice {
+            expected: raster.cell_count(),
+            received: raster.cell_traces.len(),
+        });
+    }
+    Ok(raster)
+}
+
+fn encode_delta_band(values: &[i64]) -> Vec<u8> {
+    let mut packed = Vec::new();
+    let mut previous = 0_i64;
+    for value in values {
+        varint(&mut packed, zigzag(value.wrapping_sub(previous)));
+        previous = *value;
+    }
+    packed
+}
+
+fn decode_delta_band(bytes: &[u8]) -> Result<Vec<i64>, WireError> {
+    let mut cursor = Cursor::new(bytes);
+    let mut values = Vec::new();
+    let mut previous = 0_i64;
+    while !cursor.is_empty() {
+        previous = previous.wrapping_add(unzigzag(cursor.varint()?));
+        values.push(previous);
+    }
+    Ok(values)
 }
 
 fn encode_thermal_field_delta(delta: &ThermalFieldDelta) -> Vec<u8> {
@@ -1310,6 +1500,8 @@ pub enum WireError {
     UnexpectedFieldForSchema(u32),
     #[error("duplicate protobuf field {0}")]
     DuplicateField(u32),
+    #[error("field raster declares {expected} cells but carries {received}")]
+    InvalidFieldRasterLattice { expected: usize, received: usize },
     #[error(transparent)]
     Api(#[from] causafera_observer_api::ObserverApiError),
 }
@@ -1378,6 +1570,117 @@ mod tests {
         assert_eq!(encode_query(&query), encode_query(&query));
         let bytes = encode_observer_snapshot(&snapshot());
         assert_eq!(decode_observer_snapshot(&bytes).unwrap(), snapshot());
+    }
+
+    fn raster(values: Vec<i64>, edge: u32, depth: u32) -> ObserverFieldRaster {
+        ObserverFieldRaster {
+            chart_id: 1,
+            chunk_x: -2,
+            chunk_y: 3,
+            chunk_z: 0,
+            field: FieldRasterKind::TerrainElevation,
+            detail_level: 0,
+            edge,
+            depth,
+            values,
+            auxiliary: Vec::new(),
+            cell_traces: Vec::new(),
+            generation_trace: 88,
+        }
+    }
+
+    #[test]
+    fn field_raster_request_roundtrips_and_bounds_its_detail_level() {
+        let request = FieldRasterRequest {
+            chart_id: 1,
+            chunk_x: -3,
+            chunk_y: 4,
+            chunk_z: 0,
+            field: FieldRasterKind::ManaIntensity,
+            detail_level: 2,
+        };
+
+        assert_eq!(
+            decode_field_raster_request(&encode_field_raster_request(&request)).unwrap(),
+            request
+        );
+
+        let beyond = FieldRasterRequest {
+            detail_level: 3,
+            ..request
+        };
+        assert!(matches!(
+            decode_field_raster_request(&encode_field_raster_request(&beyond)),
+            Err(WireError::Api(_))
+        ));
+    }
+
+    /// The delta band must survive the values it will actually meet, which
+    /// includes both `i32` bounds after widening and the `i64` extremes.
+    #[test]
+    fn field_raster_delta_encoding_roundtrips_at_the_integer_extremes() {
+        let values = vec![
+            i64::MIN,
+            i64::MAX,
+            0,
+            i64::from(i32::MIN),
+            i64::from(i32::MAX),
+            -1,
+            1,
+            i64::MIN,
+            i64::MAX,
+        ];
+        let expected = raster(values, 3, 1);
+
+        assert_eq!(
+            decode_field_raster(&encode_field_raster(&expected)).unwrap(),
+            expected
+        );
+    }
+
+    #[test]
+    fn field_raster_roundtrips_a_volumetric_lattice_with_per_cell_provenance() {
+        let mut expected = raster((0..27).map(|value| value * 31 - 400).collect(), 3, 3);
+        expected.field = FieldRasterKind::ManaIntensity;
+        expected.auxiliary = (0..27).map(|value| value * 2).collect();
+        expected.cell_traces = (0..27).map(|value| value as u64 * 7).collect();
+
+        assert_eq!(
+            decode_field_raster(&encode_field_raster(&expected)).unwrap(),
+            expected
+        );
+    }
+
+    #[test]
+    fn field_raster_refuses_a_lattice_its_payload_does_not_fill() {
+        let mut encoded = raster((0..9).collect(), 3, 1);
+        encoded.edge = 4;
+
+        assert!(matches!(
+            decode_field_raster(&encode_field_raster(&encoded)),
+            Err(WireError::InvalidFieldRasterLattice {
+                expected: 16,
+                received: 9
+            })
+        ));
+    }
+
+    #[test]
+    fn negotiation_advertises_the_field_raster_query() {
+        let handler = ProtocolHandler::default();
+
+        let response = handler
+            .negotiate(&ConnectRequest {
+                supported_versions: vec![1],
+                locale: "en-US".into(),
+            })
+            .unwrap();
+
+        assert!(
+            response
+                .capabilities
+                .contains(&(QueryKind::FieldRaster as u32))
+        );
     }
 
     #[test]

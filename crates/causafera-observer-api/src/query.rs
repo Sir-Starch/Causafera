@@ -10,12 +10,20 @@ pub const MAX_MATERIAL_SURFACE_DELTAS: usize = 64;
 pub const THERMAL_DELTA_SCHEMA_V1: u32 = 1;
 pub const MAX_THERMAL_DELTAS: usize = 64;
 
+/// The coarsest terrain detail level the projection offers.
+///
+/// Level 0 is the carrier's own 32 x 32 raster; each further level halves the
+/// edge by block mean, so level 2 is 8 x 8. Nothing below that carries enough
+/// samples to be worth a request.
+pub const MAX_FIELD_RASTER_DETAIL_LEVEL: u8 = 2;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[repr(u32)]
 pub enum QueryKind {
     RuntimeSummary = 1,
     ExplanationIr = 2,
     WorldChunks = 3,
+    FieldRaster = 4,
 }
 
 impl TryFrom<u32> for QueryKind {
@@ -26,8 +34,92 @@ impl TryFrom<u32> for QueryKind {
             1 => Ok(Self::RuntimeSummary),
             2 => Ok(Self::ExplanationIr),
             3 => Ok(Self::WorldChunks),
+            4 => Ok(Self::FieldRaster),
             value => Err(ObserverApiError::UnknownQueryKind(value)),
         }
+    }
+}
+
+/// Which per-cell lattice a raster request asks for.
+///
+/// One query serves every spatial field because they are all lattices over one
+/// chunk wanting identical bounding; a further field is an additive variant
+/// rather than a further query kind.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[repr(u32)]
+pub enum FieldRasterKind {
+    /// Terrain elevation in millimetres, with roughness as the auxiliary band.
+    TerrainElevation = 1,
+    /// Terrain roughness in millimetres.
+    TerrainRoughness = 2,
+    /// Mana intensity over the field's own volumetric lattice.
+    ManaIntensity = 3,
+}
+
+impl TryFrom<u32> for FieldRasterKind {
+    type Error = ObserverApiError;
+
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
+        match value {
+            1 => Ok(Self::TerrainElevation),
+            2 => Ok(Self::TerrainRoughness),
+            3 => Ok(Self::ManaIntensity),
+            value => Err(ObserverApiError::UnknownFieldRasterKind(value)),
+        }
+    }
+}
+
+/// A bounded request for one chunk of one field at one detail level.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FieldRasterRequest {
+    pub chart_id: u64,
+    pub chunk_x: i32,
+    pub chunk_y: i32,
+    pub chunk_z: i32,
+    pub field: FieldRasterKind,
+    /// Terrain only; the mana volume is projected whole at its configured extent.
+    pub detail_level: u8,
+}
+
+impl FieldRasterRequest {
+    pub fn validate(&self) -> Result<(), ObserverApiError> {
+        if self.detail_level > MAX_FIELD_RASTER_DETAIL_LEVEL {
+            return Err(ObserverApiError::InvalidDetailLevel(self.detail_level));
+        }
+        Ok(())
+    }
+}
+
+/// One chunk of one measured lattice, transported unchanged.
+///
+/// `values` is row-major over `edge` columns and `edge` rows, repeated `depth`
+/// times for a volumetric field — terrain is `depth` 1, mana is `depth` equal to
+/// its extent. Reductions to plan view are a reading of the field rather than a
+/// property of it, so the runtime performs none of them (INV-022).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ObserverFieldRaster {
+    pub chart_id: u64,
+    pub chunk_x: i32,
+    pub chunk_y: i32,
+    pub chunk_z: i32,
+    pub field: FieldRasterKind,
+    pub detail_level: u8,
+    /// Samples along one edge of the lattice.
+    pub edge: u32,
+    /// Layers through z. One for a surface field.
+    pub depth: u32,
+    pub values: Vec<i64>,
+    /// A second band over the same lattice, empty when the field has none.
+    pub auxiliary: Vec<i64>,
+    /// Per-cell provenance: the trace that last changed the cell, zero for none.
+    pub cell_traces: Vec<u64>,
+    /// The event that produced the field, so a drawn cell has an anchor.
+    pub generation_trace: u64,
+}
+
+impl ObserverFieldRaster {
+    pub fn cell_count(&self) -> usize {
+        (self.edge as usize) * (self.edge as usize) * (self.depth as usize)
     }
 }
 
@@ -58,6 +150,18 @@ impl ObserverQuery {
             kind: QueryKind::WorldChunks,
             scope: None,
             payload: Vec::new(),
+        }
+    }
+
+    /// A raster request carries its parameters in the payload, so the query
+    /// envelope stays the one shape every kind shares.
+    pub fn field_raster(request_id: u64, payload: Vec<u8>) -> Self {
+        Self {
+            request_id,
+            protocol_version: OBSERVER_PROTOCOL_V1,
+            kind: QueryKind::FieldRaster,
+            scope: None,
+            payload,
         }
     }
 
@@ -210,6 +314,10 @@ pub enum ObserverApiError {
     UnsupportedProtocolVersion(u32),
     #[error("unknown observer query kind {0}")]
     UnknownQueryKind(u32),
+    #[error("unknown observer field raster kind {0}")]
+    UnknownFieldRasterKind(u32),
+    #[error("field raster detail level {0} is out of range")]
+    InvalidDetailLevel(u8),
     #[error("observer payload is too large: {0} bytes")]
     PayloadTooLarge(usize),
 }

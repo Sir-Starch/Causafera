@@ -9,6 +9,7 @@ pub struct RuntimeConfig {
     pub deterministic: DeterministicConfig,
     pub chunk_extent: u8,
     pub active_chunk_radius: u8,
+    pub active_chunk_shape: ActiveChunkShape,
     pub chart_id: SpatialChartId,
     pub pattern_schedule: PhysicalPatternSchedule,
     pub mana_parameters: ManaParameters,
@@ -20,6 +21,25 @@ pub struct RuntimeConfig {
     pub bootstrap_population: u64,
     pub material_surface_signals_enabled: bool,
     pub experiment_recipe_mana_sources: ExperimentRecipeManaSourceRecipe,
+}
+
+/// The shape the active chunk set takes around the chart origin.
+///
+/// Widening the set changes which chunks exist, and therefore changes state
+/// hashes by construction. `Line` is what every recorded fixture and replay was
+/// produced against and stays the default; a session that wants a map with two
+/// dimensions asks for `Area` explicitly.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ActiveChunkShape {
+    /// `2 * radius + 1` chunks along x, with y and z pinned to zero.
+    #[default]
+    Line,
+    /// The square block of `(2 * radius + 1)²` chunks in the z = 0 plane.
+    ///
+    /// A Euclidean disc was considered and rejected: at radius 1 it is a
+    /// five-chunk cross, which is a worse chart than the nine-chunk block the
+    /// observer's own bounds were already written for.
+    Area,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -63,6 +83,7 @@ impl RuntimeConfig {
             deterministic: DeterministicConfig::new(world_seed),
             chunk_extent: 3,
             active_chunk_radius: 1,
+            active_chunk_shape: ActiveChunkShape::Line,
             chart_id: SpatialChartId::new(1),
             pattern_schedule: PhysicalPatternSchedule::continuous(1_024),
             mana_parameters: ManaParameters {
@@ -117,7 +138,11 @@ impl RuntimeConfig {
                 budget: self.experiment_recipe_mana_sources.recipe_budget,
             });
         }
-        let active_chunks = active_chunk_keys(self.chart_id, self.active_chunk_radius);
+        let active_chunks = active_chunk_keys(
+            self.chart_id,
+            self.active_chunk_radius,
+            self.active_chunk_shape,
+        );
         let active_chunks = active_chunks.into_iter().collect::<BTreeSet<_>>();
         let mut source_ids = BTreeSet::new();
         let mut canonical_keys = BTreeSet::new();

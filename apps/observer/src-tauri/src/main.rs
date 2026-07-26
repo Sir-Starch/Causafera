@@ -45,6 +45,16 @@ async fn observer_analyze(
     .map_err(|error| format!("observer analysis task failed: {error}"))?
 }
 
+/// One chunk of one measured lattice. The request travels as protocol bytes
+/// like every other query, so the boundary stays one shape.
+#[tauri::command]
+fn observer_field_raster(
+    request: Vec<u8>,
+    state: State<'_, ObserverState>,
+) -> Result<Vec<u8>, String> {
+    with_session(&state, |session| session.query(&request))
+}
+
 #[tauri::command]
 fn observer_reset(seed: u64, state: State<'_, ObserverState>) -> Result<Vec<u8>, String> {
     with_session(&state, |session| session.reset(seed))
@@ -70,6 +80,7 @@ fn main() {
             observer_open_stream,
             observer_advance,
             observer_query,
+            observer_field_raster,
             observer_analyze,
             observer_reset,
         ])

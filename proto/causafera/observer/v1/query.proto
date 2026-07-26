@@ -8,6 +8,7 @@ enum QueryKind {
   QUERY_KIND_RUNTIME_SUMMARY = 1;
   QUERY_KIND_EXPLANATION_IR = 2;
   QUERY_KIND_WORLD_CHUNKS = 3;
+  QUERY_KIND_FIELD_RASTER = 4;
 }
 message QueryRequest {
   uint64 request_id = 1;
@@ -62,6 +63,45 @@ message WorldChunkSnapshot {
   repeated MaterialSurfaceGateDelta material_surface_gate_deltas = 5;
   repeated ThermalFieldDelta thermal_deltas = 6;
   uint32 thermal_delta_schema_version = 7;
+}
+
+// One bounded request for one chunk of one measured lattice. It travels in
+// QueryRequest.payload, so the query envelope keeps a single shape.
+enum FieldRasterKind {
+  FIELD_RASTER_KIND_UNSPECIFIED = 0;
+  FIELD_RASTER_KIND_TERRAIN_ELEVATION = 1;
+  FIELD_RASTER_KIND_TERRAIN_ROUGHNESS = 2;
+  FIELD_RASTER_KIND_MANA_INTENSITY = 3;
+}
+
+message FieldRasterRequest {
+  uint64 chart_id = 1;
+  sint32 chunk_x = 2;
+  sint32 chunk_y = 3;
+  sint32 chunk_z = 4;
+  FieldRasterKind field = 5;
+  // Terrain only: 0 is the carrier's 32x32 lattice, each level a block-mean
+  // halving. The mana volume is projected whole at its configured extent.
+  uint32 detail_level = 6;
+}
+
+message FieldRaster {
+  uint64 chart_id = 1;
+  sint32 chunk_x = 2;
+  sint32 chunk_y = 3;
+  sint32 chunk_z = 4;
+  FieldRasterKind field = 5;
+  uint32 detail_level = 6;
+  // Samples along one lattice edge, and layers through z. A surface field has
+  // depth 1; the mana volume has depth equal to its edge.
+  uint32 edge = 7;
+  uint32 depth = 8;
+  // Packed ZigZag varints of successive differences along the scan order.
+  bytes values = 9;
+  bytes auxiliary = 10;
+  // Packed varints, one per cell: the trace that last changed it, zero for none.
+  bytes cell_traces = 11;
+  uint64 generation_trace_id = 12;
 }
 
 message MaterialSurfaceDelta {
