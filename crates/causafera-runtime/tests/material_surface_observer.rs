@@ -7,6 +7,7 @@ use causafera_explanation::{
 use causafera_runtime::{
     EXPERIMENT_RECIPE_MANA_SOURCE_EVENT_KIND, EXPERIMENT_RECIPE_MANA_SOURCE_POLICY_SCHEMA_V1,
     ExperimentRecipeManaSource, ExperimentRecipeManaSourceRecipe, Runtime, RuntimeConfig,
+    TerrainParticipation,
 };
 use causafera_types::{ChartChunkCoord, ChunkCoord};
 
@@ -22,8 +23,13 @@ fn production_loop_config(seed: u64) -> RuntimeConfig {
 
 fn source_config(seed: u64, amount: i64, effect_threshold: i64) -> RuntimeConfig {
     let mut config = production_loop_config(seed);
+    // Diffusion, decay and the terrain carrier are all held off so the cell the
+    // recipe targets holds the recipe's contribution and nothing else. These
+    // assertions are about one bounded source, not about the field the standing
+    // ground sustains around it.
     config.mana_parameters.diffusion = 0;
     config.mana_parameters.decay = 0;
+    config.terrain_participation = TerrainParticipation::Inert;
     config.mana_parameters.effect_threshold = effect_threshold;
     config.experiment_recipe_mana_sources = ExperimentRecipeManaSourceRecipe {
         records: vec![ExperimentRecipeManaSource {

@@ -44,7 +44,9 @@ See `RFC-ISEKAI-001: Cross-World Transfer Model`.
 
 RFC-MANA-001 now settles the Phase 17 minimum: a bounded fixed-point scalar field responds to opaque physical fingerprints through recurrence, regular intervals, synchronization, repeated coordinates, magnitude, diffusion, decay, and saturation. Evolution is proposal-only and every committed changed cell requires causal provenance.
 
-The final field physics remain open. Vector state, explicit phase/interference, cross-chunk exchange, hysteresis, field-to-matter effects, concrete carrier adapters, sparse/multi-resolution layouts, acceleration, and empirical parameter selection are deferred. Stateful attractors remain a separate metaphysical research hypothesis.
+The final field physics remain open. Vector state, explicit phase/interference, cross-chart transport, sparse/multi-resolution layouts, acceleration, and empirical parameter selection are deferred. Stateful attractors remain a separate metaphysical research hypothesis.
+
+Four items this list previously deferred are now implemented and are no longer open questions: same-chart cross-chunk exchange, threshold/hysteresis field-to-matter effects, and two concrete carrier adapters — the change-driven material surface and the standing terrain structure. What replaced the question is a narrower one. Provenance is settled: a seam cell could commit a change with no causal ancestry, and `TODO-MANA-005` closed that, so no mana cell change is proposed without a cause. Two narrower questions remain: seam delivery does not apply the field's own saturation ceiling, so a cell fed across a seam in a saturated field can exceed `maximum_intensity` (`TODO-MANA-006`), and the response and gate constants were calibrated against a field that no carrier populated, so the gate latches open instead of discriminating (`TODO-MANA-007`). The lattice question is settled: `TODO-MANA-004` closed with `chunk_extent` staying 3, on the finding that the terrain has almost no coherent structure for a finer field to resolve and that refining it makes the gate less responsive rather than more.
 
 See `RFC-MANA-001: Minimal Information-Sensitive Field Model`.
 

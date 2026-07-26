@@ -113,6 +113,111 @@ pub struct ManaField {
     last_change_before: Vec<i64>,
 }
 
+/// The diffusion stencil: six face neighbours at weight 2 and twelve edge
+/// neighbours at weight 1, as `(dx, dy, dz, weight)`.
+///
+/// Cubic symmetry makes the second moment isotropic for any weighting, so the
+/// leading anisotropy is fourth order. Writing `f`, `e` and `c` for the face,
+/// edge and corner weights, the kernel is isotropic to fourth order when
+/// `sum w x^4 == 3 sum w x^2 y^2`, which reduces to `f == 2e + 8c`. Dropping
+/// the corners leaves `f == 2e`, the smallest exact-integer solution: no
+/// floating point enters the authoritative path, and a chunk corner never has
+/// to reach a diagonally opposite chunk.
+///
+/// The six-neighbour stencil this replaces satisfies no such condition: its
+/// support is the L1 ball, so a source spread as an octahedron rather than a
+/// sphere. Measured on the spread test below it reads 1.28 against this
+/// stencil's 1.00.
+const STENCIL: [(i8, i8, i8, i64); 18] = [
+    (-1, 0, 0, 2),
+    (1, 0, 0, 2),
+    (0, -1, 0, 2),
+    (0, 1, 0, 2),
+    (0, 0, -1, 2),
+    (0, 0, 1, 2),
+    (-1, -1, 0, 1),
+    (-1, 1, 0, 1),
+    (1, -1, 0, 1),
+    (1, 1, 0, 1),
+    (-1, 0, -1, 1),
+    (-1, 0, 1, 1),
+    (1, 0, -1, 1),
+    (1, 0, 1, 1),
+    (0, -1, -1, 1),
+    (0, -1, 1, 1),
+    (0, 1, -1, 1),
+    (0, 1, 1, 1),
+];
+
+/// Which of a chunk's neighbouring chunks are active, indexed by the chunk
+/// offset shifted into `0..3` on each axis.
+///
+/// A cell whose stencil reaches into an active neighbour counts that neighbour
+/// in its weight total, and [`ManaFieldSet`]'s boundary exchange delivers the
+/// share. A closed direction is the edge of the simulated region and reflects,
+/// which is the only place a boundary is allowed to be physically visible.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct OpenNeighbors {
+    active: [[[bool; 3]; 3]; 3],
+}
+
+impl OpenNeighbors {
+    /// No neighbouring chunk is active, so every boundary reflects.
+    pub const fn none() -> Self {
+        Self {
+            active: [[[false; 3]; 3]; 3],
+        }
+    }
+
+    fn contains(&self, delta: [i32; 3]) -> bool {
+        self.active[(delta[0] + 1) as usize][(delta[1] + 1) as usize][(delta[2] + 1) as usize]
+    }
+
+    /// Whether any neighbour is active at all, so an isolated chunk can skip the
+    /// boundary exchange without walking its faces.
+    fn any(&self) -> bool {
+        self.active.iter().flatten().flatten().any(|active| *active)
+    }
+
+    fn open(&mut self, delta: [i32; 3]) {
+        self.active[(delta[0] + 1) as usize][(delta[1] + 1) as usize][(delta[2] + 1) as usize] =
+            true;
+    }
+}
+
+/// Where one stencil step from a cell lands.
+enum StencilTarget {
+    Inside(usize),
+    Across { chunk_delta: [i32; 3], index: usize },
+}
+
+fn stencil_target(index: usize, extent: u8, offset: (i8, i8, i8)) -> StencilTarget {
+    let side = usize::from(extent);
+    let plane = side * side;
+    let position = [index % side, (index % plane) / side, index / plane];
+    let offset = [offset.0, offset.1, offset.2];
+    let mut target = [0_usize; 3];
+    let mut chunk_delta = [0_i32; 3];
+    for axis in 0..3 {
+        let step = position[axis] as i64 + i64::from(offset[axis]);
+        if step < 0 {
+            chunk_delta[axis] = -1;
+            target[axis] = side - 1;
+        } else if step >= side as i64 {
+            chunk_delta[axis] = 1;
+            target[axis] = 0;
+        } else {
+            target[axis] = step as usize;
+        }
+    }
+    let index = target[2] * plane + target[1] * side + target[0];
+    if chunk_delta == [0, 0, 0] {
+        StencilTarget::Inside(index)
+    } else {
+        StencilTarget::Across { chunk_delta, index }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ManaFieldSnapshot {
     pub id: ManaFieldId,
@@ -217,6 +322,7 @@ impl ManaField {
         parameters: ManaParameters,
         samples: &[PhysicalPatternSample],
         history: &[PhysicalPatternSample],
+        open_neighbors: OpenNeighbors,
     ) -> Result<ManaEvolutionProposal, ManaError> {
         let parameters = parameters.validate()?;
         if through <= self.observed_through {
@@ -275,10 +381,34 @@ impl ManaField {
             }
         }
 
+        // The boundary exchange attributes a share it delivers into a
+        // neighbouring chunk to whatever produced the source cell's value, and
+        // this tick's injection is part of that. Reading only the source cell's
+        // `last_change` would miss it entirely: a cell injected for the first
+        // time has no prior change to point at, so the share it hands across a
+        // seam would arrive with no ancestry at all.
+        let injection_causes: BTreeMap<u16, Vec<TraceId>> = direct_causes
+            .iter()
+            .enumerate()
+            .filter(|(_, causes)| !causes.is_empty())
+            .map(|(index, causes)| {
+                let unique: BTreeSet<_> = causes.iter().copied().collect();
+                (index as u16, unique.into_iter().collect())
+            })
+            .collect();
+
+        let weights = stencil_weights(self.extent, open_neighbors);
         let mut proposed = vec![0; injected.len()];
         let mut changes = Vec::new();
         for (index, proposed_value) in proposed.iter_mut().enumerate() {
-            let value = diffuse_cell(index, self.extent, &injected, parameters);
+            let value = diffuse_cell(
+                index,
+                self.extent,
+                &injected,
+                parameters,
+                &weights,
+                open_neighbors,
+            );
             *proposed_value = value;
             if value != self.intensity[index] {
                 let mut causes = BTreeSet::new();
@@ -297,12 +427,16 @@ impl ManaField {
             }
         }
 
+        require_attribution(&changes)?;
         Ok(ManaEvolutionProposal {
             field_id: self.id,
             chunk: self.chunk,
             extent: self.extent,
             through,
             base_intensity: self.intensity.clone(),
+            diffusion_input: injected,
+            injection_causes,
+            open_neighbors,
             proposed,
             inherited_traces: self.last_change.clone(),
             inherited_change_before: self.last_change_before.clone(),
@@ -482,11 +616,21 @@ impl ManaFieldSet {
                 .get(chunk)
                 .map(Vec::as_slice)
                 .unwrap_or(&[]);
-            let proposal =
-                field.propose_evolution(through, parameters, field_samples, field_history)?;
+            let proposal = field.propose_evolution(
+                through,
+                parameters,
+                field_samples,
+                field_history,
+                open_neighbors_for(&self.fields, *chunk, field.extent)?,
+            )?;
             field_proposals.insert(*chunk, proposal);
         }
         apply_boundary_exchange(&self.fields, &mut field_proposals, parameters)?;
+        // The exchange creates and removes changes, so the per-field guarantee
+        // has to be re-established after it, not only inside each field.
+        for proposal in field_proposals.values() {
+            require_attribution(&proposal.changes)?;
+        }
         Ok(ManaFieldSetEvolutionProposal { field_proposals })
     }
 }
@@ -553,6 +697,16 @@ pub struct ManaEvolutionProposal {
     extent: u8,
     through: SimulationTime,
     base_intensity: Vec<i64>,
+    /// The field after injection and before diffusion. The boundary exchange
+    /// reads it so a cross-chunk share is computed from exactly the values the
+    /// interior stencil diffused, not from an already-diffused result.
+    diffusion_input: Vec<i64>,
+    /// Per-cell causes of this tick's injection, sparse because only cells a
+    /// sample landed on have any. The boundary exchange reads it so a share
+    /// crossing a seam is attributed to the samples that produced the value,
+    /// not only to the source cell's previous change.
+    injection_causes: BTreeMap<u16, Vec<TraceId>>,
+    open_neighbors: OpenNeighbors,
     proposed: Vec<i64>,
     inherited_traces: Vec<Option<TraceId>>,
     inherited_change_before: Vec<i64>,
@@ -610,8 +764,55 @@ pub enum ManaError {
     InvalidFieldSet,
     DuplicateFieldChunk,
     UnknownFieldChunk,
+    UnattributedChange,
 }
 
+/// Refuse a proposal that would change a cell for no recorded reason.
+///
+/// Every accepted cell transition costs one committed provenance trace, and a
+/// trace whose cause list is empty is a root event: authoritative field state
+/// that appeared on its own. Only the experiment-recipe source is entitled to
+/// that, and it commits through its own path. So this fails closed rather than
+/// emitting an unattributed change.
+///
+/// Attribution is total only because a cell holding mana always has a change to
+/// point at — `ManaField::new` starts every cell at zero and untraced, and every
+/// commit writes `last_change` for every cell it moves. A field imported with a
+/// non-zero intensity and no trace violates that and is reported here.
+fn require_attribution(changes: &[ManaCellChange]) -> Result<(), ManaError> {
+    if changes.iter().any(|change| change.causes.is_empty()) {
+        return Err(ManaError::UnattributedChange);
+    }
+    Ok(())
+}
+
+fn open_neighbors_for(
+    fields: &BTreeMap<ChartChunkCoord, ManaField>,
+    chunk: ChartChunkCoord,
+    extent: u8,
+) -> Result<OpenNeighbors, ManaError> {
+    let mut open = OpenNeighbors::none();
+    for (dx, dy, dz, _) in STENCIL {
+        let delta = [i32::from(dx), i32::from(dy), i32::from(dz)];
+        let neighbor = chunk.same_chart_neighbor(delta[0], delta[1], delta[2]);
+        let Some(neighbor_field) = fields.get(&neighbor) else {
+            continue;
+        };
+        if neighbor_field.extent != extent {
+            return Err(ManaError::InvalidFieldSet);
+        }
+        open.open(delta);
+    }
+    Ok(open)
+}
+
+/// Deliver the shares the per-field stencils have already subtracted for steps
+/// that leave their chunk.
+///
+/// Every directed step is visited exactly once — once per source cell per
+/// stencil offset — so no face needs pairing and no share can be counted twice.
+/// The amount is recomputed from the pre-diffusion values the source stencil
+/// used, which is what makes the result independent of visit order.
 fn apply_boundary_exchange(
     fields: &BTreeMap<ChartChunkCoord, ManaField>,
     proposals: &mut BTreeMap<ChartChunkCoord, ManaEvolutionProposal>,
@@ -621,105 +822,87 @@ fn apply_boundary_exchange(
     if rate == 0 {
         return Ok(());
     }
-    let chunks = fields.keys().copied().collect::<Vec<_>>();
-    for chunk in chunks {
-        for direction in [
-            BoundaryDirection::PositiveX,
-            BoundaryDirection::PositiveY,
-            BoundaryDirection::PositiveZ,
-        ] {
-            let neighbor = direction.neighbor(chunk);
-            if fields.contains_key(&neighbor) {
-                exchange_boundary_pair(chunk, neighbor, direction, fields, proposals, rate)?;
+    for chunk in fields.keys().copied().collect::<Vec<_>>() {
+        let source = proposals.get(&chunk).ok_or(ManaError::UnknownFieldChunk)?;
+        let extent = source.extent;
+        let open = source.open_neighbors;
+        if !open.any() {
+            continue;
+        }
+        let input = source.diffusion_input.clone();
+        let injection_causes = source.injection_causes.clone();
+        let weights = stencil_weights(extent, open);
+        let source_field = fields.get(&chunk).ok_or(ManaError::UnknownFieldChunk)?;
+
+        for index in 0..input.len() {
+            if !touches_chunk_boundary(index, extent) {
+                continue;
+            }
+            // What explains the value this cell is handing away: the samples that
+            // injected into it this tick, and the change that left it holding
+            // whatever it already held.
+            let mut source_causes: Vec<TraceId> = injection_causes
+                .get(&(index as u16))
+                .cloned()
+                .unwrap_or_default();
+            source_causes.extend(source_field.last_change[index]);
+            for (dx, dy, dz, weight) in STENCIL {
+                let StencilTarget::Across {
+                    chunk_delta,
+                    index: target_index,
+                } = stencil_target(index, extent, (dx, dy, dz))
+                else {
+                    continue;
+                };
+                if !open.contains(chunk_delta) {
+                    continue;
+                }
+                let amount = diffusion_share(input[index], rate, weight, weights[index]);
+                if amount == 0 {
+                    continue;
+                }
+                let target_chunk =
+                    chunk.same_chart_neighbor(chunk_delta[0], chunk_delta[1], chunk_delta[2]);
+                let target_field = fields
+                    .get(&target_chunk)
+                    .ok_or(ManaError::UnknownFieldChunk)?;
+                apply_exchange_delta(
+                    proposals,
+                    target_chunk,
+                    target_index,
+                    amount,
+                    &source_causes,
+                    target_field.last_change[target_index],
+                )?;
             }
         }
     }
     Ok(())
 }
 
-#[derive(Clone, Copy)]
-enum BoundaryDirection {
-    PositiveX,
-    PositiveY,
-    PositiveZ,
+/// Whether any stencil step from this cell can leave the chunk at all.
+fn touches_chunk_boundary(index: usize, extent: u8) -> bool {
+    let side = usize::from(extent);
+    let plane = side * side;
+    [index % side, (index % plane) / side, index / plane]
+        .into_iter()
+        .any(|coordinate| coordinate == 0 || coordinate + 1 == side)
 }
 
-impl BoundaryDirection {
-    const fn neighbor(self, chunk: ChartChunkCoord) -> ChartChunkCoord {
-        match self {
-            Self::PositiveX => chunk.same_chart_neighbor(1, 0, 0),
-            Self::PositiveY => chunk.same_chart_neighbor(0, 1, 0),
-            Self::PositiveZ => chunk.same_chart_neighbor(0, 0, 1),
-        }
-    }
-}
-
-fn exchange_boundary_pair(
-    left_chunk: ChartChunkCoord,
-    right_chunk: ChartChunkCoord,
-    direction: BoundaryDirection,
-    fields: &BTreeMap<ChartChunkCoord, ManaField>,
-    proposals: &mut BTreeMap<ChartChunkCoord, ManaEvolutionProposal>,
-    rate: i64,
-) -> Result<(), ManaError> {
-    let left_field = fields
-        .get(&left_chunk)
-        .ok_or(ManaError::UnknownFieldChunk)?;
-    let right_field = fields
-        .get(&right_chunk)
-        .ok_or(ManaError::UnknownFieldChunk)?;
-    if left_field.extent != right_field.extent {
-        return Err(ManaError::InvalidFieldSet);
-    }
-    let extent = left_field.extent;
-    let pairs = boundary_pairs(extent, direction);
-    let mut transfers = Vec::with_capacity(pairs.len());
-    for (left_index, right_index) in pairs {
-        let left = proposals
-            .get(&left_chunk)
-            .ok_or(ManaError::UnknownFieldChunk)?
-            .proposed[left_index];
-        let right = proposals
-            .get(&right_chunk)
-            .ok_or(ManaError::UnknownFieldChunk)?
-            .proposed[right_index];
-        let transfer = left
-            .saturating_sub(right)
-            .saturating_mul(rate)
-            .saturating_div(MANA_SCALE)
-            .saturating_div(2);
-        transfers.push((left_index, right_index, transfer));
-    }
-    for (left_index, right_index, transfer) in transfers {
-        if transfer == 0 {
-            continue;
-        }
-        let left_trace = left_field.last_change[left_index];
-        let right_trace = right_field.last_change[right_index];
-        apply_exchange_delta(
-            proposals,
-            left_chunk,
-            left_index,
-            -transfer,
-            [left_trace, right_trace],
-        )?;
-        apply_exchange_delta(
-            proposals,
-            right_chunk,
-            right_index,
-            transfer,
-            [left_trace, right_trace],
-        )?;
-    }
-    Ok(())
-}
-
+/// Deliver one cross-chunk share into the receiving proposal, carrying the
+/// ancestry of both sides with it.
+///
+/// `source_causes` explains the value that crossed; `target_last_change` and the
+/// receiving cell's own injection explain the value it landed on. A cell that
+/// only receives across a seam has no interior change to inherit causes from, so
+/// this is the sole point where its ancestry is established.
 fn apply_exchange_delta(
     proposals: &mut BTreeMap<ChartChunkCoord, ManaEvolutionProposal>,
     chunk: ChartChunkCoord,
     index: usize,
     delta: i64,
-    causes: [Option<TraceId>; 2],
+    source_causes: &[TraceId],
+    target_last_change: Option<TraceId>,
 ) -> Result<(), ManaError> {
     let proposal = proposals
         .get_mut(&chunk)
@@ -740,7 +923,7 @@ fn apply_exchange_delta(
         }
         let change = &mut proposal.changes[change_index];
         change.after = after;
-        for cause in causes.into_iter().flatten() {
+        for cause in source_causes.iter().copied().chain(target_last_change) {
             if !change.causes.contains(&cause) {
                 change.causes.push(cause);
             }
@@ -749,39 +932,24 @@ fn apply_exchange_delta(
         return Ok(());
     }
     if after != base {
+        let mut causes: BTreeSet<TraceId> = source_causes.iter().copied().collect();
+        causes.extend(target_last_change);
+        causes.extend(
+            proposal
+                .injection_causes
+                .get(&cell_index)
+                .into_iter()
+                .flatten()
+                .copied(),
+        );
         proposal.changes.push(ManaCellChange {
             cell_index,
             before: base,
             after,
-            causes: causes
-                .into_iter()
-                .flatten()
-                .collect::<BTreeSet<_>>()
-                .into_iter()
-                .collect(),
+            causes: causes.into_iter().collect(),
         });
     }
     Ok(())
-}
-
-fn boundary_pairs(extent: u8, direction: BoundaryDirection) -> Vec<(usize, usize)> {
-    let side = usize::from(extent);
-    let mut pairs = Vec::with_capacity(side * side);
-    for a in 0..side {
-        for b in 0..side {
-            let (left, right) = match direction {
-                BoundaryDirection::PositiveX => ((side - 1, a, b), (0, a, b)),
-                BoundaryDirection::PositiveY => ((a, side - 1, b), (a, 0, b)),
-                BoundaryDirection::PositiveZ => ((a, b, side - 1), (a, b, 0)),
-            };
-            pairs.push((flat_index(left, side), flat_index(right, side)));
-        }
-    }
-    pairs
-}
-
-fn flat_index((x, y, z): (usize, usize, usize), side: usize) -> usize {
-    z * side * side + y * side + x
 }
 
 fn group_samples(
@@ -828,26 +996,91 @@ fn pattern_score(samples: &[PhysicalPatternSample], parameters: ManaParameters) 
         .saturating_add(spatial.saturating_mul(i64::from(parameters.spatial_response)))
 }
 
-fn diffuse_cell(index: usize, extent: u8, values: &[i64], parameters: ManaParameters) -> i64 {
-    let neighbors = neighbor_indices(index, extent);
+fn diffuse_cell(
+    index: usize,
+    extent: u8,
+    values: &[i64],
+    parameters: ManaParameters,
+    weights: &[i64],
+    open_neighbors: OpenNeighbors,
+) -> i64 {
+    let rate = i64::from(parameters.diffusion);
     let current = values[index];
     let decay = current.saturating_mul(i64::from(parameters.decay)) / MANA_SCALE;
-    let outgoing = current.saturating_mul(i64::from(parameters.diffusion)) / MANA_SCALE;
-    let incoming = neighbors
-        .iter()
-        .map(|neighbor| {
-            let count = neighbor_indices(*neighbor, extent).len() as i64;
-            values[*neighbor]
-                .saturating_mul(i64::from(parameters.diffusion))
-                .saturating_div(MANA_SCALE)
-                .saturating_div(count.max(1))
-        })
-        .fold(0i64, i64::saturating_add);
+    // The cell loses exactly the sum of the shares its neighbours receive.
+    // Subtracting an undivided budget instead would destroy the truncation
+    // remainder on every cell of every tick. Shares that leave the chunk are
+    // subtracted here and delivered by the field set's boundary exchange.
+    let mut outgoing = 0_i64;
+    let mut incoming = 0_i64;
+    for (dx, dy, dz, weight) in STENCIL {
+        match stencil_target(index, extent, (dx, dy, dz)) {
+            StencilTarget::Inside(neighbor) => {
+                outgoing =
+                    outgoing.saturating_add(diffusion_share(current, rate, weight, weights[index]));
+                incoming = incoming.saturating_add(diffusion_share(
+                    values[neighbor],
+                    rate,
+                    weight,
+                    weights[neighbor],
+                ));
+            }
+            StencilTarget::Across { chunk_delta, .. } => {
+                if open_neighbors.contains(chunk_delta) {
+                    outgoing = outgoing.saturating_add(diffusion_share(
+                        current,
+                        rate,
+                        weight,
+                        weights[index],
+                    ));
+                }
+            }
+        }
+    }
     current
         .saturating_sub(decay)
         .saturating_sub(outgoing)
         .saturating_add(incoming)
         .clamp(0, parameters.maximum_intensity)
+}
+
+/// One neighbour's share of a cell's diffused mana. Truncating here rather than
+/// once for the whole budget is what keeps the stencil conservative: the giver
+/// sums exactly the terms the receivers are handed.
+fn diffusion_share(value: i64, rate: i64, weight: i64, total: i64) -> i64 {
+    if total <= 0 {
+        return 0;
+    }
+    value
+        .saturating_mul(rate)
+        .saturating_div(MANA_SCALE)
+        .saturating_mul(weight)
+        .saturating_div(total)
+}
+
+/// The stencil weight available to every cell in a field, built once per
+/// proposal so the hot loop never recomputes it per neighbour per cell.
+fn stencil_weights(extent: u8, open_neighbors: OpenNeighbors) -> Vec<i64> {
+    (0..usize::from(extent).pow(3))
+        .map(|index| cell_stencil_weight(index, extent, open_neighbors))
+        .collect()
+}
+
+/// The total stencil weight reaching a cell, counting steps into active
+/// neighbouring chunks. Only a direction with no active chunk behind it reduces
+/// the total, so a cell's share does not depend on where the chunk grid happens
+/// to fall (INV-037).
+fn cell_stencil_weight(index: usize, extent: u8, open_neighbors: OpenNeighbors) -> i64 {
+    STENCIL
+        .into_iter()
+        .filter(
+            |(dx, dy, dz, _)| match stencil_target(index, extent, (*dx, *dy, *dz)) {
+                StencilTarget::Inside(_) => true,
+                StencilTarget::Across { chunk_delta, .. } => open_neighbors.contains(chunk_delta),
+            },
+        )
+        .map(|(_, _, _, weight)| weight)
+        .sum()
 }
 
 fn contributing_indices(index: usize, extent: u8) -> Vec<usize> {
@@ -858,32 +1091,15 @@ fn contributing_indices(index: usize, extent: u8) -> Vec<usize> {
 }
 
 fn neighbor_indices(index: usize, extent: u8) -> Vec<usize> {
-    let side = usize::from(extent);
-    let plane = side * side;
-    let z = index / plane;
-    let within = index % plane;
-    let y = within / side;
-    let x = within % side;
-    let mut neighbors = Vec::with_capacity(6);
-    if x > 0 {
-        neighbors.push(index - 1);
-    }
-    if x + 1 < side {
-        neighbors.push(index + 1);
-    }
-    if y > 0 {
-        neighbors.push(index - side);
-    }
-    if y + 1 < side {
-        neighbors.push(index + side);
-    }
-    if z > 0 {
-        neighbors.push(index - plane);
-    }
-    if z + 1 < side {
-        neighbors.push(index + plane);
-    }
-    neighbors
+    STENCIL
+        .into_iter()
+        .filter_map(
+            |(dx, dy, dz, _)| match stencil_target(index, extent, (dx, dy, dz)) {
+                StencilTarget::Inside(neighbor) => Some(neighbor),
+                StencilTarget::Across { .. } => None,
+            },
+        )
+        .collect()
 }
 
 #[cfg(test)]
@@ -944,10 +1160,22 @@ mod tests {
         let ordered = vec![sample(1, 1, 0), sample(2, 1, 1), sample(3, 1, 2)];
         let reversed = ordered.iter().copied().rev().collect::<Vec<_>>();
         let a = field
-            .propose_evolution(SimulationTime::new(3), parameters(), &ordered, &[])
+            .propose_evolution(
+                SimulationTime::new(3),
+                parameters(),
+                &ordered,
+                &[],
+                OpenNeighbors::none(),
+            )
             .unwrap();
         let b = field
-            .propose_evolution(SimulationTime::new(3), parameters(), &reversed, &[])
+            .propose_evolution(
+                SimulationTime::new(3),
+                parameters(),
+                &reversed,
+                &[],
+                OpenNeighbors::none(),
+            )
             .unwrap();
         assert_eq!(a, b);
         assert!(field.intensity().iter().all(|value| *value == 0));
@@ -974,13 +1202,25 @@ mod tests {
             },
         ];
         let repeated_total: i64 = field
-            .propose_evolution(SimulationTime::new(3), parameters(), &repeated, &[])
+            .propose_evolution(
+                SimulationTime::new(3),
+                parameters(),
+                &repeated,
+                &[],
+                OpenNeighbors::none(),
+            )
             .unwrap()
             .proposed_intensity()
             .iter()
             .sum();
         let isolated_total: i64 = field
-            .propose_evolution(SimulationTime::new(3), parameters(), &isolated, &[])
+            .propose_evolution(
+                SimulationTime::new(3),
+                parameters(),
+                &isolated,
+                &[],
+                OpenNeighbors::none(),
+            )
             .unwrap()
             .proposed_intensity()
             .iter()
@@ -997,6 +1237,7 @@ mod tests {
                 parameters(),
                 &[sample(1, 1, 0), sample(2, 1, 1)],
                 &[],
+                OpenNeighbors::none(),
             )
             .unwrap();
         assert_eq!(
@@ -1108,12 +1349,19 @@ mod tests {
     fn boundary_exchange_that_returns_to_start_emits_no_mana_change() {
         let field = ManaField::new(ManaFieldId::new(1), chart_chunk(), 3).unwrap();
         let proposal = field
-            .propose_evolution(SimulationTime::new(1), parameters(), &[], &[])
+            .propose_evolution(
+                SimulationTime::new(1),
+                parameters(),
+                &[],
+                &[],
+                OpenNeighbors::none(),
+            )
             .unwrap();
         let mut proposals = BTreeMap::from([(chart_chunk(), proposal)]);
 
-        apply_exchange_delta(&mut proposals, chart_chunk(), 0, 5, [None, None]).unwrap();
-        apply_exchange_delta(&mut proposals, chart_chunk(), 0, -5, [None, None]).unwrap();
+        let causes = [TraceId::new(9)];
+        apply_exchange_delta(&mut proposals, chart_chunk(), 0, 5, &causes, None).unwrap();
+        apply_exchange_delta(&mut proposals, chart_chunk(), 0, -5, &causes, None).unwrap();
 
         assert!(
             proposals[&chart_chunk()].changes().is_empty(),
@@ -1125,7 +1373,13 @@ mod tests {
     fn boundary_exchange_canonicalizes_parent_traces() {
         let field = ManaField::new(ManaFieldId::new(1), chart_chunk(), 3).unwrap();
         let proposal = field
-            .propose_evolution(SimulationTime::new(1), parameters(), &[], &[])
+            .propose_evolution(
+                SimulationTime::new(1),
+                parameters(),
+                &[],
+                &[],
+                OpenNeighbors::none(),
+            )
             .unwrap();
         let mut proposals = BTreeMap::from([(chart_chunk(), proposal)]);
 
@@ -1134,7 +1388,8 @@ mod tests {
             chart_chunk(),
             0,
             5,
-            [Some(TraceId::new(5)), Some(TraceId::new(3))],
+            &[TraceId::new(5)],
+            Some(TraceId::new(3)),
         )
         .unwrap();
 
@@ -1142,6 +1397,73 @@ mod tests {
             proposals[&chart_chunk()].changes()[0].causes,
             vec![TraceId::new(3), TraceId::new(5)],
             "boundary-exchange parents must be strictly ordered for provenance commits"
+        );
+    }
+
+    /// A cell that changed only because mana crossed a seam into it must record
+    /// what crossed. Nothing before this tick did: both fields start blank, so
+    /// the source cell's `last_change` is `None` and the only ancestry that
+    /// exists is the samples that injected into it.
+    #[test]
+    fn a_cell_fed_across_a_seam_records_what_crossed_it() {
+        let left = chart_chunk_at(1, 0);
+        let right = chart_chunk_at(1, 1);
+        let samples = [
+            sample_in(left, 1, 2, 1),
+            PhysicalPatternSample {
+                position: LocalCoord::new(2, 2, 1),
+                ..sample_in(left, 1, 2, 2)
+            },
+        ];
+
+        let proposal = field_set(left, right)
+            .propose_evolution(SimulationTime::new(1), parameters(), &samples, &[])
+            .unwrap();
+
+        let received = proposal.field_proposals().get(&right).unwrap();
+        assert!(
+            received.proposed_intensity().iter().any(|value| *value > 0),
+            "the seam must conduct for this test to mean anything"
+        );
+        assert!(!received.changes().is_empty());
+        for change in received.changes() {
+            assert!(
+                !change.causes.is_empty(),
+                "cell {} changed with no recorded cause",
+                change.cell_index
+            );
+        }
+        assert!(
+            received
+                .changes()
+                .iter()
+                .all(|change| change.causes.contains(&samples[0].cause)
+                    || change.causes.contains(&samples[1].cause)),
+            "a seam change must descend from the samples whose mana crossed"
+        );
+    }
+
+    /// Attribution rests on a cell holding mana only if some commit put it
+    /// there. A field imported in violation of that cannot attribute what it
+    /// spreads, and the proposal boundary says so instead of committing state
+    /// with no ancestry.
+    #[test]
+    fn an_untraced_cell_holding_mana_cannot_be_evolved() {
+        let mut snapshot = ManaField::new(ManaFieldId::new(1), chart_chunk(), 3)
+            .unwrap()
+            .export_snapshot();
+        snapshot.intensity[13] = 4_096;
+        let field = ManaField::import_snapshot(snapshot).unwrap();
+
+        assert_eq!(
+            field.propose_evolution(
+                SimulationTime::new(1),
+                parameters(),
+                &[],
+                &[],
+                OpenNeighbors::none()
+            ),
+            Err(ManaError::UnattributedChange)
         );
     }
 
@@ -1157,7 +1479,8 @@ mod tests {
                 SimulationTime::new(1),
                 parameters(),
                 &[sample(1, 2, 0)],
-                &[]
+                &[],
+                OpenNeighbors::none()
             ),
             Err(ManaError::PositionOutsideField)
         );
@@ -1176,13 +1499,25 @@ mod tests {
         let irregular = [sample(1, 1, 1), sample(2, 1, 2), sample(4, 1, 4)];
 
         let periodic_total: i64 = field
-            .propose_evolution(SimulationTime::new(5), parameters(), &current, &periodic)
+            .propose_evolution(
+                SimulationTime::new(5),
+                parameters(),
+                &current,
+                &periodic,
+                OpenNeighbors::none(),
+            )
             .unwrap()
             .proposed_intensity()
             .iter()
             .sum();
         let irregular_total: i64 = field
-            .propose_evolution(SimulationTime::new(5), parameters(), &current, &irregular)
+            .propose_evolution(
+                SimulationTime::new(5),
+                parameters(),
+                &current,
+                &irregular,
+                OpenNeighbors::none(),
+            )
             .unwrap()
             .proposed_intensity()
             .iter()
@@ -1204,13 +1539,20 @@ mod tests {
                 parameters(),
                 &repeated_current,
                 &repeated_history,
+                OpenNeighbors::none(),
             )
             .unwrap()
             .proposed_intensity()
             .iter()
             .sum();
         let burst_total: i64 = field
-            .propose_evolution(SimulationTime::new(3), parameters(), &burst, &[])
+            .propose_evolution(
+                SimulationTime::new(3),
+                parameters(),
+                &burst,
+                &[],
+                OpenNeighbors::none(),
+            )
             .unwrap()
             .proposed_intensity()
             .iter()
@@ -1228,6 +1570,7 @@ mod tests {
                 parameters(),
                 &[sample(2, 1, 2)],
                 &[sample(0, 1, 0)],
+                OpenNeighbors::none(),
             )
             .unwrap();
 
@@ -1254,6 +1597,158 @@ mod tests {
             first.proposed_total_intensity(),
             second.proposed_total_intensity()
         );
+    }
+
+    /// A point source must spread as a sphere, not along the lattice axes.
+    ///
+    /// For a distribution isotropic to fourth order the moments about the
+    /// source satisfy `<x^4> == 3 <x^2 y^2>`, so their ratio is the spread
+    /// measure: 1.0 is round, above 1.0 is drawn out along the axes. The six
+    /// neighbour stencil this replaced measures 1.28 here.
+    #[test]
+    fn a_point_source_spreads_round_rather_than_along_the_axes() {
+        const EXTENT: u8 = 21;
+        const STEPS: usize = 30;
+        let side = usize::from(EXTENT);
+        let centre = side / 2;
+
+        let mut parameters = parameters();
+        parameters.decay = 0;
+        parameters.maximum_intensity = i64::MAX / 4;
+
+        let open = OpenNeighbors::none();
+        let weights = stencil_weights(EXTENT, open);
+        let mut values = vec![0_i64; side.pow(3)];
+        values[centre * side * side + centre * side + centre] = 1 << 40;
+        for _ in 0..STEPS {
+            values = (0..values.len())
+                .map(|index| diffuse_cell(index, EXTENT, &values, parameters, &weights, open))
+                .collect();
+        }
+
+        let (mut fourth, mut mixed) = (0.0_f64, 0.0_f64);
+        for (index, value) in values.iter().enumerate() {
+            let value = *value as f64;
+            let x = (index % side) as f64 - centre as f64;
+            let y = ((index % (side * side)) / side) as f64 - centre as f64;
+            let z = (index / (side * side)) as f64 - centre as f64;
+            fourth += value * (x.powi(4) + y.powi(4) + z.powi(4));
+            mixed += value * (x * x * y * y + y * y * z * z + z * z * x * x);
+        }
+
+        let spread = fourth / (3.0 * mixed);
+        assert!(
+            (spread - 1.0).abs() < 0.06,
+            "axis-versus-diagonal spread {spread:.3}, expected about 1.0"
+        );
+    }
+
+    /// A chunk face carries no physical meaning (INV-037), so a cell must hand
+    /// the same share across a seam as it hands an in-chunk neighbour, and a
+    /// cell sitting on a seam must not over-feed the neighbours on its own side.
+    #[test]
+    fn a_seam_conducts_exactly_as_the_interior_does() {
+        const EXTENT: u8 = 8;
+        const V: i64 = 1_000_000;
+        let side = usize::from(EXTENT);
+        let at = |x: usize, y: usize, z: usize| z * side * side + y * side + x;
+
+        let left = chart_chunk_at(1, 0);
+        let right = chart_chunk_at(1, 1);
+        let blank = |id: u64, chunk: ChartChunkCoord| ManaFieldSnapshot {
+            id: ManaFieldId::new(id),
+            chunk,
+            extent: EXTENT,
+            observed_through: SimulationTime::default(),
+            intensity: vec![0; side.pow(3)],
+            last_change: vec![None; side.pow(3)],
+            last_change_before: vec![0; side.pow(3)],
+        };
+        let seeded = |source_x: usize| {
+            let mut left_snapshot = blank(1, left);
+            let source = at(source_x, 4, 4);
+            left_snapshot.intensity[source] = V;
+            // A cell holds mana only because some commit put it there, and the
+            // proposal boundary refuses to spread what it cannot attribute.
+            left_snapshot.last_change[source] = Some(TraceId::new(1));
+            ManaFieldSet::new(vec![
+                ManaField::import_snapshot(left_snapshot).unwrap(),
+                ManaField::import_snapshot(blank(2, right)).unwrap(),
+            ])
+            .unwrap()
+        };
+
+        let mut parameters = parameters();
+        parameters.maximum_intensity = i64::MAX / 4;
+
+        let interior = seeded(3)
+            .propose_evolution(SimulationTime::new(1), parameters, &[], &[])
+            .unwrap();
+        let interior_received = interior
+            .field_proposals()
+            .get(&left)
+            .unwrap()
+            .proposed_intensity()[at(4, 4, 4)];
+
+        let seam = seeded(7)
+            .propose_evolution(SimulationTime::new(1), parameters, &[], &[])
+            .unwrap();
+        let seam_received = seam
+            .field_proposals()
+            .get(&right)
+            .unwrap()
+            .proposed_intensity()[at(0, 4, 4)];
+        let seam_sibling = seam
+            .field_proposals()
+            .get(&left)
+            .unwrap()
+            .proposed_intensity()[at(6, 4, 4)];
+
+        assert!(interior_received > 0);
+        assert_eq!(seam_received, interior_received);
+        assert_eq!(seam_sibling, interior_received);
+    }
+
+    /// Diffusion moves mana; it must not destroy it. The cell gives away the
+    /// sum of the shares its neighbours receive, so the only sanctioned losses
+    /// are decay and the clamp.
+    #[test]
+    fn diffusion_alone_conserves_mana_across_a_seam() {
+        const EXTENT: u8 = 5;
+        let side = usize::from(EXTENT);
+        let left = chart_chunk_at(1, 0);
+        let right = chart_chunk_at(1, 1);
+
+        let mut parameters = parameters();
+        parameters.decay = 0;
+        parameters.maximum_intensity = i64::MAX / 4;
+
+        let seeded = |chunk: ChartChunkCoord, id: u64, seed: i64| {
+            let mut intensity = vec![0; side.pow(3)];
+            for (index, value) in intensity.iter_mut().enumerate() {
+                *value = seed + (index as i64 % 97) * 1_013;
+            }
+            ManaField::import_snapshot(ManaFieldSnapshot {
+                id: ManaFieldId::new(id),
+                chunk,
+                extent: EXTENT,
+                observed_through: SimulationTime::default(),
+                intensity,
+                last_change: vec![Some(TraceId::new(id)); side.pow(3)],
+                last_change_before: vec![0; side.pow(3)],
+            })
+            .unwrap()
+        };
+        let fields =
+            ManaFieldSet::new(vec![seeded(left, 1, 7_000), seeded(right, 2, 40_000)]).unwrap();
+        let before = fields.total_intensity();
+
+        let after = fields
+            .propose_evolution(SimulationTime::new(1), parameters, &[], &[])
+            .unwrap()
+            .proposed_total_intensity();
+
+        assert_eq!(after, before);
     }
 
     #[test]

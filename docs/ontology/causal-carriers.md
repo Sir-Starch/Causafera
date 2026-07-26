@@ -99,4 +99,33 @@ residual and before/after totals for each batch. Canonically ordered boundary re
 same-chart face whose neighbor lies outside the active region, using the frozen post-injection
 pre-state; they are replaced only after a successful batch commit and persist in section `0x000E`.
 
+Terrain carrier participation adds the first standing physical carrier, and with it a boundary that
+the change-driven carriers did not need. A material surface, a recipe source, and a thermal
+reservoir all emit because something happened; terrain emits because something is there. That
+distinction is load-bearing. `PhysicalPatternHistory` and the `physical_events` count both retain
+change, so terrain samples enter `pending_samples` and neither of those: a structure that is merely
+still there has not happened again, and retaining it would let the recurrence and periodicity
+channels accumulate over the window and so score how often the carrier is read rather than anything
+about the world. A standing carrier earns the response its within-tick structure supports —
+recurrence, synchronisation and spatial repetition, and never periodicity, which needs occupied ticks
+it does not supply. Recurrence is among them because RFC-MANA-001 defines it as additional
+occurrences of the same fingerprint with no distinct-tick requirement, and defines synchronisation as
+its same-tick specialisation. What the exclusion secures is not a shorter list of channels but that
+none of them accumulate with the read cadence. Spatial repetition is the channel the model provides
+for repeated spatial structure, and it previously had no producer at all.
+
+The carrier presents its structure at the field's own lattice: one `PhysicalPatternSample` per
+plan-view column of the mana field, aggregated by block projection from the `CHUNK_SIZE²` terrain
+raster, carrying the column's mean relief contrast, material discontinuity and roughness as its
+magnitude, and a fingerprint of the column's dominant surface material and quantised roughness
+class. Featureless ground emits nothing. The fingerprint is composition, never a terrain type,
+biome, landcover class, or any other observer classification, and the sample's cause is the
+terrain's own generation trace, so a terrain-driven mana cell change can be traced to the generation
+of the ground under it. That is now a general guarantee for every mana change: the cross-chunk
+boundary exchange carries the ancestry of the value that crossed, and the field's proposal boundary
+refuses a cell change it cannot attribute. It did not hold when this carrier landed — a seam cell could
+commit a change with no cause at all, a gap that predated the carrier — and `TODO-MANA-005` closed it. Whether the carrier reaches the tick loop is the persisted
+`RuntimeConfig::terrain_participation` contract rather than an accident of which system reads
+`carrier_adapters`.
+
 RFC-GEO-002 clarifies spatial carrier addressing: global geography is chart-qualified surface state, while local physics uses bounded Euclidean 3D frames. Bare chunks are local-chart addresses. Chart seams and local-frame bounds require explicit transforms; containment and resolution cannot manufacture geometric adjacency.

@@ -158,9 +158,11 @@ impl HistoricalBootstrapAdapter for TerrainBootstrapStage {
                 chunk,
                 trace,
             );
-            state
-                .carrier_adapters
-                .insert(chunk, TerrainCarrierAdapter::new(chunk, terrain, 3));
+            let field_extent = state.config.chunk_extent;
+            state.carrier_adapters.insert(
+                chunk,
+                TerrainCarrierAdapter::new(chunk, terrain, field_extent),
+            );
             traces.push(trace);
         }
         Ok(traces)

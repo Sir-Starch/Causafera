@@ -12,13 +12,15 @@ The field accepts bounded `PhysicalPatternSample` batches. Each sample supplies 
 
 ## Minimal response
 
-Canonical same-fingerprint samples increase response through repeated occurrence, regular temporal intervals, simultaneous occurrence, and repeated placement at distinct coordinates. Magnitude scales local injection. A fixed six-neighbour stencil then applies diffusion and decay, with non-negative saturation.
+Canonical same-fingerprint samples increase response through repeated occurrence, regular temporal intervals, simultaneous occurrence, and repeated placement at distinct coordinates. Magnitude scales local injection. A fixed eighteen-neighbour stencil then applies diffusion and decay, with non-negative saturation. The six face neighbours carry weight 2 and the twelve edge neighbours weight 1, the smallest exact-integer weighting that is isotropic to fourth order, so a source spreads as a sphere rather than along the lattice axes and no floating point enters the authoritative path. A cell gives each neighbour an equal share and loses exactly the sum of the shares delivered, so diffusion moves mana without destroying it. A chunk face bounds the stencil only where no neighbouring chunk is active: across an active same-chart face the neighbour is counted like any other and receives the same share, so the chunk grid carries no physical meaning (INV-037).
 
 This permits two physically similar structures to couple even when societies interpret them differently, and physically different structures to couple differently even when agents believe they mean the same thing.
 
 ## Provenance and commits
 
-Evolution produces replacement-state proposals and changed-cell records. It does not mutate the source field. Each changed cell carries traces supporting direct pattern injection and neighbouring prior field state. A caller must commit one new provenance trace per changed cell before constructing the next field.
+Evolution produces replacement-state proposals and changed-cell records. It does not mutate the source field. Each changed cell carries traces supporting direct pattern injection and neighbouring prior field state, including when the neighbour lies in an adjacent chunk: a share crossing a seam is attributed to what produced the value that crossed, which is this tick's injection as well as the source cell's previous change. A caller must commit one new provenance trace per changed cell before constructing the next field.
+
+No cell change is proposed without ancestry. A proposal whose changed cell has an empty cause list is refused rather than emitted, because a mana cell that changed for no recorded reason is authoritative state without provenance. That is total only because a cell holds mana only where some commit put it: fields start at zero and untraced, and every commit records the change on every cell it moves. Only the experiment-recipe source commits mana as a root event, and it does so through its own path.
 
 ## Bounded material-surface coupling
 
@@ -73,7 +75,27 @@ model, operator reservoir, and broader external-creation policies remain deferre
 
 ## Geography
 
-Fields are chunk-local causal state, so terrain, geology, hydrology, climate, ecology, and construction can later alter sample production or field parameters. Phase 17 does not invent those couplings. Cross-chunk boundary exchange is also deferred.
+Fields are chunk-local causal state, so terrain, geology, hydrology, climate, ecology, and construction can later alter sample production or field parameters. Phase 17 does not invent those couplings. Same-chart cross-chunk exchange is implemented and conducts at the interior rate; cross-chart transport is deferred.
+
+The terrain coupling is implemented. The terrain carrier presents its standing structure at the
+field's own lattice — one sample per plan-view column, magnitude equal to the column's mean relief
+contrast, material discontinuity and roughness, fingerprint derived from the column's dominant
+surface material and roughness class. Those samples reach the field but never `PhysicalPatternHistory`:
+history retains change, and a structure that is merely still there has not happened again. Retaining
+it would let the recurrence and periodicity channels accumulate over the window and so score the rate
+at which the carrier is read rather than anything about the world, which was measured to run total
+mana to twenty-one times the contact-driven baseline and hold every local gate permanently open.
+
+What a standing structure earns is the response its within-tick structure supports: recurrence,
+synchronisation and spatial repetition, and never periodicity, which needs occupied ticks the carrier
+does not supply. Recurrence is included because RFC-MANA-001 defines it as additional occurrences of
+the same fingerprint without requiring distinct ticks, and defines synchronisation as its same-tick
+specialisation; same-tick co-occurrence therefore scores on both, for every carrier. The property the
+exclusion buys is not that fewer channels fire but that none of them accumulate: the same emission
+injects the same amount whether it is read on one tick or on fifty.
+
+Whether the carrier reaches the loop is the persisted `RuntimeConfig::terrain_participation`
+contract. See `plans/terrain-carrier-participation.md`.
 
 RFC-GEO-002 classifies the current cubic field as bounded local Euclidean 3D inside one surface chart. Bare `ChunkCoord` is not a global planetary position. Cross-chart diffusion requires curvature-aware registered transforms. Future density, phase, spectral, or persistence components would add field-state dimensions, not extra spatial dimensions.
 
@@ -85,7 +107,15 @@ All hot arithmetic is fixed-point integer arithmetic; sample and cell traversal 
 
 Additional field-to-matter mechanisms beyond the bounded material surface, interference phase
 state, long-lived attractors, artifacts, gods/spirits, semantic observer classifications,
-cross-chunk exchange, and visualization remain future work.
+cross-chart transport, and visualization remain future work.
+
+Same-chart cross-chunk exchange is not among them: it is implemented and conducts at the interior
+rate, as the Geography section above records. This list said otherwise until now, which contradicted
+that section of the same document. Its provenance gap is closed: a share crossing a seam carries the
+ancestry of the value that crossed, and the proposal boundary refuses any cell change it cannot
+attribute. What remains is that seam delivery does not apply the field's saturation ceiling, so a
+cell fed across a seam in a saturated field can exceed `maximum_intensity` — recorded as
+`TODO-MANA-006`.
 
 ## Related documents
 
