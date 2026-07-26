@@ -347,8 +347,9 @@ re-taken. Resolution relevance reads `pattern_event_counts_by_chunk`, which is c
 ## Progress
 
 - Wave 1 — the whole slice, integrated and verified together: carrier projection, participation
-  contract, persistence, emission, tests and evidence tool. `cargo run -p xtask -- ci` green,
-  369 tests passing.
+  contract, persistence, emission, tests and evidence tool. Checkpoint `2e7c4a0`. Verified with
+  `cargo run -p xtask -- ci` (green) and `cargo test --workspace` (369 passed, 0 failed, against a
+  358-passing baseline before the change).
 - One unrelated pre-existing `clippy::needless_range_loop` error in
   `apps/observer/src-tauri/examples/extent_bench.rs` was blocking `just ci` on this branch before
   any change here; it is fixed in place so the gate could run.
