@@ -146,6 +146,66 @@ fn a_standing_carrier_earns_no_credit_for_regular_timing() {
     assert_eq!(response(|p| p.periodicity_response = 0), 492);
 }
 
+/// Every fingerprint the terrain carriers of a running world can emit.
+fn terrain_patterns(state: &causafera_runtime::RuntimeSnapshotData) -> Vec<PhysicalPatternId> {
+    state
+        .spatial
+        .carrier_adapters
+        .iter()
+        .flat_map(|snapshot| {
+            TerrainCarrierAdapter::import_snapshot(snapshot.clone())
+                .expect("an exported carrier re-imports")
+                .columns()
+                .iter()
+                .map(|column| column.pattern())
+                .collect::<Vec<_>>()
+        })
+        .collect()
+}
+
+#[test]
+fn standing_terrain_is_not_counted_as_a_physical_event() {
+    // Given: a world whose only physical source is the standing carrier.
+    let mut runtime = Runtime::from_seed(7).expect("world bootstraps");
+
+    // When: it runs with no actor and so no change to emit.
+    let summary = runtime.run_ticks(24).expect("world runs");
+    let state = runtime.export_snapshot().expect("world exports");
+
+    // Then: the field is alive, and yet nothing has happened. `physical_events`
+    // and `PhysicalPatternHistory` both retain change, and a structure that is
+    // merely still there has not happened again. This asserts the wiring in
+    // `PhysicalPatternSystem::execute`, not the scorer.
+    assert!(summary.mana_total > 0);
+    assert_eq!(summary.physical_events, 0);
+    assert!(state.pattern_history.samples.is_empty());
+}
+
+#[test]
+fn no_terrain_fingerprint_is_ever_retained_in_history() {
+    // Given: a world with actors, so the change-driven carrier fills the history
+    // and its emptiness cannot be what makes this test pass.
+    let mut runtime = Runtime::new(seed_comparison_config(7)).expect("world bootstraps");
+    runtime.run_ticks(24).expect("world runs");
+    let state = runtime.export_snapshot().expect("world exports");
+    let terrain = terrain_patterns(&state);
+
+    // Then: the history holds change-driven samples and not one terrain
+    // fingerprint. If the standing carrier were ever retained, the recurrence
+    // and periodicity channels would begin accumulating over the window and
+    // score the rate at which the carrier is read.
+    assert!(!state.pattern_history.samples.is_empty());
+    assert!(!terrain.is_empty());
+    assert!(
+        !state
+            .pattern_history
+            .samples
+            .iter()
+            .any(|sample| terrain.contains(&sample.pattern)),
+        "a terrain fingerprint reached PhysicalPatternHistory"
+    );
+}
+
 #[test]
 fn terrain_carrier_produces_different_mana_response() {
     let adapter = TerrainCarrierAdapter::new(
