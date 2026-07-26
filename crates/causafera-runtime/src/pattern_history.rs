@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 
 use std::collections::VecDeque;
 
-use causafera_domains::PhysicalPatternSample;
+use causafera_domains::{PhysicalCarrierAdapter, PhysicalPatternSample};
 use causafera_types::{PhysicalPatternId, SimulationTime};
 
 /// Deterministic bounded FIFO history for physical pattern samples.
@@ -229,9 +229,42 @@ impl PhysicalPatternSystem {
                 .saturating_add(u64::try_from(emitted.len()).unwrap_or(u64::MAX));
             state.pending_samples.extend(emitted.iter().copied());
             state.pattern_history.extend(emitted);
+            // Terrain reaches the field but not the history, and not the event
+            // count. Both retain change: a structure that is simply still there
+            // has not happened again. Retaining it would let the recurrence and
+            // periodicity channels score the rate at which the carrier is read
+            // rather than anything about the world, and would evict the
+            // change-driven samples those channels exist to measure.
+            let terrain = self.terrain_samples(&state);
+            state.pending_samples.extend(terrain);
         }
         self.next_time = self.next_time.tick();
         Ok(())
+    }
+
+    /// The standing terrain structure of every active chunk.
+    ///
+    /// The schedule's magnitude is deliberately not added. That constant is the
+    /// configured strength of the change-driven physical source; terrain's
+    /// magnitude is the structure it actually has, so a featureless chunk
+    /// contributes nothing however loud the schedule is. The cause is the
+    /// terrain's own generation trace, which is the truthful answer to why this
+    /// structure is here at this tick.
+    fn terrain_samples(&self, state: &RuntimeState) -> Vec<PhysicalPatternSample> {
+        if state.config.terrain_participation == TerrainParticipation::Inert {
+            return Vec::new();
+        }
+        state
+            .carrier_adapters
+            .values()
+            .flat_map(|adapter| {
+                PhysicalCarrierAdapter::emit_samples(
+                    adapter,
+                    self.next_time,
+                    adapter.terrain().provenance().generation_trace(),
+                )
+            })
+            .collect()
     }
 }
 

@@ -89,7 +89,11 @@ Terrain interacts with:
 - **Ecology**: terrain determines biome boundaries; slope determines vegetation
 - **Geology**: bedrock depth and type determine surface material
 - **Settlements**: flat, well-drained terrain attracts construction
-- **Mana**: certain terrain configurations may create stable mana patterns
+- **Mana**: implemented. The terrain carrier presents its standing structure to the physical
+  pattern stream on every emitting tick, projected onto the mana lattice as one sample per
+  plan-view column. A column's magnitude is its mean per-cell structure — relief contrast against
+  neighbours, surface-material discontinuity, and roughness — so featureless ground contributes
+  nothing and only landform drives the field. See `plans/terrain-carrier-participation.md`
 
 ## Level of Detail
 

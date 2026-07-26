@@ -1,16 +1,19 @@
 use causafera_domains::{ManaField, OpenNeighbors, PhysicalCarrierAdapter, PhysicalPatternSample};
 use causafera_geography::{
-    TERRAIN_CELLS_PER_CHUNK, TerrainChunk, TerrainGenerationProvenance,
-    TerrainGeneratorFingerprint, TerrainParameterFingerprint,
+    TerrainChunk, TerrainGenerationProvenance, TerrainGeneratorFingerprint,
+    TerrainParameterFingerprint,
 };
 use causafera_runtime::{
-    Runtime, RuntimeConfig, TerrainCarrierAdapter, deterministic_terrain_chunk, terrain_cells,
-    terrain_pattern,
+    Runtime, RuntimeConfig, TerrainCarrierAdapter, TerrainParticipation,
+    deterministic_terrain_chunk, terrain_cells, terrain_pattern,
 };
 use causafera_types::{
     ChartChunkCoord, ChunkCoord, ConceptId, LocalCoord, ManaFieldId, PhysicalPatternId,
     SimulationTime, SpatialChartId, TraceId,
 };
+
+/// The mana lattice the carrier projects onto in these tests.
+const EXTENT: u8 = 3;
 
 fn test_chunk() -> ChartChunkCoord {
     ChartChunkCoord::new(SpatialChartId::new(1), ChunkCoord::new(0, 0, 0))
@@ -61,7 +64,7 @@ fn terrain_carrier_produces_different_mana_response() {
     let adapter = TerrainCarrierAdapter::new(
         test_chunk(),
         deterministic_terrain_chunk(57, test_chunk(), TraceId::new(0)),
-        3,
+        EXTENT,
     );
     let terrain_samples = adapter.emit_samples(SimulationTime::new(1), TraceId::new(0));
     let fixture_samples = three_cell_fixture(
@@ -71,11 +74,148 @@ fn terrain_carrier_produces_different_mana_response() {
         TraceId::new(0),
     );
 
-    assert_eq!(terrain_samples.len(), TERRAIN_CELLS_PER_CHUNK);
+    assert_eq!(terrain_samples.len(), usize::from(EXTENT).pow(2));
     assert_ne!(
         mana_total_for_samples(&terrain_samples),
         mana_total_for_samples(&fixture_samples)
     );
+}
+
+#[test]
+fn terrain_reaches_the_field_and_the_seed_reaches_terrain() {
+    // Given: two worlds that differ only in their seed.
+    let mut first = Runtime::from_seed(7).expect("first runtime bootstraps");
+    let mut second = Runtime::from_seed(11).expect("second runtime bootstraps");
+
+    // When: both run the same number of ticks with no actor and no contact, so
+    // the terrain carrier is the only physical source in either world.
+    let first = first.run_ticks(32).expect("first world runs");
+    let second = second.run_ticks(32).expect("second world runs");
+
+    // Then: neither world is empty, and they are not the same world.
+    assert!(first.mana_total > 0);
+    assert!(second.mana_total > 0);
+    assert_ne!(first.mana_total, second.mana_total);
+    assert_ne!(first.physical_state_digest, second.physical_state_digest);
+}
+
+#[test]
+fn an_inert_terrain_carrier_leaves_an_empty_world_empty() {
+    // Given: the same world with the terrain carrier held out of the tick loop.
+    let mut config = RuntimeConfig::new(7);
+    config.terrain_participation = TerrainParticipation::Inert;
+
+    // When: it runs with no actor and no contact.
+    let snapshot = Runtime::new(config)
+        .expect("inert runtime bootstraps")
+        .run_ticks(32)
+        .expect("inert world runs");
+
+    // Then: nothing has happened, which is the behaviour recorded in
+    // TODO-RUNTIME-002 before terrain reached the loop.
+    assert_eq!(snapshot.mana_total, 0);
+}
+
+/// The production-shaped loop `TODO-RUNTIME-002` measures: actors contact
+/// material surfaces, contacts feed the mana field, and the local gate feeds
+/// back into surface condition.
+fn seed_comparison_config(seed: u64) -> RuntimeConfig {
+    let mut config = RuntimeConfig::new(seed);
+    config.actor_count = 8;
+    config.sensor_count = 2;
+    config.bootstrap_population = 512;
+    config
+}
+
+#[test]
+fn different_seeds_produce_different_worlds_not_one_world_with_two_terrains() {
+    // Given: two production worlds differing only in their seed.
+    let mut first = Runtime::new(seed_comparison_config(7)).expect("first world bootstraps");
+    let mut second = Runtime::new(seed_comparison_config(59)).expect("second world bootstraps");
+
+    // When: both run the same tick count.
+    let first_summary = first.run_ticks(48).expect("first world runs");
+    let second_summary = second.run_ticks(48).expect("second world runs");
+    let first_state = first.export_snapshot().expect("first world exports");
+    let second_state = second.export_snapshot().expect("second world exports");
+
+    // Then: the physical digest, the mana field, and the behavioural counts all
+    // differ. This is the acceptance criterion of TODO-RUNTIME-002; before the
+    // terrain carrier reached the tick loop, every one of these was identical
+    // across seeds.
+    assert_ne!(
+        first_summary.physical_state_digest,
+        second_summary.physical_state_digest
+    );
+    assert_ne!(first_summary.mana_total, second_summary.mana_total);
+    assert_ne!(
+        first_summary.mana_physical_effects,
+        second_summary.mana_physical_effects
+    );
+    assert_ne!(
+        first_state.material_surfaces.gate_transitions.len(),
+        second_state.material_surfaces.gate_transitions.len()
+    );
+    assert_ne!(
+        surface_conditions(&first_state),
+        surface_conditions(&second_state)
+    );
+}
+
+#[test]
+fn the_same_seed_still_reproduces_itself_exactly() {
+    // Given: the same production world twice.
+    let mut first = Runtime::new(seed_comparison_config(7)).expect("first world bootstraps");
+    let mut second = Runtime::new(seed_comparison_config(7)).expect("second world bootstraps");
+
+    // When: both run the same tick count with the terrain carrier standing.
+    let first_summary = first.run_ticks(48).expect("first world runs");
+    let second_summary = second.run_ticks(48).expect("second world runs");
+
+    // Then: nothing about the carrier's participation has weakened replay.
+    assert_eq!(first_summary, second_summary);
+    assert_eq!(
+        first.export_snapshot().expect("first world exports"),
+        second.export_snapshot().expect("second world exports")
+    );
+}
+
+#[test]
+fn terrain_participation_survives_a_snapshot_round_trip() {
+    // Given: a world whose terrain carrier is deliberately held inert.
+    let mut config = seed_comparison_config(7);
+    config.terrain_participation = TerrainParticipation::Inert;
+    let mut original = Runtime::new(config).expect("inert world bootstraps");
+    original.run_ticks(8).expect("inert world runs");
+    let exported = original.export_snapshot().expect("inert world exports");
+
+    // When: it is resumed from its authoritative snapshot and both continue.
+    let mut resumed = Runtime::from_snapshot(exported.clone()).expect("inert world resumes");
+    assert_eq!(
+        exported.recipe.config.terrain_participation,
+        TerrainParticipation::Inert
+    );
+    let original_summary = original.run_ticks(8).expect("original continues");
+    let resumed_summary = resumed.run_ticks(8).expect("resumed continues");
+
+    // Then: the contract is carried in the snapshot, not defaulted on read. A
+    // resumed world that silently began sensing its terrain would be a
+    // different world, which the standing control confirms it would be.
+    assert_eq!(original_summary, resumed_summary);
+    let standing = Runtime::new(seed_comparison_config(7))
+        .expect("standing world bootstraps")
+        .run_ticks(16)
+        .expect("standing world runs");
+    assert_ne!(standing.mana_total, original_summary.mana_total);
+}
+
+fn surface_conditions(state: &causafera_runtime::RuntimeSnapshotData) -> i64 {
+    state
+        .material_surfaces
+        .records
+        .iter()
+        .map(|record| record.surface.condition)
+        .sum()
 }
 
 #[test]
@@ -136,19 +276,27 @@ fn terrain_carrier_determinism() {
 }
 
 #[test]
-fn adapter_input_trace_and_ordinal_reconstruct_source_terrain_cell() {
+fn adapter_input_trace_and_ordinal_reconstruct_source_terrain_column() {
     let adapter = TerrainCarrierAdapter::new(
         test_chunk(),
         deterministic_terrain_chunk(71, test_chunk(), TraceId::new(0)),
-        3,
+        EXTENT,
     );
     let samples = adapter.emit_samples(SimulationTime::new(1), TraceId::new(3));
-    let sample = samples[42];
+    let sample = samples[4];
+    let column = adapter
+        .source_column(sample.source_ordinal)
+        .expect("an emitted ordinal resolves to the ground it summarises");
 
     assert_eq!(sample.cause, TraceId::new(3));
+    assert_eq!(column.position, sample.position);
+    assert_eq!(column.pattern(), sample.pattern);
+    // The column is a patch of real ground, not a single cell standing for one.
+    assert!(column.cell_count > 1);
     assert_eq!(
-        adapter.source_cell(sample.source_ordinal),
-        adapter.terrain().cell(10, 1)
+        adapter.source_cell(0),
+        adapter.terrain().cell(0, 0),
+        "the per-cell raster the observer projects is unchanged"
     );
 }
 

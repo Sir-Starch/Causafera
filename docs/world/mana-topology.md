@@ -75,6 +75,18 @@ model, operator reservoir, and broader external-creation policies remain deferre
 
 Fields are chunk-local causal state, so terrain, geology, hydrology, climate, ecology, and construction can later alter sample production or field parameters. Phase 17 does not invent those couplings. Same-chart cross-chunk exchange is implemented and conducts at the interior rate; cross-chart transport is deferred.
 
+The terrain coupling is implemented. The terrain carrier presents its standing structure at the
+field's own lattice — one sample per plan-view column, magnitude equal to the column's mean relief
+contrast, material discontinuity and roughness, fingerprint derived from the column's dominant
+surface material and roughness class. Those samples reach the field but never `PhysicalPatternHistory`:
+history retains change, and a structure that is merely still there has not happened again. Retaining
+it would let the recurrence and periodicity channels score the rate at which the carrier is read
+rather than anything about the world, which was measured to run total mana to twenty-one times the
+contact-driven baseline and hold every local gate permanently open. A standing structure earns the
+spatial-repetition and synchronisation response its within-tick structure supports, and nothing more.
+Whether the carrier reaches the loop is the persisted `RuntimeConfig::terrain_participation`
+contract. See `plans/terrain-carrier-participation.md`.
+
 RFC-GEO-002 classifies the current cubic field as bounded local Euclidean 3D inside one surface chart. Bare `ChunkCoord` is not a global planetary position. Cross-chart diffusion requires curvature-aware registered transforms. Future density, phase, spectral, or persistence components would add field-state dimensions, not extra spatial dimensions.
 
 ## Determinism and performance
