@@ -80,10 +80,18 @@ field's own lattice — one sample per plan-view column, magnitude equal to the 
 contrast, material discontinuity and roughness, fingerprint derived from the column's dominant
 surface material and roughness class. Those samples reach the field but never `PhysicalPatternHistory`:
 history retains change, and a structure that is merely still there has not happened again. Retaining
-it would let the recurrence and periodicity channels score the rate at which the carrier is read
-rather than anything about the world, which was measured to run total mana to twenty-one times the
-contact-driven baseline and hold every local gate permanently open. A standing structure earns the
-spatial-repetition and synchronisation response its within-tick structure supports, and nothing more.
+it would let the recurrence and periodicity channels accumulate over the window and so score the rate
+at which the carrier is read rather than anything about the world, which was measured to run total
+mana to twenty-one times the contact-driven baseline and hold every local gate permanently open.
+
+What a standing structure earns is the response its within-tick structure supports: recurrence,
+synchronisation and spatial repetition, and never periodicity, which needs occupied ticks the carrier
+does not supply. Recurrence is included because RFC-MANA-001 defines it as additional occurrences of
+the same fingerprint without requiring distinct ticks, and defines synchronisation as its same-tick
+specialisation; same-tick co-occurrence therefore scores on both, for every carrier. The property the
+exclusion buys is not that fewer channels fire but that none of them accumulate: the same emission
+injects the same amount whether it is read on one tick or on fifty.
+
 Whether the carrier reaches the loop is the persisted `RuntimeConfig::terrain_participation`
 contract. See `plans/terrain-carrier-participation.md`.
 

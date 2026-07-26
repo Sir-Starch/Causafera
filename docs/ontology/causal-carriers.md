@@ -105,10 +105,14 @@ reservoir all emit because something happened; terrain emits because something i
 distinction is load-bearing. `PhysicalPatternHistory` and the `physical_events` count both retain
 change, so terrain samples enter `pending_samples` and neither of those: a structure that is merely
 still there has not happened again, and retaining it would let the recurrence and periodicity
-channels score how often the carrier is read rather than anything about the world. A standing
-carrier therefore earns only the response its within-tick structure supports — spatial repetition
-and synchronisation — which is exactly the channel RFC-MANA-001 provides for repeated spatial
-structure and which previously had no producer at all.
+channels accumulate over the window and so score how often the carrier is read rather than anything
+about the world. A standing carrier earns the response its within-tick structure supports —
+recurrence, synchronisation and spatial repetition, and never periodicity, which needs occupied ticks
+it does not supply. Recurrence is among them because RFC-MANA-001 defines it as additional
+occurrences of the same fingerprint with no distinct-tick requirement, and defines synchronisation as
+its same-tick specialisation. What the exclusion secures is not a shorter list of channels but that
+none of them accumulate with the read cadence. Spatial repetition is the channel the model provides
+for repeated spatial structure, and it previously had no producer at all.
 
 The carrier presents its structure at the field's own lattice: one `PhysicalPatternSample` per
 plan-view column of the mana field, aggregated by block projection from the `CHUNK_SIZE²` terrain
@@ -116,8 +120,10 @@ raster, carrying the column's mean relief contrast, material discontinuity and r
 magnitude, and a fingerprint of the column's dominant surface material and quantised roughness
 class. Featureless ground emits nothing. The fingerprint is composition, never a terrain type,
 biome, landcover class, or any other observer classification, and the sample's cause is the
-terrain's own generation trace, so a mana cell change can be traced to the generation of the ground
-under it. Whether the carrier reaches the tick loop is the persisted
+terrain's own generation trace, so a terrain-driven mana cell change can be traced to the generation
+of the ground under it. That is not yet a general guarantee for every mana change: the cross-chunk
+boundary exchange can still commit a seam cell change with no cause at all, a gap that predates this
+carrier and is recorded as `TODO-MANA-005`. Whether the carrier reaches the tick loop is the persisted
 `RuntimeConfig::terrain_participation` contract rather than an accident of which system reads
 `carrier_adapters`.
 
