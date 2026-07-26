@@ -173,6 +173,12 @@ impl OpenNeighbors {
         self.active[(delta[0] + 1) as usize][(delta[1] + 1) as usize][(delta[2] + 1) as usize]
     }
 
+    /// Whether any neighbour is active at all, so an isolated chunk can skip the
+    /// boundary exchange without walking its faces.
+    fn any(&self) -> bool {
+        self.active.iter().flatten().flatten().any(|active| *active)
+    }
+
     fn open(&mut self, delta: [i32; 3]) {
         self.active[(delta[0] + 1) as usize][(delta[1] + 1) as usize][(delta[2] + 1) as usize] =
             true;
@@ -375,6 +381,22 @@ impl ManaField {
             }
         }
 
+        // The boundary exchange attributes a share it delivers into a
+        // neighbouring chunk to whatever produced the source cell's value, and
+        // this tick's injection is part of that. Reading only the source cell's
+        // `last_change` would miss it entirely: a cell injected for the first
+        // time has no prior change to point at, so the share it hands across a
+        // seam would arrive with no ancestry at all.
+        let injection_causes: BTreeMap<u16, Vec<TraceId>> = direct_causes
+            .iter()
+            .enumerate()
+            .filter(|(_, causes)| !causes.is_empty())
+            .map(|(index, causes)| {
+                let unique: BTreeSet<_> = causes.iter().copied().collect();
+                (index as u16, unique.into_iter().collect())
+            })
+            .collect();
+
         let weights = stencil_weights(self.extent, open_neighbors);
         let mut proposed = vec![0; injected.len()];
         let mut changes = Vec::new();
@@ -405,6 +427,7 @@ impl ManaField {
             }
         }
 
+        require_attribution(&changes)?;
         Ok(ManaEvolutionProposal {
             field_id: self.id,
             chunk: self.chunk,
@@ -412,6 +435,7 @@ impl ManaField {
             through,
             base_intensity: self.intensity.clone(),
             diffusion_input: injected,
+            injection_causes,
             open_neighbors,
             proposed,
             inherited_traces: self.last_change.clone(),
@@ -602,6 +626,11 @@ impl ManaFieldSet {
             field_proposals.insert(*chunk, proposal);
         }
         apply_boundary_exchange(&self.fields, &mut field_proposals, parameters)?;
+        // The exchange creates and removes changes, so the per-field guarantee
+        // has to be re-established after it, not only inside each field.
+        for proposal in field_proposals.values() {
+            require_attribution(&proposal.changes)?;
+        }
         Ok(ManaFieldSetEvolutionProposal { field_proposals })
     }
 }
@@ -672,6 +701,11 @@ pub struct ManaEvolutionProposal {
     /// reads it so a cross-chunk share is computed from exactly the values the
     /// interior stencil diffused, not from an already-diffused result.
     diffusion_input: Vec<i64>,
+    /// Per-cell causes of this tick's injection, sparse because only cells a
+    /// sample landed on have any. The boundary exchange reads it so a share
+    /// crossing a seam is attributed to the samples that produced the value,
+    /// not only to the source cell's previous change.
+    injection_causes: BTreeMap<u16, Vec<TraceId>>,
     open_neighbors: OpenNeighbors,
     proposed: Vec<i64>,
     inherited_traces: Vec<Option<TraceId>>,
@@ -730,6 +764,26 @@ pub enum ManaError {
     InvalidFieldSet,
     DuplicateFieldChunk,
     UnknownFieldChunk,
+    UnattributedChange,
+}
+
+/// Refuse a proposal that would change a cell for no recorded reason.
+///
+/// Every accepted cell transition costs one committed provenance trace, and a
+/// trace whose cause list is empty is a root event: authoritative field state
+/// that appeared on its own. Only the experiment-recipe source is entitled to
+/// that, and it commits through its own path. So this fails closed rather than
+/// emitting an unattributed change.
+///
+/// Attribution is total only because a cell holding mana always has a change to
+/// point at — `ManaField::new` starts every cell at zero and untraced, and every
+/// commit writes `last_change` for every cell it moves. A field imported with a
+/// non-zero intensity and no trace violates that and is reported here.
+fn require_attribution(changes: &[ManaCellChange]) -> Result<(), ManaError> {
+    if changes.iter().any(|change| change.causes.is_empty()) {
+        return Err(ManaError::UnattributedChange);
+    }
+    Ok(())
 }
 
 fn open_neighbors_for(
@@ -772,7 +826,11 @@ fn apply_boundary_exchange(
         let source = proposals.get(&chunk).ok_or(ManaError::UnknownFieldChunk)?;
         let extent = source.extent;
         let open = source.open_neighbors;
+        if !open.any() {
+            continue;
+        }
         let input = source.diffusion_input.clone();
+        let injection_causes = source.injection_causes.clone();
         let weights = stencil_weights(extent, open);
         let source_field = fields.get(&chunk).ok_or(ManaError::UnknownFieldChunk)?;
 
@@ -780,6 +838,14 @@ fn apply_boundary_exchange(
             if !touches_chunk_boundary(index, extent) {
                 continue;
             }
+            // What explains the value this cell is handing away: the samples that
+            // injected into it this tick, and the change that left it holding
+            // whatever it already held.
+            let mut source_causes: Vec<TraceId> = injection_causes
+                .get(&(index as u16))
+                .cloned()
+                .unwrap_or_default();
+            source_causes.extend(source_field.last_change[index]);
             for (dx, dy, dz, weight) in STENCIL {
                 let StencilTarget::Across {
                     chunk_delta,
@@ -805,10 +871,8 @@ fn apply_boundary_exchange(
                     target_chunk,
                     target_index,
                     amount,
-                    [
-                        source_field.last_change[index],
-                        target_field.last_change[target_index],
-                    ],
+                    &source_causes,
+                    target_field.last_change[target_index],
                 )?;
             }
         }
@@ -825,12 +889,20 @@ fn touches_chunk_boundary(index: usize, extent: u8) -> bool {
         .any(|coordinate| coordinate == 0 || coordinate + 1 == side)
 }
 
+/// Deliver one cross-chunk share into the receiving proposal, carrying the
+/// ancestry of both sides with it.
+///
+/// `source_causes` explains the value that crossed; `target_last_change` and the
+/// receiving cell's own injection explain the value it landed on. A cell that
+/// only receives across a seam has no interior change to inherit causes from, so
+/// this is the sole point where its ancestry is established.
 fn apply_exchange_delta(
     proposals: &mut BTreeMap<ChartChunkCoord, ManaEvolutionProposal>,
     chunk: ChartChunkCoord,
     index: usize,
     delta: i64,
-    causes: [Option<TraceId>; 2],
+    source_causes: &[TraceId],
+    target_last_change: Option<TraceId>,
 ) -> Result<(), ManaError> {
     let proposal = proposals
         .get_mut(&chunk)
@@ -851,7 +923,7 @@ fn apply_exchange_delta(
         }
         let change = &mut proposal.changes[change_index];
         change.after = after;
-        for cause in causes.into_iter().flatten() {
+        for cause in source_causes.iter().copied().chain(target_last_change) {
             if !change.causes.contains(&cause) {
                 change.causes.push(cause);
             }
@@ -860,16 +932,21 @@ fn apply_exchange_delta(
         return Ok(());
     }
     if after != base {
+        let mut causes: BTreeSet<TraceId> = source_causes.iter().copied().collect();
+        causes.extend(target_last_change);
+        causes.extend(
+            proposal
+                .injection_causes
+                .get(&cell_index)
+                .into_iter()
+                .flatten()
+                .copied(),
+        );
         proposal.changes.push(ManaCellChange {
             cell_index,
             before: base,
             after,
-            causes: causes
-                .into_iter()
-                .flatten()
-                .collect::<BTreeSet<_>>()
-                .into_iter()
-                .collect(),
+            causes: causes.into_iter().collect(),
         });
     }
     Ok(())
@@ -1282,8 +1359,9 @@ mod tests {
             .unwrap();
         let mut proposals = BTreeMap::from([(chart_chunk(), proposal)]);
 
-        apply_exchange_delta(&mut proposals, chart_chunk(), 0, 5, [None, None]).unwrap();
-        apply_exchange_delta(&mut proposals, chart_chunk(), 0, -5, [None, None]).unwrap();
+        let causes = [TraceId::new(9)];
+        apply_exchange_delta(&mut proposals, chart_chunk(), 0, 5, &causes, None).unwrap();
+        apply_exchange_delta(&mut proposals, chart_chunk(), 0, -5, &causes, None).unwrap();
 
         assert!(
             proposals[&chart_chunk()].changes().is_empty(),
@@ -1310,7 +1388,8 @@ mod tests {
             chart_chunk(),
             0,
             5,
-            [Some(TraceId::new(5)), Some(TraceId::new(3))],
+            &[TraceId::new(5)],
+            Some(TraceId::new(3)),
         )
         .unwrap();
 
@@ -1318,6 +1397,73 @@ mod tests {
             proposals[&chart_chunk()].changes()[0].causes,
             vec![TraceId::new(3), TraceId::new(5)],
             "boundary-exchange parents must be strictly ordered for provenance commits"
+        );
+    }
+
+    /// A cell that changed only because mana crossed a seam into it must record
+    /// what crossed. Nothing before this tick did: both fields start blank, so
+    /// the source cell's `last_change` is `None` and the only ancestry that
+    /// exists is the samples that injected into it.
+    #[test]
+    fn a_cell_fed_across_a_seam_records_what_crossed_it() {
+        let left = chart_chunk_at(1, 0);
+        let right = chart_chunk_at(1, 1);
+        let samples = [
+            sample_in(left, 1, 2, 1),
+            PhysicalPatternSample {
+                position: LocalCoord::new(2, 2, 1),
+                ..sample_in(left, 1, 2, 2)
+            },
+        ];
+
+        let proposal = field_set(left, right)
+            .propose_evolution(SimulationTime::new(1), parameters(), &samples, &[])
+            .unwrap();
+
+        let received = proposal.field_proposals().get(&right).unwrap();
+        assert!(
+            received.proposed_intensity().iter().any(|value| *value > 0),
+            "the seam must conduct for this test to mean anything"
+        );
+        assert!(!received.changes().is_empty());
+        for change in received.changes() {
+            assert!(
+                !change.causes.is_empty(),
+                "cell {} changed with no recorded cause",
+                change.cell_index
+            );
+        }
+        assert!(
+            received
+                .changes()
+                .iter()
+                .all(|change| change.causes.contains(&samples[0].cause)
+                    || change.causes.contains(&samples[1].cause)),
+            "a seam change must descend from the samples whose mana crossed"
+        );
+    }
+
+    /// Attribution rests on a cell holding mana only if some commit put it
+    /// there. A field imported in violation of that cannot attribute what it
+    /// spreads, and the proposal boundary says so instead of committing state
+    /// with no ancestry.
+    #[test]
+    fn an_untraced_cell_holding_mana_cannot_be_evolved() {
+        let mut snapshot = ManaField::new(ManaFieldId::new(1), chart_chunk(), 3)
+            .unwrap()
+            .export_snapshot();
+        snapshot.intensity[13] = 4_096;
+        let field = ManaField::import_snapshot(snapshot).unwrap();
+
+        assert_eq!(
+            field.propose_evolution(
+                SimulationTime::new(1),
+                parameters(),
+                &[],
+                &[],
+                OpenNeighbors::none()
+            ),
+            Err(ManaError::UnattributedChange)
         );
     }
 
@@ -1520,7 +1666,11 @@ mod tests {
         };
         let seeded = |source_x: usize| {
             let mut left_snapshot = blank(1, left);
-            left_snapshot.intensity[at(source_x, 4, 4)] = V;
+            let source = at(source_x, 4, 4);
+            left_snapshot.intensity[source] = V;
+            // A cell holds mana only because some commit put it there, and the
+            // proposal boundary refuses to spread what it cannot attribute.
+            left_snapshot.last_change[source] = Some(TraceId::new(1));
             ManaFieldSet::new(vec![
                 ManaField::import_snapshot(left_snapshot).unwrap(),
                 ManaField::import_snapshot(blank(2, right)).unwrap(),
@@ -1584,7 +1734,7 @@ mod tests {
                 extent: EXTENT,
                 observed_through: SimulationTime::default(),
                 intensity,
-                last_change: vec![None; side.pow(3)],
+                last_change: vec![Some(TraceId::new(id)); side.pow(3)],
                 last_change_before: vec![0; side.pow(3)],
             })
             .unwrap()
