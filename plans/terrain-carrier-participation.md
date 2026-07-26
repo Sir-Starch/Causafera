@@ -114,9 +114,22 @@ carrier's read cadence, not the world.
 
 Terrain samples therefore reach `pending_samples` and never `pattern_history`, and are not counted
 in `physical_events`. Both of those retain change. The response terrain does earn comes from
-within-tick structure: columns of the same composition in the same chunk form a group, which scores
-on synchronisation and spatial repetition. That is the channel the model provides for repeated
-spatial structure, and it is the only one a static field is entitled to.
+within-tick structure: columns of the same composition in the same chunk form a group, and that
+group scores on **recurrence, synchronisation and spatial repetition**, never on periodicity.
+
+Recurrence fires because RFC-MANA-001 defines it as "additional occurrences of the same
+fingerprint", with no distinct-tick requirement, and defines synchronisation as the same-tick
+specialisation of it. Same-tick co-occurrence therefore scores on both, for every carrier, by the
+accepted model. An earlier draft of this section said terrain earns synchronisation and spatial
+credit only; that was wrong about which channels fire, and is corrected here.
+
+What matters is that none of it is credit for being re-read, and that is measurable rather than
+argued. Four columns sharing a fingerprint, emitted with no history, inject 492 whether the emission
+is read at tick 1, tick 5 or tick 50: the response is exactly invariant to the read cadence. The
+same emission with eight ticks of retained history injects 3564, a factor of 7.2 — that difference
+is precisely what excluding terrain from the history buys. Zeroing each response constant in turn
+puts 492 at 340 for recurrence, synchronisation and spatial alike and leaves it at 492 for
+periodicity, so a standing structure earns nothing at all from regular timing.
 
 ### The carrier presents its structure at the field's own lattice
 
@@ -282,8 +295,20 @@ seen.
 
 ## Explanation impact
 
-A mana cell change now carries the terrain's `generation_trace` among its causes, so a claim about
-where mana stands can be traced to the generation of the ground under it. No claim schema changes.
+A mana cell change driven by terrain carries the terrain's `generation_trace` among its causes, so a
+claim about where mana stands can be traced to the generation of the ground under it. Measured over
+24 ticks of the default world, 1066 of 1584 committed mana events cite a terrain generation trace,
+and no cause anywhere in the store references an event that does not exist.
+
+This is not yet a general guarantee that every mana change is attributable, and the plan does not
+claim one. `apply_exchange_delta` in `causafera-domains` propagates only `last_change` anchors, so a
+cross-chunk seam cell whose two participants both lack a `last_change` produces a nonzero
+`ManaCellChange` with an empty cause list, which the runtime commits as an ordinary mana event.
+Measured: zero such events with a single active chunk, three to four with three, under `Standing`
+and `Inert` alike. The gap is in the boundary exchange, predates this work — `causafera-domains` is
+untouched across this whole range — and is not amplified in kind by terrain. It is recorded as
+`TODO-MANA-005` rather than fixed here, because closing it changes the committed events and
+therefore every digest of every world, which needs its own plan. No claim schema changes.
 
 ## Persistence impact
 
@@ -345,6 +370,9 @@ re-taken. Resolution relevance reads `pattern_event_counts_by_chunk`, which is c
 ## TODO changes
 
 - `TODO-RUNTIME-002` — completed.
+- `TODO-MANA-005` — opened. Cross-chunk seam mana changes can commit with an empty cause list. Found
+  while reviewing this work, confirmed to predate it and to be independent of terrain, and recorded
+  rather than fixed here because closing it changes every world's digest.
 - `TODO-MANA-004` — no longer blocked. Multi-seed validation is now possible, and the extent cost
   it must weigh has been re-measured on a populated field.
 
