@@ -24,11 +24,11 @@ An observer classifier may label a body structure as "finger-like". That label b
 
 ## INV-006: Simulation has no privileged human UI language
 
-English, Russian, Ukrainian, or any other UI language is not part of authoritative simulation semantics. The simulation must never depend on English strings such as "finger", "disease", or "warrior".
+English, Russian, Simplified Chinese, German, Spanish, or any other UI language is not part of authoritative simulation semantics. The simulation must never depend on English strings such as "finger", "disease", or "warrior".
 
 ## INV-007: Changing observer locale cannot change simulation state hash
 
-Identical simulation inputs executed with different observer UI locales must produce identical canonical simulation state hashes. Human-readable glosses belong exclusively to observer and explanation systems.
+Identical simulation inputs executed with different observer UI locales (such as `en`, `ru`, `zh-Hans`, `de`, or `es`) must produce identical canonical simulation state hashes. Human-readable glosses belong exclusively to observer and explanation systems.
 
 ## INV-008: Language decoding does not directly transfer speaker concepts
 

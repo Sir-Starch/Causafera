@@ -172,9 +172,9 @@ forbidden.
 Completed. The Tauri 2 desktop application runs a causally bootstrapped runtime, negotiates
 observer v1, consumes digest-anchored bounded runtime streams, queries chart-qualified world chunk
 projections, and renders typed Explanation IR. The delivered UI provides World, causal-loop,
-timeline, inspector, and comparative-explanation views in deterministic English/Russian
-presentation. Rich entity, language, society, historical comparison, and large-dataset WebGPU
-views remain incremental observer work.
+timeline, inspector, and comparative-explanation views in multi-language presentation (`en`,
+`ru`, `zh-Hans`, `de`, and `es`) supported by persistent browser preferences. Rich entity,
+language, society, historical comparison, and large-dataset WebGPU views remain incremental observer work.
 
 ## Foundation Era boundary
 
@@ -201,12 +201,13 @@ observable, and validated maturity levels. Foundation `Completed` labels are his
 statements, not claims that a whole domain is mature.
 
 Immediate program priorities are durable physical-state coupling, production historical bootstrap
-without fixtures, domain-valid recovery and phenomenon metrics, and causal/domain inspection. Four
+without fixtures, domain-valid recovery and phenomenon metrics, and causal/domain inspection. Five
 bounded vertical slices are complete: the actor/material/mana loop (`plans/actor-material-mana-loop.md`),
 the local mana-material-surface coupling (`plans/local-mana-material-surface-coupling.md`), the
 bounded conserved thermal storage and same-chart transfer slice (`plans/conserved-thermal-energy-carrier.md`),
-and terrain carrier participation (`plans/terrain-carrier-participation.md`), which makes the world
-seed reach the running simulation so that two seeds produce two different worlds.
+terrain carrier participation (`plans/terrain-carrier-participation.md`), which makes the world seed
+reach the running simulation so that two seeds produce two different worlds, and the multi-language
+UI localization architecture (`plans/ui-localization-architecture.md`).
 The frozen-baseline maturity audit is paused after preserving its completed groundwork; it does not
 block accepted vertical-slice work.
 

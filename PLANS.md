@@ -80,6 +80,7 @@ Progress
 
 ## Active Planning
 
+- [`plans/ui-localization-architecture.md`](plans/ui-localization-architecture.md) — Accepted complete observer UI localization architecture across five languages (`en`, `ru`, `zh-Hans`, `de`, `es`).
 - [`plans/conserved-thermal-energy-carrier.md`](plans/conserved-thermal-energy-carrier.md) — Accepted
   bounded conserved thermal storage and same-chart transfer tranche; implementation branch created from
   this acceptance commit.

@@ -33,7 +33,7 @@ exhaustive, and do not form part of our licenses.
      material not subject to the license. This includes other CC-
      licensed material, or material used under an exception or
      limitation to copyright. More considerations for licensors:
-    wiki.creativecommons.org/Considerations_for_licensors
+     wiki.creativecommons.org/Considerations_for_licensors
 
      Considerations for the public: By using one of our public
      licenses, a licensor grants the public permission to use the
@@ -50,7 +50,7 @@ exhaustive, and do not form part of our licenses.
      Although not required by our licenses, you are encouraged to
      respect those requests where reasonable. More considerations
      for the public:
-    wiki.creativecommons.org/Considerations_for_licensees
+     wiki.creativecommons.org/Considerations_for_licensees
 
 =======================================================================
 
@@ -67,6 +67,7 @@ such rights in consideration of benefits the Licensor receives from
 making the Licensed Material available under these terms and
 conditions.
 
+
 Section 1 -- Definitions.
 
   a. Adapted Material means material subject to Copyright and Similar
@@ -76,8 +77,8 @@ Section 1 -- Definitions.
      permission under the Copyright and Similar Rights held by the
      Licensor. For purposes of this Public License, where the Licensed
      Material is a musical work, performance, or sound recording,
-     adaptation is always produced where the Licensed Material is synched
-     in timed relation with a moving image.
+     Adapted Material is always produced where the Licensed Material is
+     synched in timed relation with a moving image.
 
   b. Adapter's License means the license You apply to Your Copyright
      and Similar Rights in Your contributions to Adapted Material in
@@ -130,13 +131,14 @@ Section 1 -- Definitions.
      individually chosen by them.
 
   l. Sui Generis Database Rights means rights other than copyright
-     resulting from Directive 96/9/EC of the European Parliament and
-     of the Council of 11 March 1996 on the legal protection of
-     databases, as amended and/or succeeded, as well as other
-     essentially equivalent rights anywhere in the world.
+     resulting from Directive 96/9/EC of the European Parliament and of
+     the Council of 11 March 1996 on the legal protection of databases,
+     as amended and/or succeeded, as well as other essentially
+     equivalent rights anywhere in the world.
 
   m. You means the individual or entity exercising the Licensed Rights
      under this Public License. Your has a corresponding meaning.
+
 
 Section 2 -- Scope.
 
@@ -202,13 +204,13 @@ Section 2 -- Scope.
 
   b. Other rights.
 
-       1. Moral rights, such as the right of integrity, are not licensed
-          under this Public License, nor are publicity, privacy, and/or
-          other similar personality rights; however, to the extent
-          possible, the Licensor waives and/or agrees not to assert any
-          such rights held by the Licensor to the limited extent
-          necessary to allow You to exercise the Licensed Rights, but
-          not otherwise.
+       1. Moral rights, such as the right of integrity, are not
+          licensed under this Public License, nor are publicity,
+          privacy, and/or other similar personality rights; however, to
+          the extent possible, the Licensor waives and/or agrees not to
+          assert any such rights held by the Licensor to the limited
+          extent necessary to allow You to exercise the Licensed
+          Rights, but not otherwise.
 
        2. Patent and trademark rights are not licensed under this
           Public License.
@@ -219,6 +221,7 @@ Section 2 -- Scope.
           under any voluntary or waivable statutory or compulsory
           licensing scheme. In all other cases the Licensor expressly
           reserves any right to collect such royalties.
+
 
 Section 3 -- License Conditions.
 
@@ -241,7 +244,7 @@ following conditions.
 
                 ii. a copyright notice;
 
-                iii. a notice that refers to this Public License;
+               iii. a notice that refers to this Public License;
 
                 iv. a notice that refers to the disclaimer of
                     warranties;
@@ -286,6 +289,7 @@ following conditions.
           Measures to, Adapted Material that restrict exercise of the
           rights granted under the Adapter's License You apply.
 
+
 Section 4 -- Sui Generis Database Rights.
 
 Where the Licensed Rights include Sui Generis Database Rights that
@@ -301,12 +305,13 @@ apply to Your use of the Licensed Material:
      Rights (but not its individual contents) is Adapted Material,
      including for purposes of Section 3(b); and
 
-  c. You must comply with the conditions in Section 3(a) if You
-     Share all or a substantial portion of the contents of the database.
+  c. You must comply with the conditions in Section 3(a) if You Share
+     all or a substantial portion of the contents of the database.
 
 For the avoidance of doubt, this Section 4 supplements and does not
 replace Your obligations under this Public License where the Licensed
 Rights include other Copyright and Similar Rights.
+
 
 Section 5 -- Disclaimer of Warranties and Limitation of Liability.
 
@@ -328,13 +333,14 @@ Section 5 -- Disclaimer of Warranties and Limitation of Liability.
      COSTS, EXPENSES, OR DAMAGES ARISING OUT OF THIS PUBLIC LICENSE OR
      USE OF THE LICENSED MATERIAL, EVEN IF THE LICENSOR HAS BEEN
      ADVISED OF THE POSSIBILITY OF SUCH LOSSES, COSTS, EXPENSES, OR
-     DAMAGES. WHERE A LIMITATION OF LIABILITY IS NOT ALLOWED IN FULL
-     OR IN PART, THIS LIMITATION MAY NOT APPLY TO YOU.
+     DAMAGES. WHERE A LIMITATION OF LIABILITY IS NOT ALLOWED IN FULL OR
+     IN PART, THIS LIMITATION MAY NOT APPLY TO YOU.
 
   c. The disclaimer of warranties and limitation of liability provided
      above shall be interpreted in a manner that, to the extent
      possible, most closely approximates an absolute disclaimer and
      waiver of all liability.
+
 
 Section 6 -- Term and Termination.
 
@@ -343,8 +349,8 @@ Section 6 -- Term and Termination.
      this Public License, then Your rights under this Public License
      terminate automatically.
 
-  b. Where Your right to use the Licensed Material has terminated
-     under Section 6(a), it reinstates:
+  b. Where Your right to use the Licensed Material has terminated under
+     Section 6(a), it reinstates:
 
        1. automatically as of the date the violation is cured, provided
           it is cured within 30 days of Your discovery of the
@@ -356,13 +362,14 @@ Section 6 -- Term and Termination.
      right the Licensor may have to seek remedies for Your violations
      of this Public License.
 
-     For the avoidance of doubt, the Licensor may also offer the
+  c. For the avoidance of doubt, the Licensor may also offer the
      Licensed Material under separate terms or conditions or stop
      distributing the Licensed Material at any time; however, doing so
      will not terminate this Public License.
 
-  c. Sections 1, 5, 6, 7, and 8 survive termination of this Public
+  d. Sections 1, 5, 6, 7, and 8 survive termination of this Public
      License.
+
 
 Section 7 -- Other Terms and Conditions.
 
@@ -373,6 +380,7 @@ Section 7 -- Other Terms and Conditions.
      Licensed Material not stated herein are separate from and
      independent of the terms and conditions of this Public License.
 
+
 Section 8 -- Interpretation.
 
   a. For the avoidance of doubt, this Public License does not, and
@@ -380,46 +388,40 @@ Section 8 -- Interpretation.
      conditions on any use of the Licensed Material that could lawfully
      be made without permission under this Public License.
 
-  b. For the avoidance of doubt, where the Licensed Material is a
-     musical work, performance, or sound recording, the Licensor
-     waives and/or agrees not to assert any right to collect royalties
-     from You for the exercise of the Licensed Rights, whether
-     directly or through a collecting society under any voluntary or
-     waivable statutory or compulsory licensing scheme.
-
-  c. To the extent possible, if any provision of this Public License is
+  b. To the extent possible, if any provision of this Public License is
      deemed unenforceable, it shall be automatically reformed to the
      minimum extent necessary to make it enforceable. If the provision
      cannot be reformed, it shall be severed from this Public License
      without affecting the enforceability of the remaining terms and
      conditions.
 
-  d. No term or condition of this Public License will be waived and no
+  c. No term or condition of this Public License will be waived and no
      failure to comply consented to unless expressly agreed to by the
      Licensor.
 
-  e. Nothing in this Public License constitutes or may be interpreted
+  d. Nothing in this Public License constitutes or may be interpreted
      as a limitation upon, or waiver of, any privileges and immunities
      that apply to the Licensor or You, including from the legal
      processes of any jurisdiction or authority.
+
 
 =======================================================================
 
 Creative Commons is not a party to its public licenses.
 Notwithstanding, Creative Commons may elect to apply one of its public
 licenses to material it publishes and in those instances will be
-considered the "Licensor." The text of the Creative Commons public
+considered the “Licensor.” The text of the Creative Commons public
 licenses is dedicated to the public domain under the CC0 Public Domain
 Dedication. Except for the limited purpose of indicating that material
 is shared under a Creative Commons public license or as otherwise
 permitted by the Creative Commons policies published at
 creativecommons.org/policies, Creative Commons does not authorize the
-use of the trademark "Creative Commons" or any other trademarks or
-logos of Creative Commons without its prior written consent,
-including, without limitation, in connection with any unauthorized
-modifications to any of its public licenses or any other arrangements,
+use of the trademark "Creative Commons" or any other trademark or logo
+of Creative Commons without its prior written consent including,
+without limitation, in connection with any unauthorized modifications
+to any of its public licenses or any other arrangements,
 understandings, or agreements concerning use of licensed material. For
-the avoidance of doubt, this paragraph does not form part of the
-public licenses.
+the avoidance of doubt, this paragraph does not form part of the public
+licenses.
 
 Creative Commons may be contacted at creativecommons.org.

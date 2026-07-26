@@ -266,11 +266,11 @@ fn main() {
         let edge = usize::from(field.extent);
         let mut per_layer = vec![0usize; edge];
         let mut bounds = [usize::MAX, 0usize, usize::MAX, 0usize, usize::MAX, 0usize];
-        for (z, layer) in per_layer.iter_mut().enumerate() {
+        for (z, layer_count) in per_layer.iter_mut().enumerate() {
             for y in 0..edge {
                 for x in 0..edge {
                     if field.intensity[z * edge * edge + y * edge + x] != 0 {
-                        *layer += 1;
+                        *layer_count += 1;
                         bounds[0] = bounds[0].min(x);
                         bounds[1] = bounds[1].max(x);
                         bounds[2] = bounds[2].min(y);

@@ -106,8 +106,8 @@ separation, and contrast. Do not hand-edit the hues in `src/design/tokens.css`; 
 revalidate them.
 
 Human labels, locale, colour, selected area, selected chunk, plots, and animations are
-non-authoritative. Russian and English metadata map opaque Explanation schema IDs to presentation
-labels after IR decoding.
+non-authoritative. Supported localization resources (`en`, `ru`, `zh-Hans`, `de`, and `es`) map opaque
+Explanation schema IDs to presentation labels after IR decoding and provide interactive interface switching with browser persistence.
 
 ### Charts
 

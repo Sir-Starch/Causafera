@@ -153,7 +153,7 @@ executable paths. It does not represent mature simulation depth across every dom
 - Append-only causal events and provenance.
 - Canonical state digests, replay checks, and deterministic snapshot save/resume.
 - Tauri 2 and React desktop observer consuming versioned Protocol Buffer data instead of direct
-  runtime storage.
+  runtime storage (supporting UI localization in English, Russian, Simplified Chinese, German, and Spanish).
 - Bounded contracts for physical space, geography, biology, perception, subjective scenes,
   cognition, language, practices, epistemics, social records, economy, city infrastructure,
   historical bootstrap, isekai transfer, and metaphysical experiments.
@@ -327,12 +327,8 @@ configured. Issues and evidence-backed design discussion remain welcome.
 
 Causafera uses separate licenses for software and explanatory documentation:
 
-- **Software:** Rust, JavaScript, TypeScript, scripts, schemas, manifests, CI configuration, and
-  machine-readable software configuration are licensed under
-  [GNU AGPL v3.0 only](LICENSE) (`AGPL-3.0-only`).
-- **Documentation:** Prose and non-functional explanatory documentation are licensed under
-  [Creative Commons Attribution-ShareAlike 4.0 International](LICENSE-CC-BY-SA-4.0)
-  (`CC BY-SA 4.0`), unless a file states otherwise.
+- Source code and software components are licensed under [GNU Affero General Public License v3.0 only](LICENSE) (`AGPL-3.0-only`).
+- Documentation and non-code assets are licensed under [Creative Commons Attribution-ShareAlike 4.0 International](LICENSE-CC-BY-SA-4.0) (`CC-BY-SA-4.0`), unless explicitly stated otherwise.
 - Third-party dependencies retain their own licenses.
 - Contributions are governed by the existing [CLA](CLA.md) plus the applicable public outbound
   license. The CLA does not replace those licenses or transfer contributor copyright.
