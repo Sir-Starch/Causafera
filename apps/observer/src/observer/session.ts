@@ -12,7 +12,13 @@
  * - `world` is only polled while a mounted panel demands the feed.
  */
 
-import type { ExplanationReport, WorldChunkSnapshot } from "@causafera/observer-protocol";
+import { FieldRasterKind } from "@causafera/observer-protocol";
+import type {
+  ExplanationReport,
+  FieldRaster,
+  SpatialChunkSummary,
+  WorldChunkSnapshot,
+} from "@causafera/observer-protocol";
 import type { RuntimeSummary } from "@causafera/observer-protocol";
 
 import { initialLocale, rememberLocale } from "../i18n";
@@ -35,6 +41,20 @@ export const BATCH_SIZES: readonly BatchSize[] = [1, 4, 16, 64];
 /** Bounded observer-side buffers. The observer must never grow an unbounded queue. */
 export const HISTORY_CAPACITY = 256;
 export const EXCHANGE_CAPACITY = 120;
+/**
+ * Decoded rasters held at once. The active set is nine chunks and each carries
+ * two fields, so this is generous; it exists so a chart that moves rather than
+ * grows cannot turn the cache into a leak.
+ */
+export const RASTER_CAPACITY = 64;
+
+/** Per-chunk, per-field identity of a decoded raster. */
+export function rasterKey(
+  field: FieldRasterKind,
+  chunk: { chartId: bigint; chunkX: number; chunkY: number; chunkZ: number },
+): string {
+  return `${field}|${chunk.chartId}:${chunk.chunkX}:${chunk.chunkY}:${chunk.chunkZ}`;
+}
 
 const RUN_INTERVAL_MS = 340;
 
@@ -54,6 +74,8 @@ export interface SessionState {
   previous?: RuntimeSummary;
   world?: WorldChunkSnapshot;
   worldTicks?: bigint;
+  /** Decoded per-cell lattices, keyed by `rasterKey`. Empty until one arrives. */
+  rasters: ReadonlyMap<string, FieldRaster>;
   explanation?: ExplanationReport;
   explanationTicks?: bigint;
   history: RuntimeSummary[];
@@ -70,6 +92,7 @@ const initialState: SessionState = {
   connection: "idle",
   transportLabel: "none",
   replaying: false,
+  rasters: new Map(),
   history: [],
   exchanges: [],
   running: false,
@@ -88,6 +111,7 @@ export class ObserverSessionController {
   private started = false;
   private timer?: number;
   private generation = 0;
+  private readonly rasters = new Map<string, FieldRaster>();
 
   constructor(private readonly resolveChannel: () => ByteChannel | undefined) {
     this.demand.subscribe(() => {
@@ -119,6 +143,7 @@ export class ObserverSessionController {
     if (client === undefined) return;
     const generation = (this.generation += 1);
     this.store.patch({ connection: "connecting", error: undefined });
+    this.forgetRasters();
     try {
       const response = await client.connect(this.store.snapshot.locale);
       if (generation !== this.generation) return;
@@ -189,6 +214,8 @@ export class ObserverSessionController {
     if (client === undefined || this.store.snapshot.connection !== "connected") return;
     this.stop();
     const generation = (this.generation += 1);
+    // A new seed is a new world: every lattice held from the old one is stale.
+    this.forgetRasters();
     try {
       const update = await client.reset(this.store.snapshot.seed);
       if (generation !== this.generation) return;
@@ -233,9 +260,58 @@ export class ObserverSessionController {
     try {
       const world = await client.world();
       this.store.patch({ world, worldTicks: world.simulationTicks });
+      await this.refreshRasters(world);
     } catch (cause) {
       this.store.patch({ error: message(cause) });
     }
+  }
+
+  /**
+   * Fetch the per-cell lattices for the chunks the observer has received.
+   *
+   * Terrain is generated once and does not change per tick, so it is fetched
+   * once per chunk and held against its generation trace. The mana field does
+   * change, so it is refetched with every world frame — one bounded request per
+   * chunk, never a chart dump.
+   */
+  private async refreshRasters(world: WorldChunkSnapshot): Promise<void> {
+    const client = this.client;
+    if (client === undefined) return;
+    let changed = false;
+    for (const chunk of world.chunks) {
+      changed = (await this.fetchRaster(client, FieldRasterKind.ManaIntensity, chunk)) || changed;
+      const terrain = rasterKey(FieldRasterKind.TerrainElevation, chunk);
+      if (this.rasters.has(terrain)) continue;
+      changed =
+        (await this.fetchRaster(client, FieldRasterKind.TerrainElevation, chunk)) || changed;
+    }
+    if (changed) this.store.patch({ rasters: new Map(this.rasters) });
+  }
+
+  private async fetchRaster(
+    client: ObserverClient,
+    field: FieldRasterKind,
+    chunk: SpatialChunkSummary,
+  ): Promise<boolean> {
+    const raster = await client.fieldRaster({
+      chartId: chunk.chartId,
+      chunkX: chunk.chunkX,
+      chunkY: chunk.chunkY,
+      chunkZ: chunk.chunkZ,
+      field,
+      detailLevel: 0,
+    });
+    // An answer of "nothing here" is a finding; the map draws unsurveyed ground
+    // rather than holding a stale lattice over it.
+    const key = rasterKey(field, chunk);
+    if (raster === undefined) return this.rasters.delete(key);
+    while (this.rasters.size >= RASTER_CAPACITY && !this.rasters.has(key)) {
+      const oldest = this.rasters.keys().next().value;
+      if (oldest === undefined) break;
+      this.rasters.delete(oldest);
+    }
+    this.rasters.set(key, raster);
+    return true;
   }
 
   private scheduleTick(delay: number): void {
@@ -269,10 +345,39 @@ export class ObserverSessionController {
     }
   }
 
+  private forgetRasters(): void {
+    if (this.rasters.size === 0) return;
+    this.rasters.clear();
+    this.store.patch({ rasters: new Map() });
+  }
+
+  /**
+   * A world frame fetches one raster per chunk per field, which would otherwise
+   * bury every other exchange in the instrument log. Consecutive raster requests
+   * are folded into one entry that states how many there were and what they cost
+   * — a reduction of the log, not of what was sent.
+   */
   private recordExchange(exchange: Exchange): void {
-    this.store.patch((current) => ({
-      exchanges: appendBounded(current.exchanges, exchange, EXCHANGE_CAPACITY),
-    }));
+    this.store.patch((current) => {
+      const previous = current.exchanges[current.exchanges.length - 1];
+      if (
+        exchange.command === "observer_field_raster" &&
+        previous?.command === "observer_field_raster" &&
+        previous.outcome === exchange.outcome
+      ) {
+        const folded: Exchange = {
+          ...previous,
+          count: (previous.count ?? 1) + 1,
+          requestBytes: previous.requestBytes + exchange.requestBytes,
+          responseBytes: previous.responseBytes + exchange.responseBytes,
+          durationMs: previous.durationMs + exchange.durationMs,
+          detail: exchange.detail,
+          at: exchange.at,
+        };
+        return { exchanges: [...current.exchanges.slice(0, -1), folded] };
+      }
+      return { exchanges: appendBounded(current.exchanges, exchange, EXCHANGE_CAPACITY) };
+    });
   }
 }
 

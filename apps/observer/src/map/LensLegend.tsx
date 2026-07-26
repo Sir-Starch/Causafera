@@ -12,15 +12,19 @@ import { SIGNAL_VARIABLE } from "../observer/models";
 import type { ObserverLocale } from "../observer/format";
 import {
   AVAILABILITY_TITLE,
+  availabilityOf,
   type Lens,
+  type LensContext,
   type LensLayers,
 } from "./lens";
+import { rampSwatches } from "./surface";
 
 /** The stepped ramp mirrors the alpha the renderer applies to a field value. */
 const RAMP_STEPS = [0.07, 0.18, 0.29, 0.4, 0.5, 0.57];
 
 interface LensLegendProps {
   locale: ObserverLocale;
+  context: LensContext;
   primary?: Lens;
   primaryLayers: LensLayers;
   overlays: { lens: Lens; layers: LensLayers }[];
@@ -29,21 +33,24 @@ interface LensLegendProps {
 
 export function LensLegend({
   locale,
+  context,
   primary,
   primaryLayers,
   overlays,
   labels,
 }: LensLegendProps) {
   const field = primaryLayers.field;
+  const surface = primaryLayers.surface;
   const [folded, setFolded] = useState(false);
+  const state = primary === undefined ? undefined : availabilityOf(primary, context);
 
   return (
     <div className="chart-map__legend" data-folded={folded}>
       <div className="chart-map__legend-head">
         <span className="eyebrow">{labels.legend}</span>
-        {primary !== undefined && !folded && (
-          <span className="lens-availability" data-availability={primary.availability}>
-            {AVAILABILITY_TITLE[primary.availability][locale]}
+        {state !== undefined && !folded && (
+          <span className="lens-availability" data-availability={state}>
+            {AVAILABILITY_TITLE[state][locale]}
           </span>
         )}
         <button
@@ -59,7 +66,25 @@ export function LensLegend({
       {primary !== undefined && (
         <>
           <strong className="chart-map__legend-title">{primary.title[locale]}</strong>
-          {field === undefined ? (
+          {surface !== undefined ? (
+            /* The ramp shows the colours the surface is actually painted in,
+               between the extremes of the measurements it was built from. */
+            <div className="chart-map__ramp">
+              <span className="chart-map__ramp-bar">
+                {rampSwatches(surface.style.ramp, 24).map((colour, index) => (
+                  <span
+                    key={colour + index}
+                    className="chart-map__ramp-step"
+                    style={{ background: colour }}
+                  />
+                ))}
+              </span>
+              <span className="chart-map__ramp-scale numeric">
+                <span>{surface.format(surface.field.min)}</span>
+                <span>{surface.format(surface.field.max)}</span>
+              </span>
+            </div>
+          ) : field === undefined ? (
             <p className="chart-map__legend-note">{labels.noField}</p>
           ) : (
             <div
@@ -91,7 +116,7 @@ export function LensLegend({
               <li
                 key={lens.id}
                 style={{ ["--signal" as string]: SIGNAL_VARIABLE[lens.signal] }}
-                data-availability={lens.availability}
+                data-availability={availabilityOf(lens, context)}
               >
                 <span className={`chart-map__key-mark chart-map__key-mark--${keyShape(layers)}`} />
                 {lens.title[locale]}

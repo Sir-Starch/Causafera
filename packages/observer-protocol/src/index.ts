@@ -20,6 +20,50 @@ export enum QueryKind {
   RuntimeSummary = 1,
   ExplanationIr = 2,
   WorldChunks = 3,
+  FieldRaster = 4,
+}
+
+export enum FieldRasterKind {
+  TerrainElevation = 1,
+  TerrainRoughness = 2,
+  ManaIntensity = 3,
+}
+
+/** The coarsest terrain reduction the projection offers; level 0 is 32 x 32. */
+export const MAX_FIELD_RASTER_DETAIL_LEVEL = 2;
+
+export interface FieldRasterRequest {
+  chartId: bigint;
+  chunkX: number;
+  chunkY: number;
+  chunkZ: number;
+  field: FieldRasterKind;
+  detailLevel: number;
+}
+
+/**
+ * One chunk of one measured lattice.
+ *
+ * `values` is row-major over `edge` columns and `edge` rows, repeated `depth`
+ * times through z. A surface field has depth 1; the mana volume has depth equal
+ * to its edge, and the reduction to plan view is the reader's choice rather than
+ * a property of the field, so the runtime performs none of it.
+ */
+export interface FieldRaster {
+  chartId: bigint;
+  chunkX: number;
+  chunkY: number;
+  chunkZ: number;
+  field: FieldRasterKind;
+  detailLevel: number;
+  edge: number;
+  depth: number;
+  values: Float64Array;
+  /** A second band over the same lattice: roughness under elevation, else empty. */
+  auxiliary: Float64Array;
+  /** Per-cell provenance, zero where the cell has never changed. */
+  cellTraces: BigUint64Array;
+  generationTraceId: bigint;
 }
 
 export enum QueryStatus {
@@ -242,6 +286,114 @@ export function encodeQuery(kind: QueryKind, requestId: bigint): Uint8Array {
 
 export function encodeRuntimeSummaryQuery(requestId: bigint): Uint8Array {
   return encodeQuery(QueryKind.RuntimeSummary, requestId);
+}
+
+/** A raster asks for one chunk of one field, so its parameters ride the payload. */
+export function encodeFieldRasterQuery(
+  requestId: bigint,
+  request: FieldRasterRequest,
+): Uint8Array {
+  const payload: number[] = [];
+  fieldVarint(payload, 1, request.chartId);
+  fieldVarint(payload, 2, zigzagEncode(BigInt(request.chunkX)));
+  fieldVarint(payload, 3, zigzagEncode(BigInt(request.chunkY)));
+  fieldVarint(payload, 4, zigzagEncode(BigInt(request.chunkZ)));
+  fieldVarint(payload, 5, BigInt(request.field));
+  fieldVarint(payload, 6, BigInt(request.detailLevel));
+
+  const output: number[] = [];
+  fieldVarint(output, 1, requestId);
+  fieldVarint(output, 2, BigInt(OBSERVER_PROTOCOL_V1));
+  fieldVarint(output, 3, BigInt(QueryKind.FieldRaster));
+  fieldBytes(output, 5, Uint8Array.from(payload));
+  return Uint8Array.from(output);
+}
+
+export function decodeFieldRaster(input: Uint8Array): FieldRaster {
+  const cursor = new Cursor(input);
+  let chartId: bigint | undefined;
+  let chunkX = 0;
+  let chunkY = 0;
+  let chunkZ = 0;
+  let field: FieldRasterKind | undefined;
+  let detailLevel = 0;
+  let edge: number | undefined;
+  let depth: number | undefined;
+  let values: FieldRaster["values"] = new Float64Array();
+  let auxiliary: FieldRaster["auxiliary"] = new Float64Array();
+  let cellTraces: FieldRaster["cellTraces"] = new BigUint64Array();
+  let generationTraceId = 0n;
+  while (!cursor.empty) {
+    const [number, wire] = cursor.key();
+    if (number === 1 && wire === 0) chartId = cursor.varint();
+    else if (number === 2 && wire === 0) chunkX = Number(zigzagDecode(cursor.varint()));
+    else if (number === 3 && wire === 0) chunkY = Number(zigzagDecode(cursor.varint()));
+    else if (number === 4 && wire === 0) chunkZ = Number(zigzagDecode(cursor.varint()));
+    else if (number === 5 && wire === 0) field = Number(cursor.varint()) as FieldRasterKind;
+    else if (number === 6 && wire === 0) detailLevel = Number(cursor.varint());
+    else if (number === 7 && wire === 0) edge = Number(cursor.varint());
+    else if (number === 8 && wire === 0) depth = Number(cursor.varint());
+    else if (number === 9 && wire === 2) values = decodeDeltaBand(cursor.bytes());
+    else if (number === 10 && wire === 2) auxiliary = decodeDeltaBand(cursor.bytes());
+    else if (number === 11 && wire === 2) cellTraces = decodeTraceBand(cursor.bytes());
+    else if (number === 12 && wire === 0) generationTraceId = cursor.varint();
+    else cursor.skip(wire);
+  }
+  if (chartId === undefined || field === undefined || edge === undefined || depth === undefined) {
+    throw new Error("incomplete observer field raster");
+  }
+  const cells = edge * edge * depth;
+  // A lattice whose payload does not fill it cannot be drawn at real positions,
+  // and a renderer must never be left to guess the shape.
+  if (values.length !== cells) {
+    throw new Error(`field raster declares ${cells} cells but carries ${values.length}`);
+  }
+  if (auxiliary.length !== 0 && auxiliary.length !== cells) {
+    throw new Error(`field raster auxiliary band carries ${auxiliary.length} of ${cells} cells`);
+  }
+  if (cellTraces.length !== 0 && cellTraces.length !== cells) {
+    throw new Error(`field raster trace band carries ${cellTraces.length} of ${cells} cells`);
+  }
+  return {
+    chartId,
+    chunkX,
+    chunkY,
+    chunkZ,
+    field,
+    detailLevel,
+    edge,
+    depth,
+    values,
+    auxiliary,
+    cellTraces,
+    generationTraceId,
+  };
+}
+
+/**
+ * Successive differences along the scan order, undone with the same wrapping
+ * arithmetic the encoder used so every 64-bit value round-trips exactly.
+ *
+ * The result is `Float64Array` because it feeds a renderer: elevation in
+ * millimetres and mana intensity both sit far inside the exactly representable
+ * range, and a typed array is what an image blit wants.
+ */
+function decodeDeltaBand(input: Uint8Array): Float64Array {
+  const cursor = new Cursor(input);
+  const decoded: number[] = [];
+  let previous = 0n;
+  while (!cursor.empty) {
+    previous = BigInt.asIntN(64, previous + zigzagDecode(cursor.varint()));
+    decoded.push(Number(previous));
+  }
+  return new Float64Array(decoded);
+}
+
+function decodeTraceBand(input: Uint8Array): BigUint64Array {
+  const cursor = new Cursor(input);
+  const decoded: bigint[] = [];
+  while (!cursor.empty) decoded.push(cursor.varint());
+  return new BigUint64Array(decoded);
 }
 
 export function decodeQueryResponse(input: Uint8Array): QueryResponse {
@@ -701,6 +853,10 @@ function requiredValue(values: Map<number, bigint>, name: string): (field: numbe
 
 function zigzagDecode(value: bigint): bigint {
   return (value >> 1n) ^ -(value & 1n);
+}
+
+function zigzagEncode(value: bigint): bigint {
+  return BigInt.asUintN(64, (value << 1n) ^ (value >> 63n));
 }
 
 function decodeZigzagI128(input: Uint8Array): bigint {

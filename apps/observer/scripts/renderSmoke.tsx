@@ -20,10 +20,12 @@ import { renderToString } from "react-dom/server";
 import {
   decodeConnectResponse,
   decodeExplanationReport,
+  decodeFieldRaster,
   decodeQueryResponse,
   decodeRuntimeSummary,
   decodeStreamEnvelope,
   decodeWorldChunkSnapshot,
+  type FieldRaster,
 } from "@causafera/observer-protocol";
 
 import { AssayArea, AssayDock } from "../src/areas/AssayArea";
@@ -38,7 +40,12 @@ import { AREA_IDS, type AreaId, type AreaProps } from "../src/workspace";
 interface Capture {
   seed: number;
   connect: number[];
-  frames: { ticks: number; runtime: number[]; world: number[] }[];
+  frames: {
+    ticks: number;
+    runtime: number[];
+    world: number[];
+    rasters?: Record<string, number[]>;
+  }[];
   explanation: number[];
 }
 
@@ -64,6 +71,16 @@ const explanation = decodeExplanationReport(
 const connect = decodeConnectResponse(bytes(capture.connect));
 const current = summaries[summaries.length - 1]!;
 
+// The capture keys its rasters exactly as the session keys its cache, so the
+// check renders against the per-cell lattices a real session would hold.
+const rasters = new Map<string, FieldRaster>();
+for (const frame of [capture.frames[0], latest]) {
+  for (const [key, encoded] of Object.entries(frame?.rasters ?? {})) {
+    const response = decodeQueryResponse(bytes(encoded));
+    if (response.payload.length > 0) rasters.set(key, decodeFieldRaster(response.payload));
+  }
+}
+
 session.store.patch({
   connection: "connected",
   transportLabel: `replay:${capture.seed}`,
@@ -78,6 +95,7 @@ session.store.patch({
   history: summaries,
   world,
   worldTicks: world.simulationTicks,
+  rasters,
   explanation,
   explanationTicks: current.simulationTicks,
   seed: capture.seed,
@@ -158,7 +176,15 @@ for (const area of AREA_IDS) {
           railWidth: 232,
           dockWidth: 344,
           primaryLens: "relief",
-          overlayLenses: ["population", "surface", "contours", "mana-gradient", "trace-anchors"],
+          overlayLenses: [
+            "population",
+            "surface",
+            "contours",
+            "mana-isolines",
+            "mana-provenance",
+            "mana-gradient",
+            "trace-anchors",
+          ],
           ...selection,
         },
         update: () => {},
@@ -174,12 +200,40 @@ for (const area of AREA_IDS) {
   }
 }
 
+// The raster lenses, with the lattices a session would hold and then without
+// them: a lens that draws a measured surface must also render before one has
+// arrived, because that is the state every session starts in.
+for (const primaryLens of ["mana", "mana-peak", "relief", "roughness"]) {
+  for (const held of [true, false]) {
+    session.store.patch({ rasters: held ? rasters : new Map() });
+    const props: AreaProps = {
+      workspace: {
+        area: "chart",
+        dockCollapsed: false,
+        railCollapsed: false,
+        railWidth: 232,
+        dockWidth: 344,
+        primaryLens,
+        overlayLenses: ["contours", "mana-isolines", "mana-provenance"],
+        traceFilter: world.materialSurfaceDeltas[0]?.localManaTransitionTraceId,
+      },
+      update: () => {},
+      goTo: () => {},
+    };
+    check(`chart/view  ${primaryLens} rasters=${held}`, () =>
+      renderToString(createElement(ChartArea, props)),
+    );
+  }
+}
+session.store.patch({ rasters });
+
 // The unattached state must render without any observer payload at all.
 session.store.patch({
   connection: "unavailable",
   summary: undefined,
   world: undefined,
   explanation: undefined,
+  rasters: new Map(),
   history: [],
 });
 check("unattached", () => renderToString(createElement(Unattached)));

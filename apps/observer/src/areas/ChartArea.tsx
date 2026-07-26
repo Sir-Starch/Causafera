@@ -42,6 +42,7 @@ import {
   AVAILABILITY_DETAIL,
   AVAILABILITY_TITLE,
   LENS_GROUPS,
+  availabilityOf,
   type LensContext,
 } from "../map/lens";
 import { LENSES, LENS_BY_ID, lensLayers, resolveLenses } from "../map/lenses";
@@ -51,23 +52,24 @@ import { LensLegend } from "../map/LensLegend";
 import { Transect } from "../viz/Transect";
 import type { AreaProps } from "../workspace";
 
-function useChartContext(): LensContext {
+function useChartContext(traceFilter?: bigint): LensContext {
   const locale = useSession((state) => state.locale);
   const world = useSession((state) => state.world);
+  const rasters = useSession((state) => state.rasters);
   const summary = useSession((state) => state.summary);
   const atlas = useMemo(() => buildAtlas(world), [world]);
   const ladders = useMemo(() => buildLadders(world?.materialSurfaceDeltas ?? []), [world]);
   const gates = useMemo(() => buildGates(world?.materialSurfaceGateDeltas ?? []), [world]);
   return useMemo(
-    () => ({ atlas, ladders, gates, summary, locale }),
-    [atlas, gates, ladders, locale, summary],
+    () => ({ atlas, ladders, gates, rasters, traceFilter, summary, locale }),
+    [atlas, gates, ladders, locale, rasters, summary, traceFilter],
   );
 }
 
 export function ChartArea({ workspace, update }: AreaProps) {
   useFeed("world");
   const copy = useCopy();
-  const context = useChartContext();
+  const context = useChartContext(workspace.traceFilter);
   const locale = context.locale;
   const [hover, setHover] = useState<HoverReading>();
 
@@ -114,6 +116,7 @@ export function ChartArea({ workspace, update }: AreaProps) {
       <div className="chart-frame">
         <LensDock
           locale={locale}
+          context={context}
           primaryId={workspace.primaryLens}
           overlayIds={workspace.overlayLenses}
           onPrimary={(id) => update({ primaryLens: id })}
@@ -154,6 +157,7 @@ export function ChartArea({ workspace, update }: AreaProps) {
 
             <LensLegend
               locale={locale}
+              context={context}
               primary={primary}
               primaryLayers={awaitingPrimary ? {} : primaryLayers}
               overlays={overlayLayers}
@@ -285,7 +289,7 @@ export function ChartArea({ workspace, update }: AreaProps) {
 
 export function ChartDock({ workspace, update }: AreaProps) {
   const copy = useCopy();
-  const context = useChartContext();
+  const context = useChartContext(workspace.traceFilter);
   const locale = context.locale;
   const showCatalogue = workspace.dockView === "catalogue";
 
@@ -323,6 +327,7 @@ export function ChartDock({ workspace, update }: AreaProps) {
       {showCatalogue ? (
         <LensCatalogue
           locale={locale}
+          context={context}
           primaryId={workspace.primaryLens}
           overlayIds={workspace.overlayLenses}
           onPrimary={(id) => update({ primaryLens: id })}
@@ -405,12 +410,14 @@ export function ChartDock({ workspace, update }: AreaProps) {
 
 function LensCatalogue({
   locale,
+  context,
   primaryId,
   overlayIds,
   onPrimary,
   onToggleOverlay,
 }: {
   locale: ObserverLocale;
+  context: LensContext;
   primaryId: string;
   overlayIds: readonly string[];
   onPrimary(id: string): void;
@@ -424,8 +431,8 @@ function LensCatalogue({
         return (
           <section key={group.id}>
             <Division>{group.title[locale]}</Division>
-            {lenses.map((lens) => (
-              <article key={lens.id} className="lens-entry" data-availability={lens.availability}>
+            {lenses.map((lens) => availabilityEntry(lens, context)).map(({ lens, state }) => (
+              <article key={lens.id} className="lens-entry" data-availability={state}>
                 <button
                   type="button"
                   className="lens-entry__head"
@@ -436,12 +443,12 @@ function LensCatalogue({
                     else onToggleOverlay(lens.id);
                   }}
                 >
-                  <span className="lens-entry__mark" data-availability={lens.availability}>
+                  <span className="lens-entry__mark" data-availability={state}>
                     <LensIcon lensId={lens.id} size={15} />
                   </span>
                   <span className="lens-entry__name">{lens.title[locale]}</span>
-                  <span className="lens-availability" data-availability={lens.availability}>
-                    {AVAILABILITY_TITLE[lens.availability][locale]}
+                  <span className="lens-availability" data-availability={state}>
+                    {AVAILABILITY_TITLE[state][locale]}
                   </span>
                 </button>
                 <p className="lens-entry__detail">{lens.detail[locale]}</p>
@@ -455,4 +462,9 @@ function LensCatalogue({
       })}
     </>
   );
+}
+
+/** A lens with the availability it is actually in, given what has arrived. */
+function availabilityEntry(lens: (typeof LENSES)[number], context: LensContext) {
+  return { lens, state: availabilityOf(lens, context) };
 }
