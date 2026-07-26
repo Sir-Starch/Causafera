@@ -18,7 +18,9 @@ This permits two physically similar structures to couple even when societies int
 
 ## Provenance and commits
 
-Evolution produces replacement-state proposals and changed-cell records. It does not mutate the source field. Each changed cell carries traces supporting direct pattern injection and neighbouring prior field state. A caller must commit one new provenance trace per changed cell before constructing the next field.
+Evolution produces replacement-state proposals and changed-cell records. It does not mutate the source field. Each changed cell carries traces supporting direct pattern injection and neighbouring prior field state, including when the neighbour lies in an adjacent chunk: a share crossing a seam is attributed to what produced the value that crossed, which is this tick's injection as well as the source cell's previous change. A caller must commit one new provenance trace per changed cell before constructing the next field.
+
+No cell change is proposed without ancestry. A proposal whose changed cell has an empty cause list is refused rather than emitted, because a mana cell that changed for no recorded reason is authoritative state without provenance. That is total only because a cell holds mana only where some commit put it: fields start at zero and untraced, and every commit records the change on every cell it moves. Only the experiment-recipe source commits mana as a root event, and it does so through its own path.
 
 ## Bounded material-surface coupling
 
@@ -109,8 +111,11 @@ cross-chart transport, and visualization remain future work.
 
 Same-chart cross-chunk exchange is not among them: it is implemented and conducts at the interior
 rate, as the Geography section above records. This list said otherwise until now, which contradicted
-that section of the same document. Its remaining gap is provenance rather than transport — a seam
-cell can still commit a change with no causal ancestry, recorded as `TODO-MANA-005`.
+that section of the same document. Its provenance gap is closed: a share crossing a seam carries the
+ancestry of the value that crossed, and the proposal boundary refuses any cell change it cannot
+attribute. What remains is that seam delivery does not apply the field's saturation ceiling, so a
+cell fed across a seam in a saturated field can exceed `maximum_intensity` — recorded as
+`TODO-MANA-006`.
 
 ## Related documents
 

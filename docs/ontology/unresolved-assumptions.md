@@ -46,7 +46,7 @@ RFC-MANA-001 now settles the Phase 17 minimum: a bounded fixed-point scalar fiel
 
 The final field physics remain open. Vector state, explicit phase/interference, cross-chart transport, sparse/multi-resolution layouts, acceleration, and empirical parameter selection are deferred. Stateful attractors remain a separate metaphysical research hypothesis.
 
-Four items this list previously deferred are now implemented and are no longer open questions: same-chart cross-chunk exchange, threshold/hysteresis field-to-matter effects, and two concrete carrier adapters — the change-driven material surface and the standing terrain structure. What replaced the question is a narrower one: a cross-chunk seam cell can still commit a change with no causal ancestry (`TODO-MANA-005`), and the response constants were calibrated against a field that no carrier populated (`TODO-MANA-004`).
+Four items this list previously deferred are now implemented and are no longer open questions: same-chart cross-chunk exchange, threshold/hysteresis field-to-matter effects, and two concrete carrier adapters — the change-driven material surface and the standing terrain structure. What replaced the question is a narrower one. Provenance is settled: a seam cell could commit a change with no causal ancestry, and `TODO-MANA-005` closed that, so no mana cell change is proposed without a cause. Two narrower questions remain: seam delivery does not apply the field's own saturation ceiling, so a cell fed across a seam in a saturated field can exceed `maximum_intensity` (`TODO-MANA-006`), and both the response constants and the lattice were calibrated against a field that no carrier populated (`TODO-MANA-004`).
 
 See `RFC-MANA-001: Minimal Information-Sensitive Field Model`.
 

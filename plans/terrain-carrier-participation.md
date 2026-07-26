@@ -317,17 +317,23 @@ claim about where mana stands can be traced to the generation of the ground unde
 24 ticks of the default world, 1066 of 1584 committed mana events cite a terrain generation trace,
 and no cause anywhere in the store references an event that does not exist.
 
-This is not yet a general guarantee that every mana change is attributable, and the plan does not
-claim one. `apply_exchange_delta` in `causafera-domains` propagates only `last_change` anchors, so a
-cross-chunk seam cell whose two participants both lack a `last_change` produces a nonzero
-`ManaCellChange` with an empty cause list, which the runtime commits as an ordinary mana event.
-Measured: zero such events with a single active chunk, three to four with three, under `Standing`
-and `Inert` alike. The gap is in the boundary exchange and predates this work: `causafera-domains` is
-untouched across this whole range, and the defect appears with the carrier inert. What that shows is
-that terrain is not the source of the mechanism; it does not establish a bound on how often the
-standing path reaches it, and this plan claims none. It is recorded as
-`TODO-MANA-005` rather than fixed here, because closing it changes the committed events and
-therefore every digest of every world, which needs its own plan. No claim schema changes.
+This was not a general guarantee that every mana change is attributable when this plan shipped, and
+it did not claim one. `apply_exchange_delta` in `causafera-domains` propagated only `last_change`
+anchors, so a cross-chunk seam cell whose two participants both lacked a `last_change` produced a
+nonzero `ManaCellChange` with an empty cause list, which the runtime committed as an ordinary mana
+event. Measured: zero such events with a single active chunk, three to four with three, under
+`Standing` and `Inert` alike. The gap was in the boundary exchange and predated this work:
+`causafera-domains` is untouched across this whole range, and the defect appeared with the carrier
+inert. What that showed is that terrain was not the source of the mechanism; it did not establish a
+bound on how often the standing path reached it, and this plan claimed none. It was recorded as
+`TODO-MANA-005` rather than fixed here.
+
+`TODO-MANA-005` has since closed it, and the attribution claim above now holds generally: the
+exchange carries the ancestry of the value that crossed, and the proposal boundary refuses a change
+it cannot attribute. The reason given here for deferring it — that closing it changes every digest of
+every world — turned out to be half right. Causes enter the history digest and not the physical one,
+so the history digest of every world changed and no intensity, count or physical digest moved. No
+claim schema changes.
 
 ## Persistence impact
 
@@ -389,9 +395,10 @@ re-taken. Resolution relevance reads `pattern_event_counts_by_chunk`, which is c
 ## TODO changes
 
 - `TODO-RUNTIME-002` — completed.
-- `TODO-MANA-005` — opened. Cross-chunk seam mana changes can commit with an empty cause list. Found
-  while reviewing this work, confirmed to predate it and to be independent of terrain, and recorded
-  rather than fixed here because closing it changes every world's digest.
+- `TODO-MANA-005` — opened, and since completed. Cross-chunk seam mana changes could commit with an
+  empty cause list. Found while reviewing this work, confirmed to predate it and to be independent of
+  terrain, and recorded rather than fixed here because closing it changes every world's digest — which
+  proved to be the history digest only.
 - `TODO-MANA-004` — no longer blocked. Multi-seed validation is now possible, and the extent cost
   it must weigh has been re-measured on a populated field.
 

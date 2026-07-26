@@ -121,9 +121,10 @@ magnitude, and a fingerprint of the column's dominant surface material and quant
 class. Featureless ground emits nothing. The fingerprint is composition, never a terrain type,
 biome, landcover class, or any other observer classification, and the sample's cause is the
 terrain's own generation trace, so a terrain-driven mana cell change can be traced to the generation
-of the ground under it. That is not yet a general guarantee for every mana change: the cross-chunk
-boundary exchange can still commit a seam cell change with no cause at all, a gap that predates this
-carrier and is recorded as `TODO-MANA-005`. Whether the carrier reaches the tick loop is the persisted
+of the ground under it. That is now a general guarantee for every mana change: the cross-chunk
+boundary exchange carries the ancestry of the value that crossed, and the field's proposal boundary
+refuses a cell change it cannot attribute. It did not hold when this carrier landed — a seam cell could
+commit a change with no cause at all, a gap that predated the carrier — and `TODO-MANA-005` closed it. Whether the carrier reaches the tick loop is the persisted
 `RuntimeConfig::terrain_participation` contract rather than an accident of which system reads
 `carrier_adapters`.
 
