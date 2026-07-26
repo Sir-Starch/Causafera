@@ -88,7 +88,7 @@ Sections are strictly ordered by schema ID and unique. Unknown required sections
 
 The first complete runtime snapshot includes separate bounded sections for:
 
-1. **Runtime recipe and configuration** (`0x0001`, current major V4)
+1. **Runtime recipe and configuration** (`0x0001`, current major V5)
    - deterministic configuration (seed, stream parameters);
    - registered system schema IDs and revisions;
    - phase and registration order;
@@ -327,10 +327,16 @@ Failure leaves the prior completed snapshot intact. Temporary-file cleanup is be
 - Unsupported major versions fail closed; no guesswork loading.
 
 For the active actor/material/mana slice, the runtime accepts authoritative digest schema V4,
-runtime-recipe/configuration major V4, mana-field major V2, physical-counters major V3, material-surface major V2, and
+runtime-recipe/configuration major V5, mana-field major V2, physical-counters major V3, material-surface major V2, and
 experiment-recipe mana source receipts major V1. Any other required digest schema or section major,
-including recipe major V2 or an unsupported receipts major, is rejected deterministically rather
+including recipe major V4 or an unsupported receipts major, is rejected deterministically rather
 than being coerced into the current causal state.
+
+Recipe major rose from V4 to V5 when `RuntimeConfig` gained `terrain_participation`, which decides
+whether the terrain carrier reaches the tick loop. A V4 snapshot carries every other field of V5 but
+not that contract, so accepting it would mean resuming a world whose participation had been silently
+defaulted — a different world from the one that was saved. It is therefore rejected rather than
+migrated. See `plans/terrain-carrier-participation.md`.
 
 ## Security considerations
 
