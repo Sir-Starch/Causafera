@@ -327,12 +327,8 @@ configured. Issues and evidence-backed design discussion remain welcome.
 
 Causafera uses separate licenses for software and explanatory documentation:
 
-- **Software:** Rust, JavaScript, TypeScript, scripts, schemas, manifests, CI configuration, and
-  machine-readable software configuration are licensed under
-  [GNU AGPL v3.0 only](LICENSE) (`AGPL-3.0-only`).
-- **Documentation:** Prose and non-functional explanatory documentation are licensed under
-  [Creative Commons Attribution-ShareAlike 4.0 International](LICENSE-CC-BY-SA-4.0)
-  (`CC BY-SA 4.0`), unless a file states otherwise.
+- Source code and software components are licensed under [GNU Affero General Public License v3.0 only](LICENSE) (`AGPL-3.0-only`).
+- Documentation and non-code assets are licensed under [Creative Commons Attribution-ShareAlike 4.0 International](LICENSE-CC-BY-SA-4.0) (`CC-BY-SA-4.0`), unless explicitly stated otherwise.
 - Third-party dependencies retain their own licenses.
 - Contributions are governed by the existing [CLA](CLA.md) plus the applicable public outbound
   license. The CLA does not replace those licenses or transfer contributor copyright.
