@@ -5,46 +5,18 @@ import {
 } from "@causafera/observer-protocol";
 
 import type { Copy } from "../i18n";
-import type { ObserverLocale } from "../useObserverSession";
 import { ExplanationClaimRow } from "./ExplanationClaimRow";
 
 interface ExplanationPanelProps {
   report?: ExplanationReport;
   isAnalyzing: boolean;
-  locale: ObserverLocale;
   copy: Copy;
   onAnalyze(): Promise<void>;
 }
 
-const claimLabels: Record<ObserverLocale, Record<number, string>> = {
-  "ru-RU": {
-    1: "Реконструируемость по плотности трасс",
-    2: "Зависимость траектории от seed",
-    3: "Глубина причинной цепочки",
-    4: "Временной охват свидетельств",
-    5: "Расстояние до контрфактического состояния",
-    6: "Расстояние восстановления до контроля",
-    7: "Время до восстановления",
-    8: "Стабильность поля при активном воздействии",
-    9: "Стабильность поля без активного воздействия",
-  },
-  "en-US": {
-    1: "Reconstructability from trace density",
-    2: "Trajectory dependence on seed",
-    3: "Causal chain depth",
-    4: "Temporal evidence span",
-    5: "Counterfactual state distance",
-    6: "Recovery distance to control",
-    7: "Time to recovery",
-    8: "Field stability under active input",
-    9: "Field stability without active input",
-  },
-};
-
 export function ExplanationPanel({
   report,
   isAnalyzing,
-  locale,
   copy,
   onAnalyze,
 }: ExplanationPanelProps) {
@@ -87,7 +59,7 @@ export function ExplanationPanel({
               </strong>
             </div>
             <div>
-              <span>Experiment ID</span>
+              <span>{copy.experimentId}</span>
               <strong className="numeric">#{report.experimentId.toString()}</strong>
             </div>
           </div>
@@ -97,7 +69,7 @@ export function ExplanationPanel({
               <ExplanationClaimRow
                 key={`${claim.schemaId}:${claim.comparison.kind}`}
                 claim={claim}
-                label={claimLabels[locale][Number(claim.schemaId)] ?? `Schema ${claim.schemaId}`}
+                label={copy.schemaNames[Number(claim.schemaId)] ?? copy.formatUnknownSchema(claim.schemaId.toString())}
                 evidenceLabel={evidenceLabel(claim.evidenceState, copy)}
                 copy={copy}
               />

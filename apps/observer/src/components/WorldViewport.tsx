@@ -89,7 +89,7 @@ export function WorldViewport({ world, selectedKey, copy, onSelect }: WorldViewp
       <div className="map-footer">
         <span>{copy.boundedChart}</span>
         <span className="numeric">
-          {world.chunks.length} {copy.activeChunks.toLocaleLowerCase()}
+          {copy.formatActiveChunks(world.chunks.length)}
         </span>
       </div>
     </div>

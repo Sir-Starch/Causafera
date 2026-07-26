@@ -18,7 +18,9 @@ export function ExplanationClaimRow({
   const comparison =
     claim.comparison.kind === 0
       ? "—"
-      : `${claim.comparison.kind === 1 ? "matched" : "counterfactual"} #${claim.comparison.cohortId ?? "—"}`;
+      : claim.comparison.kind === 1
+        ? copy.formatMatchedCohort((claim.comparison.cohortId ?? "—").toString())
+        : copy.formatCounterfactualCohort((claim.comparison.cohortId ?? "—").toString());
   return (
     <article className="claim-row">
       <div className="claim-row__identity">
@@ -26,7 +28,7 @@ export function ExplanationClaimRow({
         <div>
           <strong>{label}</strong>
           <span>
-            {evidenceLabel} · {claim.evidenceTraceIds.length} {copy.tracesCount} · {copy.comparison}: {comparison}
+            {evidenceLabel} · {copy.formatTracesCount(claim.evidenceTraceIds.length)} · {copy.comparison}: {comparison}
           </span>
         </div>
       </div>

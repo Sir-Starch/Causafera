@@ -6,9 +6,10 @@ import type {
   WorldChunkSnapshot,
 } from "@causafera/observer-protocol";
 
+import { getInitialLocale, saveLocalePreference, type ObserverLocale } from "./locales";
 import { ObserverClient, hasTauriTransport, type RuntimeUpdate } from "./observerClient";
 
-export type ObserverLocale = "ru-RU" | "en-US";
+export type { ObserverLocale } from "./locales";
 export type ConnectionState = "connecting" | "connected" | "unavailable" | "error";
 export type PlaybackRate = 1 | 4 | 16;
 
@@ -51,7 +52,7 @@ export function useObserverSession(worldVisible: boolean): ObserverSessionModel 
   const [error, setError] = useState<string>();
   const [isPlaying, setIsPlaying] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [locale, setLocaleState] = useState<ObserverLocale>("ru-RU");
+  const [locale, setLocaleState] = useState<ObserverLocale>(() => getInitialLocale());
   const [playbackRate, setPlaybackRate] = useState<PlaybackRate>(4);
 
   const applyUpdate = useCallback((update: RuntimeUpdate) => {
@@ -86,7 +87,7 @@ export function useObserverSession(worldVisible: boolean): ObserverSessionModel 
     const initialize = async () => {
       try {
         setConnection("connecting");
-        await client.current.connect("ru-RU");
+        await client.current.connect(locale);
         const update = await client.current.openRuntimeStream();
         if (cancelled) return;
         applyUpdate(update);
@@ -103,7 +104,7 @@ export function useObserverSession(worldVisible: boolean): ObserverSessionModel 
     return () => {
       cancelled = true;
     };
-  }, [applyUpdate]);
+  }, [applyUpdate, locale]);
 
   useEffect(() => {
     if (connection !== "connected") return;
@@ -185,6 +186,7 @@ export function useObserverSession(worldVisible: boolean): ObserverSessionModel 
   }, [connection, isAnalyzing]);
 
   const setLocale = useCallback((nextLocale: ObserverLocale) => {
+    saveLocalePreference(nextLocale);
     setLocaleState(nextLocale);
   }, []);
 

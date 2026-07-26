@@ -10,6 +10,7 @@ import { SimulationControls } from "./components/SimulationControls";
 import { TimelinePanel } from "./components/TimelinePanel";
 import { WorldViewport } from "./components/WorldViewport";
 import { copyFor } from "./i18n";
+import { SUPPORTED_LOCALES } from "./locales";
 import { chunkKey, useObserverSession } from "./useObserverSession";
 
 type ViewId = "world" | "causality" | "explanation";
@@ -72,23 +73,18 @@ export function App() {
 
         <div className="sidebar-footer">
           <span>{copy.protocol} v1</span>
-          <div className="locale-control" aria-label="Language">
-            <button
-              type="button"
-              className={session.locale === "ru-RU" ? "is-active" : undefined}
-              aria-pressed={session.locale === "ru-RU"}
-              onClick={() => session.setLocale("ru-RU")}
-            >
-              RU
-            </button>
-            <button
-              type="button"
-              className={session.locale === "en-US" ? "is-active" : undefined}
-              aria-pressed={session.locale === "en-US"}
-              onClick={() => session.setLocale("en-US")}
-            >
-              EN
-            </button>
+          <div className="locale-control" aria-label={copy.language}>
+            {SUPPORTED_LOCALES.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                className={session.locale === item.id ? "is-active" : undefined}
+                aria-pressed={session.locale === item.id}
+                onClick={() => session.setLocale(item.id)}
+              >
+                {item.nativeName}
+              </button>
+            ))}
           </div>
         </div>
       </aside>
@@ -148,7 +144,6 @@ export function App() {
               <ExplanationPanel
                 report={session.explanation}
                 isAnalyzing={session.isAnalyzing}
-                locale={session.locale}
                 copy={copy}
                 onAnalyze={session.analyze}
               />
@@ -159,7 +154,7 @@ export function App() {
             <div className="metric-grid">
               <MetricCard label={copy.population} value={session.summary?.populationTotal.toString() ?? "—"} />
               <MetricCard label={copy.actors} value={session.summary?.actorCount.toString() ?? "—"} />
-              <MetricCard label={copy.mana} value={session.summary?.manaTotal.toString() ?? "—"} detail={`max ${session.summary?.manaMaximum.toString() ?? "—"}`} />
+              <MetricCard label={copy.mana} value={session.summary?.manaTotal.toString() ?? "—"} detail={copy.formatMax(session.summary?.manaMaximum.toString() ?? "—")} />
               <MetricCard label={copy.traces} value={session.summary?.causalTraceCount.toString() ?? "—"} />
             </div>
 
@@ -168,7 +163,7 @@ export function App() {
             <section className="panel digest-panel">
               <div className="panel-heading">
                 <span className="eyebrow">{copy.digest}</span>
-                <h2>Schema {session.summary?.digestSchemaVersion ?? "—"}</h2>
+                <h2>{copy.formatSchema(session.summary?.digestSchemaVersion ?? "—")}</h2>
               </div>
               <dl>
                 <div>
