@@ -10,8 +10,9 @@
   },
   "scripts": {
     "build": "pnpm -r build",
-    "lint": "pnpm -r lint",
-    "typecheck": "pnpm -r typecheck"
+    "lint": "pnpm -r lint && pnpm audit:i18n",
+    "typecheck": "pnpm -r typecheck",
+    "audit:i18n": "node tools/audit/validate-i18n.mjs"
   },
   "devDependencies": {
     "typescript": "^5.6.0"

@@ -144,6 +144,6 @@ None.
 
 ## Progress
 
-- [ ] Wave 1: Frontend i18n Architecture, Translation Resources, and Components Refactoring
+- [x] Wave 1: Frontend i18n Architecture, Translation Resources, and Components Refactoring (Checkpoint: `cdcc735`, Verified with `pnpm run typecheck && pnpm run lint && pnpm run build` and `cargo test --workspace` with 0 failures)
 - [ ] Wave 2: Automated Localization Verification Engine
 - [ ] Wave 3: Backend Verification & Documentation Sync
