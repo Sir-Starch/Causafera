@@ -193,7 +193,7 @@ fn stencil_target(index: usize, extent: u8, offset: (i8, i8, i8)) -> StencilTarg
     let mut target = [0_usize; 3];
     let mut chunk_delta = [0_i32; 3];
     for axis in 0..3 {
-        let step = i64::from(position[axis] as i64) + i64::from(offset[axis]);
+        let step = position[axis] as i64 + i64::from(offset[axis]);
         if step < 0 {
             chunk_delta[axis] = -1;
             target[axis] = side - 1;
