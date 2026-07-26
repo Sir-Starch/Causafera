@@ -188,6 +188,13 @@ impl TerrainCarrierAdapter {
 
 fn project_columns(terrain: &TerrainChunk, field_extent: u8) -> Vec<TerrainColumn> {
     let extent = usize::from(field_extent);
+    // A zero extent is no lattice, so it has no columns and the carrier emits
+    // nothing. `TerrainCarrierAdapter::new` is infallible and reachable from
+    // decoded persistence bytes, so this must not be an indexing assumption:
+    // `import_carrier_adapters` rejects the extent, and it must be able to.
+    if extent == 0 {
+        return Vec::new();
+    }
     let mut blocks = vec![ColumnAccumulator::default(); extent * extent];
     for index in 0..TERRAIN_CELLS_PER_CHUNK {
         let position = terrain_field_position(index, field_extent);
