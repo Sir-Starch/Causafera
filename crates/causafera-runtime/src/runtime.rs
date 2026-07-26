@@ -902,7 +902,8 @@ impl RuntimeState {
         validate_mana_cell_object_ids(&mana)?;
         let resolution = ResolutionField::import_snapshot(data.resolution)?;
         let resolution_policy = ResolutionPolicy::import_snapshot(data.resolution_policy)?;
-        let carrier_adapters = import_carrier_adapters(data.spatial.carrier_adapters)?;
+        let carrier_adapters =
+            import_carrier_adapters(data.spatial.carrier_adapters, config.chunk_extent)?;
         let active_chunks = import_active_chunks(data.spatial.active_chunks)?;
         let thermal_parameters = data.thermal.parameters;
         let (
@@ -2110,10 +2111,21 @@ fn runtime_system_registrations() -> Vec<SystemRegistrationSnapshot> {
 
 fn import_carrier_adapters(
     snapshots: Vec<TerrainCarrierSnapshot>,
+    chunk_extent: u8,
 ) -> Result<BTreeMap<ChartChunkCoord, TerrainCarrierAdapter>, RuntimeError> {
     let mut adapters = BTreeMap::new();
     for snapshot in snapshots {
         let chunk = snapshot.chunk;
+        // The carrier projects onto this chunk's mana field, which is built at
+        // `chunk_extent`. A carrier at any other extent addresses a lattice that
+        // does not exist, so it is rejected here rather than at the first tick
+        // that tries to place its samples. `import_thermal_snapshot` binds its
+        // fields to the configured extent the same way.
+        if snapshot.field_extent != chunk_extent {
+            return Err(RuntimeError::InvalidSnapshot(
+                "terrain carrier extent does not match the configured chunk extent",
+            ));
+        }
         let adapter = TerrainCarrierAdapter::import_snapshot(snapshot)
             .map_err(|_| RuntimeError::InvalidSnapshot("invalid terrain carrier"))?;
         if adapters.insert(chunk, adapter).is_some() {

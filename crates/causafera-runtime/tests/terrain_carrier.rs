@@ -181,6 +181,58 @@ fn the_same_seed_still_reproduces_itself_exactly() {
 }
 
 #[test]
+fn a_carrier_extent_that_addresses_no_lattice_is_rejected_on_import() {
+    // Given: an authoritative snapshot whose terrain carriers claim an extent
+    // the configured mana field was never built at. `field_extent` is decoded as
+    // a bare byte, so this is reachable from any corrupt or hostile snapshot.
+    let mut zero = Runtime::from_seed(7)
+        .expect("world bootstraps")
+        .export_snapshot()
+        .expect("world exports");
+    let mut mismatched = zero.clone();
+    for carrier in &mut zero.spatial.carrier_adapters {
+        carrier.field_extent = 0;
+    }
+    for carrier in &mut mismatched.spatial.carrier_adapters {
+        carrier.field_extent = 9;
+    }
+
+    // Then: both fail closed with a typed error. Neither panics, and neither
+    // reaches a tick that would try to place a sample outside the field.
+    for (label, data) in [("zero", zero), ("mismatched", mismatched)] {
+        assert!(
+            matches!(
+                Runtime::from_snapshot(data),
+                Err(causafera_runtime::RuntimeError::InvalidSnapshot(
+                    "terrain carrier extent does not match the configured chunk extent"
+                ))
+            ),
+            "a {label} carrier extent must be rejected on import"
+        );
+    }
+}
+
+#[test]
+fn projecting_a_carrier_that_has_no_lattice_yields_no_columns() {
+    // Given: the adapter constructed directly at a zero extent. The constructor
+    // is infallible and public, so it must be total rather than relying on the
+    // caller having validated the extent first.
+    let adapter = TerrainCarrierAdapter::new(
+        test_chunk(),
+        deterministic_terrain_chunk(7, test_chunk(), TraceId::new(0)),
+        0,
+    );
+
+    // Then: no lattice means no columns and no samples, not a panic.
+    assert!(adapter.columns().is_empty());
+    assert!(
+        adapter
+            .emit_samples(SimulationTime::new(1), TraceId::new(0))
+            .is_empty()
+    );
+}
+
+#[test]
 fn terrain_participation_survives_a_snapshot_round_trip() {
     // Given: a world whose terrain carrier is deliberately held inert.
     let mut config = seed_comparison_config(7);
