@@ -238,7 +238,8 @@ a configuration of an existing mechanism, not a new spatial primitive.
    at stated intensity levels, and availability derived from the received edge length rather than
    hard-coded. Selecting a trace anywhere in the interface highlights the cells it last changed.
 8. **`chunk_extent` cost evidence.** Measured; see the results below. No default is changed by
-   this plan, and the measurements now inform `TODO-MANA-004` rather than await it.
+   this plan, and the measurements now inform `TODO-MANA-004` rather than await it. Since closed:
+   the extent stays 3, so nothing downstream of this stage moves.
 9. **Active chunk shape.** `ActiveChunkShape` in `RuntimeConfig`, `Disc` in the observer session,
    and the determinism evidence in the verification section.
 
@@ -272,6 +273,21 @@ Measure and record, rather than assert:
 - Encoded mana raster size per extent, once the wire format exists.
 
 ### Measured: `chunk_extent` against the map
+
+**Decided, and the decision is to leave it alone.** `TODO-MANA-004` closed with `chunk_extent`
+staying 3. Everything in this section was measured on a field that no carrier populated, and
+`TODO-RUNTIME-002` has since made terrain a standing carrier presented at the mana lattice's own
+resolution — one sample per plan-view column. The extent therefore no longer only samples the field,
+it also sets how finely the field reads the ground, so the convergence argument below compares two
+different physical inputs and does not support what it was read as supporting. Three findings
+replace it, all recorded in full on `TODO-MANA-004`: the terrain's coherent structure is already
+captured at extent 3 and a finer lattice mostly resolves cell-scale noise; a finer lattice drives so
+much of the field past the gate threshold that six seeds collapse onto one behaviour tuple; and the
+cost is 5.9x at extent 6 and 29x at extent 12, dominated by one committed causal event per changed
+mana cell per tick. The map keeps its `preview` mana lens and upsamples, exactly as this plan already
+provides for.
+
+The rest of this section is retained as the record of what was measured before the carrier landed.
 
 Taken with `cargo run --release -p causafera-observer --example extent_bench` on the
 demonstration session (seed 7). The honest metric is the **plan-view column field** — what the map
@@ -326,13 +342,14 @@ An earlier version of this table read the other way, with the total falling as t
 finer, and concluded that extent 3 overestimated by 11 %. That was the leak: the stencil subtracted
 an undivided outgoing budget while handing its neighbours truncated shares, so a finer lattice lost
 more, and the apparent convergence was the leak saturating. The correction is recorded in
-`TODO-MANA-002`; the case for extent 4 to 6 is unchanged and still **accuracy first**, with a better
-map as the consequence rather than the reason.
+`TODO-MANA-002`; the case for extent 4 to 6 was unchanged and still **accuracy first**, with a better
+map as the consequence rather than the reason. That case did not survive the standing terrain
+carrier either, for the reasons at the head of this section.
 
 The smallest non-zero cell now falls to 1 from extent 6 upward, where before it stayed at 4 … 7. At
-fine lattices part of the field genuinely sits on the quantisation floor, so the earlier claim that
-integer flooring could be ruled out no longer holds; it is carried as an open question on
-`TODO-MANA-004`.
+fine lattices part of the field genuinely sat on the quantisation floor, so the earlier claim that
+integer flooring could be ruled out no longer held. That question closed with the lattice: the field
+stays at extent 3, where the smallest non-zero cell is 89 and nothing sits on the floor.
 - Frontend: time to decode and blit one chunk raster, and steady-state paint time for a viewport of
   nine chunks at cell zoom, on the software-rendering profile as the pessimistic case.
 
@@ -430,7 +447,9 @@ generation, which is the prerequisite for a landcover lens, and a mana-domain it
 - **`chunk_extent` is measured, not raised.** The field is fully implemented and every cell is
   live; only its lattice is coarse. The measurements above put the useful range at 4 to 6 and rule
   out 16 and 32 on both cost and coverage. Acting on that is a mana-domain decision with its own
-  determinism and fixture consequences, so this plan supplies the evidence and stops there.
+  determinism and fixture consequences, so this plan supplies the evidence and stops there. The
+  decision has since been taken on `TODO-MANA-004` and it is to keep 3, on evidence re-measured after
+  the standing terrain carrier landed. The stopping point held; the range it pointed at did not.
 - **The lattice stays square; the diffusion kernel is what should change.** A hexagonal tiling
   answers a two-dimensional question, and the field in question is volumetric: mana is
   `chunk_extent³` and local physical space is full 3D. Hexagonal prisms keep the z anisotropy and
