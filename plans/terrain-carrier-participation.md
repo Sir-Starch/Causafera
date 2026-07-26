@@ -284,7 +284,14 @@ cell standing against 0.076 ms inert. The carrier's own work is the sample proje
 `extent²` samples read from a precomputed summary.
 
 This is direct evidence for `TODO-MANA-004`: a finer lattice is now materially more expensive than
-its earlier measurement suggested, because the field it prices is genuinely populated.
+its earlier measurement suggested, because the field it prices is genuinely populated. That TODO has
+since closed on it, along with two findings this plan implied without stating. Because the carrier
+presents itself at the mana lattice's own resolution, the extent is no longer only a discretisation
+parameter — it also sets how finely the field reads the ground, so a convergence comparison between
+lattices compares two different physical inputs. And because a finer lattice injects more, it drives
+the field past the gate threshold, which was calibrated when no carrier populated the field: at
+extent 6 and above, all six seeds collapse onto one behaviour tuple. The extent stays 3 and the
+calibration is now `TODO-MANA-007`.
 
 ## Determinism impact
 
@@ -399,8 +406,11 @@ re-taken. Resolution relevance reads `pattern_event_counts_by_chunk`, which is c
   empty cause list. Found while reviewing this work, confirmed to predate it and to be independent of
   terrain, and recorded rather than fixed here because closing it changes every world's digest — which
   proved to be the history digest only.
-- `TODO-MANA-004` — no longer blocked. Multi-seed validation is now possible, and the extent cost
-  it must weigh has been re-measured on a populated field.
+- `TODO-MANA-004` — no longer blocked, and since completed. Multi-seed validation became possible
+  and the extent cost was re-measured on a populated field; the decision is that `chunk_extent`
+  stays 3.
+- `TODO-MANA-007` — opened. The response and gate constants were calibrated against a field no
+  carrier populated, and this work is what populated it.
 
 ## Progress
 
