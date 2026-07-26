@@ -105,7 +105,12 @@ All hot arithmetic is fixed-point integer arithmetic; sample and cell traversal 
 
 Additional field-to-matter mechanisms beyond the bounded material surface, interference phase
 state, long-lived attractors, artifacts, gods/spirits, semantic observer classifications,
-cross-chunk exchange, and visualization remain future work.
+cross-chart transport, and visualization remain future work.
+
+Same-chart cross-chunk exchange is not among them: it is implemented and conducts at the interior
+rate, as the Geography section above records. This list said otherwise until now, which contradicted
+that section of the same document. Its remaining gap is provenance rather than transport — a seam
+cell can still commit a change with no causal ancestry, recorded as `TODO-MANA-005`.
 
 ## Related documents
 
