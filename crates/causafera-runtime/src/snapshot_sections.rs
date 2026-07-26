@@ -3115,7 +3115,7 @@ mod tests {
     }
 
     #[test]
-    fn runtime_recipe_section_v3_roundtrips_canonical_order() {
+    fn runtime_recipe_section_roundtrips_canonical_order() {
         // Given: equivalent valid source records supplied in reverse canonical order.
         let mut first_config = RuntimeConfig::new(57);
         let make_record = |source_record_id, scheduled_tick| ExperimentRecipeManaSource {
@@ -3134,9 +3134,10 @@ mod tests {
         let runtime = Runtime::new(first_config).expect("recipe must validate");
         let first_data = runtime.export_snapshot().expect("snapshot must export");
 
-        // When: the canonical V3 recipe section is encoded and decoded.
+        // When: the canonical current-major recipe section is encoded and decoded.
         let encoded = encode_runtime_recipe_section(&first_data.recipe);
-        let decoded = decode_runtime_recipe_section(&encoded).expect("V3 recipe must roundtrip");
+        let decoded =
+            decode_runtime_recipe_section(&encoded).expect("current recipe major must roundtrip");
 
         // Then: decoded configuration is canonical and re-encoding is byte-identical.
         assert_eq!(decoded, first_data.recipe);
@@ -3148,27 +3149,34 @@ mod tests {
     }
 
     #[test]
-    fn runtime_recipe_section_rejects_v2_and_unknown_major() {
-        // Given: a complete current snapshot envelope with a V4 recipe section.
+    fn runtime_recipe_section_rejects_every_major_but_the_current_one() {
+        // Given: a complete current snapshot envelope, whose recipe section is
+        // V5 since `terrain_participation` joined the configuration.
         let data = populated_snapshot_data();
         let envelope = assemble_envelope(&data).expect("snapshot envelope must assemble");
+        assert_eq!(
+            envelope.sections[&u64::from(SECTION_RUNTIME_RECIPE)].section_major,
+            RUNTIME_RECIPE_SECTION_MAJOR
+        );
 
-        // When: the recipe section is changed to an old or unknown major.
-        let mut v3 = envelope.clone();
-        v3.sections
-            .get_mut(&u64::from(SECTION_RUNTIME_RECIPE))
-            .expect("recipe section must exist")
-            .section_major = 3;
-        let mut unknown = envelope;
-        unknown
-            .sections
-            .get_mut(&u64::from(SECTION_RUNTIME_RECIPE))
-            .expect("recipe section must exist")
-            .section_major = 6;
+        // When: the recipe section declares any other major. V4 is called out
+        // because it is the one a real older snapshot carries: it has every
+        // field of V5 except the participation contract, so accepting it would
+        // mean resuming a world with a silently defaulted one.
+        for major in [2, 3, 4, RUNTIME_RECIPE_SECTION_MAJOR + 1] {
+            let mut altered = envelope.clone();
+            altered
+                .sections
+                .get_mut(&u64::from(SECTION_RUNTIME_RECIPE))
+                .expect("recipe section must exist")
+                .section_major = major;
 
-        // Then: both unsupported required majors fail closed.
-        assert!(disassemble_envelope(&v3).is_err());
-        assert!(disassemble_envelope(&unknown).is_err());
+            // Then: it fails closed rather than being coerced or migrated.
+            assert!(
+                disassemble_envelope(&altered).is_err(),
+                "recipe major {major} must be rejected"
+            );
+        }
     }
 
     #[test]
