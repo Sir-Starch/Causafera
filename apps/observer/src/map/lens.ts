@@ -129,40 +129,142 @@ export interface LensGroup {
 }
 
 export const LENS_GROUPS: LensGroup[] = [
-  { id: "geography", title: { "ru-RU": "География", "en-US": "Geography" } },
-  { id: "material", title: { "ru-RU": "Вещество", "en-US": "Material" } },
-  { id: "mana", title: { "ru-RU": "Мана", "en-US": "Mana" } },
-  { id: "life", title: { "ru-RU": "Живое", "en-US": "Living systems" } },
-  { id: "causality", title: { "ru-RU": "Причинность", "en-US": "Causality" } },
-  { id: "cognition", title: { "ru-RU": "Познание", "en-US": "Cognition" } },
-  { id: "society", title: { "ru-RU": "Общество", "en-US": "Society" } },
+  {
+    id: "geography",
+    title: {
+      "en-US": "Geography",
+      "ru-RU": "География",
+      "zh-Hans": "地理",
+      "de-DE": "Geographie",
+      "es-ES": "Geografía",
+    },
+  },
+  {
+    id: "material",
+    title: {
+      "en-US": "Material",
+      "ru-RU": "Вещество",
+      "zh-Hans": "物质",
+      "de-DE": "Materie",
+      "es-ES": "Materia",
+    },
+  },
+  {
+    id: "mana",
+    title: {
+      "en-US": "Mana",
+      "ru-RU": "Мана",
+      "zh-Hans": "魔力",
+      "de-DE": "Mana",
+      "es-ES": "Maná",
+    },
+  },
+  {
+    id: "life",
+    title: {
+      "en-US": "Living systems",
+      "ru-RU": "Живое",
+      "zh-Hans": "生命系统",
+      "de-DE": "Lebende Systeme",
+      "es-ES": "Sistemas vivos",
+    },
+  },
+  {
+    id: "causality",
+    title: {
+      "en-US": "Causality",
+      "ru-RU": "Причинность",
+      "zh-Hans": "因果性",
+      "de-DE": "Kausalität",
+      "es-ES": "Causalidad",
+    },
+  },
+  {
+    id: "cognition",
+    title: {
+      "en-US": "Cognition",
+      "ru-RU": "Познание",
+      "zh-Hans": "认知",
+      "de-DE": "Kognition",
+      "es-ES": "Cognición",
+    },
+  },
+  {
+    id: "society",
+    title: {
+      "en-US": "Society",
+      "ru-RU": "Общество",
+      "zh-Hans": "社会",
+      "de-DE": "Gesellschaft",
+      "es-ES": "Sociedad",
+    },
+  },
 ];
 
 export const AVAILABILITY_TITLE: Record<LensAvailability, Record<ObserverLocale, string>> = {
-  observed: { "ru-RU": "Наблюдается", "en-US": "Observed" },
-  partial: { "ru-RU": "Частично", "en-US": "Partial" },
-  preview: { "ru-RU": "Прототип", "en-US": "Preview" },
-  awaiting: { "ru-RU": "Ожидает", "en-US": "Awaiting" },
+  observed: {
+    "en-US": "Observed",
+    "ru-RU": "Наблюдается",
+    "zh-Hans": "已观测",
+    "de-DE": "Beobachtet",
+    "es-ES": "Observada",
+  },
+  partial: {
+    "en-US": "Partial",
+    "ru-RU": "Частично",
+    "zh-Hans": "部分",
+    "de-DE": "Teilweise",
+    "es-ES": "Parcial",
+  },
+  preview: {
+    "en-US": "Preview",
+    "ru-RU": "Прототип",
+    "zh-Hans": "预览",
+    "de-DE": "Vorschau",
+    "es-ES": "Vista previa",
+  },
+  awaiting: {
+    "en-US": "Awaiting",
+    "ru-RU": "Ожидает",
+    "zh-Hans": "等待中",
+    "de-DE": "Ausstehend",
+    "es-ES": "A la espera",
+  },
 };
 
 export const AVAILABILITY_DETAIL: Record<LensAvailability, Record<ObserverLocale, string>> = {
   observed: {
-    "ru-RU": "Реальные данные наблюдателя через текущий протокол.",
     "en-US": "Real observer data through the current protocol.",
+    "ru-RU": "Реальные данные наблюдателя через текущий протокол.",
+    "zh-Hans": "经由当前协议获得的真实观测器数据。",
+    "de-DE": "Echte Beobachterdaten über das aktuelle Protokoll.",
+    "es-ES": "Datos reales del observador a través del protocolo actual.",
   },
   partial: {
-    "ru-RU": "Реальные данные, но только узкий срез того, что называет линза.",
     "en-US": "Real data, but only a narrow slice of what the lens names.",
+    "ru-RU": "Реальные данные, но только узкий срез того, что называет линза.",
+    "zh-Hans": "真实数据，但只是该透镜所指称内容的一个窄切片。",
+    "de-DE": "Echte Daten, aber nur ein schmaler Ausschnitt dessen, was die Linse benennt.",
+    "es-ES": "Datos reales, pero sólo una porción estrecha de lo que la lente nombra.",
   },
   preview: {
-    "ru-RU":
-      "Построение на стороне наблюдателя из реальных величин. Это не измерение: линза помечена как прототип.",
     "en-US":
       "An observer-side construction over real values. It is not a measurement: the lens is marked as a preview.",
+    "ru-RU":
+      "Построение на стороне наблюдателя из реальных величин. Это не измерение: линза помечена как прототип.",
+    "zh-Hans": "基于真实数值的观测器端构造。它不是测量：该透镜已标注为预览。",
+    "de-DE":
+      "Eine beobachterseitige Konstruktion über echten Werten. Sie ist keine Messung: die Linse ist als Vorschau gekennzeichnet.",
+    "es-ES":
+      "Una construcción del lado del observador sobre valores reales. No es una medición: la lente está marcada como vista previa.",
   },
   awaiting: {
-    "ru-RU": "Модели чтения ещё нет. Линза перечислена и объясняет, чего ждёт.",
     "en-US": "No read model yet. The lens is listed and states what it is waiting for.",
+    "ru-RU": "Модели чтения ещё нет. Линза перечислена и объясняет, чего ждёт.",
+    "zh-Hans": "尚无读取模型。该透镜仍被列出，并说明它在等待什么。",
+    "de-DE": "Noch kein Lesemodell. Die Linse wird aufgeführt und nennt, worauf sie wartet.",
+    "es-ES":
+      "Todavía no hay modelo de lectura. La lente aparece en la lista y declara qué está esperando.",
   },
 };
 
