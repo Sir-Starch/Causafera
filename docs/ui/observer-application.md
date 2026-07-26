@@ -139,12 +139,24 @@ measured distance.
 
 ### The chart instrument
 
-Areas carry no title banner. The rail already names the area and the dock header repeats it, so an
-eyebrow, a display title and a paragraph of prose on every page restated what was on screen twice
-over in the most expensive vertical space the sheet has. What is left of the area head is whatever
-live reading or control the area puts beside its instrument, aligned right. The longer description
-each area used to print now reaches the reader through the rail entry's tooltip, where it costs no
-layout; a fuller home for it is an open question rather than a settled one.
+### The workspace holds instruments and nothing else
+
+No area reserves a row above its instruments. Each used to open with an eyebrow, a display title and
+a paragraph of prose, restating what the rail already names in the most expensive vertical space the
+sheet has; cutting the prose left a row reserved for one chip, which was the same waste with less in
+it. The rule that replaced both is that an area begins with an instrument, and anything it wants to
+say about itself goes into an instrument's own chrome:
+
+| Area | What it had above the instruments | Where it lives now |
+|------|-----------------------------------|--------------------|
+| Observatory | A hero readout of causal traces | First cell of the readout cluster it sat above |
+| Chart | Chart and chunk counts | The chart's own caption line, opposite the usage hint |
+| Flux | A hero trace rate | Nowhere: the dock's rate register already carries it |
+| Explanation | A run control | The report panel's tools slot; the empty state keeps its own |
+| Instrument | Nothing | — |
+
+The longer description each area used to print reaches the reader through the rail entry's tooltip,
+where it costs no layout. A fuller home for it is an open question rather than a settled one.
 
 The Chart area is built around a pannable, zoomable plan view of one chart's chunk lattice, drawn
 on canvas with viewport culling and three levels of detail. Analytical lenses supply what it draws:

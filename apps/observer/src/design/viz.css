@@ -126,10 +126,23 @@
   color: var(--ink-ghost);
 }
 
+/*
+ * The chart's own footer line: what this sheet is on the left, how to work it on
+ * the right. It replaces the row the area used to reserve above the map for the
+ * same identity.
+ */
 .chart__caption {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--s4);
   font-size: var(--t-micro);
-  color: var(--ink-ghost);
+  color: var(--ink-faint);
   line-height: 1.5;
+}
+
+.chart__caption .muted {
+  color: var(--ink-ghost);
 }
 
 /* ---- Sparkline: an inline trace beside a readout ---------------------- */

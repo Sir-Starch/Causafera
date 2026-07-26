@@ -87,8 +87,8 @@ export function StationArea({ update, goTo }: AreaProps) {
 
   return (
     <>
-      <div className="area-head">
-        <div className="area-head__meta">
+      <Panel variant="flush" flushBody>
+        <div className="cluster">
           <Readout
             label={copy.station.traces}
             value={summary === undefined ? "—" : formatCompact(summary.causalTraceCount, locale)}
@@ -98,14 +98,7 @@ export function StationArea({ update, goTo }: AreaProps) {
                 : undefined
             }
             signal="trace"
-            size="hero"
-            align="end"
           />
-        </div>
-      </div>
-
-      <Panel variant="flush" flushBody>
-        <div className="cluster">
           <Readout
             label={copy.station.manaTotal}
             value={summary === undefined ? "—" : formatCompact(summary.manaTotal, locale)}

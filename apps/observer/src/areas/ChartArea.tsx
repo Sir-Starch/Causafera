@@ -17,7 +17,6 @@ import {
   Field,
   Fields,
   Panel,
-  Tag,
   TraceChip,
   Unsurveyed,
 } from "../components/primitives";
@@ -99,15 +98,6 @@ export function ChartArea({ workspace, update }: AreaProps) {
   return (
     <>
       <div className="chart-stage">
-      <div className="area-head">
-        <div className="area-head__meta">
-          <Tag tone="quiet">
-            {copy.chart.chartsPlural} {chartCount} · {copy.chart.chunksPlural}{" "}
-            {context.atlas.chunks.length}
-          </Tag>
-        </div>
-      </div>
-
       <div className="chart-frame">
         <LensDock
           locale={locale}
@@ -195,7 +185,13 @@ export function ChartArea({ workspace, update }: AreaProps) {
         )}
       </div>
 
-      <p className="chart__caption">{copy.chart.mapHint}</p>
+      <p className="chart__caption">
+        <span className="numeric">
+          {copy.chart.chartsPlural} {chartCount} · {copy.chart.chunksPlural}{" "}
+          {context.atlas.chunks.length}
+        </span>
+        <span className="muted">{copy.chart.mapHint}</span>
+      </p>
       </div>
 
       {context.atlas.chunks.length > 0 && (

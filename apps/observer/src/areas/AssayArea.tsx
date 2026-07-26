@@ -69,10 +69,10 @@ export function AssayArea({ workspace, update }: AreaProps) {
     [frame],
   );
 
-  const runButton = (
+  const runAction = (large: boolean) => (
     <button
       type="button"
-      className="btn btn--primary btn--lg"
+      className={large ? "btn btn--primary btn--lg" : "btn btn--primary"}
       disabled={!attached || analyzing}
       onClick={actions.analyze}
     >
@@ -82,10 +82,6 @@ export function AssayArea({ workspace, update }: AreaProps) {
 
   return (
     <>
-      <div className="area-head">
-        <div className="area-head__meta">{runButton}</div>
-      </div>
-
       {stale && (
         <Notice tone="caution">
           <span>
@@ -96,12 +92,12 @@ export function AssayArea({ workspace, update }: AreaProps) {
       )}
 
       {report === undefined || frame === undefined ? (
-        <Unsurveyed title={copy.assay.empty} centred action={runButton}>
+        <Unsurveyed title={copy.assay.empty} centred action={runAction(true)}>
           {copy.assay.emptyBody}
         </Unsurveyed>
       ) : (
         <>
-          <Panel variant="accent" flushBody>
+          <Panel variant="accent" flushBody eyebrow={copy.assay.eyebrow} tools={runAction(false)}>
             <div className="cluster">
               <Readout
                 label={copy.assay.experiment}

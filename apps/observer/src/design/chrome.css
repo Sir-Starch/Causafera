@@ -280,27 +280,17 @@
 }
 
 /*
- * What is left of the area head.
+ * There is no area head.
  *
- * It used to carry an eyebrow, a display title and a paragraph of prose on every
- * page — restating what the rail already names, in the most expensive vertical
- * space on the sheet. The titles are gone; the head is now whatever live reading
- * or control the area puts beside its instrument, aligned to the right so the
- * instrument beneath it starts at the top of the column.
+ * Each area used to open with an eyebrow, a display title and a paragraph of
+ * prose, restating what the rail already names in the most expensive vertical
+ * space on the sheet. Cutting the prose left a row reserved for one chip, which
+ * was the same waste with less in it, so the row is gone too and the rule is now
+ * simply this: **the workspace holds instruments and nothing else.** What an area
+ * wants to say about itself goes into an instrument's own chrome — a panel head,
+ * its tools slot, or the chart's own caption — where it costs no reserved space
+ * and sits next to the thing it describes.
  */
-.area-head {
-  display: flex;
-  align-items: flex-end;
-  justify-content: flex-end;
-  gap: var(--s6);
-}
-
-.area-head__meta {
-  display: flex;
-  align-items: center;
-  gap: var(--s4);
-  flex-shrink: 0;
-}
 
 /* Grid helpers used by the areas. */
 .grid {
