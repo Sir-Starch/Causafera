@@ -669,9 +669,21 @@
 **Performance Requirements:** Capacity-one latest-state runtime stream, bounded 96-sample client timeline, hidden world view performs no world refresh queries
 **Determinism Requirements:** Same seed/ticks produce identical payloads and locale changes preserve physical/history digests
 **Ontology Implications:** Human labels, colors, selected views, and locale remain non-authoritative presentation
-**Observer Implications:** First complete external consumer of observer v1
-**Explanation Implications:** Preserves schema, numeric value, evidence state, confidence, comparison, checkpoint, and trace count
 **Out of Scope:** Entity-per-DOM views, global planetary map, large-dataset WebGPU renderer, agent-known maps, LLM narrative, authoritative mutation
+
+## TODO-UI-003: Full Multi-Language UI Localization
+**Status:** Completed
+**Phase:** 26 (Detailed Development — UI Extension)
+**Priority:** High
+**Dependencies:** TODO-UI-002
+**Goal:** Implement comprehensive interface localization across five canonical human languages
+**Acceptance Criteria:** Type-safe translation dictionaries exist for `en`, `ru`, `zh-Hans`, `de`, and `es`; persistent UI switcher updates React observer components without duplicated string literals; automated verification engine ensures key parity and valid formatting; changes in locale preserve identical authoritative state digests
+**Performance Requirements:** Zero impact on runtime execution or wire communication; negligible static dictionary memory footprint
+**Determinism Requirements:** Checked via INV-007 tests; simulation state hash remains identical across all locale switches
+**Ontology Implications:** Human languages are purely non-authoritative presentation resources
+**Observer Implications:** Complete localization capabilities exposed through language switcher and persistence in `localStorage`
+**Explanation Implications:** All Explanation schema labels and comparison descriptors localized directly in front-end dictionaries
+**Out of Scope:** Translating canonical API fields, debug output, logs, or internal domain identifiers
 
 ## TODO-DEPTH-001: Detailed Domain Maturity Audit and Sequencing
 **Status:** Pending

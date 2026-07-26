@@ -153,7 +153,7 @@ executable paths. It does not represent mature simulation depth across every dom
 - Append-only causal events and provenance.
 - Canonical state digests, replay checks, and deterministic snapshot save/resume.
 - Tauri 2 and React desktop observer consuming versioned Protocol Buffer data instead of direct
-  runtime storage.
+  runtime storage (supporting UI localization in English, Russian, Simplified Chinese, German, and Spanish).
 - Bounded contracts for physical space, geography, biology, perception, subjective scenes,
   cognition, language, practices, epistemics, social records, economy, city infrastructure,
   historical bootstrap, isekai transfer, and metaphysical experiments.

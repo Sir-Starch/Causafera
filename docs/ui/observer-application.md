@@ -33,8 +33,9 @@ is a 96-entry FIFO.
 ## Presentation
 
 The UI is a restrained dark scientific tool rather than a fictional control panel. Human labels,
-locale, color, selected view, selected chunk, plots, and animations are non-authoritative. Russian
-and English metadata map opaque Explanation schema IDs to presentation labels after IR decoding.
+locale, color, selected view, selected chunk, plots, and animations are non-authoritative. Supported
+localization resources (`en`, `ru`, `zh-Hans`, `de`, and `es`) map opaque Explanation schema IDs to
+presentation labels after IR decoding and provide interactive interface switching with browser persistence.
 
 ## Development
 
