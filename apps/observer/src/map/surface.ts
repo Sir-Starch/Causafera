@@ -183,10 +183,11 @@ export function renderSurface(
       }
 
       const value = sampleField(field, sampleX, sampleY);
-      // A field that holds one value everywhere has no range to place it in.
-      // Drawing it at the floor would read as absence; it is drawn at the middle
-      // of the ramp, and the legend states that both extremes are that value.
-      const t = field.uniform ? 0.5 : normalise(field, value);
+      // A field that holds one value everywhere has no range to place it in, and
+      // `normalise` puts it at the floor. That is the right reading: before the
+      // first tick the mana field is zero everywhere, and zero everywhere must
+      // look like nothing rather than like a wash across the whole sheet.
+      const t = normalise(field, value);
       const scaled = gamma === 1 ? t : t ** gamma;
       const [red, green, blue] = rampColour(style.ramp, scaled);
       const shade =

@@ -100,11 +100,6 @@ export function ChartArea({ workspace, update }: AreaProps) {
     <>
       <div className="chart-stage">
       <div className="area-head">
-        <div className="area-head__titles">
-          <span className="eyebrow">{copy.chart.eyebrow}</span>
-          <h1 className="display">{copy.chart.title}</h1>
-          <p className="lede">{copy.chart.lede}</p>
-        </div>
         <div className="area-head__meta">
           <Tag tone="quiet">
             {copy.chart.chartsPlural} {chartCount} · {copy.chart.chunksPlural}{" "}

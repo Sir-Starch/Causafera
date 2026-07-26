@@ -271,7 +271,7 @@ export function Rail({
             className="rail__item"
             aria-current={workspace.area === area ? "page" : undefined}
             onClick={() => goTo(area)}
-            title={`${copy.areas[area].name} · ${index + 1}`}
+            title={`${copy.areas[area].name} · ${index + 1}\n${copy[area].lede}`}
           >
             <span className="rail__index" aria-hidden="true">
               <AreaMark area={area} />

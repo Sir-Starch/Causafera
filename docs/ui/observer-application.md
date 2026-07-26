@@ -139,6 +139,13 @@ measured distance.
 
 ### The chart instrument
 
+Areas carry no title banner. The rail already names the area and the dock header repeats it, so an
+eyebrow, a display title and a paragraph of prose on every page restated what was on screen twice
+over in the most expensive vertical space the sheet has. What is left of the area head is whatever
+live reading or control the area puts beside its instrument, aligned right. The longer description
+each area used to print now reaches the reader through the rail entry's tooltip, where it costs no
+layout; a fuller home for it is an open question rather than a settled one.
+
 The Chart area is built around a pannable, zoomable plan view of one chart's chunk lattice, drawn
 on canvas with viewport culling and three levels of detail. Analytical lenses supply what it draws:
 a continuous surface, a field of chunk aggregates, proportional symbols, cell marks at real lattice

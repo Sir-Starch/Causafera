@@ -83,11 +83,6 @@ export function AssayArea({ workspace, update }: AreaProps) {
   return (
     <>
       <div className="area-head">
-        <div className="area-head__titles">
-          <span className="eyebrow">{copy.assay.eyebrow}</span>
-          <h1 className="display">{copy.assay.title}</h1>
-          <p className="lede">{copy.assay.lede}</p>
-        </div>
         <div className="area-head__meta">{runButton}</div>
       </div>
 

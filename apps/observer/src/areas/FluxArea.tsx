@@ -94,11 +94,6 @@ export function FluxArea({ workspace, update }: AreaProps) {
   return (
     <>
       <div className="area-head">
-        <div className="area-head__titles">
-          <span className="eyebrow">{copy.flux.eyebrow}</span>
-          <h1 className="display">{copy.flux.title}</h1>
-          <p className="lede">{copy.flux.lede}</p>
-        </div>
         <div className="area-head__meta">
           <Readout
             label={copy.flux.rate}

@@ -88,11 +88,6 @@ export function StationArea({ update, goTo }: AreaProps) {
   return (
     <>
       <div className="area-head">
-        <div className="area-head__titles">
-          <span className="eyebrow">{copy.station.eyebrow}</span>
-          <h1 className="display">{copy.station.title}</h1>
-          <p className="lede">{copy.station.lede}</p>
-        </div>
         <div className="area-head__meta">
           <Readout
             label={copy.station.traces}

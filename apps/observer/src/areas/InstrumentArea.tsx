@@ -67,14 +67,6 @@ export function InstrumentArea({ goTo }: AreaProps) {
 
   return (
     <>
-      <div className="area-head">
-        <div className="area-head__titles">
-          <span className="eyebrow">{copy.instrument.eyebrow}</span>
-          <h1 className="display">{copy.instrument.title}</h1>
-          <p className="lede">{copy.instrument.lede}</p>
-        </div>
-      </div>
-
       <div className="grid grid--halves">
         <Panel title={copy.instrument.negotiation} eyebrow={copy.marginalia.protocol}>
           <Fields>
