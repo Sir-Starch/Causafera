@@ -145,5 +145,5 @@ None.
 ## Progress
 
 - [x] Wave 1: Frontend i18n Architecture, Translation Resources, and Components Refactoring (Checkpoint: `cdcc735`, Verified with `pnpm run typecheck && pnpm run lint && pnpm run build` and `cargo test --workspace` with 0 failures)
-- [ ] Wave 2: Automated Localization Verification Engine
-- [ ] Wave 3: Backend Verification & Documentation Sync
+- [x] Wave 2: Automated Localization Verification Engine (Checkpoint: `f2c0e45`, Verified with `node tools/audit/validate-i18n.mjs` and workspace linting with 0 errors)
+- [x] Wave 3: Backend Verification & Documentation Sync (Checkpoint: `c7ba6ee`, Verified with `cargo test --workspace` and complete documentation synchronization)
