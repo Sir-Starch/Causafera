@@ -214,7 +214,7 @@ impl EpisodicStore {
                 .then_with(|| a.id.cmp(&b.id))
         });
         let mut output = [None; MAX_REACTIVATED_EPISODES];
-        for (slot, episode) in output.iter_mut().zip(ranked.into_iter()) {
+        for (slot, episode) in output.iter_mut().zip(ranked) {
             *slot = Some(episode);
         }
         output

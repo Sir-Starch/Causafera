@@ -37,6 +37,10 @@ pub struct RuntimeSnapshot {
     pub material_activity_events: u64,
     pub bytes_per_chunk: u64,
     pub latest_trace: TraceId,
+    pub thermal_total_cell_energy: i128,
+    pub thermal_total_reservoir_budget: i128,
+    pub thermal_active_chunk_count: u32,
+    pub thermal_active_cell_count: u32,
 }
 
 impl RuntimeSnapshot {
@@ -67,6 +71,10 @@ impl RuntimeSnapshot {
             population_movements: self.population_movements,
             bytes_per_chunk: self.bytes_per_chunk,
             latest_trace: self.latest_trace,
+            thermal_total_cell_energy: self.thermal_total_cell_energy,
+            thermal_total_reservoir_budget: self.thermal_total_reservoir_budget,
+            thermal_active_chunk_count: self.thermal_active_chunk_count,
+            thermal_active_cell_count: self.thermal_active_cell_count,
         }
     }
 }
@@ -76,6 +84,7 @@ pub struct RuntimeSnapshotData {
     pub recipe: RuntimeRecipeSnapshot,
     pub spatial: SpatialChunkSnapshot,
     pub mana: ManaFieldSetSnapshot,
+    pub thermal: ThermalSnapshot,
     pub resolution: ResolutionFieldSnapshot,
     pub resolution_policy: ResolutionPolicySnapshot,
     pub pattern_history: PatternHistorySnapshot,
@@ -88,6 +97,101 @@ pub struct RuntimeSnapshotData {
     pub traces: CausalTraceSnapshot,
     pub experiment_recipe_mana_source_receipts: Vec<ExperimentRecipeManaSourceReceiptSnapshot>,
     pub experiment_manifest: Option<ExperimentManifestSnapshot>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ThermalSnapshot {
+    pub parameters: ThermalParameters,
+    pub field_set: ThermalFieldSetSnapshot,
+    pub active_region: ThermalActiveRegionSnapshot,
+    pub reservoirs: Vec<ThermalReservoirSnapshot>,
+    pub receipt_batches: Vec<TraceId>,
+    pub transfer_receipts: Vec<ThermalCellTransferReceiptSnapshot>,
+    pub conservation_receipts: Vec<ThermalConservationReceiptSnapshot>,
+    pub boundary_records: Vec<ThermalBoundaryRecordSnapshot>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ThermalFieldSetSnapshot {
+    pub fields: Vec<ThermalFieldSnapshot>,
+    pub batch_sequence: u64,
+    pub conservation_last_change: TraceId,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ThermalFieldSnapshot {
+    pub chunk: ChartChunkCoord,
+    pub extent: u8,
+    pub energy: Vec<i64>,
+    pub last_change: Vec<TraceId>,
+    pub last_change_before: Vec<i64>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ThermalActiveRegionSnapshot {
+    pub active_chunks: Vec<ChartChunkCoord>,
+    pub resident_chunks: Vec<ChartChunkCoord>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ThermalReservoirSnapshot {
+    pub id: ThermalReservoirId,
+    pub target: ThermalCellKey,
+    pub budget: i64,
+    pub schedule: ThermalReservoirScheduleSnapshot,
+    pub bootstrap_trace: TraceId,
+    pub last_change: TraceId,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ThermalReservoirScheduleSnapshot {
+    PerTick(i64),
+    OneShot,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ThermalCellTransferReceiptSnapshot {
+    pub conservation_trace: TraceId,
+    pub cell: ThermalCellKey,
+    pub pre_state: i64,
+    pub post_state: i64,
+    pub cell_change_trace_id: Option<TraceId>,
+    pub faces: Vec<ThermalFaceRecordSnapshot>,
+    pub reservoirs: Vec<ThermalReservoirTransferRecordSnapshot>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ThermalFaceRecordSnapshot {
+    pub neighbor: ThermalCellKey,
+    pub signed_flux: i64,
+    pub neighbor_pre_state: i64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ThermalReservoirTransferRecordSnapshot {
+    pub id: ThermalReservoirId,
+    pub scheduled_injection: i64,
+    pub accepted_injection: i64,
+    pub rejected_injection: i64,
+    pub transfer_trace_id: Option<TraceId>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ThermalConservationReceiptSnapshot {
+    pub trace: TraceId,
+    pub tick: u64,
+    pub total_cell_energy_before: i128,
+    pub total_cell_energy_after: i128,
+    pub total_reservoir_budget_before: i128,
+    pub total_reservoir_budget_after: i128,
+    pub residual: i128,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ThermalBoundaryRecordSnapshot {
+    pub cell: ThermalCellKey,
+    pub neighbor: ThermalCellKey,
+    pub cell_pre_state: i64,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

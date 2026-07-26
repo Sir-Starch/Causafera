@@ -378,6 +378,106 @@
 **Explanation Implications:** Trace-backed cell changes support future causal explanations without semantic inference
 **Out of Scope:** Full spell system, physical effects, carrier adapters, attractors, causal resolution, persistence, observer protocol, GPU implementation
 
+## TODO-MANA-002: Mana Cross-Chunk Same-Chart Face Transfer
+**Status:** Pending
+**Phase:** Detailed Development
+**Priority:** High
+**Dependencies:** TODO-MANA-001, RFC-GEO-002
+**Goal:** Remove the reflecting chunk-boundary seam in the current mana stencil so that mana can flow across same-chart chunk faces exactly once per undirected pair, matching the thermal carrier's boundary treatment and preserving INV-037.
+**Acceptance Criteria:** Mana evolution processes same-chart cross-chunk faces with compatible extents; each undirected face is handled exactly once; zero-thermal/mana-only legacy configurations remain deterministic; existing system IDs and RNG streams are unchanged.
+**Performance Requirements:** Comparable to current dense stencil; benchmark before claims
+**Determinism Requirements:** Identical input configuration and seed produce identical traces
+**Ontology Implications:** Chunk boundaries are containment/resolution, not physical barriers (INV-037)
+**Observer Implications:** Update observer deltas if cross-chunk mana changes the visible per-chunk totals; the map currently draws each chunk's mana as an independent field, so the observer surface gains one continuous field per active set once this lands
+**Explanation Implications:** Preserve trace-backed cell-change causality across chunk boundaries
+**Out of Scope:** Cross-chart transport, new scheduler phase, material response, climate
+**Evidence:** `ManaField::neighbor_indices` clips at the chunk edge (`if x > 0`, `if x + 1 < side`), and `ManaFieldSet` propagates each field independently with no coupling term — confirmed by `apps/observer/src-tauri/examples/extent_bench.rs`, which finds mana totals converge across `chunk_extent` with no cross-chunk term at all. Every chunk boundary is a reflecting wall today (see `plans/observer-field-raster-map.md`)
+
+## TODO-THERMAL-001: Cross-Chart Thermal Transport
+**Status:** Pending
+**Phase:** Detailed Development
+**Priority:** Medium
+**Dependencies:** TODO-THERMAL-000 (completed same-chart slice)
+**Goal:** Extend the conserved thermal carrier across registered chart seams using explicit world-geometry transforms.
+**Acceptance Criteria:** Thermal energy flows across chart boundaries through registered transforms; each undirected cross-chart face is processed exactly once; conservation residual remains exactly zero.
+**Performance Requirements:** Benchmark before scale claims
+**Determinism Requirements:** Cross-chart ordering is canonical and seed-independent
+**Ontology Implications:** Global geography remains chart-qualified (RFC-GEO-002)
+**Observer Implications:** Observer summary aggregates across charts
+**Explanation Implications:** Conservation claim continues to report zero residual
+**Out of Scope:** Climate, biology, material response, economy
+
+## TODO-THERMAL-002: Thermal-to-Material Coupling
+**Status:** Pending
+**Phase:** Detailed Development
+**Priority:** Medium
+**Dependencies:** TODO-THERMAL-000 (completed same-chart slice), TODO-MATER-??? (material response model)
+**Goal:** Define and implement a physically meaningful material response to thermal exposure (e.g., retained heat, expansion, damage accumulation, or phase change) without semantic shortcuts.
+**Acceptance Criteria:** Material surfaces track bounded thermal exposure state; transitions commit trace-backed events; no "condition +1" semantic toggle.
+**Performance Requirements:** Benchmark before claims
+**Determinism Requirements:** Material response deterministic given thermal state
+**Ontology Implications:** Energy and matter exchange through conserved carriers
+**Observer Implications:** Material thermal exposure deltas
+**Explanation Implications:** Thermal exposure claims with trace support
+**Out of Scope:** Full climate, biology, economy
+
+## TODO-THERMAL-003: Thermal Influence on Mana Field
+**Status:** Pending
+**Phase:** Detailed Development
+**Priority:** Low
+**Dependencies:** TODO-THERMAL-000 (completed same-chart slice), TODO-MANA-002
+**Goal:** Allow thermal state to feed into mana sample/response pathways as one physical carrier among others.
+**Acceptance Criteria:** Mana systems can receive trace-backed thermal samples; no direct thermal-to-mana semantic mapping.
+**Performance Requirements:** Benchmark before claims
+**Determinism Requirements:** Thermal contribution deterministic
+**Ontology Implications:** Mana responds to physical recurrence, including thermal patterns
+**Observer Implications:** Optional combined field diagnostics
+**Explanation Implications:** Trace support for thermal-mana correlations
+**Out of Scope:** Climate, biology, material response
+
+## TODO-THERMAL-004: Climate/Biology Thermal Integration
+**Status:** Pending
+**Phase:** Detailed Development
+**Priority:** Low
+**Dependencies:** TODO-THERMAL-001, TODO-THERMAL-002, TODO-BIO-??? (mature physiology)
+**Goal:** Couple the thermal carrier to climate and biological thermoregulation through conserved physical carriers.
+**Acceptance Criteria:** Climate/biology systems consume and emit thermal energy without direct access to `ThermalFieldSet`; body temperature is subjective/observer-derived, not Ground Truth.
+**Performance Requirements:** Benchmark before claims
+**Determinism Requirements:** Coupling deterministic
+**Ontology Implications:** Biology and climate are causal state, not labels
+**Observer Implications:** Body/climate thermal diagnostics
+**Explanation Implications:** Thermal exposure and regulation claims
+**Out of Scope:** Economy, cross-chart transport
+
+## TODO-THERMAL-005: Experiment-Recipe Thermal Source
+**Status:** Pending
+**Phase:** Detailed Development
+**Priority:** Low
+**Dependencies:** TODO-THERMAL-000 (completed same-chart slice)
+**Goal:** Allow an experiment recipe to specify a thermal source input analogous to the existing experiment-recipe mana source.
+**Acceptance Criteria:** Immutable recipe record commits a root Physics-phase thermal source event; chart-qualified cell transition follows existing thermal pathways.
+**Performance Requirements:** Benchmark before claims
+**Determinism Requirements:** Source contribution deterministic
+**Ontology Implications:** External inputs enter through committed carrier events
+**Observer Implications:** Source visible in thermal deltas
+**Explanation Implications:** Source trace support in conservation claim
+**Out of Scope:** Material response, climate, biology
+
+## TODO-THERMAL-006: Aggregate Conservation-Total Cross-Validation on Snapshot Import
+**Status:** Pending
+**Phase:** Detailed Development
+**Priority:** Medium
+**Dependencies:** TODO-THERMAL-000 (completed same-chart slice)
+**Goal:** Cross-validate every `ThermalConservationReceipt`'s `total_cell_energy_before`/`total_cell_energy_after` and `total_reservoir_budget_before`/`total_reservoir_budget_after` against checked sums of the actual imported field energies and reservoir budgets, not only the residual and per-cell latest-batch bindings currently enforced.
+**Acceptance Criteria:** `RuntimeState::import_snapshot` rejects a snapshot whose reported aggregate totals diverge from the real summed field/reservoir state for any batch, including cells untouched by a transfer receipt; existing V1-V23 thermal contracts and CI remain green.
+**Performance Requirements:** Benchmark the added summation cost against import time before acceptance; consider incremental or batch-scoped summation if full-field summation on every import is too costly at scale.
+**Determinism Requirements:** Validation must be order-independent and side-effect free.
+**Ontology Implications:** None; this is import-path integrity hardening, not a domain contract change.
+**Observer Implications:** None.
+**Explanation Implications:** None.
+**Out of Scope:** Non-latest-batch per-cell bounds checking (closed in `3e46bc2`/follow-up commit) and the documented pre-alpha untrusted-snapshot threat-model carve-out (`SECURITY.md`).
+**Context:** Identified during the independent review of `3e46bc2` ("fix(runtime): reconcile thermal receipts and reuse domain geometry"): the per-cell latest-batch binding added there proves touched cells match current field energy, but the conservation receipt's own aggregate summary fields are still trusted literal values from the snapshot with no cross-check against a real recomputed sum, so an untouched cell's energy is never bound to anything.
+
 ## TODO-RES-001: Causal Resolution Field
 **Status:** Completed
 **Phase:** 18
@@ -573,6 +673,123 @@
 **Observer Implications:** First complete external consumer of observer v1
 **Explanation Implications:** Preserves schema, numeric value, evidence state, confidence, comparison, checkpoint, and trace count
 **Out of Scope:** Entity-per-DOM views, global planetary map, large-dataset WebGPU renderer, agent-known maps, LLM narrative, authoritative mutation
+
+## TODO-UI-003: Observer Instrument Frontend
+**Status:** Completed
+**Phase:** Detailed Development — Observer Surface
+**Priority:** High
+**Dependencies:** TODO-UI-002
+**Goal:** Replace the bounded first observer shell with a durable analytical instrument: a design system, a component library, a capability-aware application shell, and complete workflows over every capability the current protocol delivers
+**Acceptance Criteria:** Five independent areas over runtime summary, chart-qualified chunks, material surface and gate transitions, and Explanation IR; every unavailable observable stated in a capability register rather than omitted; evidence state, confidence, and trace anchors always presented together; no fabricated simulation data in any build
+**Performance Requirements:** Canvas rendering for chart surfaces, bounded observer-side buffers (256 summary frames, 120 exchanges), feed demand registry so closed panels issue no queries
+**Determinism Requirements:** Locale changes preserve physical/history digests; presentation carries no state
+**Ontology Implications:** Signal hues, area names, claim reading notes, and capability labels are observer classifications and never simulation meaning
+**Observer Implications:** First consumer of material surface gate deltas; documents required projections in `docs/ui/observer-projection-gaps.md`
+**Explanation Implications:** Claim schemas render by schema ID with a generic fallback, so new schemas appear without frontend work; the authoritative Rust renderer is not reimplemented in TypeScript
+**Out of Scope:** Trace ancestry navigation, per-cell field plates, entity inspection, historical comparison, streaming subscriptions, WebGPU
+
+## TODO-UI-005: Chart Instrument and Analytical Lenses
+**Status:** Completed
+**Phase:** Detailed Development — Observer Surface
+**Priority:** High
+**Dependencies:** TODO-UI-003
+**Goal:** Make spatial observation a first-class instrument: an interactive map of the chunk lattice inspected through an extensible lens system that distinguishes measured, partial, constructed and unavailable information
+**Acceptance Criteria:** Pan, zoom and spatial selection to cell resolution; multiple meaningfully different lenses over real observer data; combined overlays; scale-aware representation; a lens contract the renderer does not know the domains of; unsurveyed ground drawn rather than blank
+**Performance Requirements:** Viewport culling independent of chart size; cached palette and hatch tiles; level of detail bound to legibility
+**Determinism Requirements:** Preview constructions are arithmetic over received values only and are clipped to the charted extent
+**Ontology Implications:** Lens names and availability labels are observer classifications; preview geometry is not a measurement and is marked wherever it appears
+**Observer Implications:** Every unavailable lens states the read model it needs (`docs/ui/observer-projection-gaps.md` §7)
+**Explanation Implications:** None; the map is a read surface
+**Out of Scope:** Joining charts into a global surface, agent-known perspectives, historical comparison, 3D terrain
+
+## TODO-OBS-001: Field Raster Projection and Chart Shape
+**Status:** Pending
+**Phase:** Detailed Development — Observer Surface
+**Priority:** High
+**Dependencies:** TODO-UI-005
+**Goal:** Project the terrain carrier's and the mana field's per-cell lattices to the observer and let the active chunk set form an area, so the map renders measured relief and a measured mana field rather than one aggregate per chunk
+**Acceptance Criteria:** A bounded per-chunk `FieldRaster` query covering terrain elevation, terrain roughness and mana intensity, with runtime-computed detail levels for terrain; measured hypsometric tinting, hillshading and contours; a mana field lens whose availability derives from the received lattice edge; a config-gated two-dimensional active chunk shape that leaves every existing fixture digest unchanged
+**Performance Requirements:** Per-chunk requests only, delta-encoded elevation, viewport culling and a cache keyed by generation trace; encoded size and paint time measured before any scale claim
+**Determinism Requirements:** Read-only for stages 1-5; the active chunk shape defaults to the existing line so no replay fixture moves
+**Ontology Implications:** Downsampling and hillshading are presentation reductions and never re-enter the runtime (INV-022); surface materials are excluded until geography generates coherent regions
+**Observer Implications:** One additive query kind, one additive Tauri command, protocol stays v1
+**Explanation Implications:** None; generation provenance travels with the raster for future claims
+**Out of Scope:** Landcover from surface materials, per-cell causal resolution, raising `chunk_extent`, joined charts, terrain generation changes
+**Plan:** `plans/observer-field-raster-map.md`
+
+## TODO-GEO-004: Coherent Surface Material Regions
+**Status:** Pending
+**Phase:** Detailed Development — Geography
+**Priority:** Medium
+**Dependencies:** TODO-OBS-001
+**Goal:** Generate surface materials as spatially coherent regions rather than per-cell independent assignments
+**Acceptance Criteria:** Measured same-material neighbour rate substantially above the chance rate for the material count; regions are deterministic and reproducible from the world seed
+**Performance Requirements:** Generation cost measured against the current per-cell assignment
+**Determinism Requirements:** Same seed produces identical material fields
+**Ontology Implications:** Material regions are authoritative geography, not an observer classification
+**Observer Implications:** Unblocks a landcover lens, which `plans/observer-field-raster-map.md` deliberately excludes today
+**Explanation Implications:** Material regions become available as causal context for surface claims
+**Out of Scope:** Biome semantics, climate coupling, named regions
+**Evidence:** `apps/observer/src-tauri/examples/terrain_probe.rs` measures 6.5% same-material neighbours against 6.2% expected from chance over 16 materials
+
+## TODO-MANA-004: Mana Field Lattice Cost Decision
+**Status:** Pending
+**Phase:** Detailed Development — Mana
+**Priority:** Medium
+**Dependencies:** TODO-OBS-001
+**Goal:** Decide whether the mana field should run at a finer lattice than `chunk_extent` 3, on measured evidence. The accuracy argument leads: the default lattice overestimates total mana by 11% against the value the finer lattices converge on
+**Acceptance Criteria:** A decision recorded either way with its reasoning, against the measurements already taken in `plans/observer-field-raster-map.md`; if the extent rises, regenerated fixtures and replay evidence ship with it
+**Performance Requirements:** The mana volume grows with the cube of the extent — 3 to 8 is a factor of nineteen, 3 to 32 a factor of 1214 — so no extent change is accepted without measurements
+**Determinism Requirements:** Changing the extent changes state hashes by construction; any change ships with regenerated fixtures and replay evidence
+**Ontology Implications:** The field is already fully implemented and every cell is live with per-cell provenance; only its spatial lattice is coarse
+**Observer Implications:** The map's mana lens reports `preview` while the lattice needs upsampling and `observed` when it does not, so a finer lattice improves the map with no frontend change
+**Explanation Implications:** A finer lattice gives mana claims finer spatial evidence
+**Out of Scope:** Changing mana propagation rules, response parameters, or the gate model
+**Evidence:** `apps/observer/src-tauri/examples/extent_bench.rs`. Total mana converges from extent 4 upward and is flat by 8 (24 218, 24 330, 24 421, 24 433, 24 433) while extent 3 gives 27 176 — 11% high. The smallest non-zero cell stays at 4-7, so nothing is lost to integer flooring. Separately, the same tool measures the plan-view column field the map draws. Extent 4 gives 78% more columns at 95.8% coverage and 14% more tick cost; extent 6 quadruples detail at 57.4% coverage; extent 16 leaves 9.4% coverage at three times the tick cost. Coverage plateaus rather than filling with more ticks. Open question: intensity is an integer, so part of the coverage loss at high extent may be quantisation rather than physics
+
+## TODO-MANA-003: Isotropic Diffusion Kernel
+**Status:** Pending
+**Phase:** Detailed Development — Mana
+**Priority:** Medium
+**Dependencies:** TODO-MANA-002
+**Goal:** Make mana diffusion approximately isotropic, so a point source spreads as a sphere rather than along the lattice axes
+**Acceptance Criteria:** A single source in an empty field produces a distribution whose iso-surfaces are measurably closer to spherical than to the current octahedron; measured with an axis-versus-diagonal spread ratio
+**Performance Requirements:** The larger stencil's cost measured against the current six-neighbour form
+**Determinism Requirements:** Weights are exact rationals or fixed-point; no floating point in the authoritative path
+**Ontology Implications:** The lattice is a discretisation of continuous space; a field that spreads faster along axes than diagonals makes the discretisation physically visible
+**Observer Implications:** Isolines on the map become round rather than diamond-shaped
+**Explanation Implications:** Spatial mana claims stop depending on lattice orientation
+**Out of Scope:** Changing the lattice geometry itself; see the decision recorded in `plans/observer-field-raster-map.md`
+**Evidence:** `neighbor_indices` returns the six axis neighbours only, so diffusion propagates on the L1 ball
+
+## TODO-WORLD-002: Chunk Activation Beyond Bootstrap
+**Status:** Pending
+**Phase:** Detailed Development — World
+**Priority:** Medium
+**Dependencies:** None
+**Goal:** Allow the active chunk set to change during a run, so the world is not permanently exactly the chunks chosen at bootstrap
+**Acceptance Criteria:** A chunk can be activated and deactivated during a run with canonical ordering; deactivation preserves conserved quantities; replay-identical
+**Performance Requirements:** Activation cost measured; the active set stays bounded
+**Determinism Requirements:** Activation is driven by simulation state, never by observer attention (INV-013)
+**Ontology Implications:** Activation is a resolution decision and may change detail, never topology or geometry (INV-037)
+**Observer Implications:** The chart extent becomes something that changes during a run, which the map already handles — it culls by viewport and draws unsurveyed ground beyond the received extent
+**Explanation Implications:** None
+**Out of Scope:** Observer-driven activation, cross-chart activation
+**Evidence:** `RuntimeConfig::validate` builds the active set once from `active_chunk_keys`; no activation or deactivation path exists in the runtime
+
+## TODO-UI-004: Observer Projection Requests
+**Status:** Pending
+**Phase:** Detailed Development — Observer Surface
+**Priority:** Medium
+**Dependencies:** TODO-UI-003
+**Goal:** Deliver the observer projections the frontend is waiting on, in the order recorded in `docs/ui/observer-projection-gaps.md`
+**Acceptance Criteria:** Rendered explanation text transported rather than reimplemented; resolution policy thresholds projected; bounded trace ancestry query available; per-cell mana and resolution projection with an explicit bounding contract; `PerformanceMetrics` encoded
+**Performance Requirements:** Every new projection is explicitly bounded; no unbounded observer queue
+**Determinism Requirements:** New payloads are locale-invariant and reproduce identically for the same state
+**Ontology Implications:** Entity projection must not expose Ground Truth identity to agents or to observer classification feedback (INV-013, INV-027)
+**Observer Implications:** Each item requires an ExecPlan for the protocol change
+**Explanation Implications:** Rendered text remains non-authoritative and carries evidence state alongside it
+**Out of Scope:** Entity summaries pending a contract decision, historical queries pending persistence maturity
 
 ## TODO-DEPTH-001: Detailed Domain Maturity Audit and Sequencing
 **Status:** Pending

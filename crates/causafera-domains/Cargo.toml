@@ -14,5 +14,6 @@ causafera-biology = { workspace = true }
 causafera-cognition = { workspace = true }
 causafera-language = { workspace = true }
 causafera-geography = { workspace = true }
+thiserror = { workspace = true }
 
 [dev-dependencies]

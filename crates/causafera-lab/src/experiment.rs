@@ -82,10 +82,10 @@ impl ExperimentConfig {
                 count: checkpoint_count,
             });
         }
-        if let Some(through) = self.pattern_schedule.suppressed_through {
-            if through.raw() > self.ticks {
-                return Err(ExperimentError::SuppressionOutsideRun);
-            }
+        if let Some(through) = self.pattern_schedule.suppressed_through
+            && through.raw() > self.ticks
+        {
+            return Err(ExperimentError::SuppressionOutsideRun);
         }
         if self.bootstrap_population > 16 {
             return Err(ExperimentError::PopulationOutsideInMemoryEnvelope {
@@ -536,10 +536,7 @@ fn build_recovery_frame(
 }
 
 fn u64_to_i64_saturating(value: u64) -> i64 {
-    match i64::try_from(value) {
-        Ok(value) => value,
-        Err(_) => i64::MAX,
-    }
+    i64::try_from(value).unwrap_or(i64::MAX)
 }
 
 #[derive(Clone, Debug, Error, PartialEq)]

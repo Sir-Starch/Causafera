@@ -215,7 +215,7 @@ For the full design, see the [documentation index](docs/index.md),
 | Dependency | Required version |
 | --- | --- |
 | Git | Current supported release |
-| Rust | 1.85.0 with `rustfmt` and Clippy, pinned by `rust-toolchain.toml` |
+| Rust | 1.97.1 with `rustfmt` and Clippy, pinned by `rust-toolchain.toml` |
 | Node.js | 20.x or 22.x; Node.js 21.x is outside the locked Vite engine range |
 | pnpm | 9.15.9 |
 

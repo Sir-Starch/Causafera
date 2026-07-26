@@ -7,15 +7,21 @@ use causafera_core::{
     CausalCommitError, CausalEffect, CausalEffectError, CausalEventProposal,
     CausalEventProposalError, CausalTarget, CausalTraceStore, EventProposalKey, Phase, Scheduler,
 };
-use causafera_domains::{ManaError, ManaField, ManaFieldSet, PhysicalPatternSample};
+use causafera_domains::{
+    ManaError, ManaField, ManaFieldSet, PhysicalPatternSample, ThermalActiveRegion,
+    ThermalBoundaryRecord, ThermalCellKey, ThermalCellTransferReceipt, ThermalConservationReceipt,
+    ThermalEnergy, ThermalError, ThermalField, ThermalFieldSet, ThermalInjectionProposal,
+    ThermalParameters, ThermalReservoir, ThermalReservoirId, ThermalReservoirSchedule,
+};
 use causafera_explanation::{
     ComparisonContext, ExplanationClaim, ExplanationFrame, ExplanationReport,
     MATERIAL_SURFACE_LOOP_CLAIM_SCHEMA, MaterialSurfaceLocalManaTransitionClaim,
-    MaterialSurfaceLoopClaim, NumericClaimValue,
+    MaterialSurfaceLoopClaim, NumericClaimValue, ThermalCarrierConservationClaim,
 };
 use causafera_observer_api::{
-    MATERIAL_SURFACE_DELTA_SCHEMA_V3, MAX_MATERIAL_SURFACE_DELTAS, MaterialSurfaceDelta,
-    MaterialSurfaceGateDelta, ObserverChunkSummary, ObserverWorldSnapshot,
+    MATERIAL_SURFACE_DELTA_SCHEMA_V3, MAX_MATERIAL_SURFACE_DELTAS, MAX_THERMAL_DELTAS,
+    MaterialSurfaceDelta, MaterialSurfaceGateDelta, ObserverChunkSummary, ObserverWorldSnapshot,
+    THERMAL_DELTA_SCHEMA_V1, ThermalFieldDelta,
 };
 use causafera_resolution::{ChannelWeight, ResolutionError, ResolutionField, ResolutionPolicy};
 use causafera_types::{
@@ -33,7 +39,7 @@ pub const MANA_PATTERN_HISTORY_TICKS: u64 = 8;
 pub const MAX_EXPERIMENT_RECIPE_MANA_SOURCES: usize = 16;
 pub const EXPERIMENT_RECIPE_MANA_SOURCE_POLICY_SCHEMA_V1: u64 = 1;
 
-pub const CURRENT_DIGEST_SCHEMA_VERSION: DigestSchemaVersion = DigestSchemaVersion::new(4);
+pub const CURRENT_DIGEST_SCHEMA_VERSION: DigestSchemaVersion = DigestSchemaVersion::new(5);
 
 const PHYSICAL_SYSTEM_ID: u64 = 10;
 pub const EXPERIMENT_RECIPE_MANA_SOURCE_SYSTEM_ID: u64 = 19;
@@ -43,6 +49,8 @@ pub(crate) const RESOLUTION_SYSTEM_ID: u64 = 30;
 pub(crate) const ACTOR_ACTION_SYSTEM_ID: u64 = 42;
 pub(crate) const LIFECYCLE_SYSTEM_ID: u64 = 60;
 pub(crate) const BOOTSTRAP_SYSTEM_ID: u64 = 61;
+pub(crate) const THERMAL_RESERVOIR_SYSTEM_ID: u64 = 11;
+pub(crate) const THERMAL_EVOLUTION_SYSTEM_ID: u64 = 12;
 const ROOT_EVENT_KIND: u64 = 1;
 pub(crate) const MANA_EVENT_KIND: u64 = 3;
 pub(crate) const RESOLUTION_EVENT_KIND: u64 = 4;
@@ -57,6 +65,11 @@ pub(crate) const MATERIAL_SURFACE_BOOTSTRAP_EVENT_KIND: u64 = 13;
 pub(crate) const MATERIAL_SURFACE_CONTACT_EVENT_KIND: u64 = 14;
 pub(crate) const MATERIAL_SURFACE_MANA_EVENT_KIND: u64 = 15;
 pub const EXPERIMENT_RECIPE_MANA_SOURCE_EVENT_KIND: u64 = 17;
+pub const THERMAL_RESERVOIR_TRANSFER_EVENT_KIND: u64 = 30;
+pub const THERMAL_CELL_CHANGE_EVENT_KIND: u64 = 31;
+pub const THERMAL_CONSERVATION_EVENT_KIND: u64 = 32;
+pub const THERMAL_FIELD_BOOTSTRAP_EVENT_KIND: u64 = 28;
+pub const THERMAL_RESERVOIR_BOOTSTRAP_EVENT_KIND: u64 = 29;
 const RUNTIME_OBJECT_KIND: u64 = 1;
 pub(crate) const PHYSICAL_OBJECT_KIND: u64 = 2;
 pub(crate) const MANA_OBJECT_KIND: u64 = 3;
@@ -66,6 +79,9 @@ pub(crate) const POPULATION_OBJECT_KIND: u64 = 6;
 pub(crate) const MATERIAL_OBJECT_KIND: u64 = 7;
 pub(crate) const MATERIAL_SURFACE_OBJECT_KIND: u64 = 8;
 pub const EXPERIMENT_RECIPE_MANA_SOURCE_OBJECT_KIND: u64 = 9;
+pub const THERMAL_RESERVOIR_OBJECT_KIND: u64 = 10;
+pub const THERMAL_CELL_OBJECT_KIND: u64 = 11;
+pub const THERMAL_CARRIER_OBJECT_KIND: u64 = 12;
 const ROOT_PROPERTY: u64 = 1;
 pub(crate) const PHYSICAL_PROPERTY: u64 = 2;
 pub(crate) const MANA_PROPERTY: u64 = 3;
@@ -78,6 +94,9 @@ pub(crate) const MATERIAL_FLOW_PROPERTY: u64 = 10;
 pub(crate) const MATERIAL_SURFACE_CONDITION_PROPERTY: u64 = 11;
 pub(crate) const MATERIAL_SURFACE_MANA_GATE_PROPERTY: u64 = 12;
 pub const EXPERIMENT_RECIPE_MANA_SOURCE_PROPERTY: u64 = 13;
+pub const THERMAL_RESERVOIR_BUDGET_PROPERTY: u64 = 20;
+pub const THERMAL_ENERGY_PROPERTY: u64 = 21;
+pub const THERMAL_BATCH_SEQUENCE_PROPERTY: u64 = 22;
 pub(crate) const RESOLUTION_CHANNEL: u64 = 1;
 const PHYSICAL_DIGEST_DOMAIN: u64 = 0x5048_5953_4943_414C;
 const HISTORY_DIGEST_DOMAIN: u64 = 0x4849_5354_4F52_595F;
@@ -138,6 +157,14 @@ impl Runtime {
         scheduler.register_system(
             Phase::Lifecycle,
             Box::new(PopulationLifecycleSystem::new(Arc::clone(&state))),
+        );
+        scheduler.register_system(
+            Phase::Physics,
+            Box::new(ThermalReservoirSystem::new(Arc::clone(&state))),
+        );
+        scheduler.register_system(
+            Phase::Physics,
+            Box::new(ThermalEvolutionSystem::new(Arc::clone(&state))),
         );
         Ok(Self { scheduler, state })
     }
@@ -211,6 +238,16 @@ impl Runtime {
             return Err(error);
         }
         state.material_surface_loop_explanation(self.scheduler.current_time(), Some(surface))
+    }
+
+    pub fn observer_thermal_conservation_explanation(
+        &self,
+    ) -> Result<ExplanationReport, RuntimeError> {
+        let state = self.lock_state()?;
+        if let Some(error) = state.failure.clone() {
+            return Err(error);
+        }
+        state.thermal_conservation_explanation(self.scheduler.current_time())
     }
 
     pub fn export_snapshot(&self) -> Result<RuntimeSnapshotData, RuntimeError> {
@@ -353,6 +390,14 @@ pub enum RuntimeError {
     UnknownManaPhysicalEffectCause { cause: TraceId },
     #[error("mana evolution failed: {0:?}")]
     Mana(ManaError),
+    #[error("thermal active region is incomplete")]
+    ThermalRegionIncomplete,
+    #[error("thermal arithmetic failed")]
+    ThermalArithmeticError,
+    #[error("thermal conservation residual is non-zero")]
+    ThermalConservationViolation,
+    #[error("thermal evolution failed: {0}")]
+    Thermal(ThermalError),
     #[error("resolution evolution failed: {0}")]
     Resolution(#[from] ResolutionError),
     #[error("actor initialization failed: {0}")]
@@ -371,10 +416,31 @@ impl From<ManaError> for RuntimeError {
     }
 }
 
+impl From<ThermalError> for RuntimeError {
+    fn from(error: ThermalError) -> Self {
+        match error {
+            ThermalError::ActiveRegionIncomplete(_) => Self::ThermalRegionIncomplete,
+            ThermalError::ArithmeticOverflow | ThermalError::EnergyOutOfBounds => {
+                Self::ThermalArithmeticError
+            }
+            ThermalError::ConservationViolation(_) => Self::ThermalConservationViolation,
+            other => Self::Thermal(other),
+        }
+    }
+}
+
 pub struct RuntimeState {
     pub(crate) config: RuntimeConfig,
     pub(crate) traces: CausalTraceStore,
     pub(crate) mana: ManaFieldSet,
+    pub(crate) thermal_fields: ThermalFieldSet,
+    pub(crate) thermal_active_region: ThermalActiveRegion,
+    pub(crate) thermal_boundary_records: Vec<ThermalBoundaryRecord>,
+    pub(crate) thermal_reservoirs: BTreeMap<ThermalReservoirId, ThermalReservoir>,
+    pub(crate) thermal_parameters: ThermalParameters,
+    pub(crate) pending_thermal_injections: Vec<ThermalInjectionProposal>,
+    pub(crate) thermal_receipts: BTreeMap<TraceId, Vec<ThermalCellTransferReceipt>>,
+    pub(crate) thermal_conservation_receipts: BTreeMap<TraceId, ThermalConservationReceipt>,
     pub(crate) resolution: ResolutionField,
     pub(crate) resolution_policy: ResolutionPolicy,
     pub(crate) carrier_adapters: BTreeMap<ChartChunkCoord, TerrainCarrierAdapter>,
@@ -464,6 +530,21 @@ impl RuntimeState {
                 .collect::<Result<Vec<_>, _>>()?,
         )?;
         validate_mana_cell_object_ids(&mana)?;
+        let thermal_parameters = ThermalParameters::new(
+            128,
+            causafera_domains::THERMAL_SCALE,
+            causafera_domains::THERMAL_SCALE,
+        )?;
+        let thermal_fields = ThermalFieldSet::new(
+            active_chunk_keys
+                .iter()
+                .map(|chunk| ThermalField::new(*chunk, config.chunk_extent, root_trace))
+                .collect::<Result<Vec<_>, _>>()?,
+            root_trace,
+        )?;
+        let active_thermal_chunks = active_chunk_keys.iter().copied().collect::<BTreeSet<_>>();
+        let thermal_active_region =
+            ThermalActiveRegion::new(active_thermal_chunks.clone(), active_thermal_chunks)?;
         let resolution = ResolutionField::new(
             ResolutionFieldId::new(1),
             SimulationTime::new(0),
@@ -499,6 +580,14 @@ impl RuntimeState {
             config: config.clone(),
             traces,
             mana,
+            thermal_fields,
+            thermal_active_region,
+            thermal_boundary_records: Vec::new(),
+            thermal_reservoirs: BTreeMap::new(),
+            thermal_parameters,
+            pending_thermal_injections: Vec::new(),
+            thermal_receipts: BTreeMap::new(),
+            thermal_conservation_receipts: BTreeMap::new(),
             resolution,
             resolution_policy,
             carrier_adapters,
@@ -542,9 +631,22 @@ impl RuntimeState {
             failure: None,
         };
         HistoricalBootstrapPlan::for_runtime_config(config)
+            .map_err(|error| match error {
+                BootstrapError::Runtime(error) => error,
+                BootstrapError::ThermalReservoirOutsideActiveRegion { .. }
+                | BootstrapError::InvalidThermalReservoir
+                | BootstrapError::DuplicateThermalReservoir { .. } => {
+                    RuntimeError::InvalidSnapshot("invalid thermal bootstrap plan")
+                }
+            })?
             .bootstrap(&mut state)
             .map_err(|error| match error {
                 BootstrapError::Runtime(error) => error,
+                BootstrapError::ThermalReservoirOutsideActiveRegion { .. }
+                | BootstrapError::InvalidThermalReservoir
+                | BootstrapError::DuplicateThermalReservoir { .. } => {
+                    RuntimeError::InvalidSnapshot("invalid thermal bootstrap state")
+                }
             })?;
         Ok(state)
     }
@@ -577,6 +679,120 @@ impl RuntimeState {
                     .collect(),
             },
             mana: self.mana.export_snapshot(),
+            thermal: ThermalSnapshot {
+                parameters: self.thermal_parameters,
+                field_set: ThermalFieldSetSnapshot {
+                    fields: self
+                        .thermal_fields
+                        .fields()
+                        .values()
+                        .map(|field| ThermalFieldSnapshot {
+                            chunk: field.chunk(),
+                            extent: field.extent(),
+                            energy: field.energy().iter().map(|energy| energy.get()).collect(),
+                            last_change: field.last_change().to_vec(),
+                            last_change_before: field
+                                .last_change_before()
+                                .iter()
+                                .map(|energy| energy.get())
+                                .collect(),
+                        })
+                        .collect(),
+                    batch_sequence: self.thermal_fields.batch_sequence(),
+                    conservation_last_change: self.thermal_fields.conservation_last_change(),
+                },
+                active_region: ThermalActiveRegionSnapshot {
+                    active_chunks: self
+                        .thermal_active_region
+                        .active_chunks()
+                        .iter()
+                        .copied()
+                        .collect(),
+                    resident_chunks: self
+                        .thermal_active_region
+                        .resident_chunks()
+                        .iter()
+                        .copied()
+                        .collect(),
+                },
+                reservoirs: self
+                    .thermal_reservoirs
+                    .values()
+                    .map(|reservoir| ThermalReservoirSnapshot {
+                        id: reservoir.id,
+                        target: reservoir.target,
+                        budget: reservoir.budget.get(),
+                        schedule: match reservoir.schedule {
+                            causafera_domains::ThermalReservoirSchedule::PerTick(amount) => {
+                                ThermalReservoirScheduleSnapshot::PerTick(amount.get())
+                            }
+                            causafera_domains::ThermalReservoirSchedule::OneShot => {
+                                ThermalReservoirScheduleSnapshot::OneShot
+                            }
+                        },
+                        bootstrap_trace: reservoir.bootstrap_trace,
+                        last_change: reservoir.last_change,
+                    })
+                    .collect(),
+                receipt_batches: self.thermal_receipts.keys().copied().collect(),
+                transfer_receipts: self
+                    .thermal_receipts
+                    .iter()
+                    .flat_map(|(conservation_trace, receipts)| {
+                        receipts
+                            .iter()
+                            .map(move |receipt| ThermalCellTransferReceiptSnapshot {
+                                conservation_trace: *conservation_trace,
+                                cell: receipt.cell,
+                                pre_state: receipt.pre_state.get(),
+                                post_state: receipt.post_state.get(),
+                                cell_change_trace_id: receipt.cell_change_trace_id,
+                                faces: receipt
+                                    .faces
+                                    .iter()
+                                    .map(|face| ThermalFaceRecordSnapshot {
+                                        neighbor: face.neighbor,
+                                        signed_flux: face.signed_flux,
+                                        neighbor_pre_state: face.neighbor_pre_state.get(),
+                                    })
+                                    .collect(),
+                                reservoirs: receipt
+                                    .reservoirs
+                                    .iter()
+                                    .map(|record| ThermalReservoirTransferRecordSnapshot {
+                                        id: record.id,
+                                        scheduled_injection: record.scheduled_injection.get(),
+                                        accepted_injection: record.accepted_injection.get(),
+                                        rejected_injection: record.rejected_injection.get(),
+                                        transfer_trace_id: record.transfer_trace_id,
+                                    })
+                                    .collect(),
+                            })
+                    })
+                    .collect(),
+                conservation_receipts: self
+                    .thermal_conservation_receipts
+                    .iter()
+                    .map(|(trace, receipt)| ThermalConservationReceiptSnapshot {
+                        trace: *trace,
+                        tick: receipt.tick,
+                        total_cell_energy_before: receipt.total_cell_energy_before,
+                        total_cell_energy_after: receipt.total_cell_energy_after,
+                        total_reservoir_budget_before: receipt.total_reservoir_budget_before,
+                        total_reservoir_budget_after: receipt.total_reservoir_budget_after,
+                        residual: receipt.residual,
+                    })
+                    .collect(),
+                boundary_records: self
+                    .thermal_boundary_records
+                    .iter()
+                    .map(|record| ThermalBoundaryRecordSnapshot {
+                        cell: record.cell,
+                        neighbor: record.neighbor,
+                        cell_pre_state: record.cell_pre_state.get(),
+                    })
+                    .collect(),
+            },
             resolution: self.resolution.export_snapshot(),
             resolution_policy: self.resolution_policy.export_snapshot(),
             pattern_history: self.pattern_history.export_snapshot(),
@@ -688,6 +904,15 @@ impl RuntimeState {
         let resolution_policy = ResolutionPolicy::import_snapshot(data.resolution_policy)?;
         let carrier_adapters = import_carrier_adapters(data.spatial.carrier_adapters)?;
         let active_chunks = import_active_chunks(data.spatial.active_chunks)?;
+        let thermal_parameters = data.thermal.parameters;
+        let (
+            thermal_fields,
+            thermal_active_region,
+            thermal_boundary_records,
+            thermal_reservoirs,
+            thermal_receipts,
+            thermal_conservation_receipts,
+        ) = import_thermal_snapshot(data.thermal, config.chunk_extent, &active_chunks)?;
         let pattern_history = PhysicalPatternHistory::import_snapshot(data.pattern_history);
         let subjective_count = data.actors_subjective.actors.len();
         let subjective_by_actor = data
@@ -736,6 +961,14 @@ impl RuntimeState {
             config,
             traces,
             mana,
+            thermal_fields,
+            thermal_active_region,
+            thermal_boundary_records,
+            thermal_reservoirs,
+            thermal_parameters,
+            pending_thermal_injections: Vec::new(),
+            thermal_receipts,
+            thermal_conservation_receipts,
             resolution,
             resolution_policy,
             carrier_adapters,
@@ -828,6 +1061,99 @@ impl RuntimeState {
         for field in self.mana.fields().values() {
             for trace in field.last_change().iter().flatten().copied() {
                 validate_trace_exists(&self.traces, trace)?;
+            }
+        }
+        for field in self.thermal_fields.fields().values() {
+            for trace in field.last_change() {
+                let event = self
+                    .traces
+                    .event(*trace)
+                    .ok_or(RuntimeError::InvalidSnapshot(
+                        "thermal field references unknown trace",
+                    ))?;
+                if !matches!(
+                    event.kind.raw(),
+                    THERMAL_FIELD_BOOTSTRAP_EVENT_KIND
+                        | THERMAL_CELL_CHANGE_EVENT_KIND
+                        | THERMAL_RESERVOIR_TRANSFER_EVENT_KIND
+                ) {
+                    return Err(RuntimeError::InvalidSnapshot(
+                        "thermal field has mismatched trace anchor",
+                    ));
+                }
+            }
+        }
+        let conservation_event = self
+            .traces
+            .event(self.thermal_fields.conservation_last_change())
+            .ok_or(RuntimeError::InvalidSnapshot(
+                "thermal conservation anchor references unknown trace",
+            ))?;
+        let expected_conservation_kind = if self.thermal_fields.batch_sequence() == 0 {
+            THERMAL_FIELD_BOOTSTRAP_EVENT_KIND
+        } else {
+            THERMAL_CONSERVATION_EVENT_KIND
+        };
+        if conservation_event.kind.raw() != expected_conservation_kind {
+            return Err(RuntimeError::InvalidSnapshot(
+                "thermal conservation anchor has mismatched event kind",
+            ));
+        }
+        for reservoir in self.thermal_reservoirs.values() {
+            let bootstrap = self.traces.event(reservoir.bootstrap_trace).ok_or(
+                RuntimeError::InvalidSnapshot("thermal reservoir bootstrap trace is unknown"),
+            )?;
+            if bootstrap.phase != Phase::Lifecycle
+                || bootstrap.kind.raw() != THERMAL_RESERVOIR_BOOTSTRAP_EVENT_KIND
+            {
+                return Err(RuntimeError::InvalidSnapshot(
+                    "thermal reservoir bootstrap anchor is invalid",
+                ));
+            }
+            let last_change =
+                self.traces
+                    .event(reservoir.last_change)
+                    .ok_or(RuntimeError::InvalidSnapshot(
+                        "thermal reservoir last-change trace is unknown",
+                    ))?;
+            if !matches!(
+                last_change.kind.raw(),
+                THERMAL_RESERVOIR_BOOTSTRAP_EVENT_KIND | THERMAL_RESERVOIR_TRANSFER_EVENT_KIND
+            ) {
+                return Err(RuntimeError::InvalidSnapshot(
+                    "thermal reservoir has mismatched trace anchor",
+                ));
+            }
+        }
+        for (trace, receipt) in &self.thermal_conservation_receipts {
+            let event = self
+                .traces
+                .event(*trace)
+                .ok_or(RuntimeError::InvalidSnapshot(
+                    "thermal conservation receipt references unknown trace",
+                ))?;
+            if event.phase != Phase::Physics || event.kind.raw() != THERMAL_CONSERVATION_EVENT_KIND
+            {
+                return Err(RuntimeError::InvalidSnapshot(
+                    "thermal conservation receipt has mismatched trace anchor",
+                ));
+            }
+            if receipt.residual != 0 {
+                return Err(RuntimeError::InvalidSnapshot(
+                    "thermal conservation receipt has non-zero residual",
+                ));
+            }
+        }
+        for receipts in self.thermal_receipts.values() {
+            for receipt in receipts {
+                if let Some(trace) = receipt.cell_change_trace_id {
+                    validate_trace_exists(&self.traces, trace)?;
+                }
+                for reservoir in &receipt.reservoirs {
+                    if let Some(trace) = reservoir.transfer_trace_id {
+                        validate_trace_exists(&self.traces, trace)?;
+                    }
+                }
             }
         }
         for entry in self.resolution.entries() {
@@ -948,6 +1274,27 @@ impl RuntimeState {
             .values()
             .map(|aggregate| aggregate.count)
             .sum();
+        let thermal_total_cell_energy = self
+            .thermal_fields
+            .fields()
+            .values()
+            .flat_map(|field| field.energy())
+            .map(|energy| i128::from(energy.get()))
+            .sum();
+        let thermal_total_reservoir_budget = self
+            .thermal_reservoirs
+            .values()
+            .map(|reservoir| i128::from(reservoir.budget.get()))
+            .sum();
+        let thermal_active_chunk_count =
+            u32::try_from(self.thermal_active_region.active_chunks().len()).unwrap_or(u32::MAX);
+        let thermal_active_cell_count =
+            self.thermal_fields
+                .fields()
+                .values()
+                .fold(0_u32, |count, field| {
+                    count.saturating_add(u32::try_from(field.energy().len()).unwrap_or(u32::MAX))
+                });
         RuntimeSnapshot {
             time,
             physical_state_digest,
@@ -979,6 +1326,10 @@ impl RuntimeState {
             material_activity_events: self.material_activity_events,
             bytes_per_chunk: self.bytes_per_chunk(),
             latest_trace,
+            thermal_total_cell_energy,
+            thermal_total_reservoir_budget,
+            thermal_active_chunk_count,
+            thermal_active_cell_count,
         }
     }
 
@@ -1050,14 +1401,13 @@ impl RuntimeState {
             .take(MAX_MATERIAL_SURFACE_DELTAS)
             .copied()
             .collect::<Vec<_>>();
-        if let Some(mana_transition) = latest_mana_transition {
-            if !material_surface_transitions
+        if let Some(mana_transition) = latest_mana_transition
+            && !material_surface_transitions
                 .iter()
                 .any(|transition| transition.transition_trace == mana_transition.transition_trace)
-            {
-                material_surface_transitions.pop();
-                material_surface_transitions.push(mana_transition);
-            }
+        {
+            material_surface_transitions.pop();
+            material_surface_transitions.push(mana_transition);
         }
         material_surface_transitions
             .sort_by_key(|transition| (transition.id, transition.transition_trace));
@@ -1121,6 +1471,56 @@ impl RuntimeState {
                 transition_tick: transition.occurred_at.raw(),
             })
             .collect::<Vec<_>>();
+        let mut thermal_deltas = self
+            .thermal_receipts
+            .iter()
+            .next_back()
+            .map(|(_, receipts)| receipts.iter())
+            .into_iter()
+            .flatten()
+            .take(MAX_THERMAL_DELTAS)
+            .map(|receipt| ThermalFieldDelta {
+                chart_id: receipt.cell.chunk.chart.raw(),
+                chunk_x: receipt.cell.chunk.chunk.x,
+                chunk_y: receipt.cell.chunk.chunk.y,
+                chunk_z: receipt.cell.chunk.chunk.z,
+                cell_ordinal: receipt.cell.cell_index,
+                pre_state_energy: receipt.pre_state.get(),
+                post_state_energy: receipt.post_state.get(),
+                reservoir_scheduled_injection: receipt
+                    .reservoirs
+                    .iter()
+                    .fold(0_i64, |total, record| {
+                        total.saturating_add(record.scheduled_injection.get())
+                    }),
+                reservoir_accepted_injection: receipt
+                    .reservoirs
+                    .iter()
+                    .fold(0_i64, |total, record| {
+                        total.saturating_add(record.accepted_injection.get())
+                    }),
+                reservoir_rejected_injection: receipt
+                    .reservoirs
+                    .iter()
+                    .fold(0_i64, |total, record| {
+                        total.saturating_add(record.rejected_injection.get())
+                    }),
+                net_face_flux: receipt
+                    .faces
+                    .iter()
+                    .fold(0_i64, |total, face| total.saturating_add(face.signed_flux)),
+                face_count: u32::try_from(receipt.faces.len()).unwrap_or(u32::MAX),
+            })
+            .collect::<Vec<_>>();
+        thermal_deltas.sort_by_key(|delta| {
+            (
+                delta.chart_id,
+                delta.chunk_x,
+                delta.chunk_y,
+                delta.chunk_z,
+                delta.cell_ordinal,
+            )
+        });
         ObserverWorldSnapshot {
             time,
             chunks,
@@ -1133,7 +1533,66 @@ impl RuntimeState {
             },
             material_surface_deltas,
             material_surface_gate_deltas,
+            thermal_delta_schema_version: if thermal_deltas.is_empty() {
+                0
+            } else {
+                THERMAL_DELTA_SCHEMA_V1
+            },
+            thermal_deltas,
         }
+    }
+
+    fn thermal_conservation_explanation(
+        &self,
+        time: SimulationTime,
+    ) -> Result<ExplanationReport, RuntimeError> {
+        let (conservation_trace, receipt) = self
+            .thermal_conservation_receipts
+            .iter()
+            .next_back()
+            .ok_or(RuntimeError::InvalidSnapshot(
+            "missing thermal conservation receipt",
+        ))?;
+        let transfer_receipts =
+            self.thermal_receipts
+                .get(conservation_trace)
+                .ok_or(RuntimeError::InvalidSnapshot(
+                    "missing thermal transfer receipts",
+                ))?;
+        let mut reservoir_transfer_traces = BTreeSet::new();
+        let mut neighbor_transfer_traces = BTreeSet::new();
+        for transfer_receipt in transfer_receipts {
+            if let Some(trace) = transfer_receipt.cell_change_trace_id {
+                neighbor_transfer_traces.insert(trace);
+            }
+            for reservoir in &transfer_receipt.reservoirs {
+                if let Some(trace) = reservoir.transfer_trace_id {
+                    reservoir_transfer_traces.insert(trace);
+                }
+            }
+        }
+        let claim = ThermalCarrierConservationClaim {
+            receipt: *receipt,
+            observation_start: SimulationTime::new(receipt.tick),
+            observation_end: time,
+            conservation_trace: *conservation_trace,
+            reservoir_transfer_traces: reservoir_transfer_traces.into_iter().collect(),
+            neighbor_transfer_traces: neighbor_transfer_traces.into_iter().collect(),
+        }
+        .to_explanation_claim()
+        .map_err(|_| {
+            RuntimeError::InvalidSnapshot("invalid thermal conservation Explanation claim")
+        })?;
+        let frame = ExplanationFrame::new(time, vec![claim]).map_err(|_| {
+            RuntimeError::InvalidSnapshot("invalid thermal conservation Explanation frame")
+        })?;
+        ExplanationReport::new(
+            ExperimentId::new(self.config.deterministic.world_seed),
+            vec![frame],
+        )
+        .map_err(|_| {
+            RuntimeError::InvalidSnapshot("invalid thermal conservation Explanation report")
+        })
     }
 
     fn material_surface_loop_explanation(
@@ -1354,6 +1813,94 @@ impl RuntimeState {
                 digest.write(*value as u64);
             }
         }
+        digest.write(self.thermal_parameters.transfer_fraction as u64);
+        digest.write(self.thermal_parameters.heat_capacity as u64);
+        digest.write(self.thermal_parameters.scale as u64);
+        digest.write(self.thermal_fields.batch_sequence());
+        digest.write(self.thermal_fields.conservation_last_change().raw());
+        digest.write(self.thermal_active_region.active_chunks().len() as u64);
+        for chunk in self.thermal_active_region.active_chunks() {
+            write_chart_chunk(&mut digest, *chunk);
+        }
+        digest.write(self.thermal_active_region.resident_chunks().len() as u64);
+        for chunk in self.thermal_active_region.resident_chunks() {
+            write_chart_chunk(&mut digest, *chunk);
+        }
+        digest.write(self.thermal_fields.fields().len() as u64);
+        for field in self.thermal_fields.fields().values() {
+            write_chart_chunk(&mut digest, field.chunk());
+            digest.write(u64::from(field.extent()));
+            for energy in field.energy() {
+                digest.write(energy.get() as u64);
+            }
+            for trace in field.last_change() {
+                digest.write(trace.raw());
+            }
+            for energy in field.last_change_before() {
+                digest.write(energy.get() as u64);
+            }
+        }
+        digest.write(self.thermal_reservoirs.len() as u64);
+        for reservoir in self.thermal_reservoirs.values() {
+            digest.write(reservoir.id.raw());
+            write_chart_chunk(&mut digest, reservoir.target.chunk);
+            digest.write(u64::from(reservoir.target.cell_index));
+            digest.write(reservoir.budget.get() as u64);
+            match reservoir.schedule {
+                ThermalReservoirSchedule::PerTick(amount) => {
+                    digest.write(1);
+                    digest.write(amount.get() as u64);
+                }
+                ThermalReservoirSchedule::OneShot => digest.write(2),
+            }
+            digest.write(reservoir.bootstrap_trace.raw());
+            digest.write(reservoir.last_change.raw());
+        }
+        digest.write(self.thermal_receipts.len() as u64);
+        for (conservation_trace, receipts) in &self.thermal_receipts {
+            digest.write(conservation_trace.raw());
+            digest.write(receipts.len() as u64);
+            for receipt in receipts {
+                write_chart_chunk(&mut digest, receipt.cell.chunk);
+                digest.write(u64::from(receipt.cell.cell_index));
+                digest.write(receipt.pre_state.get() as u64);
+                digest.write(receipt.post_state.get() as u64);
+                write_optional_trace(&mut digest, receipt.cell_change_trace_id);
+                digest.write(receipt.faces.len() as u64);
+                for face in &receipt.faces {
+                    write_chart_chunk(&mut digest, face.neighbor.chunk);
+                    digest.write(u64::from(face.neighbor.cell_index));
+                    digest.write(face.signed_flux as u64);
+                    digest.write(face.neighbor_pre_state.get() as u64);
+                }
+                digest.write(receipt.reservoirs.len() as u64);
+                for reservoir in &receipt.reservoirs {
+                    digest.write(reservoir.id.raw());
+                    digest.write(reservoir.scheduled_injection.get() as u64);
+                    digest.write(reservoir.accepted_injection.get() as u64);
+                    digest.write(reservoir.rejected_injection.get() as u64);
+                    write_optional_trace(&mut digest, reservoir.transfer_trace_id);
+                }
+            }
+        }
+        digest.write(self.thermal_conservation_receipts.len() as u64);
+        for (trace, receipt) in &self.thermal_conservation_receipts {
+            digest.write(trace.raw());
+            digest.write(receipt.tick);
+            write_i128(&mut digest, receipt.total_cell_energy_before);
+            write_i128(&mut digest, receipt.total_cell_energy_after);
+            write_i128(&mut digest, receipt.total_reservoir_budget_before);
+            write_i128(&mut digest, receipt.total_reservoir_budget_after);
+            write_i128(&mut digest, receipt.residual);
+        }
+        digest.write(self.thermal_boundary_records.len() as u64);
+        for record in &self.thermal_boundary_records {
+            write_chart_chunk(&mut digest, record.cell.chunk);
+            digest.write(u64::from(record.cell.cell_index));
+            write_chart_chunk(&mut digest, record.neighbor.chunk);
+            digest.write(u64::from(record.neighbor.cell_index));
+            digest.write(record.cell_pre_state.get() as u64);
+        }
         digest.write(self.resolution.evaluated_through().raw());
         for chunk in self.active_chunks.keys().copied() {
             write_chart_chunk(&mut digest, chunk);
@@ -1484,6 +2031,12 @@ impl RuntimeState {
     }
 }
 
+fn write_i128(digest: &mut CanonicalDigest, value: i128) {
+    let bits = value as u128;
+    digest.write(bits as u64);
+    digest.write((bits >> 64) as u64);
+}
+
 fn runtime_system_registrations() -> Vec<SystemRegistrationSnapshot> {
     vec![
         SystemRegistrationSnapshot {
@@ -1540,6 +2093,18 @@ fn runtime_system_registrations() -> Vec<SystemRegistrationSnapshot> {
             revision: 1,
             registration_order: 8,
         },
+        SystemRegistrationSnapshot {
+            phase: Phase::Physics,
+            system_schema_id: THERMAL_RESERVOIR_SYSTEM_ID,
+            revision: 1,
+            registration_order: 9,
+        },
+        SystemRegistrationSnapshot {
+            phase: Phase::Physics,
+            system_schema_id: THERMAL_EVOLUTION_SYSTEM_ID,
+            revision: 1,
+            registration_order: 10,
+        },
     ]
 }
 
@@ -1580,6 +2145,451 @@ fn import_active_chunks(
         }
     }
     Ok(chunks)
+}
+
+type ImportedThermal = (
+    ThermalFieldSet,
+    ThermalActiveRegion,
+    Vec<ThermalBoundaryRecord>,
+    BTreeMap<ThermalReservoirId, ThermalReservoir>,
+    BTreeMap<TraceId, Vec<ThermalCellTransferReceipt>>,
+    BTreeMap<TraceId, ThermalConservationReceipt>,
+);
+
+fn import_thermal_snapshot(
+    snapshot: ThermalSnapshot,
+    chunk_extent: u8,
+    active_chunks: &BTreeMap<ChartChunkCoord, ActiveChunkState>,
+) -> Result<ImportedThermal, RuntimeError> {
+    snapshot.parameters.validate()?;
+    let expected_chunks = active_chunks.keys().copied().collect::<BTreeSet<_>>();
+    let active_region_chunks = snapshot
+        .active_region
+        .active_chunks
+        .iter()
+        .copied()
+        .collect::<BTreeSet<_>>();
+    let resident_region_chunks = snapshot
+        .active_region
+        .resident_chunks
+        .iter()
+        .copied()
+        .collect::<BTreeSet<_>>();
+    if active_region_chunks.len() != snapshot.active_region.active_chunks.len()
+        || resident_region_chunks.len() != snapshot.active_region.resident_chunks.len()
+        || active_region_chunks != expected_chunks
+        || resident_region_chunks != expected_chunks
+    {
+        return Err(RuntimeError::InvalidSnapshot(
+            "thermal active region is incomplete",
+        ));
+    }
+    let thermal_active_region =
+        ThermalActiveRegion::new(active_region_chunks, resident_region_chunks)?;
+    let field_count = snapshot.field_set.fields.len();
+    let mut fields = Vec::with_capacity(field_count);
+    for field in snapshot.field_set.fields {
+        if field.extent != chunk_extent {
+            return Err(RuntimeError::InvalidSnapshot(
+                "thermal field extent mismatch",
+            ));
+        }
+        let energy = field
+            .energy
+            .into_iter()
+            .map(ThermalEnergy::new)
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|_| RuntimeError::InvalidSnapshot("thermal field has negative energy"))?;
+        let last_change_before = field
+            .last_change_before
+            .into_iter()
+            .map(ThermalEnergy::new)
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|_| {
+                RuntimeError::InvalidSnapshot("thermal field has negative prior energy")
+            })?;
+        fields.push(
+            ThermalField::from_snapshot_parts(
+                field.chunk,
+                field.extent,
+                energy,
+                field.last_change,
+                last_change_before,
+            )
+            .map_err(|_| RuntimeError::InvalidSnapshot("thermal field state is malformed"))?,
+        );
+    }
+    let thermal_fields = ThermalFieldSet::from_snapshot_parts(
+        fields,
+        snapshot.field_set.batch_sequence,
+        snapshot.field_set.conservation_last_change,
+    )
+    .map_err(|_| RuntimeError::InvalidSnapshot("thermal field set is malformed"))?;
+    if thermal_fields.fields().len() != field_count
+        || thermal_fields
+            .fields()
+            .keys()
+            .copied()
+            .collect::<BTreeSet<_>>()
+            != expected_chunks
+    {
+        return Err(RuntimeError::InvalidSnapshot(
+            "thermal fields have active-region gaps",
+        ));
+    }
+
+    let mut reservoirs = BTreeMap::new();
+    for reservoir in snapshot.reservoirs {
+        let budget = ThermalEnergy::new(reservoir.budget)
+            .map_err(|_| RuntimeError::InvalidSnapshot("thermal reservoir has negative budget"))?;
+        let schedule = match reservoir.schedule {
+            ThermalReservoirScheduleSnapshot::PerTick(amount) => {
+                ThermalReservoirSchedule::PerTick(ThermalEnergy::new(amount).map_err(|_| {
+                    RuntimeError::InvalidSnapshot("thermal reservoir has negative schedule")
+                })?)
+            }
+            ThermalReservoirScheduleSnapshot::OneShot => ThermalReservoirSchedule::OneShot,
+        };
+        let field =
+            thermal_fields
+                .field(reservoir.target.chunk)
+                .ok_or(RuntimeError::InvalidSnapshot(
+                    "thermal reservoir target lies outside active region",
+                ))?;
+        if usize::from(reservoir.target.cell_index) >= field.energy().len() {
+            return Err(RuntimeError::InvalidSnapshot(
+                "thermal reservoir target cell lies outside field",
+            ));
+        }
+        if reservoirs
+            .insert(
+                reservoir.id,
+                ThermalReservoir {
+                    id: reservoir.id,
+                    target: reservoir.target,
+                    budget,
+                    schedule,
+                    bootstrap_trace: reservoir.bootstrap_trace,
+                    last_change: reservoir.last_change,
+                },
+            )
+            .is_some()
+        {
+            return Err(RuntimeError::InvalidSnapshot("duplicate thermal reservoir"));
+        }
+    }
+
+    if snapshot.conservation_receipts.len() != thermal_fields.batch_sequence() as usize {
+        return Err(RuntimeError::InvalidSnapshot(
+            "thermal batch sequence does not match conservation receipts",
+        ));
+    }
+    let mut conservation_receipts = BTreeMap::new();
+    for receipt in snapshot.conservation_receipts {
+        if receipt.residual != 0 {
+            return Err(RuntimeError::InvalidSnapshot(
+                "thermal conservation receipt has non-zero residual",
+            ));
+        }
+        if conservation_receipts
+            .insert(
+                receipt.trace,
+                ThermalConservationReceipt {
+                    tick: receipt.tick,
+                    total_cell_energy_before: receipt.total_cell_energy_before,
+                    total_cell_energy_after: receipt.total_cell_energy_after,
+                    total_reservoir_budget_before: receipt.total_reservoir_budget_before,
+                    total_reservoir_budget_after: receipt.total_reservoir_budget_after,
+                    residual: receipt.residual,
+                },
+            )
+            .is_some()
+        {
+            return Err(RuntimeError::InvalidSnapshot(
+                "duplicate thermal conservation receipt trace",
+            ));
+        }
+    }
+    if let Some(last_trace) = conservation_receipts.keys().next_back()
+        && *last_trace != thermal_fields.conservation_last_change()
+    {
+        return Err(RuntimeError::InvalidSnapshot(
+            "thermal conservation anchor does not match latest receipt",
+        ));
+    }
+
+    let mut receipts = BTreeMap::<TraceId, Vec<ThermalCellTransferReceipt>>::new();
+    for trace in snapshot.receipt_batches {
+        if !conservation_receipts.contains_key(&trace)
+            || receipts.insert(trace, Vec::new()).is_some()
+        {
+            return Err(RuntimeError::InvalidSnapshot(
+                "thermal receipt batch is invalid",
+            ));
+        }
+    }
+    for receipt in snapshot.transfer_receipts {
+        if !conservation_receipts.contains_key(&receipt.conservation_trace) {
+            return Err(RuntimeError::InvalidSnapshot(
+                "thermal transfer receipt lacks conservation receipt",
+            ));
+        }
+        let receipt_field =
+            thermal_fields
+                .field(receipt.cell.chunk)
+                .ok_or(RuntimeError::InvalidSnapshot(
+                    "thermal transfer receipt references inactive field",
+                ))?;
+        if usize::from(receipt.cell.cell_index) >= receipt_field.energy().len() {
+            return Err(RuntimeError::InvalidSnapshot(
+                "thermal transfer receipt cell index is outside field",
+            ));
+        }
+        let pre_state = ThermalEnergy::new(receipt.pre_state)
+            .map_err(|_| RuntimeError::InvalidSnapshot("thermal receipt has negative pre-state"))?;
+        let post_state = ThermalEnergy::new(receipt.post_state).map_err(|_| {
+            RuntimeError::InvalidSnapshot("thermal receipt has negative post-state")
+        })?;
+        if receipt.faces.len() > 6 {
+            return Err(RuntimeError::InvalidSnapshot(
+                "thermal receipt has too many faces",
+            ));
+        }
+        let faces = receipt
+            .faces
+            .into_iter()
+            .map(|face| {
+                Ok(causafera_domains::ThermalFaceRecord {
+                    neighbor: face.neighbor,
+                    signed_flux: face.signed_flux,
+                    neighbor_pre_state: ThermalEnergy::new(face.neighbor_pre_state).map_err(
+                        |_| {
+                            RuntimeError::InvalidSnapshot(
+                                "thermal face has negative neighbor energy",
+                            )
+                        },
+                    )?,
+                })
+            })
+            .collect::<Result<Vec<_>, RuntimeError>>()?;
+        let signed_flux_sum = faces.iter().try_fold(0_i128, |sum, face| {
+            sum.checked_add(i128::from(face.signed_flux))
+                .ok_or(RuntimeError::InvalidSnapshot(
+                    "thermal receipt signed flux total overflows",
+                ))
+        })?;
+        let expected_post_state = i128::from(pre_state.get())
+            .checked_sub(signed_flux_sum)
+            .ok_or(RuntimeError::InvalidSnapshot(
+                "thermal receipt transition overflows",
+            ))?;
+        if expected_post_state != i128::from(post_state.get()) {
+            return Err(RuntimeError::InvalidSnapshot(
+                "thermal receipt transition does not match signed fluxes",
+            ));
+        }
+        let mut reservoir_records = Vec::with_capacity(receipt.reservoirs.len());
+        for record in receipt.reservoirs {
+            if !reservoirs.contains_key(&record.id) {
+                return Err(RuntimeError::InvalidSnapshot(
+                    "thermal receipt references unknown reservoir",
+                ));
+            }
+            let scheduled = ThermalEnergy::new(record.scheduled_injection).map_err(|_| {
+                RuntimeError::InvalidSnapshot("thermal receipt has negative scheduled injection")
+            })?;
+            let accepted = ThermalEnergy::new(record.accepted_injection).map_err(|_| {
+                RuntimeError::InvalidSnapshot("thermal receipt has negative accepted injection")
+            })?;
+            let rejected = ThermalEnergy::new(record.rejected_injection).map_err(|_| {
+                RuntimeError::InvalidSnapshot("thermal receipt has negative rejected injection")
+            })?;
+            if i128::from(accepted.get()) + i128::from(rejected.get())
+                != i128::from(scheduled.get())
+            {
+                return Err(RuntimeError::InvalidSnapshot(
+                    "thermal receipt injection does not balance",
+                ));
+            }
+            reservoir_records.push(causafera_domains::ThermalReservoirTransferRecord {
+                id: record.id,
+                scheduled_injection: scheduled,
+                accepted_injection: accepted,
+                rejected_injection: rejected,
+                transfer_trace_id: record.transfer_trace_id,
+            });
+        }
+        receipts
+            .get_mut(&receipt.conservation_trace)
+            .ok_or(RuntimeError::InvalidSnapshot(
+                "thermal transfer receipt lacks receipt batch",
+            ))?
+            .push(ThermalCellTransferReceipt {
+                cell: receipt.cell,
+                pre_state,
+                post_state,
+                cell_change_trace_id: receipt.cell_change_trace_id,
+                faces,
+                reservoirs: reservoir_records,
+            });
+    }
+    if receipts.keys().copied().collect::<BTreeSet<_>>()
+        != conservation_receipts.keys().copied().collect()
+    {
+        return Err(RuntimeError::InvalidSnapshot(
+            "thermal receipt batches do not cover conservation receipts",
+        ));
+    }
+    for (trace, receipt) in &conservation_receipts {
+        let accepted = receipts
+            .get(trace)
+            .into_iter()
+            .flatten()
+            .flat_map(|entry| entry.reservoirs.iter())
+            .try_fold(0_i128, |total, record| {
+                total
+                    .checked_add(i128::from(record.accepted_injection.get()))
+                    .ok_or(RuntimeError::InvalidSnapshot(
+                        "thermal receipt injection total overflows",
+                    ))
+            })?;
+        let budget_delta = receipt
+            .total_reservoir_budget_before
+            .checked_sub(receipt.total_reservoir_budget_after)
+            .ok_or(RuntimeError::InvalidSnapshot(
+                "thermal reservoir budget difference overflows",
+            ))?;
+        if budget_delta != accepted {
+            return Err(RuntimeError::InvalidSnapshot(
+                "thermal reservoir budgets do not balance receipts",
+            ));
+        }
+    }
+    if thermal_fields.batch_sequence() > 0 {
+        let latest_receipts = receipts
+            .get(&thermal_fields.conservation_last_change())
+            .ok_or(RuntimeError::InvalidSnapshot(
+                "thermal latest receipt batch is missing",
+            ))?;
+        for receipt in latest_receipts {
+            let field =
+                thermal_fields
+                    .field(receipt.cell.chunk)
+                    .ok_or(RuntimeError::InvalidSnapshot(
+                        "thermal latest receipt references inactive field",
+                    ))?;
+            let current_energy = field
+                .energy()
+                .get(usize::from(receipt.cell.cell_index))
+                .copied()
+                .ok_or(RuntimeError::InvalidSnapshot(
+                    "thermal latest receipt references invalid cell",
+                ))?;
+            if receipt.post_state != current_energy {
+                return Err(RuntimeError::InvalidSnapshot(
+                    "thermal latest receipt post-state does not match current energy",
+                ));
+            }
+        }
+    }
+    let boundary_records = import_thermal_boundary_records(
+        snapshot.boundary_records,
+        &thermal_fields,
+        &thermal_active_region,
+        &receipts,
+    )?;
+    Ok((
+        thermal_fields,
+        thermal_active_region,
+        boundary_records,
+        reservoirs,
+        receipts,
+        conservation_receipts,
+    ))
+}
+
+fn import_thermal_boundary_records(
+    snapshots: Vec<ThermalBoundaryRecordSnapshot>,
+    fields: &ThermalFieldSet,
+    active_region: &ThermalActiveRegion,
+    receipts: &BTreeMap<TraceId, Vec<ThermalCellTransferReceipt>>,
+) -> Result<Vec<ThermalBoundaryRecord>, RuntimeError> {
+    if fields.batch_sequence() == 0 {
+        return if snapshots.is_empty() {
+            Ok(Vec::new())
+        } else {
+            Err(RuntimeError::InvalidSnapshot(
+                "thermal boundary records exist before the first batch",
+            ))
+        };
+    }
+
+    let mut latest_pre_state = BTreeMap::new();
+    for receipt in
+        receipts
+            .get(&fields.conservation_last_change())
+            .ok_or(RuntimeError::InvalidSnapshot(
+                "thermal boundary records lack latest receipt batch",
+            ))?
+    {
+        if latest_pre_state
+            .insert(receipt.cell, receipt.pre_state)
+            .is_some()
+        {
+            return Err(RuntimeError::InvalidSnapshot(
+                "duplicate thermal cell receipt in latest batch",
+            ));
+        }
+    }
+
+    let mut expected = Vec::new();
+    for field in fields.fields().values() {
+        for (index, energy) in field.energy().iter().copied().enumerate() {
+            let cell_index = u16::try_from(index).map_err(|_| {
+                RuntimeError::InvalidSnapshot("thermal boundary source index is invalid")
+            })?;
+            let cell = ThermalCellKey::new(field.chunk(), cell_index);
+            let boundary_neighbors =
+                fields
+                    .boundary_neighbor_keys(active_region, cell)
+                    .map_err(|_| {
+                        RuntimeError::InvalidSnapshot("thermal boundary geometry is invalid")
+                    })?;
+            for neighbor in boundary_neighbors {
+                expected.push(ThermalBoundaryRecord {
+                    cell,
+                    neighbor,
+                    cell_pre_state: latest_pre_state.get(&cell).copied().unwrap_or(energy),
+                });
+            }
+        }
+    }
+    expected.sort_unstable_by_key(|record| (record.cell, record.neighbor));
+
+    let mut records = Vec::with_capacity(snapshots.len());
+    let mut previous_key = None;
+    for snapshot in snapshots {
+        let key = (snapshot.cell, snapshot.neighbor);
+        if previous_key.is_some_and(|previous| previous >= key) {
+            return Err(RuntimeError::InvalidSnapshot(
+                "thermal boundary records must be strictly ordered",
+            ));
+        }
+        previous_key = Some(key);
+        records.push(ThermalBoundaryRecord {
+            cell: snapshot.cell,
+            neighbor: snapshot.neighbor,
+            cell_pre_state: ThermalEnergy::new(snapshot.cell_pre_state).map_err(|_| {
+                RuntimeError::InvalidSnapshot("thermal boundary record has negative pre-state")
+            })?,
+        });
+    }
+    if records != expected {
+        return Err(RuntimeError::InvalidSnapshot(
+            "thermal boundary records do not match the current boundary face set",
+        ));
+    }
+    Ok(records)
 }
 
 fn import_experiment_recipe_mana_source_receipts(

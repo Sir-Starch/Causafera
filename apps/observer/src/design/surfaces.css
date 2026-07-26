@@ -1,0 +1,397 @@
+/* Causafera Observer — plates, marks, tags, and unsurveyed states. */
+
+/*
+ * A plate is a framed region of the sheet, in the manner of an atlas inset: a hairline
+ * border, a flat fill that mutes the map beneath, registration ticks at two corners, and no
+ * shadow at all. Depth comes from line weight, not from lighting.
+ */
+.panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border: 1px solid var(--line);
+  background: var(--plate-fill);
+}
+
+.panel::before,
+.panel::after {
+  content: "";
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  pointer-events: none;
+  border-color: var(--line-strong);
+  border-style: solid;
+}
+
+.panel::before {
+  top: -1px;
+  left: -1px;
+  border-width: 1px 0 0 1px;
+}
+
+.panel::after {
+  right: -1px;
+  bottom: -1px;
+  border-width: 0 1px 1px 0;
+}
+
+/* A flush plate is a region of the sheet with no frame — only its heading rule. */
+.panel--flush {
+  border: 0;
+  background: transparent;
+}
+
+.panel--flush::before,
+.panel--flush::after {
+  display: none;
+}
+
+.panel--flush > .panel__head {
+  border-bottom: 1px solid var(--line-faint);
+}
+
+.panel--accent {
+  border-color: var(--line-bright);
+}
+
+.panel__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s3);
+  padding: var(--s3) var(--s3) var(--s2);
+}
+
+.panel__titles {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  min-width: 0;
+}
+
+.panel__titles h2,
+.panel__titles h3 {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: var(--t-lead);
+  line-height: 1.25;
+  color: var(--ink);
+}
+
+.panel__tools {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  flex-shrink: 0;
+}
+
+.panel__body {
+  padding: var(--s1) var(--s3) var(--s3);
+  min-width: 0;
+}
+
+.panel__body--flush {
+  padding: 0;
+}
+
+.panel__foot {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  padding: var(--s2) var(--s3);
+  border-top: 1px solid var(--line-faint);
+  font-size: var(--t-micro);
+  letter-spacing: var(--track-wide);
+  color: var(--ink-ghost);
+}
+
+/* A rule with a centred label, in the manner of an atlas division. */
+.division {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  margin: var(--s3) 0 var(--s2);
+  color: var(--ink-faint);
+  font-family: var(--font-display);
+  font-size: var(--t-micro);
+  letter-spacing: var(--track-caps);
+  text-transform: uppercase;
+}
+
+.division::before,
+.division::after {
+  content: "";
+  height: 1px;
+  flex: 1;
+  background: var(--line-faint);
+}
+
+.division::before {
+  flex: 0 0 var(--s3);
+}
+
+/* ---- Tags -------------------------------------------------------------- */
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.0625rem 0.375rem;
+  border: 1px solid var(--line);
+  background: transparent;
+  font-size: var(--t-micro);
+  font-weight: 600;
+  letter-spacing: var(--track-wide);
+  text-transform: uppercase;
+  color: var(--ink-dim);
+  white-space: nowrap;
+}
+
+.tag__dot {
+  width: 5px;
+  height: 5px;
+  background: currentcolor;
+  flex-shrink: 0;
+}
+
+.tag--supported {
+  border-color: rgb(12 163 12 / 40%);
+  color: #6ede6e;
+}
+
+.tag--partial {
+  border-color: rgb(250 178 25 / 40%);
+  color: #f5c661;
+}
+
+.tag--unsupported {
+  border-color: rgb(208 59 59 / 42%);
+  color: #ec8080;
+}
+
+/* Unknown is not a failure state — it is unsurveyed ground, and reads as hatching. */
+.tag--unknown {
+  border-style: dashed;
+  border-color: var(--line-strong);
+  color: var(--ink-faint);
+  background-image: repeating-linear-gradient(
+    35deg,
+    rgb(214 228 234 / 7%) 0 1px,
+    transparent 1px 6px
+  );
+}
+
+.tag--live {
+  border-color: var(--line-bright);
+  color: var(--ink-bright);
+}
+
+.tag--quiet {
+  border-color: var(--line-faint);
+  color: var(--ink-ghost);
+}
+
+/* ---- Maturity marks ---------------------------------------------------- */
+
+.maturity {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.maturity__pip {
+  width: 4px;
+  height: 10px;
+  border: 1px solid var(--line);
+}
+
+.maturity__pip[data-on="true"] {
+  border-color: var(--ink-faint);
+  background: var(--ink-faint);
+}
+
+/* ---- Unsurveyed / empty states ---------------------------------------- */
+
+.unsurveyed {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s2);
+  padding: var(--s5) var(--s4);
+  border: 1px dashed var(--line);
+  color: var(--ink-faint);
+  background-image: repeating-linear-gradient(
+    35deg,
+    rgb(214 228 234 / 4%) 0 1px,
+    transparent 1px 8px
+  );
+}
+
+.unsurveyed h4 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: var(--t-body);
+  color: var(--ink-dim);
+}
+
+.unsurveyed p {
+  font-family: var(--font-display);
+  font-size: var(--t-small);
+  max-width: 52ch;
+  line-height: 1.6;
+}
+
+.unsurveyed--centred {
+  align-items: center;
+  text-align: center;
+}
+
+/* ---- Notice ------------------------------------------------------------ */
+
+.notice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s2);
+  padding: var(--s2) var(--s3);
+  border: 1px solid var(--line);
+  border-left-width: 2px;
+  background: var(--plate-fill);
+  font-family: var(--font-display);
+  font-size: var(--t-small);
+  line-height: 1.55;
+  color: var(--ink-dim);
+}
+
+.notice--alarm {
+  border-color: rgb(208 59 59 / 38%);
+  border-left-color: var(--state-unsupported);
+  color: #f0b4b4;
+}
+
+.notice--caution {
+  border-color: rgb(250 178 25 / 32%);
+  border-left-color: var(--state-partial);
+}
+
+.notice--survey {
+  border-left-color: var(--ink-faint);
+}
+
+/* ---- Connection lamp: a survey station mark, not an indicator light ---- */
+
+.lamp {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  font-size: var(--t-micro);
+  letter-spacing: var(--track-caps);
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+.lamp__mark {
+  position: relative;
+  width: 9px;
+  height: 9px;
+  border: 1px solid currentcolor;
+  border-radius: 50%;
+}
+
+.lamp[data-state="connected"] {
+  color: var(--ink);
+}
+
+.lamp[data-state="connected"] .lamp__mark::after {
+  content: "";
+  position: absolute;
+  inset: 2px;
+  border-radius: 50%;
+  background: currentcolor;
+}
+
+.lamp[data-state="connecting"] {
+  color: var(--ink-dim);
+}
+
+.lamp[data-state="connecting"] .lamp__mark {
+  border-style: dashed;
+  animation: lamp-sweep 2.4s linear infinite;
+}
+
+.lamp[data-state="error"] {
+  color: var(--state-unsupported);
+}
+
+.lamp[data-state="error"] .lamp__mark::after {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-top: 1px solid currentcolor;
+  transform: rotate(45deg);
+}
+
+.lamp[data-state="unavailable"] {
+  color: var(--ink-ghost);
+}
+
+.lamp[data-state="unavailable"] .lamp__mark {
+  border-style: dotted;
+}
+
+@keyframes lamp-sweep {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lamp[data-state="connecting"] .lamp__mark {
+    animation: none;
+  }
+}
+
+/* ---- Hover card: portalled, so nothing clips an explanation ------------ */
+
+.hover-card {
+  position: fixed;
+  z-index: 120;
+  width: max-content;
+  max-width: 21rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1875rem;
+  padding: var(--s2) var(--s3);
+  border: 1px solid var(--line-strong);
+  background: var(--paper-overlay);
+  pointer-events: none;
+}
+
+.hover-card__role {
+  font-size: var(--t-micro);
+  letter-spacing: var(--track-caps);
+  text-transform: uppercase;
+  color: var(--ink-ghost);
+}
+
+.hover-card strong {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: var(--t-body);
+  color: var(--ink);
+}
+
+.hover-card p {
+  font-family: var(--font-display);
+  font-size: var(--t-micro);
+  line-height: 1.55;
+  color: var(--ink-faint);
+}
+
+.hover-card__caveat {
+  padding-left: var(--s2);
+  border-left: 1px dashed var(--line);
+}

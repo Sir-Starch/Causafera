@@ -1,0 +1,505 @@
+/* Causafera Observer — application shell: meridian bar, rail, workspace, dock, marginalia. */
+
+.shell {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: var(--rail-width) minmax(0, 1fr) auto;
+  grid-template-rows: var(--meridian-height) minmax(0, 1fr) var(--marginalia-height);
+  grid-template-areas:
+    "meridian meridian meridian"
+    "rail workspace dock"
+    "marginalia marginalia marginalia";
+  height: 100%;
+}
+
+.shell[data-rail="collapsed"] {
+  grid-template-columns: var(--rail-width-collapsed) minmax(0, 1fr) auto;
+}
+
+/* ---- Meridian bar ------------------------------------------------------ */
+
+.meridian {
+  grid-area: meridian;
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  border-bottom: 1px solid var(--line);
+  background: var(--plate-fill-solid);
+}
+
+/* Cells are divided by hairlines rather than each carrying its own box. */
+.meridian__cell {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding-inline: var(--s3);
+  border-right: 1px solid var(--line-faint);
+  flex-shrink: 0;
+}
+
+.meridian__cell:last-child {
+  border-right: 0;
+}
+
+.meridian__cell--brand {
+  gap: var(--s2);
+  padding-inline: var(--s3);
+}
+
+.meridian__key {
+  font-size: var(--t-micro);
+  font-weight: 600;
+  letter-spacing: var(--track-caps);
+  text-transform: uppercase;
+  color: var(--ink-ghost);
+}
+
+.meridian__sigil {
+  display: grid;
+  place-items: center;
+  color: var(--sig-trace);
+}
+
+.meridian__wordmark {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.1;
+}
+
+.meridian__wordmark b {
+  font-family: var(--font-display);
+  font-size: 0.938rem;
+  font-weight: 400;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+
+.meridian__wordmark span {
+  font-size: var(--t-micro);
+  letter-spacing: var(--track-caps);
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.meridian__spacer {
+  flex: 1;
+  border-right: 1px solid var(--line-faint);
+}
+
+.digest-run {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-family: var(--font-mono);
+  font-size: var(--t-small);
+  color: var(--ink-dim);
+}
+
+.digest-run .meridian__key {
+  margin-right: 0.25rem;
+}
+
+.meridian__clock {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 1.0625rem;
+  line-height: 1;
+  color: var(--ink-dim);
+}
+
+/* A running clock is inked; a held one is not. */
+.meridian__clock[data-live="true"] {
+  color: var(--ink-bright);
+}
+
+/* ---- Rail -------------------------------------------------------------- */
+
+.rail {
+  position: relative;
+  grid-area: rail;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-right: 1px solid var(--line);
+  background: var(--plate-fill);
+}
+
+.rail__nav {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: var(--s3) var(--s2);
+}
+
+.rail__item {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1.5rem minmax(0, 1fr);
+  align-items: center;
+  gap: var(--s3);
+  padding: var(--s2) var(--s2);
+  border: 0;
+  background: transparent;
+  color: var(--ink-dim);
+  text-align: left;
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--ease-survey), background var(--dur-fast) var(--ease-survey);
+}
+
+.rail__item::before {
+  content: "";
+  position: absolute;
+  inset-block: 0.375rem;
+  left: 0;
+  width: 2px;
+  background: var(--ink-bright);
+  transform: scaleY(0);
+  transform-origin: center;
+  transition: transform var(--dur) var(--ease-survey);
+}
+
+.rail__item:hover {
+  background: rgb(214 228 234 / 4%);
+  color: var(--ink);
+}
+
+.rail__item[aria-current="page"] {
+  background: rgb(214 228 234 / 7%);
+  color: var(--ink);
+}
+
+.rail__item[aria-current="page"]::before {
+  transform: scaleY(1);
+}
+
+.rail__index {
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  letter-spacing: 0.04em;
+  color: var(--ink-ghost);
+}
+
+.rail__item[aria-current="page"] .rail__index {
+  color: var(--ink);
+}
+
+.rail__label {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.rail__label b {
+  font-weight: 500;
+  font-size: var(--t-body);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rail__label span {
+  font-size: var(--t-micro);
+  letter-spacing: var(--track-wide);
+  color: var(--ink-ghost);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.shell[data-rail="collapsed"] .rail__item {
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: center;
+}
+
+.shell[data-rail="collapsed"] .rail__label,
+.shell[data-rail="collapsed"] .rail__register,
+.shell[data-rail="collapsed"] .rail__divider {
+  display: none;
+}
+
+.rail__divider {
+  height: 1px;
+  margin: var(--s2) var(--s3);
+  background: var(--line-faint);
+}
+
+.rail__register {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  contain: paint;
+  padding: 0 var(--s3) var(--s3);
+}
+
+.rail__capabilities {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-top: var(--s2);
+  font-size: var(--t-micro);
+  color: var(--ink-faint);
+}
+
+.rail__capabilities span {
+  color: var(--ink-ghost);
+}
+
+/* ---- Workspace --------------------------------------------------------- */
+
+.workspace {
+  grid-area: workspace;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scroll-behavior: smooth;
+  /* Bounds repaint to this box while scrolling, which matters most on builds
+     without layer compositing. */
+  contain: paint;
+}
+
+.workspace__inner {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
+  padding: var(--s5) var(--s5) var(--s10);
+  min-height: 100%;
+  /* Beyond this the grids stop adding density and just stretch each panel. */
+  max-width: 132rem;
+  margin-inline: auto;
+  width: 100%;
+}
+
+.area-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--s6);
+  padding-bottom: var(--s3);
+  border-bottom: 1px solid var(--line-faint);
+}
+
+.area-head__titles {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  min-width: 0;
+}
+
+.area-head__meta {
+  display: flex;
+  align-items: center;
+  gap: var(--s4);
+  flex-shrink: 0;
+}
+
+/* Grid helpers used by the areas. */
+.grid {
+  display: grid;
+  gap: var(--s4);
+}
+
+.grid--halves {
+  grid-template-columns: repeat(auto-fit, minmax(24rem, 1fr));
+}
+
+.grid--thirds {
+  grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
+}
+
+.grid--wide-left {
+  grid-template-columns: minmax(0, 1.7fr) minmax(17rem, 1fr);
+}
+
+.grid--wide-right {
+  grid-template-columns: minmax(17rem, 1fr) minmax(0, 1.7fr);
+}
+
+@media (width < 78rem) {
+  .grid--wide-left,
+  .grid--wide-right {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ---- Side panels: one head, one collapse control, one drag handle ------ */
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  height: 2.25rem;
+  padding-inline: var(--s2);
+  border-bottom: 1px solid var(--line-faint);
+  flex-shrink: 0;
+}
+
+.dock .panel-head {
+  justify-content: flex-start;
+}
+
+.rail .panel-head {
+  justify-content: space-between;
+}
+
+.shell[data-rail="collapsed"] .rail .panel-head,
+.shell[data-dock="collapsed"] .dock .panel-head {
+  justify-content: center;
+  padding-inline: 0;
+}
+
+/* The handle is a hairline until it is wanted. */
+.resizer {
+  position: absolute;
+  inset-block: 0;
+  width: 7px;
+  z-index: 10;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.resizer[data-edge="right"] {
+  right: -4px;
+}
+
+.resizer[data-edge="left"] {
+  left: -4px;
+}
+
+.resizer::after {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  left: 3px;
+  width: 1px;
+  background: transparent;
+  transition: background var(--dur-fast) var(--ease-survey);
+}
+
+.resizer:hover::after,
+.resizer:focus-visible::after,
+.resizer:active::after {
+  background: var(--ink-bright);
+}
+
+.resizer:focus-visible {
+  outline: none;
+}
+
+/* ---- Inspector dock ---------------------------------------------------- */
+
+.dock {
+  position: relative;
+  grid-area: dock;
+  width: var(--dock-width);
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--line);
+  background: var(--plate-fill);
+}
+
+.shell[data-dock="collapsed"] .dock {
+  width: 2.25rem;
+}
+
+.dock__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  contain: paint;
+  padding: var(--s3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+
+/* ---- Marginalia strip -------------------------------------------------- */
+
+.marginalia {
+  grid-area: marginalia;
+  display: flex;
+  align-items: center;
+  gap: var(--s4);
+  padding-inline: var(--s3);
+  border-top: 1px solid var(--line);
+  background: var(--plate-fill-solid);
+  font-size: var(--t-micro);
+  letter-spacing: var(--track-wide);
+  color: var(--ink-faint);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.marginalia__item {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+}
+
+.marginalia__item b {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  color: var(--ink-dim);
+}
+
+.marginalia__spacer {
+  flex: 1;
+}
+
+/* ---- Responsive reorganisation ---------------------------------------- */
+
+@media (width < 68rem) {
+  .shell {
+    grid-template-columns: var(--rail-width-collapsed) minmax(0, 1fr);
+    grid-template-areas:
+      "meridian meridian"
+      "rail workspace"
+      "marginalia marginalia";
+  }
+
+  .shell .rail__label,
+  .shell .rail__register {
+    display: none;
+  }
+
+  .shell .rail__item {
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: center;
+  }
+
+  .dock {
+    position: fixed;
+    inset-block: var(--meridian-height) var(--marginalia-height);
+    right: 0;
+    z-index: 40;
+    width: min(var(--dock-width), 88vw);
+  }
+}
+
+/* Reprioritise the bar as it narrows: identity yields before measurement, and measurement
+   yields before control. The transport is the last thing to lose space. */
+@media (width < 86rem) {
+  .meridian__wordmark {
+    display: none;
+  }
+}
+
+@media (width < 76rem) {
+  .meridian__cell--optional {
+    display: none;
+  }
+}
+
+@media (width < 60rem) {
+  .meridian__brand,
+  .meridian__locale {
+    display: none;
+  }
+
+  .workspace__inner {
+    padding: var(--s4) var(--s3) var(--s8);
+  }
+}

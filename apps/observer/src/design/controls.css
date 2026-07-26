@@ -1,0 +1,450 @@
+/* Causafera Observer — controls. Precise, drawn, survey-instrument character. */
+
+/*
+ * The standard control. Every interactive element in the chrome is one of these: the same
+ * height, the same frame, the same states. A group draws one frame around several of them.
+ */
+.control-group {
+  display: inline-flex;
+  align-items: stretch;
+  height: var(--control-h);
+  border: 1px solid var(--line);
+  background: rgb(4 5 6 / 55%);
+}
+
+.control {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  min-width: var(--control-h);
+  padding: 0 0.4375rem;
+  border: 0;
+  background: transparent;
+  color: var(--ink-dim);
+  font-size: var(--t-small);
+  letter-spacing: var(--track-wide);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--ease-survey), background var(--dur-fast) var(--ease-survey);
+}
+
+.control + .control {
+  border-left: 1px solid var(--line-faint);
+}
+
+.control:hover:not(:disabled) {
+  background: rgb(214 228 234 / 7%);
+  color: var(--ink);
+}
+
+.control:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.control[aria-pressed="true"],
+.control[data-active="true"] {
+  background: var(--ink-bright);
+  color: var(--paper-deep);
+}
+
+.control--wide {
+  min-width: 5rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.control--compact {
+  padding: 0 0.375rem;
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+}
+
+.control--field {
+  gap: 0.375rem;
+  cursor: text;
+}
+
+.control--field input {
+  width: 3rem;
+  border: 0;
+  background: transparent;
+  font-family: var(--font-mono);
+  font-size: var(--t-small);
+  color: var(--ink);
+  outline: none;
+}
+
+.control--field input::-webkit-outer-spin-button,
+.control--field input::-webkit-inner-spin-button {
+  appearance: none;
+  margin: 0;
+}
+
+.control__label {
+  font-size: var(--t-micro);
+  letter-spacing: var(--track-caps);
+  text-transform: uppercase;
+  color: var(--ink-ghost);
+}
+
+/* A control with no group around it, used in panel headers. */
+.control--quiet {
+  height: var(--control-h);
+  border: 1px solid transparent;
+}
+
+.control--quiet:hover {
+  border-color: var(--line);
+}
+
+
+.btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s2);
+  padding: 0.3125rem 0.75rem;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--ink-dim);
+  font-size: var(--t-small);
+  font-weight: 500;
+  letter-spacing: var(--track-wide);
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    color var(--dur-fast) var(--ease-survey),
+    border-color var(--dur-fast) var(--ease-survey),
+    background var(--dur-fast) var(--ease-survey);
+}
+
+.btn:hover:not(:disabled) {
+  color: var(--ink);
+  border-color: var(--line-bright);
+  background: rgb(214 228 234 / 5%);
+}
+
+.btn:active:not(:disabled) {
+  background: rgb(214 228 234 / 10%);
+}
+
+.btn:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
+.btn--primary {
+  border-color: var(--line-bright);
+  color: var(--ink);
+}
+
+.btn--primary:hover:not(:disabled) {
+  border-color: var(--ink-bright);
+  background: var(--ink-bright);
+  color: var(--paper-deep);
+}
+
+.btn--ghost {
+  border-color: transparent;
+  background: transparent;
+}
+
+.btn--ghost:hover:not(:disabled) {
+  border-color: var(--line);
+}
+
+.btn--icon {
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+}
+
+.btn--lg {
+  padding: 0.4375rem 0.875rem;
+  font-size: var(--t-body);
+}
+
+/* Transport cluster: the run control that survey work is paced by. */
+.transport {
+  display: flex;
+  align-items: center;
+  gap: var(--s1);
+  padding: 0.1875rem;
+  border: 1px solid var(--line);
+  background: rgb(4 5 6 / 55%);
+}
+
+.transport__run {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s2);
+  min-width: 5.25rem;
+  padding: 0.3125rem 0.625rem;
+  border: 1px solid var(--line-bright);
+  background: transparent;
+  color: var(--ink);
+  font-size: var(--t-small);
+  font-weight: 600;
+  letter-spacing: var(--track-wide);
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-survey);
+}
+
+.transport__run[data-running="true"] {
+  border-color: var(--ink-bright);
+  background: var(--ink-bright);
+  color: var(--paper-deep);
+}
+
+.transport__run:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Segmented control — batch size, locale, perspective. */
+.segmented {
+  display: inline-flex;
+  padding: 2px;
+  border: 1px solid var(--line);
+  background: rgb(4 5 6 / 55%);
+}
+
+.segmented__option {
+  padding: 0.1875rem 0.5rem;
+  border: 0;
+  background: transparent;
+  color: var(--ink-faint);
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--ease-survey), background var(--dur-fast) var(--ease-survey);
+}
+
+.segmented__option:hover {
+  color: var(--ink-dim);
+}
+
+.segmented__option[aria-pressed="true"],
+.segmented__option[aria-selected="true"] {
+  background: var(--ink-bright);
+  color: var(--paper-deep);
+}
+
+.segmented--text .segmented__option {
+  font-family: var(--font-ui);
+  font-size: var(--t-small);
+  letter-spacing: var(--track-wide);
+}
+
+/* Field input — seed entry and filters. */
+.input {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--line);
+  background: rgb(4 5 6 / 55%);
+}
+
+.input:focus-within {
+  border-color: var(--line-bright);
+}
+
+.input__label {
+  font-size: var(--t-micro);
+  letter-spacing: var(--track-caps);
+  text-transform: uppercase;
+  color: var(--ink-ghost);
+}
+
+.input input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  font-family: var(--font-mono);
+  font-size: var(--t-small);
+  color: var(--ink);
+  outline: none;
+}
+
+.input input::-webkit-outer-spin-button,
+.input input::-webkit-inner-spin-button {
+  appearance: none;
+  margin: 0;
+}
+
+.input--seed input {
+  width: 3.25rem;
+}
+
+/* Nested inside a transport cluster, the field borrows the cluster's frame. */
+.input--bare {
+  border: 0;
+  background: transparent;
+  padding-block: 0.1875rem;
+}
+
+.transport--reset {
+  gap: 0;
+}
+
+.input--search {
+  flex: 1;
+}
+
+/* Tabs — secondary navigation inside an area. */
+.tabs {
+  display: flex;
+  gap: var(--s1);
+  border-bottom: 1px solid var(--line-faint);
+}
+
+.tabs__tab {
+  position: relative;
+  padding: var(--s2) var(--s3);
+  border: 0;
+  background: transparent;
+  color: var(--ink-faint);
+  font-size: var(--t-small);
+  letter-spacing: var(--track-wide);
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--ease-survey);
+}
+
+.tabs__tab::after {
+  content: "";
+  position: absolute;
+  inset-inline: var(--s2);
+  bottom: -1px;
+  height: 1px;
+  background: var(--ink-bright);
+  transform: scaleX(0);
+  transition: transform var(--dur) var(--ease-survey);
+}
+
+.tabs__tab:hover {
+  color: var(--ink-dim);
+}
+
+.tabs__tab[aria-selected="true"] {
+  color: var(--ink);
+}
+
+.tabs__tab[aria-selected="true"]::after {
+  transform: scaleX(1);
+}
+
+/* Row selection — a coordinate lock rather than a filled highlight. */
+.selectable {
+  position: relative;
+  cursor: pointer;
+}
+
+.selectable::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: 1px solid transparent;
+  pointer-events: none;
+  transition: border-color var(--dur-fast) var(--ease-survey);
+}
+
+.selectable:hover::before {
+  border-color: var(--line);
+}
+
+.selectable[aria-selected="true"]::before,
+.selectable[data-selected="true"]::before {
+  border-color: var(--line-bright);
+}
+
+/* Command palette. */
+.palette-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  justify-items: center;
+  align-content: start;
+  padding-top: 12vh;
+  background: rgb(4 5 6 / 82%);
+}
+
+.palette {
+  width: min(38rem, 92vw);
+  border: 1px solid var(--line-strong);
+  background: var(--paper-overlay);
+  overflow: hidden;
+}
+
+.palette__field {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  padding: var(--s3);
+  border-bottom: 1px solid var(--line-faint);
+}
+
+.palette__field input {
+  flex: 1;
+  border: 0;
+  background: transparent;
+  font-size: var(--t-lead);
+  color: var(--ink);
+  outline: none;
+}
+
+.palette__list {
+  max-height: 22rem;
+  overflow-y: auto;
+  padding: var(--s2);
+}
+
+.palette__item {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  width: 100%;
+  padding: var(--s2) var(--s3);
+  border: 0;
+  border-left: 2px solid transparent;
+  background: transparent;
+  color: var(--ink-dim);
+  text-align: left;
+  cursor: pointer;
+}
+
+.palette__item[data-active="true"] {
+  border-left-color: var(--ink-bright);
+  background: rgb(214 228 234 / 6%);
+  color: var(--ink);
+}
+
+.palette__item b {
+  font-weight: 500;
+}
+
+.palette__group {
+  padding: var(--s2) var(--s3) var(--s1);
+}
+
+.kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.25rem;
+  padding: 0.0625rem 0.25rem;
+  border: 1px solid var(--line);
+  border-bottom-width: 2px;
+  background: transparent;
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  color: var(--ink-faint);
+}

@@ -13,6 +13,8 @@
 **/node_modules/
 **/dist/
 apps/observer/src-tauri/gen/
+# Captured observer protocol bytes for the development replay channel and render smoke check.
+apps/observer/dev/replay/
 /.pnpm-store
 .cache/
 coverage/
