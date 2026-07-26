@@ -749,6 +749,21 @@
 **Decision status after `TODO-RUNTIME-002`:** Both halves of this decision now rest on measurements taken against a nearly empty field, and the field is no longer nearly empty. The blocking condition is gone — seeds now produce different worlds, so multi-seed validation is possible — but the cost side has moved sharply against a finer lattice. Measured in `plans/terrain-carrier-participation.md` with terrain standing, extent 6 costs 9.050 ms per tick against 2.563 ms with terrain inert, and extent 12 costs 45.386 ms against 6.788 ms. The cause is not the carrier, whose own overhead is single-digit percent at the default lattice: terrain populates cells that were previously dead, and the runtime commits one causal event per changed mana cell per tick, so a finer lattice now prices a genuinely live volume rather than a mostly empty one. The convergence and local-error measurements below were also taken on the old, contact-only field and should be re-taken before the extent is changed
 **Evidence:** `apps/observer/src-tauri/examples/extent_bench.rs`, re-measured on seed 7 at 192 ticks after `TODO-MANA-002`. Total mana rises with the lattice and is flat from extent 12 (34 667, 36 950, 38 017, 38 397, 38 397) while extent 3 gives 32 320 — 15.8% low. Separately, the same tool measures the plan-view column field the map draws. Extent 4 gives 78% more columns at full coverage for 57% more tick cost; extent 6 quadruples detail at 88.9% coverage; extent 16 leaves 17.4% coverage at ten times the tick cost. Open question: the smallest non-zero cell falls from 66 at extent 3 to 1 from extent 6 upward, so at fine lattices part of the field sits at the quantisation floor and integer flooring does start to bite
 
+## TODO-MANA-005: Cross-Chunk Seam Mana Changes Without Causal Ancestry
+**Status:** Pending
+**Phase:** Detailed Development — Mana
+**Priority:** High
+**Dependencies:** TODO-MANA-002
+**Goal:** Give every committed mana cell change a cause, so no authoritative mana state can appear without causal ancestry
+**Acceptance Criteria:** No committed mana event has an empty cause list in any configuration; the seam test asserts provenance and not only intensity
+**Performance Requirements:** None beyond the existing per-tick mana cost; this adds anchors, not work
+**Determinism Requirements:** Closing the gap changes the committed events and therefore every physical digest by construction; the change ships with regenerated replay evidence
+**Ontology Implications:** A mana cell that changed for no recorded reason is authoritative state without provenance, which is the one thing the field model's proposal/commit boundary exists to prevent
+**Observer Implications:** None; the affected cells are already projected, only their anchors are missing
+**Explanation Implications:** Blocks any general claim that a mana change is attributable to the carrier that drove it. `plans/terrain-carrier-participation.md` had to narrow its Explanation section for exactly this reason
+**Out of Scope:** Changing diffusion, decay, the stencil, response parameters, or the gate model
+**Evidence:** `apply_boundary_exchange` passes `[Option<TraceId>; 2]` built only from the two participants' `last_change`, and `apply_exchange_delta` flattens it, so a seam cell whose participants both lack a `last_change` yields a nonzero `ManaCellChange` with an empty `causes`. `ManaRuntimeSystem::execute` commits it as an ordinary mana event. Measured over 24 ticks with four actors and a bootstrap population of 64: zero causeless mana events at `active_chunk_radius` 0 (one chunk, no seams), three at radius 1 with the terrain carrier inert and four with it standing — so the gap is the cross-chunk seam, not terrain, which neither introduces nor materially amplifies it. The seam test `a_seam_conducts_exactly_as_the_interior_does` (`crates/causafera-domains/src/mana.rs`) exercises the state but asserts intensity only. `causafera-domains` is untouched by `TODO-RUNTIME-002`; this predates it
+
 ## TODO-MANA-003: Isotropic Diffusion Kernel
 **Status:** Completed
 **Phase:** Detailed Development — Mana
@@ -865,7 +880,7 @@ capability.
 **Dependencies:** TODO-RUNTIME-001
 **Goal:** Make the world seed reach the running simulation, so two seeds produce two different worlds rather than one world with two terrains
 **Acceptance Criteria:** Different `RuntimeConfig::new(seed)` values produce different physical state digests, mana fields and behavioural counts after the same tick count; the terrain carrier's samples participate in the tick loop or the reason they do not is recorded as a deliberate contract
-**Performance Requirements:** Measured against the current tick cost; the terrain carrier emits one sample per cell per active chunk, which is 1024 per chunk
+**Performance Requirements:** Measured against the current tick cost. Stated when the carrier's only emission shape was one sample per cell per active chunk, which is 1024 per chunk; the delivered contract projects onto the mana lattice instead and emits `chunk_extent²` per chunk, which is 9 at the default. That is a change of emission shape, not a relaxation of the measurement requirement — see the measured cost under Evidence
 **Determinism Requirements:** Unchanged — the same seed must still reproduce identically; this is about different seeds differing, not about the same seed varying
 **Ontology Implications:** Terrain is authoritative world state. A carrier that is generated, persisted and projected but never causally consumed is world content that exists without participating
 **Observer Implications:** Every measurement taken on "seed 7" is currently a measurement of the only world there is
