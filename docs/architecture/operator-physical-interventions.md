@@ -108,9 +108,13 @@ scale. See [Mana topology](../world/mana-topology.md).
 
 Mana is World Ground Truth when represented in authoritative state, never engine Meta Truth,
 archive, operator intent, administrator command system, semantic oracle, or LLM layer. It reacts
-only through represented carriers. Today the concrete carrier is a changed chart-qualified
-material-surface condition/contact pattern; the wider field model allows represented structure,
-geometry, repetition, timing, spatial organization, and physical signals. It never receives
+only through represented carriers. Today there are two concrete carriers, and the difference between
+them matters: a changed chart-qualified material-surface condition/contact pattern, which emits
+because something happened, and the standing terrain structure of each active chunk, which emits
+because something is there. Neither is an operator channel — the second is the world's own relief
+and surface material, projected onto the mana lattice. The wider field model allows represented
+structure, geometry, repetition, timing, spatial organization, and physical signals; terrain is the
+geometric producer of that list. See `plans/terrain-carrier-participation.md`. It never receives
 temple, worship, sincerity, priest, sacrifice, or divine-intent facts. A world may call repeated
 movement plus persistent geometry/material arrangement/acoustic frequency a ritual, but mana reacts
 only to represented carriers.

@@ -44,7 +44,9 @@ See `RFC-ISEKAI-001: Cross-World Transfer Model`.
 
 RFC-MANA-001 now settles the Phase 17 minimum: a bounded fixed-point scalar field responds to opaque physical fingerprints through recurrence, regular intervals, synchronization, repeated coordinates, magnitude, diffusion, decay, and saturation. Evolution is proposal-only and every committed changed cell requires causal provenance.
 
-The final field physics remain open. Vector state, explicit phase/interference, cross-chunk exchange, hysteresis, field-to-matter effects, concrete carrier adapters, sparse/multi-resolution layouts, acceleration, and empirical parameter selection are deferred. Stateful attractors remain a separate metaphysical research hypothesis.
+The final field physics remain open. Vector state, explicit phase/interference, cross-chart transport, sparse/multi-resolution layouts, acceleration, and empirical parameter selection are deferred. Stateful attractors remain a separate metaphysical research hypothesis.
+
+Four items this list previously deferred are now implemented and are no longer open questions: same-chart cross-chunk exchange, threshold/hysteresis field-to-matter effects, and two concrete carrier adapters — the change-driven material surface and the standing terrain structure. What replaced the question is a narrower one: a cross-chunk seam cell can still commit a change with no causal ancestry (`TODO-MANA-005`), and the response constants were calibrated against a field that no carrier populated (`TODO-MANA-004`).
 
 See `RFC-MANA-001: Minimal Information-Sensitive Field Model`.
 
