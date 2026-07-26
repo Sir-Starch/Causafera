@@ -59,6 +59,93 @@ fn mana_total_for_samples(samples: &[PhysicalPatternSample]) -> i64 {
         .sum()
 }
 
+/// A group of columns sharing one fingerprint, as a standing carrier presents
+/// them: all at one tick, with no history behind them.
+fn standing_group(tick: u64) -> Vec<PhysicalPatternSample> {
+    (0..4)
+        .map(|ordinal| PhysicalPatternSample {
+            chunk: test_chunk(),
+            pattern: PhysicalPatternId::new(42),
+            position: LocalCoord::new(ordinal as u8 % 3, ordinal as u8 / 3, 0),
+            observed_at: SimulationTime::new(tick),
+            magnitude: 100,
+            source_ordinal: ordinal,
+            cause: TraceId::new(1),
+        })
+        .collect()
+}
+
+fn mana_total_at(tick: u64, history: &[PhysicalPatternSample]) -> i64 {
+    ManaField::new(ManaFieldId::new(1), test_chunk(), 3)
+        .unwrap()
+        .propose_evolution(
+            SimulationTime::new(tick),
+            RuntimeConfig::new(55).mana_parameters,
+            &standing_group(tick),
+            history,
+            OpenNeighbors::none(),
+        )
+        .unwrap()
+        .proposed_intensity()
+        .iter()
+        .copied()
+        .sum()
+}
+
+#[test]
+fn a_standing_carrier_is_never_paid_for_being_re_read() {
+    // Given: the same emission read at three widely separated ticks. This is the
+    // whole reason terrain is kept out of `PhysicalPatternHistory`, so it is
+    // asserted rather than argued.
+
+    // Then: the response is exactly invariant to when, and how often, the
+    // carrier is read. Nothing about the schedule can accumulate.
+    assert_eq!(mana_total_at(1, &[]), 492);
+    assert_eq!(mana_total_at(5, &[]), 492);
+    assert_eq!(mana_total_at(50, &[]), 492);
+
+    // And: retaining the same standing emission in history instead would let the
+    // recurrence and periodicity channels accumulate over the window, scoring
+    // the read cadence rather than the world. That is the measured difference
+    // the exclusion buys.
+    let retained = (1..=8).flat_map(standing_group).collect::<Vec<_>>();
+    assert_eq!(mana_total_at(9, &retained), 3_564);
+}
+
+#[test]
+fn a_standing_carrier_earns_no_credit_for_regular_timing() {
+    // Given: the response constants zeroed one at a time.
+    let response = |adjust: fn(&mut causafera_domains::ManaParameters)| {
+        let mut parameters = RuntimeConfig::new(55).mana_parameters;
+        adjust(&mut parameters);
+        ManaField::new(ManaFieldId::new(1), test_chunk(), 3)
+            .unwrap()
+            .propose_evolution(
+                SimulationTime::new(1),
+                parameters,
+                &standing_group(1),
+                &[],
+                OpenNeighbors::none(),
+            )
+            .unwrap()
+            .proposed_intensity()
+            .iter()
+            .copied()
+            .sum::<i64>()
+    };
+
+    // Then: recurrence, synchronisation and spatial repetition each carry part
+    // of the response, and periodicity carries none of it — a single occupied
+    // tick supplies no intervals to be regular. Recurrence is included because
+    // RFC-MANA-001 counts additional occurrences of a fingerprint without
+    // requiring distinct ticks; synchronisation is its same-tick specialisation.
+    assert_eq!(response(|_| {}), 492);
+    assert_eq!(response(|p| p.recurrence_response = 0), 340);
+    assert_eq!(response(|p| p.synchrony_response = 0), 340);
+    assert_eq!(response(|p| p.spatial_response = 0), 340);
+    assert_eq!(response(|p| p.periodicity_response = 0), 492);
+}
+
 #[test]
 fn terrain_carrier_produces_different_mana_response() {
     let adapter = TerrainCarrierAdapter::new(

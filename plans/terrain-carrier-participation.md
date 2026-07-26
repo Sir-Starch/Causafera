@@ -123,13 +123,16 @@ specialisation of it. Same-tick co-occurrence therefore scores on both, for ever
 accepted model. An earlier draft of this section said terrain earns synchronisation and spatial
 credit only; that was wrong about which channels fire, and is corrected here.
 
-What matters is that none of it is credit for being re-read, and that is measurable rather than
-argued. Four columns sharing a fingerprint, emitted with no history, inject 492 whether the emission
-is read at tick 1, tick 5 or tick 50: the response is exactly invariant to the read cadence. The
-same emission with eight ticks of retained history injects 3564, a factor of 7.2 — that difference
-is precisely what excluding terrain from the history buys. Zeroing each response constant in turn
-puts 492 at 340 for recurrence, synchronisation and spatial alike and leaves it at 492 for
-periodicity, so a standing structure earns nothing at all from regular timing.
+What matters is that none of it is credit for being re-read, and that is asserted rather than argued:
+`a_standing_carrier_is_never_paid_for_being_re_read` and
+`a_standing_carrier_earns_no_credit_for_regular_timing` hold the numbers below as committed tests.
+
+Four columns sharing a fingerprint, emitted with no history, inject 492 whether the emission is read
+at tick 1, tick 5 or tick 50 — the response is exactly invariant to the read cadence. The same
+emission with eight ticks of retained history injects 3564, a factor of 7.2, which is precisely what
+excluding terrain from the history buys. Zeroing each response constant in turn puts 492 at 340 for
+recurrence, synchronisation and spatial alike and leaves it at 492 for periodicity, so a standing
+structure earns nothing at all from regular timing.
 
 ### The carrier presents its structure at the field's own lattice
 
@@ -305,8 +308,10 @@ claim one. `apply_exchange_delta` in `causafera-domains` propagates only `last_c
 cross-chunk seam cell whose two participants both lack a `last_change` produces a nonzero
 `ManaCellChange` with an empty cause list, which the runtime commits as an ordinary mana event.
 Measured: zero such events with a single active chunk, three to four with three, under `Standing`
-and `Inert` alike. The gap is in the boundary exchange, predates this work — `causafera-domains` is
-untouched across this whole range — and is not amplified in kind by terrain. It is recorded as
+and `Inert` alike. The gap is in the boundary exchange and predates this work: `causafera-domains` is
+untouched across this whole range, and the defect appears with the carrier inert. What that shows is
+that terrain is not the source of the mechanism; it does not establish a bound on how often the
+standing path reaches it, and this plan claims none. It is recorded as
 `TODO-MANA-005` rather than fixed here, because closing it changes the committed events and
 therefore every digest of every world, which needs its own plan. No claim schema changes.
 
