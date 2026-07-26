@@ -733,10 +733,10 @@
 **Evidence:** `apps/observer/src-tauri/examples/terrain_probe.rs` measures 6.5% same-material neighbours against 6.2% expected from chance over 16 materials
 
 ## TODO-MANA-004: Mana Field Lattice Cost Decision
-**Status:** Pending
+**Status:** Blocked — the decision is `chunk_extent` 6, held until `TODO-RUNTIME-002` makes multi-seed validation possible
 **Phase:** Detailed Development — Mana
 **Priority:** Medium
-**Dependencies:** TODO-OBS-001
+**Dependencies:** TODO-OBS-001, TODO-RUNTIME-002
 **Goal:** Decide whether the mana field should run at a finer lattice than `chunk_extent` 3, on measured evidence. The accuracy argument leads: the default lattice underestimates total mana by 15.8% against the value the finer lattices converge on
 **Acceptance Criteria:** A decision recorded either way with its reasoning, against the measurements already taken in `plans/observer-field-raster-map.md`; if the extent rises, regenerated fixtures and replay evidence ship with it
 **Performance Requirements:** The mana volume grows with the cube of the extent — 3 to 8 is a factor of nineteen, 3 to 32 a factor of 1214 — so no extent change is accepted without measurements
@@ -745,6 +745,7 @@
 **Observer Implications:** The map's mana lens reports `preview` while the lattice needs upsampling and `observed` when it does not, so a finer lattice improves the map with no frontend change
 **Explanation Implications:** A finer lattice gives mana claims finer spatial evidence
 **Out of Scope:** Changing mana propagation rules, response parameters, or the gate model
+**Decision:** `chunk_extent` 6 as the production default, 8 as a reference/high-fidelity profile, 3 and 4 for fast tests only. Extent 6 reaches 98.1% of the value the lattice converges to, against 89.9% at the current default, and cuts neighbour variation from 0.73 to 0.29, for 94% more tick cost; the remaining 1.9 points cost a further 31% of tick time and 2.37x the cells. Not yet applied: the change was conditioned on validating across several seeds and confirming no behavioural threshold moves, and `TODO-RUNTIME-002` shows the seed does not vary the simulation at all, so that validation cannot be performed today. `extent_decision.rs` does show the local error falling with the lattice — against the extent 12 reference, the plan-view absolute error is 126.7%, 113.2% and 77.5% at extents 3, 4 and 6, and the shape error 66.2%, 58.7% and 39.6% — and that gate crossings, surface transitions, actions and population are identical at every extent, so no behavioural threshold moves on the one world that currently exists
 **Evidence:** `apps/observer/src-tauri/examples/extent_bench.rs`, re-measured on seed 7 at 192 ticks after `TODO-MANA-002`. Total mana rises with the lattice and is flat from extent 12 (34 667, 36 950, 38 017, 38 397, 38 397) while extent 3 gives 32 320 — 15.8% low. Separately, the same tool measures the plan-view column field the map draws. Extent 4 gives 78% more columns at full coverage for 57% more tick cost; extent 6 quadruples detail at 88.9% coverage; extent 16 leaves 17.4% coverage at ten times the tick cost. Open question: the smallest non-zero cell falls from 66 at extent 3 to 1 from extent 6 upward, so at fine lattices part of the field sits at the quantisation floor and integer flooring does start to bite
 
 ## TODO-MANA-003: Isotropic Diffusion Kernel
@@ -855,6 +856,21 @@ gate history, and contact-aware condition history are verified.
 and its integration tests exercise the production runtime path rather than fixture construction.
 This does not yet establish fixture elimination or production-bootstrap coverage for every runtime
 capability.
+
+## TODO-RUNTIME-002: The World Seed Does Not Vary the Simulation
+**Status:** Pending
+**Phase:** Detailed Development — Runtime
+**Priority:** Critical
+**Dependencies:** TODO-RUNTIME-001
+**Goal:** Make the world seed reach the running simulation, so two seeds produce two different worlds rather than one world with two terrains
+**Acceptance Criteria:** Different `RuntimeConfig::new(seed)` values produce different physical state digests, mana fields and behavioural counts after the same tick count; the terrain carrier's samples participate in the tick loop or the reason they do not is recorded as a deliberate contract
+**Performance Requirements:** Measured against the current tick cost; the terrain carrier emits one sample per cell per active chunk, which is 1024 per chunk
+**Determinism Requirements:** Unchanged — the same seed must still reproduce identically; this is about different seeds differing, not about the same seed varying
+**Ontology Implications:** Terrain is authoritative world state. A carrier that is generated, persisted and projected but never causally consumed is world content that exists without participating
+**Observer Implications:** Every measurement taken on "seed 7" is currently a measurement of the only world there is
+**Explanation Implications:** No terrain fact can appear in a causal explanation while terrain feeds nothing
+**Out of Scope:** Changing terrain generation, adding new carriers, cross-chart transport
+**Evidence:** `apps/observer/src-tauri/examples/extent_decision.rs` reports byte-identical totals, gate crossings, action counts and populations across seeds 7, 11, 23, 41, 59 and 97, and the physical state digest is identical across seeds after 48 ticks. Terrain itself does vary — `deterministic_terrain_chunk` gives different elevations and 815 against 805 distinct patterns for seeds 7 and 11 — but `PhysicalPatternSystem::execute` fills `pending_samples` only from `MaterialSurfaceCarrierAdapter`, so `TerrainCarrierAdapter::emit_samples` is never called in the tick loop. `carrier_adapters` is read only by bootstrap, resolution relevance and the snapshot export. The seed reaches terrain and terrain reaches nothing
 
 ## TODO-OBSERVER-003: Bounded Causal and Domain Inspection
 **Status:** In Progress
