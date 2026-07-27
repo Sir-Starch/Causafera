@@ -794,3 +794,34 @@ stages, which record completed implementation, not the existence of this Draft):
   changed-workload variation rather than a regression signal.
   The `MAX_SCENE_CUES` backstop is unchanged and still fails closed, covered by
   `cognition_still_rejects_a_batch_over_the_cue_cap`.
+
+- **Wave 3 (incremental `history_digest`), checkpoint `8020008`:**
+  `crates/causafera-runtime/src/digests.rs` (`HistoryDigestPrefix`, `write_trace_event`, `Clone`/
+  `Copy` on `CanonicalDigest`), `crates/causafera-runtime/src/runtime.rs` (the resumable
+  `history_digest`, the retained `history_digest_full_rescan` oracle, the extracted
+  `write_history_digest_tail`, the `history_digest_prefix` field, and three differential tests),
+  `crates/causafera-runtime/src/benchmark.rs` and `snapshot_sections.rs` (`&mut` receivers),
+  `CHANGELOG.md`, `docs/development/todo-backlog.md`, `docs/ontology/domain-coverage-matrix.md`,
+  `docs/simulation/long-run-experiments.md`, and this plan.
+  Verified: `cargo test --release --workspace` (zero failures),
+  `cargo test --release --workspace -- --ignored` (zero failures), `cargo fmt --all -- --check`,
+  `cargo clippy --release --workspace --all-targets -- -D warnings` (all clean). **No pinned digest
+  value in any existing test needed re-pointing**, which is corroborating evidence for bit-identity
+  beyond the oracle itself.
+  The oracle covers 48 consecutive ticks (asserting each committed events, so a degenerate run
+  cannot pass vacuously), repeated observer polls interleaved with ticks, and export/import/resume
+  including the digest `assemble_envelope` writes into the snapshot header — that last one because a
+  wrong prefix would otherwise be recorded into every exported snapshot rather than merely failing a
+  test. Its teeth were confirmed by injecting an off-by-one into the absorbed count: all three tests
+  fail, and reverting restores them.
+  Re-ran `digest-cost` against Wave 2's numbers, 64 measured ticks per case (mean, N=20):
+  `baseline_batch0` 21.9 ms → 13.0 ms, `baseline_batch7` 147.2 ms → 22.4 ms, `chunk_extent_8`
+  151.6 ms → 90.8 ms, `chunk_extent_16` 736.0 ms → 468.2 ms, `radius_1_area` 114.2 ms → 61.4 ms,
+  `radius_4_area` 942.1 ms → 549.9 ms. The load-bearing figure is `total_tick_ns`, quoted above: the
+  harness's separate `history_digest_ns` column drops to roughly 0.2 µs, which is **expected and not
+  the claim** — every tick has already absorbed, so a post-loop call finds nothing to do and is
+  measuring an up-to-date accumulator rather than measuring nothing. The clearest single reading is
+  the run-length penalty, `baseline_batch7` against `baseline_batch0`: 6.7x before, 1.7x after, with
+  the residual attributable to `physical_state_digest`, which this wave deliberately leaves alone
+  (its own column is unchanged within noise: 97-99 µs and 125 µs on those two cases before and
+  after).
