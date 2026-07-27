@@ -496,6 +496,10 @@ inconsistent with what actually landed.
 ## Verification
 
 - `cargo test --release --workspace` after each wave, zero failures.
+- `cargo test --release --workspace -- --ignored` after any wave that changes what a configuration
+  admits or how a tick is computed. The default suite skips these, but `.github/workflows/benchmarks.yml`
+  runs exactly this command, and the long-run tests it covers are the ones most likely to use a wide
+  or long-running configuration a change like Wave 2's would newly reject.
 - `cargo fmt --all -- --check` and `cargo clippy --release --workspace --all-targets -- -D warnings`
   after each wave.
 - Wave 3: the differential oracle test is required and is the primary verification, not optional.
@@ -571,10 +575,14 @@ None.
   2 or more no longer admit 8 actors on 2 sensors, and radius 4 admits no sensors at all while
   material-surface signals are enabled, because 81 surfaces alone exceed the 64-cue cap. This is the
   price of a sound worst-case bound and it is charged to real work: this plan's own Wave 1
-  `radius_4_area` measurement case had to move to `material_surface_signals_enabled = false`, and
-  `plans/observer-field-raster-map.md` — which proposes config-gated `Area` charts — will need fewer
-  sensors, fewer actors, or its own decision about the surface-signal term. Flagged rather than
-  silently absorbed.
+  `radius_4_area` measurement case had to move to `material_surface_signals_enabled = false`.
+  Checked, not merely flagged: no shipped caller varies `active_chunk_radius`. `session_config` in
+  `apps/observer/src-tauri/src/session.rs` takes only a seed and sets `active_chunk_shape = Area` at
+  the default radius 1 (nine chunks, worst case 34), and no Tauri command or frontend path reaches
+  the field at all, so the observer app is unaffected. The one affected consumer is
+  `plans/observer-field-raster-map.md`, a Draft proposing config-gated `Area` charts, which will need
+  fewer sensors, fewer actors, or its own decision about the surface-signal term before it widens the
+  radius.
 - Wave 2's bound depends on two facts in `causafera-perception` that no test in that crate is
   currently written to protect: `acquire_signals` discarding signals whose `time` differs from the
   acquisition's, and `is_later_sample` requiring a strictly increasing time. Together they make the
@@ -746,8 +754,11 @@ stages, which record completed implementation, not the existence of this Draft):
   digest-cost case adjusted), `CHANGELOG.md`, `docs/development/todo-backlog.md`,
   `docs/ontology/domain-coverage-matrix.md`, and this plan.
   Verified: `cargo test --release --workspace` (66 result blocks, zero failures),
-  `cargo fmt --all -- --check`, `cargo clippy --release --workspace --all-targets -- -D warnings`
-  (all clean). No pre-existing test needed re-pointing.
+  `cargo test --release --workspace -- --ignored` (the command CI runs; four long-run tests,
+  including `runtime_executes_a_long_causal_run_without_errors`, all pass — none used a
+  configuration the new bound rejects), `cargo fmt --all -- --check`, and
+  `cargo clippy --release --workspace --all-targets -- -D warnings` (all clean). No pre-existing
+  test needed re-pointing.
   The bound is `sensor_count * (actor_count + active_chunk_count)`, derived in the Decision log.
   Re-ran all three harness modes against it. `boundary-sweep` now reports the validation boundary and
   additionally asserts that every accepted configuration ticks: it first rejects at `actor_count`
@@ -760,6 +771,9 @@ stages, which record completed implementation, not the existence of this Draft):
   contact. `digest-cost` is unchanged for five of six cases; `radius_4_area` moved to
   `material_surface_signals_enabled = false` to stay constructible and re-measured at 942 ms mean
   against the 916 ms Wave 1 recorded with surface signals enabled, so that row is no longer directly
-  comparable to Wave 1's and is labelled in the harness's own table.
+  comparable to Wave 1's and is labelled in the harness's own table. The 26 ms is not a finding and
+  must not be read as one: turning surface signals off removes perception work, so a slower mean is
+  the opposite of what the change would cause, and the delta is ordinary run-to-run and
+  changed-workload variation rather than a regression signal.
   The `MAX_SCENE_CUES` backstop is unchanged and still fails closed, covered by
   `cognition_still_rejects_a_batch_over_the_cue_cap`.
