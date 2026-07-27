@@ -47,7 +47,7 @@ jobs:
         if: steps.filter.outputs.rust == 'true'
       - run: pnpm build
         if: steps.filter.outputs.rust == 'true'
-      - uses: dtolnay/rust-toolchain@8641a17e25bf5b40c118d48fe0f81e8655731839 # 1.85.0
+      - uses: dtolnay/rust-toolchain@46511b1c83438f0dd37c02d843619ece5a4abb5b # 1.97.1
         if: steps.filter.outputs.rust == 'true'
       - name: Install Tauri OS dependencies
         if: steps.filter.outputs.rust == 'true'
