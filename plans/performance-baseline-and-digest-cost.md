@@ -1,10 +1,9 @@
 # Performance Baseline and Digest Cost ExecPlan
 
-**Status:** Accepted; Waves 1-2 implemented (see Progress). Waves 3-5 not started; Wave 3
-specifically requires care given it touches determinism-critical digest computation (INV-007,
-INV-038) and needs the differential oracle test described in its own section before landing.
-**Revision 5**, incorporating three independent review passes that corrected several claims in
-earlier drafts, plus what implementing Waves 1-2 established — see Decision log for what changed and
+**Status:** Accepted; Waves 1-3 implemented (see Progress), including the differential oracle test
+Wave 3's INV-007/INV-038 sensitivity required. Waves 4-5 not started.
+**Revision 6**, incorporating three independent review passes that corrected several claims in
+earlier drafts, plus what implementing Waves 1-3 established — see Decision log for what changed and
 why across all revisions.
 
 ## Goal
@@ -704,6 +703,24 @@ evidence.
 - **Wave 2 — bounded against both cognition caps, not only `MAX_SCENE_CUES`.**
   `MAX_ATTENTION_CANDIDATES` is checked first, inside `Attention::update`, and both are 64;
   `MAX_RUNNABLE_SCENE_CUES` takes the smaller so the bound stays correct if they ever diverge.
+- **Wave 3 — proved the resume sound from the trace store's mutation surface, not from INV-014's
+  intent.** `commit_batch` is `CausalTraceStore`'s only `&mut self` method; it only pushes, and no
+  truncate/clear/pop/remove/drain/retain exists in the crate, so an absorbed event's bytes can never
+  change. The one back-patched field is `children` (`commit_batch` appends to an already-committed
+  parent's entry), which `history_digest` does not read — recorded as an explicit precondition on
+  `HistoryDigestPrefix` and `write_trace_event`, since adding it later would silently break resume
+  with no test failing.
+- **Wave 3 — rejected adding an `iter_from` accessor to `causafera-core`.** An earlier sketch added
+  one to avoid `Iterator::skip` walking already-absorbed indices. The walk only constructs
+  `CausalEventRef`s (a few slice reads each) against the `mix64` rounds per word it replaces, and
+  widening a second crate's public API on the wave that touches INV-007 buys risk for an unmeasured
+  gain. `skip` is used instead; if it ever shows up in the harness, `iter_from` can be added with a
+  number behind it.
+- **Wave 3 — kept the full-rescan oracle compiled into normal builds** (`#[doc(hidden)] pub`) rather
+  than behind `#[cfg(test)]`, so integration tests can reach it too, not only in-crate unit tests.
+- **Wave 3 — verified the oracle can fail.** An off-by-one injected into the absorbed count makes all
+  three differential tests fail; reverting restores them. A differential test that has never been
+  observed failing is not evidence.
 - Rejected proposing scheduler parallelization, SoA conversion, or CUDA work: no measurement shows
   phase-dispatch overhead as a bottleneck at any config this runtime can currently execute.
 - Rejected proposing CI regression gating in this plan: a threshold set before any historical data

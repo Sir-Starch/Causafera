@@ -71,13 +71,18 @@ to 125.7 ms across the same span) with a smaller contribution from `physical_sta
 unbounded thermal-receipt growth (4.8 ms to 7.7 ms) — a long-run experiment's cost is not currently
 constant per tick, it grows over the run's own length, and by more than one mechanism.
 
-The plan proposes making only `history_digest`'s trace-event scan incremental, without a schema
-change: that input is written first in the digest sequence, with nothing but cheap bounded content
-after it, so a running accumulator can be resumed and a small bounded tail appended each tick.
+`history_digest`'s trace-event scan is now incremental, with no schema change: that input is written
+first in the digest sequence, with nothing but cheap bounded content after it, so a running
+accumulator is resumed and a small bounded tail appended on each call. The digest's value is
+unchanged, asserted against a retained full-rescan reference across ticks, repeated observer polls,
+and snapshot export/import/resume. Measured at the same fixed workloads: 64 ticks that cost 147 ms
+after seven warm-up batches now cost 22 ms, and the run-length penalty those batches represent falls
+from 6.7x to 1.7x — what remains of it is the second mechanism below, not this one.
 `physical_state_digest`'s thermal-receipt growth is measured and real but is **not** fixed by that
-plan: the unbounded maps sit in the *middle* of its write sequence, with further arbitrarily-mutable
-current-tick state written after them, so the same technique does not apply without reordering the
-write sequence — which would itself change the digest's output and require a deliberate schema
+plan, and remains present: the unbounded maps sit in the *middle* of its write sequence, with further
+arbitrarily-mutable current-tick state written after them, so the same technique does not apply
+without reordering the write sequence — which would itself change the digest's output and require a
+deliberate schema
 migration this plan does not attempt. It is recorded as an open follow-up (retention/compaction of
 thermal receipts, a reordered-and-versioned digest, or a composable digest primitive) rather than
 closed by that plan.

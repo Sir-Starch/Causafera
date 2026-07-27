@@ -148,7 +148,7 @@ pub struct DigestCostSample {
 /// isolation from the rest of `RuntimeState::snapshot`. Same-crate access to both `pub(crate)`
 /// functions is exactly why this lives in `benchmark.rs` rather than a standalone example crate.
 pub fn measure_digest_cost(runtime: &Runtime) -> Result<DigestCostSample, RuntimeError> {
-    let state = runtime
+    let mut state = runtime
         .state
         .lock()
         .map_err(|_| RuntimeError::StatePoisoned)?;

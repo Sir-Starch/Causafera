@@ -1089,8 +1089,12 @@ the smaller cost. Only `history_digest`'s growth is fixed by this plan's Wave 3.
 arbitrarily-mutable state written after it, so it cannot use the same incremental technique without
 reordering the write sequence (which would itself change the digest's output); it is left as a named,
 explicitly open follow-up requiring its own design (see the plan's Non-goals). See that plan for the
-measured evidence, proposed fix waves, and non-goals. Remaining before this TODO can close: Wave 3
-(incremental `history_digest`) and Wave 4 (CI capture). The cue-budget bound landed in Wave 2 is
+measured evidence, proposed fix waves, and non-goals. Finding (2)'s `history_digest` half is **done,
+Wave 3**: the trace-event scan is incremental, its value bit-identical and asserted so against a
+retained full-rescan oracle, with 64 ticks after seven warm-up batches falling from 147 ms to 22 ms
+and the run-length penalty from 6.7x to 1.7x. `physical_state_digest`'s unbounded thermal-receipt
+growth is the residual and stays open. Remaining before this TODO can close: Wave 4 (CI capture).
+The cue-budget bound landed in Wave 2 is
 worst-case rather than exact, so it rejects some configurations that run today — `Area` charts at
 radius 2 or more no longer admit 8 actors on 2 sensors — which is deliberate, since surface contact
 spreading further in a longer or differently-moving run is exactly the failure the bound exists to
