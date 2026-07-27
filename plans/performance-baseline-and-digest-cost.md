@@ -736,3 +736,30 @@ stages, which record completed implementation, not the existence of this Draft):
   named cost and low relative stddev across the 20 repetitions per case.
   This plan's provisional Context tables are superseded by this harness's output per Verification;
   they are retained as the historical record of what motivated this plan, not as ongoing evidence.
+
+- **Wave 2 (reject unrunnable configurations at construction), checkpoint `e6d5ebb`:**
+  `crates/causafera-runtime/src/actors/perception.rs` (`MAX_RUNNABLE_SCENE_CUES`,
+  `worst_case_contacted_surface_count`, `worst_case_scene_cue_count`, three unit tests),
+  `crates/causafera-runtime/src/runtime.rs` (`RuntimeError::SceneCueBudgetExceeded`),
+  `crates/causafera-runtime/src/config.rs` (the `validate()` check, six unit tests),
+  `crates/causafera-runtime/examples/performance_baseline.rs` (re-scoped modes 1 and 2, and one
+  digest-cost case adjusted), `CHANGELOG.md`, `docs/development/todo-backlog.md`,
+  `docs/ontology/domain-coverage-matrix.md`, and this plan.
+  Verified: `cargo test --release --workspace` (66 result blocks, zero failures),
+  `cargo fmt --all -- --check`, `cargo clippy --release --workspace --all-targets -- -D warnings`
+  (all clean). No pre-existing test needed re-pointing.
+  The bound is `sensor_count * (actor_count + active_chunk_count)`, derived in the Decision log.
+  Re-ran all three harness modes against it. `boundary-sweep` now reports the validation boundary and
+  additionally asserts that every accepted configuration ticks: it first rejects at `actor_count`
+  64, 32, 16, 8 and 4 for `sensor_count` 1, 2, 4, 8 and 16, which reproduces Wave 1's measured first
+  failures exactly for the first four and is conservative by one step at 16 sensors (measured failure
+  at 5), with no configuration accepted and then failing. `worst-case-contact`, re-scoped to report
+  measured spread against the admitted worst case at `sensor_count=1`, shows contact flat at 3
+  surfaces while active chunks grow 1 → 9 → 25 → 49 (coverage 100% → 6.1%), and radius 4 `Area`
+  no longer admitted at all — the evidence for why the bound cannot be calibrated on observed
+  contact. `digest-cost` is unchanged for five of six cases; `radius_4_area` moved to
+  `material_surface_signals_enabled = false` to stay constructible and re-measured at 942 ms mean
+  against the 916 ms Wave 1 recorded with surface signals enabled, so that row is no longer directly
+  comparable to Wave 1's and is labelled in the harness's own table.
+  The `MAX_SCENE_CUES` backstop is unchanged and still fails closed, covered by
+  `cognition_still_rejects_a_batch_over_the_cue_cap`.
