@@ -283,6 +283,22 @@ No domain outside geography and mana is touched.
 
 ## Risks
 
+- **The bootstrap event fingerprint collided at the default observer seed.** Wave 1 changed
+  `TerrainBootstrapStage::bootstrap`'s "after" fingerprint from `self.terrain_seed ^
+  chart_chunk_hash(chunk)` to plain `self.terrain_seed`, on the reasoning that generation and event
+  identity should use the same value. `ObserverSession::new(0)` — the desktop app's default session
+  — passes `terrain_seed = 0`, which made the "after" fingerprint `fingerprint_u64(0x0B01, 0)`
+  collide with the "before" sentinel of the same value, and `CausalEffect::new` rejects `before ==
+  after` as `UnchangedState`, panicking `apps/observer/src-tauri/src/main.rs`'s
+  `.expect("default observer session must initialize")` on every desktop launch at the default seed.
+  Found by running `desktop:dev` after Wave 1 landed, not by any test in this plan's Verification
+  section — no existing or added test constructs a runtime at seed 0. Fixed by restoring
+  `chart_chunk_hash(chunk)` in the event fingerprint only, decoupled from the value passed to
+  `deterministic_terrain_chunk`: event identity and generation content are different concerns, and
+  conflating them was the actual defect, not the chunk-seed removal itself. `chart_chunk_hash` is
+  virtually never zero for a real chunk, so this restores the same collision safety the original code
+  had (not a proof, but no weaker than before this plan). `a_world_bootstraps_at_the_zero_seed` now
+  covers it. See Progress, checkpoint `9b2f43c`.
 - **The elevation ramp is unbounded in principle**, growing with distance from the chart origin.
   Mitigated by the current hard `active_chunk_radius <= 4` ceiling (measured: at most a few hundred
   metres of swing across the whole active area today) and recorded as a re-measurement trigger if that
@@ -341,3 +357,7 @@ No domain outside geography and mana is touched.
   completed, `TODO-GEO-006` opened), `docs/ontology/domain-coverage-matrix.md`,
   `docs/ui/map-lenses.md`, `docs/ui/observer-projection-gaps.md`,
   `apps/observer/src/map/lenses.ts` (comment only), and `PLANS.md`. Checkpoint `ac8e767`.
+- Wave 3 — regression fix found by running `desktop:dev`: the default seed-0 observer session
+  panicked at bootstrap (see Risks). Checkpoint `9b2f43c`. Verified with `just ci` (green) and
+  `cargo run -q -p causafera-observer --example seed0_check` (a throwaway, since-removed check)
+  confirming `Runtime::from_seed(0)` succeeds before the guarding test was added.
