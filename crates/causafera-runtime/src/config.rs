@@ -128,6 +128,22 @@ impl RuntimeConfig {
         {
             return Err(RuntimeError::InvalidActorConfig);
         }
+        // The per-field bounds above compose into configurations the runtime
+        // cannot execute: cognition caps how many cues one actor may be handed
+        // per tick, and perception assembles that batch from every promoted
+        // actor's object plus every contacted material surface, once per sensor
+        // aperture. Rejecting here fails at construction instead of part-way
+        // through a run that already paid for bootstrap and warm-up ticks.
+        let worst_case = worst_case_scene_cue_count(&self);
+        if worst_case > MAX_RUNNABLE_SCENE_CUES {
+            return Err(RuntimeError::SceneCueBudgetExceeded {
+                worst_case,
+                maximum: MAX_RUNNABLE_SCENE_CUES,
+                sensor_count: self.sensor_count,
+                actor_count: self.actor_count,
+                surface_count: worst_case_contacted_surface_count(&self),
+            });
+        }
         if self.experiment_recipe_mana_sources.records.len() > MAX_EXPERIMENT_RECIPE_MANA_SOURCES {
             return Err(RuntimeError::ExperimentRecipeSourceCountExceeded {
                 count: self.experiment_recipe_mana_sources.records.len(),
@@ -229,5 +245,128 @@ impl RuntimeConfig {
             .records
             .sort_unstable_by_key(|record| (record.scheduled_tick, record.source_record_id));
         Ok(self)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn candidate(
+        actor_count: u8,
+        sensor_count: u8,
+        radius: u8,
+        shape: ActiveChunkShape,
+    ) -> RuntimeConfig {
+        let mut config = RuntimeConfig::new(7);
+        config.chunk_extent = 3;
+        config.active_chunk_radius = radius;
+        config.active_chunk_shape = shape;
+        config.actor_count = actor_count;
+        config.sensor_count = sensor_count;
+        config.bootstrap_population = 512;
+        config
+    }
+
+    #[test]
+    fn validation_rejects_every_configuration_the_boundary_sweep_found_unrunnable() {
+        // Each pair is a `sensor_count` and the lowest `actor_count` that failed
+        // for it, as located by the Wave 1 harness's exhaustive sweep at
+        // `active_chunk_radius = 0`. The bound has to reject at least these, or
+        // it readmits the defect it exists to close. It rejects strictly more:
+        // beyond roughly eight sensors an aperture stops seeing every signal, so
+        // configurations such as 4 actors with 16 sensors run today even though
+        // their worst case does not fit. Rejecting those is deliberate, because
+        // nothing about the configuration keeps a longer run inside the cap.
+        for (sensor_count, actor_count) in [(1u8, 64u8), (2, 32), (4, 16), (8, 8), (16, 5)] {
+            let error = candidate(actor_count, sensor_count, 0, ActiveChunkShape::Line)
+                .validate()
+                .expect_err("the sweep observed this configuration failing at tick 5");
+            assert!(
+                matches!(error, RuntimeError::SceneCueBudgetExceeded { .. }),
+                "{actor_count} actors with {sensor_count} sensors should be rejected for its cue \
+                 budget, got {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn validation_accepts_the_largest_configuration_the_cue_cap_admits() {
+        for (sensor_count, actor_count) in [(1u8, 63u8), (2, 31), (4, 15), (8, 7), (16, 3)] {
+            let accepted = candidate(actor_count, sensor_count, 0, ActiveChunkShape::Line);
+            assert_eq!(
+                worst_case_scene_cue_count(&accepted),
+                MAX_RUNNABLE_SCENE_CUES,
+                "{actor_count} actors with {sensor_count} sensors should sit exactly on the bound"
+            );
+            accepted
+                .validate()
+                .expect("a configuration exactly on the bound is runnable");
+        }
+    }
+
+    #[test]
+    fn runtime_construction_rejects_an_unrunnable_configuration() {
+        let Err(error) = Runtime::new(candidate(64, 1, 0, ActiveChunkShape::Line)) else {
+            panic!("64 actors with one sensor cannot execute a tick, so construction must fail");
+        };
+        assert!(
+            matches!(
+                error,
+                RuntimeError::SceneCueBudgetExceeded {
+                    worst_case: 65,
+                    maximum: 64,
+                    ..
+                }
+            ),
+            "construction should fail with the cue budget error, got {error}"
+        );
+    }
+
+    #[test]
+    fn runtime_on_the_cue_budget_boundary_constructs_and_ticks() {
+        let mut runtime = Runtime::new(candidate(63, 1, 0, ActiveChunkShape::Line))
+            .expect("a configuration exactly on the bound constructs");
+        runtime
+            .run_ticks(8)
+            .expect("a configuration exactly on the bound ticks");
+    }
+
+    #[test]
+    fn widening_the_active_chunk_set_spends_the_same_cue_budget() {
+        // Every active chunk is bootstrapped with a material surface, so a wider
+        // chart raises the worst-case cue count even though `actor_count` and
+        // `sensor_count` are unchanged.
+        candidate(8, 2, 1, ActiveChunkShape::Area)
+            .validate()
+            .expect("nine chunks leave 8 actors with 2 sensors inside the cap");
+        let error = candidate(8, 2, 2, ActiveChunkShape::Area)
+            .validate()
+            .expect_err("twenty-five chunks push the same actors past the cap");
+        assert!(
+            matches!(
+                error,
+                RuntimeError::SceneCueBudgetExceeded {
+                    worst_case: 66,
+                    surface_count: 25,
+                    ..
+                }
+            ),
+            "expected the surface term to carry the rejection, got {error}"
+        );
+    }
+
+    #[test]
+    fn disabling_material_surface_signals_removes_the_surface_term() {
+        let mut config = candidate(8, 2, 4, ActiveChunkShape::Area);
+        assert!(
+            config.clone().validate().is_err(),
+            "eighty-one surfaces should not fit alongside 8 actors on 2 sensors"
+        );
+        config.material_surface_signals_enabled = false;
+        assert_eq!(worst_case_scene_cue_count(&config), 16);
+        config
+            .validate()
+            .expect("with surface signals off only the actor term is spent");
     }
 }

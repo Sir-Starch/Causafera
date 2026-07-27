@@ -1,10 +1,11 @@
 # Performance Baseline and Digest Cost ExecPlan
 
-**Status:** Accepted; Wave 1 implemented (checkpoint `c873f31`, see Progress). Waves 2-4 not started;
-Wave 3 specifically requires care given it touches determinism-critical digest computation (INV-007,
+**Status:** Accepted; Waves 1-2 implemented (see Progress). Waves 3-5 not started; Wave 3
+specifically requires care given it touches determinism-critical digest computation (INV-007,
 INV-038) and needs the differential oracle test described in its own section before landing.
-**Revision 4**, incorporating three independent review passes that corrected several claims in
-earlier drafts — see Decision log for what changed and why across all revisions.
+**Revision 5**, incorporating three independent review passes that corrected several claims in
+earlier drafts, plus what implementing Waves 1-2 established — see Decision log for what changed and
+why across all revisions.
 
 ## Goal
 
@@ -391,9 +392,13 @@ validation consistent with a cap that already exists and does not change what an
   `CanonicalDigest` does not currently provide). This plan does not pick one — that is a follow-up
   design decision, not an implementation detail, and is recorded as an open item this investigation
   surfaced rather than closed.
-- No change to `MAX_SCENE_CUES` itself or to how many objects/signals an actor perceives —
-  Proposed architecture point 1 is a validation-time rejection derived from existing behavior, not a
-  capability or behavior change.
+- No change to `MAX_SCENE_CUES` itself, to how many objects/signals an actor perceives, or to what
+  any accepted configuration computes. Proposed architecture point 1 is a validation-time rejection
+  derived from existing behavior. It does change *which configurations construct*: a worst-case bound
+  necessarily rejects configurations whose worst case is unreachable in some particular run, so some
+  configurations that tick today stop being admitted. An earlier revision of this plan described
+  point 1 as "not a capability or behavior change" without qualification, which was wrong — see the
+  Decision log and Risks for the measured cost of that rejection and why the alternative is worse.
 - No CI regression-gating. This plan proposes only that CI *capture and persist* benchmark output
   (Wave 4) as the prerequisite; this explicitly does **not** close `TODO-PERF-001`'s
   reproducible-and-compared-across-commits requirement on its own.
@@ -562,6 +567,20 @@ None.
   (Proposed architecture point 1); Finding 1's unresolved formula means this needs care and an
   exhaustive boundary sweep, not a quick arithmetic patch. The cognition-layer backstop is kept
   specifically because this bound might still be imperfect.
+- **Wave 2's bound rejects configurations that run today.** `Area` charts at `active_chunk_radius`
+  2 or more no longer admit 8 actors on 2 sensors, and radius 4 admits no sensors at all while
+  material-surface signals are enabled, because 81 surfaces alone exceed the 64-cue cap. This is the
+  price of a sound worst-case bound and it is charged to real work: this plan's own Wave 1
+  `radius_4_area` measurement case had to move to `material_surface_signals_enabled = false`, and
+  `plans/observer-field-raster-map.md` — which proposes config-gated `Area` charts — will need fewer
+  sensors, fewer actors, or its own decision about the surface-signal term. Flagged rather than
+  silently absorbed.
+- Wave 2's bound depends on two facts in `causafera-perception` that no test in that crate is
+  currently written to protect: `acquire_signals` discarding signals whose `time` differs from the
+  acquisition's, and `is_later_sample` requiring a strictly increasing time. Together they make the
+  extractor's `Change` term always zero on this call path, which is why a cue batch is exactly the
+  sample count. `worst_case_scene_cue_count`'s doc comment names both call sites; if either changes,
+  the bound silently becomes an undercount.
 - **`physical_state_digest`'s unbounded thermal-receipt growth is left unfixed by this plan.** A long
   enough run will still see this cost grow, even after Wave 3 lands. This is Finding 2's second half,
   explicitly not addressed here (see Non-goals) — flagging it prominently so it is not mistaken for a
@@ -645,6 +664,38 @@ evidence.
   from `physical_state_digest`'s own unbounded thermal-receipt growth over the same span (per Finding
   2's own numbers: 4.8 ms → 7.7 ms across the batches where `history_digest` went 9.7 ms → 125.7 ms) —
   "purely" overstated a single-cause claim this plan's own data does not support.
+- **Wave 2 — derived the cue count exactly, which retired Finding 1's open formula question.** A
+  per-actor cue batch is exactly the acquired sample count: `GenericFeatureExtractor::extract`
+  appends a `Change` feature only for an adjacent sample pair at strictly increasing times, and
+  `acquire_signals` discards any signal whose `time` is not the acquisition's own, so one batch can
+  never hold two times and the change term is always zero. The worst case is therefore
+  `sensor_count * (actor_count + active_chunk_count)` — one aperture per sensor, over one signal per
+  promoted actor's object (held at `actor_count` by `population.rs`'s promotion guard) plus one per
+  contacted material surface (`MaterialSurfaceBootstrapStage` creates exactly one per active chunk).
+  This is why Finding 1's retracted formula did not fit: it subtracted the perceiving actor's own
+  object, which perception does not exclude, and treated the surface term as a run property rather
+  than a chart property.
+- **Wave 2 — chose a worst-case bound over an exact one, accepting that it over-rejects.** The bound
+  reproduces the harness's exhaustively measured first failure exactly at 1, 2, 4 and 8 sensors
+  (rejecting first at 64, 32, 16 and 8 actors), because at those sensor counts every signal still
+  clears every aperture. At 16 sensors it rejects 4 actors where the measured failure is at 5:
+  apertures stop seeing every signal once sensor geometry spreads, so the worst case is no longer
+  attained. **This gap is deliberate, not an off-by-one.** The acceptance criterion is containment —
+  every configuration the sweep found failing must be rejected — plus tightness where the worst case
+  is attainable, and both are asserted by tests. An exact bound was rejected because it would have to
+  model sensor range and position, and because a configuration's *worst* case is what a long run can
+  reach: contact spreading further later is the failure being prevented.
+- **Wave 2 — replaced the "run long enough" worst-case check with a forced one.** Wave 1's
+  `worst-case-contact` mode measured contact spread and found it flat at 3 surfaces against up to 49
+  active chunks over 768 ticks, which is useful evidence but is not the check Wave 2 needs: no run
+  demonstrates the worst case, because contact does not spread. The load-bearing verification is
+  instead a unit test in `actors/perception.rs` that forces every active chunk's surface into contact
+  and drives the real `actor_perception_step`/`actor_cognition_step` at it. Wave 1's mode was kept,
+  re-scoped to report the measured spread against the admitted worst case, since that gap is the
+  evidence for why the bound must be conservative.
+- **Wave 2 — bounded against both cognition caps, not only `MAX_SCENE_CUES`.**
+  `MAX_ATTENTION_CANDIDATES` is checked first, inside `Attention::update`, and both are 64;
+  `MAX_RUNNABLE_SCENE_CUES` takes the smaller so the bound stays correct if they ever diverge.
 - Rejected proposing scheduler parallelization, SoA conversion, or CUDA work: no measurement shows
   phase-dispatch overhead as a bottleneck at any config this runtime can currently execute.
 - Rejected proposing CI regression gating in this plan: a threshold set before any historical data

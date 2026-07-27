@@ -330,6 +330,19 @@ pub enum RuntimeError {
     #[error("actor runtime configuration is invalid")]
     InvalidActorConfig,
     #[error(
+        "actor configuration admits up to {worst_case} scene cues per actor \
+         ({sensor_count} sensors x ({actor_count} actor objects + {surface_count} contacted \
+         material surfaces)) and cognition accepts at most {maximum}; lower sensor_count or \
+         actor_count, narrow the active chunk set, or set material_surface_signals_enabled = false"
+    )]
+    SceneCueBudgetExceeded {
+        worst_case: usize,
+        maximum: usize,
+        sensor_count: u8,
+        actor_count: u8,
+        surface_count: usize,
+    },
+    #[error(
         "experiment recipe contains {count} mana sources, maximum is {MAX_EXPERIMENT_RECIPE_MANA_SOURCES}"
     )]
     ExperimentRecipeSourceCountExceeded { count: usize },

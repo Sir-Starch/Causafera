@@ -15,9 +15,10 @@
 use std::process::{Command, ExitCode, Stdio};
 use std::time::Instant;
 
-use causafera_cognition::{MAX_SCENE_CUES, SceneUpdateError};
+use causafera_cognition::SceneUpdateError;
 use causafera_runtime::{
-    ActiveChunkShape, Runtime, RuntimeConfig, RuntimeError, measure_digest_cost,
+    ActiveChunkShape, MAX_RUNNABLE_SCENE_CUES, Runtime, RuntimeConfig, RuntimeError,
+    measure_digest_cost, worst_case_scene_cue_count,
 };
 
 /// Named, not ad hoc: `plans/performance-baseline-and-digest-cost.md` Wave 1 commits to this
@@ -32,8 +33,11 @@ fn main() -> ExitCode {
     print_metadata();
     match args.get(1).map(String::as_str) {
         Some("boundary-sweep") => {
-            run_boundary_sweep();
-            ExitCode::SUCCESS
+            if run_boundary_sweep() {
+                ExitCode::SUCCESS
+            } else {
+                ExitCode::FAILURE
+            }
         }
         Some("worst-case-contact") => {
             run_worst_case_contact();
@@ -46,9 +50,14 @@ fn main() -> ExitCode {
             ExitCode::FAILURE
         }
         None => {
-            run_boundary_sweep();
+            let sweep_sound = run_boundary_sweep();
             run_worst_case_contact();
-            run_digest_cost_sweep()
+            let digest = run_digest_cost_sweep();
+            if sweep_sound {
+                digest
+            } else {
+                ExitCode::FAILURE
+            }
         }
     }
 }
@@ -78,26 +87,42 @@ fn print_metadata() {
 // ---------------------------------------------------------------------------------------------
 // Mode 1: exhaustive actor_count/sensor_count boundary sweep.
 //
-// Locates the exact `actor_count` at which each `sensor_count` first fails against
-// `MAX_SCENE_CUES`, checking every integer in range rather than sparse samples (closes the
-// off-by-one gap Finding 1 left open in the plan). Fixed at `active_chunk_radius=0` so
-// `contacted_surface_count <= 1`, isolating the actor/sensor terms per the plan's Wave 1 scope.
+// Checks every integer `actor_count` rather than sparse samples, which is what closed the
+// off-by-one gap Finding 1 left open. Fixed at `active_chunk_radius=0` so the surface term is at
+// most one, isolating the actor/sensor terms per the plan's Wave 1 scope.
+//
+// Wave 2 changed what this sweep can observe. Before it, configurations past the cue cap
+// constructed successfully and then died on the first post-warm-up tick, and this mode located
+// that tick failure. Now `RuntimeConfig::validate` rejects them at construction, so the sweep
+// reports the validation boundary instead — and, more usefully, asserts the property Wave 2 owes
+// its callers: every configuration accepted at construction really does tick. A run that reaches
+// `TooManyCues` at a tick would mean the worst-case bound is unsound, so this mode reports that
+// case loudly and exits non-zero rather than printing it as an ordinary row.
 // ---------------------------------------------------------------------------------------------
 
-fn run_boundary_sweep() {
+fn run_boundary_sweep() -> bool {
     println!("\n== exhaustive actor_count/sensor_count boundary sweep (active_chunk_radius=0) ==");
     println!(
-        "{:>12} {:>10} {:>14} {:>10}",
-        "sensor_count", "last_ok", "first_fail_at", "cues"
+        "{:>12} {:>10} {:>16} {:>16}",
+        "sensor_count", "last_ok", "first_rejected", "worst_case_cues"
     );
+    let mut unsound = 0usize;
     for sensor_count in [1u8, 2, 4, 8, 16] {
         let mut last_ok = 0u8;
         let mut outcome = None;
         for actor_count in 1u8..=128 {
             match probe_actor_sensor_boundary(actor_count, sensor_count) {
                 BoundaryProbe::Ok => last_ok = actor_count,
-                BoundaryProbe::CueCapExceeded(count) => {
-                    outcome = Some((actor_count, count));
+                BoundaryProbe::RejectedAtConstruction(worst_case) => {
+                    outcome = Some((actor_count, worst_case));
+                    break;
+                }
+                BoundaryProbe::CueCapExceededAtTick(count) => {
+                    unsound += 1;
+                    println!(
+                        "  UNSOUND BOUND: sensor_count={sensor_count} actor_count={actor_count} \
+was accepted at construction and then produced {count} cues at a tick"
+                    );
                     break;
                 }
                 BoundaryProbe::UnrelatedFailure(message) => {
@@ -109,26 +134,34 @@ fn run_boundary_sweep() {
             }
         }
         match outcome {
-            Some((actor_count, count)) => {
-                println!("{sensor_count:>12} {last_ok:>10} {actor_count:>14} {count:>10}")
+            Some((actor_count, worst_case)) => {
+                println!("{sensor_count:>12} {last_ok:>10} {actor_count:>16} {worst_case:>16}")
             }
             None => println!(
-                "{sensor_count:>12} {last_ok:>10} {:>14} {:>10}",
+                "{sensor_count:>12} {last_ok:>10} {:>16} {:>16}",
                 "none<=128", "-"
             ),
         }
     }
     println!(
-        "MAX_SCENE_CUES={MAX_SCENE_CUES} (causafera_cognition::scene). Boundary is per-actor cue \
-count against this cap; the exact formula relating actor_count/sensor_count/surface-contact to the \
-cue count is not committed by the plan (Finding 1) — this sweep reports the measured boundary \
-directly rather than a derived formula."
+        "MAX_RUNNABLE_SCENE_CUES={MAX_RUNNABLE_SCENE_CUES} (the smaller of \
+causafera_cognition::MAX_SCENE_CUES and MAX_ATTENTION_CANDIDATES). `last_ok` ran 8 ticks without \
+error; `first_rejected` is where Wave 2's worst-case bound stops admitting the configuration. The \
+two boundaries coincide up to about eight sensors, where every signal still clears every aperture; \
+past that the bound is deliberately conservative, since nothing about a configuration keeps a \
+longer run's surface contact inside the cap."
     );
+    if unsound > 0 {
+        eprintln!("{unsound} configuration(s) were accepted and then exceeded the cue cap");
+        return false;
+    }
+    true
 }
 
 enum BoundaryProbe {
     Ok,
-    CueCapExceeded(usize),
+    RejectedAtConstruction(usize),
+    CueCapExceededAtTick(usize),
     UnrelatedFailure(String),
 }
 
@@ -143,38 +176,47 @@ fn probe_actor_sensor_boundary(actor_count: u8, sensor_count: u8) -> BoundaryPro
     config.mana_parameters.effect_hysteresis = 0;
     let mut runtime = match Runtime::new(config) {
         Ok(runtime) => runtime,
+        Err(RuntimeError::SceneCueBudgetExceeded { worst_case, .. }) => {
+            return BoundaryProbe::RejectedAtConstruction(worst_case);
+        }
         Err(error) => return BoundaryProbe::UnrelatedFailure(error.to_string()),
     };
     match runtime.run_ticks(8) {
         Ok(_) => BoundaryProbe::Ok,
         Err(RuntimeError::ActorCognition(SceneUpdateError::TooManyCues { count })) => {
-            BoundaryProbe::CueCapExceeded(count)
+            BoundaryProbe::CueCapExceededAtTick(count)
         }
         Err(error) => BoundaryProbe::UnrelatedFailure(error.to_string()),
     }
 }
 
 // ---------------------------------------------------------------------------------------------
-// Mode 2: empirical worst-case surface-contact measurement.
+// Mode 2: empirical surface-contact spread, against the bound that has to assume the worst.
 //
-// Not a formal proof that `contacted_surface_count` reaches `active_chunk_count` — an empirical
-// measurement of how close a generously long run gets, per the plan's Non-goals/Risks: this
-// investigation does not commit to a closed-form bound, so Wave 2 needs real data on how far
-// contact spreads, not an assumption.
+// This is not the proof that Wave 2's bound is safe — a run cannot supply one, because how far
+// contact spreads depends on where actors happen to move. That check is a unit test in
+// `actors/perception.rs`, which forces every active chunk's surface into contact and drives the
+// real perception and cognition steps at it.
+//
+// What this mode measures is the gap between what a generously long run actually reaches and what
+// the configuration admits, which is the evidence for why the bound has to be conservative: the
+// run stays far below its own worst case, so a check calibrated on observed contact would pass
+// configurations that a differently-moving population would break.
+//
+// `sensor_count` is 1 here, not the 2 used elsewhere, so the wider charts stay admissible at all.
 // ---------------------------------------------------------------------------------------------
 
 fn run_worst_case_contact() {
+    println!("\n== surface-contact spread vs. the admitted worst case (768 ticks) ==");
     println!(
-        "\n== empirical worst-case surface-contact measurement (768 ticks; not a formal proof) =="
-    );
-    println!(
-        "{:>8} {:>8} {:>14} {:>20} {:>10}",
-        "radius", "shape", "active_chunks", "contacted_surfaces", "coverage"
+        "{:>8} {:>8} {:>14} {:>16} {:>20} {:>10}",
+        "radius", "shape", "active_chunks", "worst_case_cues", "contacted_surfaces", "coverage"
     );
     let cases: &[(u8, ActiveChunkShape, &str)] = &[
         (0, ActiveChunkShape::Line, "line"),
         (1, ActiveChunkShape::Area, "area"),
         (2, ActiveChunkShape::Area, "area"),
+        (3, ActiveChunkShape::Area, "area"),
         (4, ActiveChunkShape::Area, "area"),
     ];
     for &(radius, shape, label) in cases {
@@ -183,12 +225,22 @@ fn run_worst_case_contact() {
         config.active_chunk_radius = radius;
         config.active_chunk_shape = shape;
         config.actor_count = 8;
-        config.sensor_count = 2;
+        config.sensor_count = 1;
         config.bootstrap_population = 512;
         config.mana_parameters.effect_threshold = 1;
         config.mana_parameters.effect_hysteresis = 0;
+        let worst_case = worst_case_scene_cue_count(&config);
         let mut runtime = match Runtime::new(config) {
             Ok(runtime) => runtime,
+            Err(RuntimeError::SceneCueBudgetExceeded { .. }) => {
+                println!(
+                    "{radius:>8} {label:>8} {:>14} {worst_case:>16} {:>20} {:>10}",
+                    (usize::from(radius) * 2 + 1).pow(2),
+                    "not admitted",
+                    "-"
+                );
+                continue;
+            }
             Err(error) => {
                 println!("  radius={radius} {label}: rejected at construction: {error}");
                 continue;
@@ -220,8 +272,16 @@ fn run_worst_case_contact() {
         } else {
             100.0 * contacted as f64 / f64::from(active_chunks)
         };
-        println!("{radius:>8} {label:>8} {active_chunks:>14} {contacted:>20} {coverage:>9.1}%");
+        println!(
+            "{radius:>8} {label:>8} {active_chunks:>14} {worst_case:>16} {contacted:>20} {coverage:>9.1}%"
+        );
     }
+    println!(
+        "Contact does not spread to fill the chart, so `contacted_surfaces` stays far below \
+`active_chunks`. Wave 2's bound charges the full chart anyway; the row it stops admitting is the \
+price of that, and `actors/perception.rs`'s forced-contact test is what shows the charge is not \
+merely pessimism."
+    );
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -234,6 +294,13 @@ struct DigestCostCase {
     chunk_extent: u8,
     active_chunk_radius: u8,
     active_chunk_shape: ActiveChunkShape,
+    /// Wave 2's construction-time cue budget charges one cue per active chunk's
+    /// material surface, per sensor, so a chart wide enough to be interesting
+    /// here cannot also feed those surfaces to 8 actors on 2 sensors. Only the
+    /// widest case turns the surface signals off; every other case keeps them,
+    /// and the printed table names which is which so the rows are not read as
+    /// measuring the same workload.
+    material_surface_signals_enabled: bool,
     warmup_batches_of_64: u64,
     measured_ticks: u64,
 }
@@ -244,6 +311,7 @@ const DIGEST_COST_CASES: &[DigestCostCase] = &[
         chunk_extent: 3,
         active_chunk_radius: 0,
         active_chunk_shape: ActiveChunkShape::Line,
+        material_surface_signals_enabled: true,
         warmup_batches_of_64: 0,
         measured_ticks: 64,
     },
@@ -252,6 +320,7 @@ const DIGEST_COST_CASES: &[DigestCostCase] = &[
         chunk_extent: 3,
         active_chunk_radius: 0,
         active_chunk_shape: ActiveChunkShape::Line,
+        material_surface_signals_enabled: true,
         warmup_batches_of_64: 7,
         measured_ticks: 64,
     },
@@ -260,6 +329,7 @@ const DIGEST_COST_CASES: &[DigestCostCase] = &[
         chunk_extent: 8,
         active_chunk_radius: 0,
         active_chunk_shape: ActiveChunkShape::Line,
+        material_surface_signals_enabled: true,
         warmup_batches_of_64: 0,
         measured_ticks: 64,
     },
@@ -268,6 +338,7 @@ const DIGEST_COST_CASES: &[DigestCostCase] = &[
         chunk_extent: 16,
         active_chunk_radius: 0,
         active_chunk_shape: ActiveChunkShape::Line,
+        material_surface_signals_enabled: true,
         warmup_batches_of_64: 0,
         measured_ticks: 64,
     },
@@ -276,6 +347,7 @@ const DIGEST_COST_CASES: &[DigestCostCase] = &[
         chunk_extent: 3,
         active_chunk_radius: 1,
         active_chunk_shape: ActiveChunkShape::Area,
+        material_surface_signals_enabled: true,
         warmup_batches_of_64: 0,
         measured_ticks: 64,
     },
@@ -284,6 +356,7 @@ const DIGEST_COST_CASES: &[DigestCostCase] = &[
         chunk_extent: 3,
         active_chunk_radius: 4,
         active_chunk_shape: ActiveChunkShape::Area,
+        material_surface_signals_enabled: false,
         warmup_batches_of_64: 0,
         measured_ticks: 64,
     },
@@ -485,6 +558,7 @@ fn run_worker(case_index: &str, pass: &str) -> ExitCode {
     config.chunk_extent = case.chunk_extent;
     config.active_chunk_radius = case.active_chunk_radius;
     config.active_chunk_shape = case.active_chunk_shape;
+    config.material_surface_signals_enabled = case.material_surface_signals_enabled;
     config.actor_count = 8;
     config.sensor_count = 2;
     config.bootstrap_population = 512;

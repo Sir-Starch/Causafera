@@ -1067,14 +1067,17 @@ slices.
 **Priority:** High
 **Dependencies:** TODO-ARCH-001, TODO-DEPTH-001
 **Goal:** Benchmark harness
-**Acceptance Criteria:** A checked-in harness reports mean/median/stddev over `N=20` repeated,
-deterministically round-robin-ordered runs (not single-shot timing) and per-case RSS isolated across
+**Acceptance Criteria:** A checked-in harness reports mean/median/stddev over `N=20` repeated runs
+whose case order is cyclically rotated per pass (not single-shot timing, and not a fixed order
+repeated, which would leave the first case first in every pass) and per-case RSS isolated across
 process boundaries (not shared-process `/proc/self/status` reads across sequential cases); it
 reproduces, without the throwaway instrumentation used to find them, the two concrete findings
-recorded in `plans/performance-baseline-and-digest-cost.md`: (1) `RuntimeConfig::validate()` accepts
-`actor_count`/`sensor_count`/surface-contact combinations that fail at the first tick against
-`causafera-cognition::MAX_SCENE_CUES` (exact boundary not yet formula-derived — Wave 1 locates it
-exhaustively, Wave 2 mirrors the actual perception code rather than an approximate formula), and (2)
+recorded in `plans/performance-baseline-and-digest-cost.md`: (1) **done, Waves 1-2** —
+`RuntimeConfig::validate()` accepted `actor_count`/`sensor_count`/surface-contact combinations that
+failed at the first tick against `causafera-cognition::MAX_SCENE_CUES`; the harness's exhaustive
+sweep located that boundary, and `validate()` now rejects past it at construction with
+`RuntimeError::SceneCueBudgetExceeded`, using a bound derived from the perception code rather than an
+approximate formula, and (2)
 `RuntimeState::snapshot`'s unconditional full-rescan `history_digest` dominates tick cost (46-87% of
 tick time across the plan's measured run-length sweep) and grows unboundedly with run length by
 design (the causal trace store, per INV-014); `physical_state_digest` is not the dominant share at any
@@ -1086,7 +1089,12 @@ the smaller cost. Only `history_digest`'s growth is fixed by this plan's Wave 3.
 arbitrarily-mutable state written after it, so it cannot use the same incremental technique without
 reordering the write sequence (which would itself change the digest's output); it is left as a named,
 explicitly open follow-up requiring its own design (see the plan's Non-goals). See that plan for the
-measured evidence, proposed fix waves, and non-goals.
+measured evidence, proposed fix waves, and non-goals. Remaining before this TODO can close: Wave 3
+(incremental `history_digest`) and Wave 4 (CI capture). The cue-budget bound landed in Wave 2 is
+worst-case rather than exact, so it rejects some configurations that run today — `Area` charts at
+radius 2 or more no longer admit 8 actors on 2 sensors — which is deliberate, since surface contact
+spreading further in a longer or differently-moving run is exactly the failure the bound exists to
+prevent and no configuration property rules it out.
 **Performance Requirements:** Minimal measurement overhead; the harness itself must not distort the
 measurements it takes (see the plan's finding on the shipped `benchmark.rs` harness's own RSS-sharing
 defect).
