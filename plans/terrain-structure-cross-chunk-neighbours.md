@@ -308,7 +308,9 @@ small, measured amount (see Evidence). No domain outside geography and mana is t
 ## Progress
 
 - Wave 1 — the whole slice, integrated and verified together: carrier signature change, the two
-  restructured call sites, `decode_terrain_chunk`, tests, and the evidence tool. Verified with
-  `just ci` (green: full workspace build, fmt, clippy, tests, doctests),
+  restructured call sites, `decode_terrain_chunk`, tests, and the evidence tool. Checkpoint
+  `b9553c8`. Verified with `just ci` (green: full workspace build, fmt, clippy, tests, doctests),
   `cargo test -p causafera-runtime --lib carrier` (9 passed) and
   `cargo test -p causafera-runtime --test terrain_carrier` (19 passed, no re-pointing needed).
+- Wave 2 — documentation: `CHANGELOG.md`, `docs/development/todo-backlog.md` (`TODO-GEO-006`
+  completed), `docs/ontology/domain-coverage-matrix.md`, `PLANS.md`.
