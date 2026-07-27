@@ -253,4 +253,24 @@ None beyond mana.
 
 ## Progress
 
-- Not yet started.
+- Wave 1+2 (repro test + fix), checkpoint `b2aa76d`: `crates/causafera-domains/src/mana.rs`
+  (`apply_exchange_delta` threads and clamps to `maximum_intensity`; call sites in
+  `apply_boundary_exchange` and the two direct unit tests updated; new test
+  `seam_delivery_never_exceeds_the_saturation_ceiling` reproduces the TODO's scenario). Confirmed
+  red before the fix (cell 5 proposed 1004 against a ceiling of 1000), green after.
+  Verified: `cargo test --release -p causafera-domains` (21 mana tests, 0 failed),
+  `cargo test --release --workspace` (0 failed), `cargo fmt --all -- --check` (clean),
+  `cargo clippy --release --workspace --all-targets -- -D warnings` (clean).
+- Wave 3 (digest verification), no separate commit (verification only, no source change): compared
+  `cargo run --release -p causafera-observer --example seed_variation` output between a throwaway
+  `git worktree` at pre-fix `HEAD` (`1f32e99`) and the post-fix working tree. Physical digest, history
+  digest, total mana, cell counts and every behaviour metric were byte-identical across all six
+  standard seeds and both gate configurations (default and open) at the production `chunk_extent` of
+  3; only compiler-log lines and expected run-to-run timing noise differed. Worktree removed after
+  comparison.
+- Wave 4 (documentation), checkpoint pending: `docs/world/mana-topology.md`,
+  `docs/ontology/unresolved-assumptions.md`, `docs/development/todo-backlog.md`,
+  `docs/ontology/domain-coverage-matrix.md`, `CHANGELOG.md`, `PLANS.md`. `docs/roadmap/roadmap.md` was
+  checked and deliberately left unchanged: it does not mention any individual `TODO-MANA-*` entry
+  (002/004/005/007 included), tracking only larger vertical slices, so adding one here would be an
+  inconsistent one-off rather than following existing practice.

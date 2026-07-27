@@ -113,9 +113,12 @@ Same-chart cross-chunk exchange is not among them: it is implemented and conduct
 rate, as the Geography section above records. This list said otherwise until now, which contradicted
 that section of the same document. Its provenance gap is closed: a share crossing a seam carries the
 ancestry of the value that crossed, and the proposal boundary refuses any cell change it cannot
-attribute. What remains is that seam delivery does not apply the field's saturation ceiling, so a
-cell fed across a seam in a saturated field can exceed `maximum_intensity` — recorded as
-`TODO-MANA-006`.
+attribute. Its saturation gap is also closed: a seam delivery is clamped to `0..=maximum_intensity`
+after every delivery, the same bound a cell fed from inside its own chunk already had, so a seam cell
+can no longer exceed the ceiling (`TODO-MANA-006`). Because addition is commutative, clamping the
+running total after each of several deliveries to one cell — which happens at a chunk corner or edge,
+where up to six distinct neighbouring chunks can feed the same cell — yields the same result
+regardless of delivery order, so no giver is singled out for refusal.
 
 ## Related documents
 
