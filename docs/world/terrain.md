@@ -103,6 +103,8 @@ Terrain representation varies by resolution:
 - **Medium resolution** (territory level): averaged elevation, dominant slope and aspect
 - **Low resolution** (region level): elevation range, typical terrain character
 
+This ladder describes terrain's own resolution. It does not bound how finely other domain aspects, or a future local-detail promotion below the chunk, may be represented; see `spatial-hierarchy.md`.
+
 ## Determinism
 
 Terrain generation must be fully deterministic given:
