@@ -419,4 +419,4 @@ None beyond mana/material-surface, which are already coupled per
 - Wave 3 (documentation), checkpoint `02401c0`: `docs/development/todo-backlog.md`,
   `docs/ontology/domain-coverage-matrix.md`, `CHANGELOG.md`, `PLANS.md`.
 - Checkpoint hashes recorded, checkpoint `833732b`.
-- Wave 4 (feedback verification + stale-constant sync): pending checkpoint.
+- Wave 4 (feedback verification + stale-constant sync), checkpoint `bf1aa8c`.
