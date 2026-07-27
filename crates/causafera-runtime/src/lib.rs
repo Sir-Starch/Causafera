@@ -15,6 +15,7 @@ mod resolution;
 pub mod runtime;
 pub mod snapshot_sections;
 mod snapshots;
+mod terrain_regions;
 mod thermal;
 mod thermal_events;
 

@@ -328,10 +328,14 @@ fn below_threshold_source_changes_mana_without_material_consequence_or_supported
         .expect("source chunk mana field must be exported");
     // Unlike `source_config`, this test leaves terrain participation at its
     // default `Standing`, so cell 0 also carries the standing carrier's own
-    // structure alongside the injected amount of 3. 182 is still far below the
-    // default effect threshold of 4 096, which is what "below threshold" below
-    // asserts.
-    assert_eq!(source_field.intensity[0], 182);
+    // structure alongside the injected amount of 3. `TODO-GEO-004` made
+    // surface material spatially coherent, which moves this incidental value
+    // again (it was 182 before that change): coherent regions make many
+    // columns share the same dominant material, activating the field's
+    // spatial-repetition response channel where the old per-cell noise did
+    // not. 154 is still far below the production effect threshold of 6 144
+    // (`TODO-MANA-007`), which is what "below threshold" below asserts.
+    assert_eq!(source_field.intensity[0], 154);
     assert!(
         exported
             .material_surfaces

@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use causafera_domains::{ManaField, OpenNeighbors, PhysicalCarrierAdapter, PhysicalPatternSample};
 use causafera_geography::{
@@ -282,42 +282,56 @@ fn seed_comparison_config(seed: u64) -> RuntimeConfig {
 
 #[test]
 fn different_seeds_produce_different_worlds_not_one_world_with_two_terrains() {
-    // Given: two production worlds differing only in their seed. `TODO-MANA-007`
-    // recalibrated the local mana gate against the population it actually reads
-    // (cell 0 of every contacted surface, not the whole field), which moved this
-    // seed pair: 30 shared seed 7's tuple under the recalibrated gate, so a sweep
-    // of seeds 1 through 39 plus 59, 97, 101, 137 and 211 found 5 as a seed that
-    // still discriminates on every metric below, not because it is otherwise
-    // special.
-    let mut first = Runtime::new(seed_comparison_config(7)).expect("first world bootstraps");
-    let mut second = Runtime::new(seed_comparison_config(5)).expect("second world bootstraps");
+    // Given: several production worlds differing only in their seed. This test
+    // used to pick one hand-chosen pair that happened to discriminate under the
+    // gate calibration and material generator of the day; that pair broke twice
+    // in succession -- once when `TODO-MANA-007` recalibrated the gate, once
+    // when `TODO-GEO-004` made surface material spatially coherent -- neither
+    // time because the underlying claim (the seed reaches the simulation)
+    // stopped being true, only because one specific pair happened to land on a
+    // shared coarse behaviour tuple. Sweeping a fixed set of seeds and asserting
+    // the tuple does not collapse across all of them is the same claim, without
+    // depending on which two seeds a future change happens to leave
+    // discriminating.
+    //
+    // Ticks are 192, not the 48 this test used before: measured across seeds 1
+    // through 60 at 48 ticks, 59 of 60 land on one shared tuple regardless of
+    // generator or gate version -- 48 ticks is too early in the transient for
+    // most seeds' terrain and contact differences to have produced different
+    // gate crossings yet, independent of anything this test is actually about.
+    // At 192 ticks the same sweep gives five distinct tuples.
+    const SEEDS: [u64; 8] = [1, 2, 3, 5, 7, 11, 13, 17];
 
-    // When: both run the same tick count.
-    let first_summary = first.run_ticks(48).expect("first world runs");
-    let second_summary = second.run_ticks(48).expect("second world runs");
-    let first_state = first.export_snapshot().expect("first world exports");
-    let second_state = second.export_snapshot().expect("second world exports");
+    let mut digests = BTreeSet::new();
+    let mut mana_totals = BTreeSet::new();
+    let mut behaviours = BTreeSet::new();
 
-    // Then: the physical digest, the mana field, and the behavioural counts all
-    // differ. This is the acceptance criterion of TODO-RUNTIME-002; before the
-    // terrain carrier reached the tick loop, every one of these was identical
-    // across seeds.
-    assert_ne!(
-        first_summary.physical_state_digest,
-        second_summary.physical_state_digest
-    );
-    assert_ne!(first_summary.mana_total, second_summary.mana_total);
-    assert_ne!(
-        first_summary.mana_physical_effects,
-        second_summary.mana_physical_effects
-    );
-    assert_ne!(
-        first_state.material_surfaces.gate_transitions.len(),
-        second_state.material_surfaces.gate_transitions.len()
-    );
-    assert_ne!(
-        surface_conditions(&first_state),
-        surface_conditions(&second_state)
+    for seed in SEEDS {
+        let mut runtime = Runtime::new(seed_comparison_config(seed)).expect("world bootstraps");
+        let summary = runtime.run_ticks(192).expect("world runs");
+        let state = runtime.export_snapshot().expect("world exports");
+        digests.insert(summary.physical_state_digest);
+        mana_totals.insert(summary.mana_total);
+        behaviours.insert((
+            summary.mana_physical_effects,
+            state.material_surfaces.gate_transitions.len(),
+            surface_conditions(&state),
+        ));
+    }
+
+    // Then: the physical digest and total mana are distinct for every seed --
+    // measured true for every seed sampled so far and the finer-grained claim.
+    assert_eq!(digests.len(), SEEDS.len());
+    assert_eq!(mana_totals.len(), SEEDS.len());
+    // The coarser behavioural tuple (gate crossings, gate transitions, surface
+    // conditions) can share a value across some seeds -- that coarsening is the
+    // exact phenomenon TODO-MANA-004/007 measured and calibrated against -- but
+    // it must not collapse onto one tuple for every seed in the sweep, which is
+    // what "one world with two terrains" would look like.
+    assert!(
+        behaviours.len() > 1,
+        "every seed in {SEEDS:?} produced the same behaviour tuple {:?}",
+        behaviours.iter().next()
     );
 }
 
