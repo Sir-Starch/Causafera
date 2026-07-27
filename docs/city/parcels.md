@@ -16,7 +16,7 @@ A parcel may have:
 - access routes;
 - utility connections.
 
-Phase 20 implements only a trace-backed parcel record referencing an objective spatial `PlaceId`. Boundaries remain in the spatial hierarchy; rights and ownership remain separate social claims.
+Phase 20 implements only a trace-backed parcel record referencing an objective spatial `PlaceId`. Boundaries remain in the spatial hierarchy; rights and ownership remain separate social claims. A parcel's own coordinates use a bounded local metric frame independent of `CHUNK_SIZE` or the mana lattice, not derived terrain/mana grid state; see `docs/world/coordinates.md` and `RFC-GEO-002`.
 
 ## Ownership and Transfer
 

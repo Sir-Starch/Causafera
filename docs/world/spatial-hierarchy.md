@@ -32,7 +32,9 @@ A coherent area with similar terrain, climate, and ecology. Examples include mou
 A specific area within a landscape region, typically tens to hundreds of square kilometers. Territories have consistent local geography and may correspond to a settlement's hinterland.
 
 ### Spatial Chunk
-The primary simulation unit for active geographic computation. Chunks are fixed-size regions (candidate: 1 km²) that contain terrain, hydrology, ecology, and mana field state. The Causal Resolution Field determines which chunks receive detailed simulation.
+The primary unit of spatial addressing, storage, computation, and causal-resolution bookkeeping (INV-043). A chunk is not a material, biome, building, or physically indivisible cell, and it carries no privileged physical size: `CHUNK_SIZE` (`crates/causafera-types/src/coords.rs`) is a dimensionless lattice-cell count, and no constant anywhere in the workspace binds it to a metric scale. A future metre-per-cell figure must be an explicit registered value (RFC-GEO-002's `WorldGeometrySchemaId` and domain grid contracts), never an assumed one.
+
+Domain aspects inside one chunk already carry independent resolutions rather than one uniform level: terrain is a `CHUNK_SIZE × CHUNK_SIZE` two-dimensional height field, the mana field is a volumetric lattice at its own separately configured `chunk_extent`, and material surfaces and thermal state are their own chunk-scoped records. Hydrology and ecology remain documentation-only (`domain-coverage-matrix.md`) and are not yet chunk-resident state. The Causal Resolution Field (RFC-RES-001) sets the causal detail a chunk's *bookkeeping entry* requires; it does not itself define, aggregate, or promote any of these aspects — each domain owns its own promotion/demotion contract (INV-037, INV-039).
 
 ### Parcel / Site
 A specific piece of land with defined boundaries. Parcels may be owned, cultivated, built upon, or designated for specific uses. Sites are parcels with attached structures or significant human modification.
@@ -62,6 +64,8 @@ The field establishes the decision contract but does not yet aggregate domain st
 - Distant chunks may be aggregated to landscape region averages
 - Historical chunks may be stored at lower resolution
 - Inactive interior spaces may be represented as simple containers
+
+A future local-detail promotion raises part of a chunk's representation through Parcel/Site → Structure → Interior Space (this hierarchy), rather than adjusting the chunk's own bookkeeping level. Such promotion is a domain-owned contract, not an automatic consequence of the resolution field: it must conserve causal quantities and provenance, remain deterministic, and it must not synthesize specific residents, objects, or buildings from an aggregate without its own validated generation contract (INV-039). Promotion changes representation detail; it does not change chunk size, topology, or physical distance (INV-037, RFC-GEO-002).
 
 ## Coordinate Addressing
 
