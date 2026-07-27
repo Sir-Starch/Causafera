@@ -84,7 +84,9 @@ You represent and warrant that:
 
 ## 6. Disclaimer
 
-**CONTRIBUTIONS ARE PROVIDED "AS IS."** YOU DISCLAIM ALL WARRANTIES, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT. IN NO EVENT SHALL YOU BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES ARISING FROM YOUR CONTRIBUTIONS.
+Except for the express representations in section 5, **Contributions are provided "AS IS."** You disclaim all other warranties, express or implied, including warranties of merchantability and fitness for a particular purpose.
+
+Subject to the same exception, You are not liable for any direct, indirect, incidental, special, exemplary, or consequential damages arising from Your Contributions. This limitation does not apply to fraud, wilful misconduct, or breach of the express representations in section 5.
 
 ## 7. Attribution
 
@@ -129,7 +131,7 @@ Each published version is identified by the version number and effective date at
 
 ### Version history
 
-- **1.1** (2026-07-27) — Anchored the Project Maintainer to GitHub user ID `281476371` rather than to a mutable username or to repository control; narrowed "Contribution" so that issue comments, bug reports, and discussion are not licensed material; directed the patent grant to the Project Maintainer and recipients of the Project; aligned the Public Project License definition with the repository's functional/non-functional split; replaced the availability condition with a per-release licensing commitment that carries no hosting or retention obligation; aligned the acceptance-record fields with what a hosted CLA service actually exports; and added section 13. No Contribution had been accepted under version 1.0, so no renewed acceptance is outstanding.
+- **1.1** (2026-07-27) — Anchored the Project Maintainer to GitHub user ID `281476371` rather than to a mutable username or to repository control; narrowed "Contribution" so that issue comments, bug reports, and discussion are not licensed material; directed the patent grant to the Project Maintainer and recipients of the Project; aligned the Public Project License definition with the repository's functional/non-functional split; replaced the availability condition with a per-release licensing commitment that carries no hosting or retention obligation; scoped the copyright grant to the identity and revision covered by an acceptance; aligned the acceptance-record fields with what a hosted CLA service actually exports; stopped the section 6 disclaimer from negating the express representations in section 5; and added section 13. No Contribution had been accepted under version 1.0, so no renewed acceptance is outstanding.
 - **1.0** (2026-07-12) — Initial version.
 
 ## 13. No Governance Rights

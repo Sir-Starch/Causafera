@@ -48,7 +48,8 @@ versioned acceptance work, and why the revision hash — not just the URL — mu
 - [ ] Sign in to CLA Assistant with the maintainer GitHub account (user ID `281476371`).
 - [ ] Authorize the app against `Sir-Starch/Causafera` only, not the whole account, and review the
       permissions it requests before granting them.
-- [ ] Create the CLA configuration pointing at the Gist from step 1.
+- [ ] Create the CLA configuration linked to the Gist from step 1. The service follows that Gist and
+      picks up its later revisions; there is no per-revision configuration to maintain.
 - [ ] Confirm the resulting status check name, so it can be required in step 4.
 
 ## 3. Test with a real pull request
@@ -108,9 +109,11 @@ A material change to the CLA is not just a repository edit.
       entry.
 - [ ] Update the Gist with the same text, producing a **new revision**.
 - [ ] Record the new revision hash in the table in step 1.
-- [ ] Point the CLA Assistant configuration at the new revision.
-- [ ] Re-run the step 3 test to confirm that a contributor who accepted an earlier revision is asked
-      again, and that a new acceptance is recorded against the new revision.
+- [ ] Confirm that CLA Assistant detects the new revision of the linked Gist. The service is linked
+      to the Gist, not to a hand-picked revision — it follows the Gist and asks for a fresh signature
+      on the next pull request. The recorded hash is for the maintainer's own audit trail.
+- [ ] Re-run the step 3 test to verify that contributors who accepted the earlier revision are asked
+      to sign again, and that the new acceptance is recorded against the new revision.
 - [ ] If the service cannot enforce re-acceptance, record that as a limitation and handle
       re-acceptance manually before merging further external work.
 
