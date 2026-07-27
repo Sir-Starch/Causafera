@@ -872,7 +872,7 @@ stages, which record completed implementation, not the existence of this Draft):
   repository's default retention, which means "stored in version control" in `benchmarks.md`'s
   Reporting list is satisfied in spirit — durably keyed to a commit — but not literally.
 
-- **Wave 5 (close-out):** `TODO-PERF-001` re-evaluated against its full criteria and closed, with the
+- **Wave 5 (close-out), checkpoint `ec711ed`:** `TODO-PERF-001` re-evaluated against its full criteria and closed, with the
   reasoning recorded in the TODO itself rather than only here; `TODO-PERF-002` and `TODO-PERF-003`
   opened for the work its Out of Scope list had excluded, so closing it drops nothing.
   `PLANS.md` moved this plan to accepted-and-implemented. Cross-document consistency pass: every

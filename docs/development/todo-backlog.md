@@ -1137,9 +1137,12 @@ status that no remaining wave would ever clear.
 **Acceptance Criteria:** `RuntimeState::physical_state_digest` no longer grows without bound with run
 length. `thermal_receipts` and `thermal_conservation_receipts` gain one entry per tick from
 `ThermalEvolutionSystem::execute` with no eviction, pruning or truncation anywhere in the crate, and
-the digest re-walks both on every tick and every observer poll. Measured after `TODO-PERF-001`'s Wave
-3: about 6.3 ms of `baseline_batch0`'s 13.0 ms and 8.0 ms of `baseline_batch7`'s 22.4 ms per 64 ticks,
-making it the largest single named cost now that the trace scan is incremental. The technique that
+the digest re-walks both on every tick and every observer poll. Measured once, at `TODO-PERF-001`'s
+Wave 3 checkpoint: about 6.3 ms of `baseline_batch0`'s 13.0 ms and 8.0 ms of `baseline_batch7`'s
+22.4 ms per 64 ticks, making it the largest single named cost now that the trace scan is incremental.
+Those are one run's figures derived from a per-call mean, and the harness moves between runs by more
+than its own stddev on some cases, so re-run `digest-cost` for a current baseline before working
+against them rather than treating them as a fixed reference. The technique that
 fixed `history_digest` does **not** apply: these maps are written in the *middle* of the digest's
 write sequence, with further arbitrarily-mutable current-tick state written after them, so there is no
 resume point past which the output depends only on append-only growth. A fix requires one of three
