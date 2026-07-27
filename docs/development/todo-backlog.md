@@ -1,12 +1,13 @@
 # Causafera TODO Backlog
 
-## TODO-LEGAL-001: CLA Legal Review and Acceptance Automation
-**Status:** Pending
+## TODO-LEGAL-001: CLA Assistant Configuration and Verification
+**Status:** Completed
 **Phase:** 0
-**Priority:** Critical — before first external contribution
+**Priority:** Critical — before first external contribution is merged
 **Dependencies:** None
-**Goal:** Have CLA version 1.0 and its acceptance workflow reviewed by a Netherlands-qualified IP/open-source lawyer, then configure a CLA service or equivalent electronic-signature process.
-**Acceptance Criteria:** Counsel review recorded; acceptance cannot be inferred from pull-request submission; durable records include verified contributor identity, CLA version, timestamp, and associated pull request or commit; changed CLA versions require new acceptance.
+**Goal:** Configure and end-to-end verify the hosted CLA Assistant acceptance workflow for CLA version 1.1.
+**Acceptance Criteria:** Met. CLA 1.1 is published as a public Gist (`eb32d78ea648f989831f7aa0a3bac81c`, revision `7c6daa72020318c47d14bca27655097cce236d6b`), byte-identical to `CLA.md` at blob `3c89692912e7d645e376cded4d6547ca1f874fc7`; CLA Assistant is linked to `Sir-Starch/Causafera` against that Gist's `CLA.md`, with Shared Gist disabled and no minimum file-count or line-count exemption; acceptance cannot be inferred from pull-request submission, and the `license/cla` check moves from pending to passing on acceptance without a further push; `license/cla` is a required status check on `main` alongside `rust` and `ui`, so an unsigned contribution is blocked from merging; the maintainer and non-signing automation accounts are exempt through the service's own allowlist, the narrowest mechanism available, leaving enforcement intact for every other contributor.
+**Follow-up:** Periodic private export and backup of acceptance records, and the CLA update procedure, are documented in `docs/legal/cla-service-setup.md` as ongoing maintainer operations rather than open work.
 **Performance Requirements:** N/A
 **Determinism Requirements:** N/A
 **Ontology Implications:** None

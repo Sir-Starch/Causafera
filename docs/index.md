@@ -18,6 +18,7 @@ Later documents supersede conflicting initialization-spec sections **only when t
 
 - **Project overview** — [README.md](../README.md), the [project thesis](vision/project-thesis.md), and [what distinguishes Causafera](vision/uniqueness.md).
 - **Architecture and concepts** — the [invariants](architecture/invariants.md), [Detailed Development rebaseline](architecture/detailed-development-rebaseline.md), [domain coverage matrix](ontology/domain-coverage-matrix.md), and the subsystem sections below.
+- **Governance and licensing** — [GOVERNANCE.md](../GOVERNANCE.md) is the authoritative statement of decision-making authority; the [CLA](../CLA.md) governs accepted contributions, and [`docs/legal/`](legal/cla-service-setup.md) holds the maintainer-side setup material.
 - **Development and contribution** — [CONTRIBUTING.md](../CONTRIBUTING.md), [development notes](development/), and [CHANGELOG.md](../CHANGELOG.md).
 - **Active plans** — [PLANS.md](../PLANS.md) lists the pending biological mana-coupling plan, the accepted local mana-material-surface coupling slice, and the completed actor/material/mana vertical-slice record.
 - **Historical records** — completed ExecPlans and public-source-readiness provenance are retained in [historical plans and records](../plans/history/README.md); they are not current implementation guidance.
@@ -214,6 +215,13 @@ Later documents supersede conflicting initialization-spec sections **only when t
 - `docs/performance/philosophy.md` - Performance philosophy
 - `docs/performance/metrics.md` - Metrics
 - `docs/performance/benchmarks.md` - Benchmarks
+
+## Governance and Legal
+
+- `GOVERNANCE.md` - Author-led governance, maintainer authority, forks, and why the engine is FOSS
+- `CONTRIBUTING.md` - Authoritative contribution policy, flow, AI-agent rules, and validation
+- `CLA.md` - Contributor License Agreement, version 1.1 (stable signable text; acceptance status is tracked in `CONTRIBUTING.md`)
+- `docs/legal/cla-service-setup.md` - Maintainer checklist for enabling CLA acceptance
 
 ## Development
 

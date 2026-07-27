@@ -16,6 +16,8 @@
   ·
   <a href="CONTRIBUTING.md"><strong>Contributing</strong></a>
   ·
+  <a href="GOVERNANCE.md"><strong>Governance</strong></a>
+  ·
   <a href="SECURITY.md"><strong>Security</strong></a>
 </p>
 
@@ -341,21 +343,37 @@ bounded ExecPlans rather than a promised final phase number:
 The [roadmap](docs/roadmap/roadmap.md) is the authoritative status source. The
 [documentation index](docs/index.md) provides the complete documentation tree.
 
-## Contributing
+## Governance and contributing
 
-Read [CONTRIBUTING.md](CONTRIBUTING.md) before proposing changes. It defines the development
-workflow, architectural requirements, validation commands, and Contributor License Agreement
-requirements.
+Causafera is an author-led free and open-source project. It is open for inspection, research,
+modification, forks, and aligned contributions, while its canonical philosophy, architecture, and
+roadmap remain under the sole direction of the maintainer, currently
+[`Sir-Starch`](https://github.com/Sir-Starch). Contributing does not automatically create governance
+rights, and technically valid work may be declined because it does not fit the project's vision.
+Anyone wanting materially different behaviour is free to fork under the public licences.
+[GOVERNANCE.md](GOVERNANCE.md) is the authoritative statement of all of this.
 
-External code contributions are not currently accepted until the CLA acceptance workflow is
-configured. Issues and evidence-backed design discussion remain welcome.
+The engine is free and open source so that its results can be inspected, reproduced, and verified
+independently. Source availability is not itself evidence that those results are correct; that comes
+from deterministic replay, tests, recorded provenance, documented assumptions, and reproducible
+experiments.
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md) before proposing changes. It defines the contribution flow,
+architectural requirements, validation commands, the policy on AI-assisted contributions, and the
+Contributor License Agreement requirements.
+
+> [!NOTE]
+> External contributions may be merged once the contributor has accepted the
+> [CLA](CLA.md), the required checks pass, and the maintainer approves the change. `license/cla` is
+> a required status check on `main`; opening a pull request does not by itself accept the CLA.
 
 | Resource | Purpose |
 | --- | --- |
-| [Contributing guide](CONTRIBUTING.md) | Development workflow and validation requirements |
+| [Governance](GOVERNANCE.md) | Decision-making authority, forks, and why the engine is FOSS |
+| [Contributing guide](CONTRIBUTING.md) | Contribution flow, validation requirements, and AI-agent policy |
+| [Contributor License Agreement](CLA.md) | Terms governing accepted contributions |
 | [Security policy](SECURITY.md) | Vulnerability reporting and known limitations |
 | [Support guidance](SUPPORT.md) | Issue filing, questions, and project scope |
-| [Contributor License Agreement](CLA.md) | Terms governing accepted contributions |
 
 ## Licenses
 
@@ -365,7 +383,11 @@ Causafera uses separate licenses for software and explanatory documentation:
 - Documentation and non-code assets are licensed under [Creative Commons Attribution-ShareAlike 4.0 International](LICENSE-CC-BY-SA-4.0) (`CC-BY-SA-4.0`), unless explicitly stated otherwise.
 - Third-party dependencies retain their own licenses.
 - Contributions are governed by the existing [CLA](CLA.md) plus the applicable public outbound
-  license. The CLA does not replace those licenses or transfer contributor copyright.
+  license. Contributors retain their copyright; the CLA transfers no ownership and does not replace
+  the public licenses.
+- The CLA preserves the possibility of alternative commercial or proprietary licensing in future.
+  That possibility is additional to the public licenses and cannot revoke the license already
+  granted to any release in which a contribution has been published.
 
 ---
 
