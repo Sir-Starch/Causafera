@@ -1,7 +1,10 @@
 ## Summary
 
-Describe the bounded change and why it is needed. External contributions cannot be accepted until
-the CLA acceptance workflow is configured.
+Describe the bounded change and why it is needed.
+
+> External contributions cannot be merged until the CLA acceptance service is configured. Until
+> then, external pull requests may be prepared and discussed but will not be merged. See
+> [CONTRIBUTING.md](../CONTRIBUTING.md) and [GOVERNANCE.md](../GOVERNANCE.md).
 
 ## Evidence
 
@@ -20,6 +23,16 @@ commands and exit statuses; do not include credentials, private data, or unredac
 - Explicit non-goals:
 
 Use `Not applicable` only when the change genuinely cannot affect that boundary.
+
+## Contributor confirmations
+
+- [ ] I reviewed the complete diff, including any parts written by an AI agent, and I understand
+      what the change does.
+- [ ] This contribution is legally mine to submit under the project CLA.
+- [ ] I ran the applicable validation and reported the results honestly above, including anything
+      that failed or was not run.
+- [ ] I understand that CLA acceptance is required before this pull request can be merged, and that
+      opening a pull request does not accept the CLA.
 
 ## Checklist
 

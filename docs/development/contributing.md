@@ -2,6 +2,14 @@
 
 Thank you for your interest in Causafera. This project has strict architectural and philosophical requirements. Please read this document carefully before contributing.
 
+> [`CONTRIBUTING.md`](/CONTRIBUTING.md) at the repository root is the authoritative contribution
+> policy, including the contribution flow, the current CLA status, the AI-assisted contribution
+> rules, and the full validation suite. [`GOVERNANCE.md`](/GOVERNANCE.md) is the authoritative
+> statement of decision-making authority. This page is the documentation-tree summary of the
+> architectural expectations; where the two differ, the root documents govern.
+
+Causafera is an author-led free and open-source project. External contributions are welcome when they support the maintainer's canonical vision, but contributing does not create governance or decision-making rights, and technically valid work may be declined because it does not fit the project's direction.
+
 ## Required Reading
 
 Before making any changes, read:
@@ -62,16 +70,26 @@ Open an issue for discussion before major architectural changes.
 
 ## License and CLA
 
-All source code is licensed under **AGPL-3.0-only**. All documentation is licensed under **CC BY-SA 4.0**.
+Functional software material is licensed under **AGPL-3.0-only**. Prose and non-functional explanatory documentation are licensed under **CC BY-SA 4.0**.
 
-> **Current contribution status:** Causafera is a personal hobby and research project. External code contributions are not currently accepted. They may be accepted after the CLA acceptance workflow is configured. Issues, discussion, and feedback remain welcome.
+> **Current contribution status: preparing.** The CLA acceptance service is not yet configured or tested. Until it is, external pull requests may be prepared and discussed but cannot be merged, because CLA acceptance is a precondition for merge. Issues, discussion, and feedback are unaffected. The maintainer steps are tracked in [`docs/legal/cla-service-setup.md`](/docs/legal/cla-service-setup.md) and as `TODO-LEGAL-001` in [`docs/development/todo-backlog.md`](/docs/development/todo-backlog.md).
 
-Before a contribution can be accepted, the contributor must separately accept the [Contributor License Agreement (CLA)](/CLA.md) through the designated CLA service or electronic-signature process. Opening a pull request does not by itself constitute acceptance. The acceptance record must identify the contributor's verified identity, CLA version, timestamp, and an associated pull request or commit.
+Before a contribution can be accepted, the contributor must separately accept the [Contributor License Agreement (CLA)](/CLA.md) through the designated CLA service or electronic-signature process. Opening a pull request does not by itself constitute acceptance. The acceptance record identifies the authenticated contributor, the exact CLA version accepted, the timestamp, and an associated pull request or commit; a materially changed CLA version requires a new acceptance.
 
-The CLA permits proprietary and commercial outbound licensing while requiring accepted source contributions to remain available in the public project under AGPL-3.0-only and accepted documentation or other non-code contributions under CC BY-SA 4.0.
+Contributors retain their copyright. The CLA transfers no ownership. It permits proprietary and commercial outbound licensing in addition to — never instead of — the requirement that accepted functional software material remain available in the public project under AGPL-3.0-only and accepted prose and non-functional documentation under CC BY-SA 4.0.
+
+The CLA has not been reviewed by a lawyer. It calls for Netherlands-qualified legal review before external contributions are accepted.
+
+## AI-Assisted Contributions
+
+AI coding agents are explicitly allowed, including handing an open TODO to an agent. The human contributor submitting the pull request remains responsible for understanding the change, reviewing the complete diff, running and honestly reporting validation, holding the right to submit the work, correcting hallucinated or unrelated changes, and complying with the architecture, determinism, provenance, and documentation requirements. See [`CONTRIBUTING.md`](/CONTRIBUTING.md) for the full policy.
 
 ## Related Documents
 
+- `GOVERNANCE.md` - Decision-making authority and project governance
+- `CONTRIBUTING.md` - Authoritative contribution policy and validation suite
+- `CLA.md` - Contributor License Agreement
+- `docs/legal/cla-service-setup.md` - Maintainer checklist for enabling CLA acceptance
 - `docs/development/codebase-memory.md` - Codebase knowledge graph usage
 - `docs/development/changelog.md` - Changelog format
 - `AGENTS.md` - Agent guidelines

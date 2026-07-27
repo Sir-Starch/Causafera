@@ -1,0 +1,119 @@
+# Causafera Governance
+
+Causafera is an independent, author-led free and open-source simulation engine. This document is the
+authoritative statement of how the project is governed. Where any other repository document is less
+specific about decision-making authority, this document governs.
+
+## Maintainer authority
+
+The project is maintained by the GitHub identity [`Sir-Starch`](https://github.com/Sir-Starch), who
+holds final authority over the canonical repository at
+`https://github.com/Sir-Starch/Causafera`, including:
+
+- simulation philosophy and foundational assumptions;
+- architecture and technical direction;
+- project scope and roadmap sequencing;
+- accepted behaviour and its canonical interpretation;
+- releases, and the acceptance or rejection of contributions.
+
+Causafera is not community-owned, community-governed, consensus-driven, or democratically governed.
+There is no contributor vote, no steering committee, no seat earned by contribution volume, and no
+commons administered collectively by contributors. The engine's source is public; its direction is
+not shared.
+
+The maintainer develops Causafera primarily to satisfy a specific vision of causal simulation. That
+vision, not aggregate contributor preference, is the acceptance criterion.
+
+## Contributions and governance rights
+
+External contributors are welcome to propose ideas, report defects, discuss design, and submit
+changes. Contributions are evaluated on whether they support the canonical vision and satisfy the
+project's architectural, determinism, provenance, and evidence requirements.
+
+Contributing does not create governance or decision-making rights. Neither the number, size, nor
+significance of accepted contributions confers proportional influence over direction. A contributor
+whose work has been merged holds exactly the same standing in project decisions as one whose work
+has not.
+
+The maintainer may reject a contribution that is technically correct, well tested, and useful, on
+the sole ground that it does not fit the project's vision. That is a normal outcome, not a defect in
+the contribution or a judgement of the contributor. Where the reason is scope or philosophy rather
+than quality, it will be stated as such.
+
+To keep that outcome cheap for everyone, discuss substantial changes in an issue before implementing
+them. See [CONTRIBUTING.md](CONTRIBUTING.md) for the contribution workflow.
+
+## Forks and alternative interpretations
+
+Causafera is published under free and open-source licences precisely so that disagreement has a
+constructive outlet. Anyone who wants materially different simulation behaviour, different
+foundational assumptions, or a different roadmap is free to use, modify, and fork the engine under
+those licences.
+
+Forks and alternative interpretations are welcome and are a legitimate way to explore a design
+disagreement. They do not redefine the canonical Causafera project, and the canonical repository is
+under no obligation to adopt their conclusions.
+
+## Why the engine is free and open source
+
+Public source availability is not a growth strategy or a governance model here. It is a
+methodological requirement. A simulation engine that makes claims about causality, determinism, and
+emergence is only meaningful if others can:
+
+- inspect the implementation independently of any statement made about it;
+- reproduce simulation results from a stated seed, commit, and configuration;
+- verify causal traces, provenance chains, and documented assumptions against the code;
+- adapt the engine and run experiments the maintainer did not anticipate;
+- avoid relying on unverifiable "trust the author" claims.
+
+**Source availability is not validation.** That the code is readable does not make its results
+correct, its abstractions physically justified, or its emergence claims real. Validation comes from
+deterministic replay, tests, recorded provenance, documented assumptions, reproducible experiments,
+and representative benchmarks — the evidence requirements described in
+[CONTRIBUTING.md](CONTRIBUTING.md) and the
+[architecture invariants](docs/architecture/invariants.md). Repository documentation must keep those
+two things distinct and must not present openness as evidence of correctness.
+
+Current maturity, and the gap between implemented contracts and validated depth, are tracked in the
+[domain coverage matrix](docs/ontology/domain-coverage-matrix.md) and the
+[roadmap](docs/roadmap/roadmap.md).
+
+## Licensing, ownership, and sustainability
+
+Six things are distinct and are deliberately not merged in project documentation:
+
+| Concept | What it means here |
+| --- | --- |
+| Public FOSS licensing | Functional software material is under `AGPL-3.0-only`; prose and non-functional explanatory documentation are under `CC BY-SA 4.0` |
+| Governance authority | The maintainer decides direction and acceptance; this document |
+| Copyright ownership | Contributors retain copyright in their contributions; nothing here transfers it |
+| CLA-granted rights | The additional licensing rights contributors grant the maintainer under [CLA.md](CLA.md) |
+| Commercial licensing | Possible alternative outbound terms the CLA preserves, alongside — never instead of — public FOSS availability |
+| Scientific or technical validation | Independent of all of the above; established by evidence, not by licence or authority |
+
+The public engine remains available under its applicable FOSS licences. The
+[Contributor License Agreement](CLA.md) requires that accepted contributions incorporated into the
+public codebase remain available under the public licence that applied when they were submitted.
+
+The CLA additionally grants the maintainer sufficient rights to offer alternative commercial or
+proprietary licensing in the future. Causafera represents years of unpaid work, and the project is
+not intended to convert that work into an open-ended obligation governed by community expectations.
+The maintainer may pursue commercial opportunities. Doing so cannot withdraw or replace the
+continuing public availability of accepted contributions under the applicable FOSS licence.
+
+## Conduct
+
+Participation is governed by the [Code of Conduct](CODE_OF_CONDUCT.md). It sets behavioural
+standards for people interacting in project spaces. It is not a governance mechanism and does not
+grant decision-making authority.
+
+## Related documents
+
+| Document | Purpose |
+| --- | --- |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Contribution workflow, architectural requirements, and validation |
+| [CLA.md](CLA.md) | Terms under which contributions are accepted |
+| [docs/legal/cla-service-setup.md](docs/legal/cla-service-setup.md) | Maintainer checklist for enabling CLA acceptance |
+| [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) | Behavioural standards in project spaces |
+| [SECURITY.md](SECURITY.md) | Vulnerability reporting and known limitations |
+| [SUPPORT.md](SUPPORT.md) | What the project supports and how to ask |

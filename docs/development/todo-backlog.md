@@ -5,8 +5,8 @@
 **Phase:** 0
 **Priority:** Critical — before first external contribution
 **Dependencies:** None
-**Goal:** Have CLA version 1.0 and its acceptance workflow reviewed by a Netherlands-qualified IP/open-source lawyer, then configure a CLA service or equivalent electronic-signature process.
-**Acceptance Criteria:** Counsel review recorded; acceptance cannot be inferred from pull-request submission; durable records include verified contributor identity, CLA version, timestamp, and associated pull request or commit; changed CLA versions require new acceptance.
+**Goal:** Have CLA version 1.1 and its acceptance workflow reviewed by a Netherlands-qualified IP/open-source lawyer, resolving the questions listed at the end of `CLA.md`, then configure a CLA service or equivalent electronic-signature process following the checklist in `docs/legal/cla-service-setup.md`.
+**Acceptance Criteria:** Counsel review recorded; the reserved legal questions in `CLA.md` answered or explicitly deferred by counsel; acceptance cannot be inferred from pull-request submission; durable records include authenticated contributor identity, CLA version, timestamp, and associated pull request or commit; changed CLA versions require new acceptance; the CLA status check is required on `main` and verified against a test pull request; automation accounts are handled explicitly; contribution-status text updated only after the service is confirmed operational.
 **Performance Requirements:** N/A
 **Determinism Requirements:** N/A
 **Ontology Implications:** None

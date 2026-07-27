@@ -48,6 +48,13 @@ officially representing the community in public spaces. Examples of representing
 include using an official e-mail address, posting via an official social media account, or acting as
 an appointed representative at an online or offline event.
 
+> **Note on terminology.** This document is adapted from the Contributor Covenant, where "community"
+> and "community leaders" describe the people participating in project spaces and those moderating
+> them. They are not governance terms here. Causafera is an author-led project and is not
+> community-governed: technical direction, scope, and contribution acceptance rest with the
+> maintainer, as described in [GOVERNANCE.md](GOVERNANCE.md). This Code of Conduct sets behavioural
+> standards; it does not confer decision-making authority on anyone.
+
 ## Enforcement
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be reported privately to

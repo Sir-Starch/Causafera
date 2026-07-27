@@ -1,11 +1,45 @@
 # Contributing to Causafera
 
-Causafera is an experimental causal world-simulation engine (**Experimental pre-alpha**) with
-strict deterministic and provenance requirements.
+Causafera is an author-led free and open-source causal world-simulation engine
+(**Experimental pre-alpha**) with strict deterministic and provenance requirements.
 
-> **Current contribution status:** external code and documentation contributions are not currently
-> accepted. They may be accepted after the CLA acceptance workflow is configured. Issues,
-> reproducible bug reports, review, and design discussion remain welcome.
+External contributions are welcome when they support the project's canonical vision. Direction,
+scope, and acceptance remain with the maintainer, and contributing does not create governance
+rights — read [GOVERNANCE.md](GOVERNANCE.md) before investing significant effort. Technically valid
+work may still be declined because it does not fit the project's vision; discussing a substantial
+change in an issue first is the cheapest way to find that out.
+
+> **Current contribution status: preparing.** The CLA acceptance service is **not yet configured or
+> tested**. Until it is, external pull requests may be prepared, submitted, and discussed, but they
+> **cannot be merged**, because CLA acceptance is a precondition for merge and no working acceptance
+> mechanism exists yet. Nothing below should be read as saying the CLA workflow is already
+> operational. Issues, reproducible bug reports, review, and design discussion are unaffected.
+>
+> Enabling the service is tracked as `TODO-LEGAL-001` in
+> [`docs/development/todo-backlog.md`](docs/development/todo-backlog.md); the maintainer steps are in
+> [`docs/legal/cla-service-setup.md`](docs/legal/cla-service-setup.md). This notice is updated only
+> after the service is confirmed working.
+
+## Contribution flow
+
+Once the CLA service is configured, the intended flow is:
+
+1. **Pick the work.** Choose an open TODO from
+   [`docs/development/todo-backlog.md`](docs/development/todo-backlog.md), or discuss a substantial
+   change in an issue before implementing it.
+2. **Read the required documentation.** The architecture and subsystem documents listed under
+   [Before contributing](#before-contributing) below.
+3. **Implement a focused change.** One bounded scope, no unrelated opportunistic work.
+4. **Review every change.** Read the complete diff yourself, whether you wrote it by hand or an AI
+   agent generated it. See [AI-assisted contributions](#ai-assisted-contributions).
+5. **Run the required validation.** The commands under [Validation](#validation), and any targeted
+   tests and benchmarks for the subsystem you changed.
+6. **Open a pull request.** Fill in the template honestly, including checks that failed or were not
+   run.
+7. **Accept the current CLA** through the configured CLA service, if you have not already accepted
+   that version.
+8. **Merge** happens only after CLA acceptance and the repository checks pass, and only if the
+   maintainer accepts the change.
 
 ## Before contributing
 
@@ -36,6 +70,35 @@ major architectural change in an issue before implementation.
    effects in the pull request.
 
 Do not perform opportunistic simulation or architecture work in an unrelated contribution.
+
+## AI-assisted contributions
+
+AI coding agents are explicitly allowed. You may hand an open TODO to an agent and submit the
+result. The project itself is developed this way, and there is no penalty, disclosure stigma, or
+separate review track for AI-assisted work.
+
+What does not change is who is accountable. The **human contributor** submitting the pull request
+remains responsible for:
+
+- **understanding the change** — you can explain what it does and why, without the agent present;
+- **reviewing the complete diff** — every hunk, including files you did not expect to be touched;
+- **running the validation and reporting it honestly** — including checks that failed, were skipped,
+  or could not run in your environment;
+- **the right to submit it** — the contribution must be legally yours to license under the
+  [CLA](CLA.md), including any third-party code an agent may have reproduced;
+- **correcting hallucinated, speculative, or unrelated changes** — invented APIs, fabricated
+  benchmark numbers, citations to documents that do not exist, plausible-looking test assertions
+  that verify nothing, and drive-by edits outside the stated scope;
+- **compliance with this document** — architecture, determinism, provenance, evidence, and
+  documentation requirements apply identically to generated code.
+
+"Give any TODO to an agent" is not permission to submit unreviewed generated code. An unreviewed
+diff is not a contribution; it is a request that someone else do the review. Pull requests that show
+signs of unreviewed generation — unrelated file churn, unverifiable claims, tests that assert
+nothing, documentation describing behaviour that does not exist — will be closed rather than
+iterated on.
+
+Agents are also subject to the repository's own agent rules in [`AGENTS.md`](AGENTS.md).
 
 ## Architectural requirements
 
@@ -101,7 +164,7 @@ Audit-tool tests and dependency advisory check:
 ```bash
 node tools/audit/check-entry-points.mjs
 node tools/audit/run-source-tests.mjs
-node tools/audit/validate-capability-audit.mjs links --paths README.md,CONTRIBUTING.md,SECURITY.md,SUPPORT.md,CODE_OF_CONDUCT.md
+node tools/audit/validate-capability-audit.mjs links --paths README.md,CONTRIBUTING.md,GOVERNANCE.md,CLA.md,SECURITY.md,SUPPORT.md,CODE_OF_CONDUCT.md
 pnpm audit --audit-level high
 git diff --check
 ```
@@ -122,18 +185,24 @@ tools or skipped commands as passing.
 ## Pull requests and the CLA
 
 Submitting a pull request does not automatically accept the CLA. Before an external contribution
-can be merged, you must separately accept the [Contributor License Agreement](CLA.md) through a
-configured electronic-signature or CLA service. The acceptance record must identify the verified
-contributor, CLA version, timestamp, and associated pull request or commit.
+can be merged, you must separately accept the [Contributor License Agreement](CLA.md) through the
+configured electronic-signature or CLA service. The acceptance record identifies the authenticated
+contributor, the exact CLA version accepted, the timestamp, and the associated pull request or
+commit. A materially changed CLA version requires a new acceptance; earlier acceptances are not
+carried over.
 
-Under the CLA you retain your copyright, but you grant the maintainer additional rights including
-other commercial or proprietary outbound terms. Accepted functional software material — source,
-scripts, schemas, manifests, CI configuration, and machine-readable software configuration —
-remains available under AGPL-3.0-only. Accepted prose and non-functional explanatory documentation
-remains available under CC BY-SA 4.0.
+Under the CLA you retain your copyright — accepting a contribution does not transfer it. You grant
+the maintainer additional rights, including the ability to offer other commercial or proprietary
+outbound terms. That possibility is additional to, and cannot withdraw, the public availability of
+accepted contributions: accepted functional software material — source, scripts, schemas,
+manifests, CI configuration, and machine-readable software configuration — remains available under
+AGPL-3.0-only, and accepted prose and non-functional explanatory documentation remains available
+under CC BY-SA 4.0.
 
-The CLA supplements those public licenses; it does not replace them. The CLA itself calls for
-legal review before external contributions are accepted.
+The CLA supplements those public licenses; it does not replace them, and it grants no governance
+rights (see [GOVERNANCE.md](GOVERNANCE.md)). The CLA has not been reviewed by a lawyer and calls for
+Netherlands-qualified legal review before external contributions are accepted; its open questions
+are listed at the end of [CLA.md](CLA.md).
 
 ## Reporting security issues
 
