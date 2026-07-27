@@ -339,12 +339,15 @@ None beyond mana/material-surface, which are already coupled per
 
 ## Progress
 
-- Wave 1 (measurement tool): `apps/observer/src-tauri/examples/mana_gate_calibration.rs` added.
+- Wave 1 (measurement tool), checkpoint `a03856b`:
+  `apps/observer/src-tauri/examples/mana_gate_calibration.rs` added.
   Verified: `cargo build --release -p causafera-observer --example mana_gate_calibration`,
   `cargo clippy --release -p causafera-observer --example mana_gate_calibration -- -D warnings`.
-- Wave 2 (constant change + test fix): `crates/causafera-runtime/src/config.rs` (`effect_threshold`
-  4096 → 6144, `effect_hysteresis` 2000 → 1536), `crates/causafera-runtime/tests/terrain_carrier.rs`
-  (seed pair 7/30 → 7/5 in `different_seeds_produce_different_worlds_not_one_world_with_two_terrains`).
+- Wave 2 (constant change + test fix), checkpoint `7979936`:
+  `crates/causafera-runtime/src/config.rs` (`effect_threshold` 4096 → 6144, `effect_hysteresis` 2000
+  → 1536), `crates/causafera-runtime/tests/terrain_carrier.rs` (seed pair 7/30 → 7/5 in
+  `different_seeds_produce_different_worlds_not_one_world_with_two_terrains`).
   Verified: `cargo test --release --workspace` (zero failures), `cargo fmt --all -- --check`,
   `cargo clippy --release -p causafera-runtime --all-targets -- -D warnings`.
-- Wave 3 (documentation): pending checkpoint.
+- Wave 3 (documentation), checkpoint `02401c0`: `docs/development/todo-backlog.md`,
+  `docs/ontology/domain-coverage-matrix.md`, `CHANGELOG.md`, `PLANS.md`.
