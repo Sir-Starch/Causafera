@@ -592,6 +592,16 @@ None.
   enough run will still see this cost grow, even after Wave 3 lands. This is Finding 2's second half,
   explicitly not addressed here (see Non-goals) — flagging it prominently so it is not mistaken for a
   closed issue once Wave 3's `history_digest` fix ships.
+- **Wave 3 made the observer-poll path mutate shared state.** `Runtime::snapshot` still takes
+  `&self`, but it now advances the history-digest prefix through the state mutex, so a path that was
+  logically read-only no longer is. Checked, and not currently reachable concurrently: the workspace
+  contains no `thread::spawn`, `tokio::spawn`, `rayon` or `par_iter`; every `Arc<Mutex<RuntimeState>>`
+  clone belongs to a scheduler system that runs sequentially inside `tick`; and the one path that
+  does cross threads — `observer_analyze`'s `spawn_blocking` in `apps/observer/src-tauri/src/main.rs`
+  — takes the outer `Mutex<ObserverSession>` that every other command also takes, so runtime access
+  is serialized before the state mutex is ever reached. A future observer that polls from a second
+  thread while another ticks would newly contend on that mutex, and would want a concurrent
+  differential test; today there is nothing to write one against.
 - Finding 2's "rest of tick" bucket (field physics at large `chunk_extent`/`active_chunk_radius`) is
   large and was not decomposed further in this investigation.
 - Wave 1's harness, once checked in, becomes the new source of truth this plan's own tables are
@@ -821,7 +831,11 @@ stages, which record completed implementation, not the existence of this Draft):
   harness's separate `history_digest_ns` column drops to roughly 0.2 µs, which is **expected and not
   the claim** — every tick has already absorbed, so a post-loop call finds nothing to do and is
   measuring an up-to-date accumulator rather than measuring nothing. The clearest single reading is
-  the run-length penalty, `baseline_batch7` against `baseline_batch0`: 6.7x before, 1.7x after, with
-  the residual attributable to `physical_state_digest`, which this wave deliberately leaves alone
-  (its own column is unchanged within noise: 97-99 µs and 125 µs on those two cases before and
-  after).
+  the run-length penalty, `baseline_batch7` against `baseline_batch0`: 6.7x before, 1.7x after.
+  `physical_state_digest` is unchanged by this wave, as intended — 97.4 µs and 125.9 µs per call
+  before, 98.2 µs and 124.9 µs after, on those two cases. Those are per-call figures against
+  per-64-tick totals, so stating the residual checkably: across the 64 calls in a case it is about
+  6.3 ms of `baseline_batch0`'s 13.0 ms and about 8.0 ms of `baseline_batch7`'s 22.4 ms, which makes
+  it the largest single named cost now that the trace scan is gone. Its growth between the two cases
+  is about 1.7 ms, so it explains part but not all of the 9.4 ms that still separates them; the rest
+  is other run-length-dependent state this investigation did not decompose.
