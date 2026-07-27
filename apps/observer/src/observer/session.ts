@@ -369,12 +369,19 @@ export class ObserverSessionController {
         previous?.command === "observer_field_raster" &&
         previous.outcome === exchange.outcome
       ) {
+        // These requests are issued together (Promise.all) but serialise on the
+        // session's Tauri mutex, so each raw durationMs already carries the queue
+        // wait of every call ahead of it. Summing them counts that wait n times
+        // over. The batch's real cost is its wall-clock span, first call's start
+        // to this call's finish; `previous.at - previous.durationMs` recovers
+        // that start and is preserved unchanged through every fold in the run.
+        const batchStart = previous.at - previous.durationMs;
         const folded: Exchange = {
           ...previous,
           count: (previous.count ?? 1) + 1,
           requestBytes: previous.requestBytes + exchange.requestBytes,
           responseBytes: previous.responseBytes + exchange.responseBytes,
-          durationMs: previous.durationMs + exchange.durationMs,
+          durationMs: exchange.at - batchStart,
           detail: exchange.detail,
           at: exchange.at,
         };

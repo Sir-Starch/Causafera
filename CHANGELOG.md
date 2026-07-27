@@ -362,7 +362,8 @@ This project follows a structured changelog format. Each entry includes:
 - Moved hover explanations into a portal so a panel with clipping can no longer cut one in half;
 - Stopped the desktop launcher from disabling compositing and forcing software GL by default, which made the shell markedly slower than the same build in a browser; the narrow XWayland and DMABUF workaround remains, and the heavy profile is available through `CAUSAFERA_SOFTWARE_RENDER=1`;
 - Painted the chart sheet once into a bitmap instead of keeping roughly a hundred masked vector paths and a filtered noise layer live beneath a translucent scrolling workspace;
-- Bounded repaint to the scrolling regions with `contain: paint`, and stopped republishing map hover readings that had not changed.
+- Bounded repaint to the scrolling regions with `contain: paint`, and stopped republishing map hover readings that had not changed;
+- Fixed the Instrument exchange log inflating the reported cost of a raster frame. `refreshRasters` issues a frame's per-chunk `observer_field_raster` calls together (`Promise.all`), but they still serialise on the Tauri session mutex, so each call's own `durationMs` already carries the queueing wait for every call ahead of it. `recordExchange`'s fold summed those durations across the frame, counting the shared wait once per call and inflating the logged cost roughly with the square of the batch size instead of reporting it. The fold now reports the batch's wall-clock span — first call's start to the folding call's finish — recovered from the already-folded entry's `at` and `durationMs` rather than re-accumulated, so the instrument reads the wire's real behaviour before any batching of the nine per-frame calls is considered.
 
 ## Categories
 
