@@ -140,6 +140,45 @@ fn main() {
         by_x.len().saturating_sub(1),
     );
 
+    // TODO-GEO-004 evidence: is the same-material neighbour rate across a
+    // chunk boundary the same order as the interior rate, or does the region
+    // partition notice the boundary the way the old per-cell noise never
+    // could (having no spatial structure to notice a boundary with at all)?
+    let interior_same_material = by_x
+        .values()
+        .flat_map(|carrier| {
+            (0..32).flat_map(move |row| {
+                (1..32).map(move |column| {
+                    carrier.surface_materials[row * 32 + column]
+                        == carrier.surface_materials[row * 32 + column - 1]
+                })
+            })
+        })
+        .collect::<Vec<_>>();
+    let boundary_same_material = by_x
+        .keys()
+        .copied()
+        .collect::<Vec<_>>()
+        .windows(2)
+        .flat_map(|pair| {
+            let west = by_x[&pair[0]];
+            let east = by_x[&pair[1]];
+            (0..32).map(move |row| {
+                east.surface_materials[row * 32] == west.surface_materials[row * 32 + 31]
+            })
+        })
+        .collect::<Vec<_>>();
+    let rate = |values: &[bool]| {
+        100.0 * values.iter().filter(|v| **v).count() as f64 / values.len() as f64
+    };
+    println!(
+        "TODO-GEO-004: interior same-material rate {:.1}% ({} pairs) | boundary same-material rate {:.1}% ({} pairs)",
+        rate(&interior_same_material),
+        interior_same_material.len(),
+        rate(&boundary_same_material),
+        boundary_same_material.len(),
+    );
+
     // TODO-GEO-006 evidence: does an edge column's structure actually change
     // once its real neighbouring chunk is visible, against the same chunk
     // built with no cross-chunk context at all (the pre-fix behaviour)?
