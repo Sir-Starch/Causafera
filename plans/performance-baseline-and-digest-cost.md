@@ -1,10 +1,13 @@
 # Performance Baseline and Digest Cost ExecPlan
 
-**Status:** Accepted; Waves 1-3 implemented (see Progress), including the differential oracle test
-Wave 3's INV-007/INV-038 sensitivity required. Waves 4-5 not started.
-**Revision 6**, incorporating three independent review passes that corrected several claims in
-earlier drafts, plus what implementing Waves 1-3 established — see Decision log for what changed and
-why across all revisions.
+**Status:** Accepted and implemented; all five waves landed, each with its own verified checkpoint
+(see Progress), including the differential oracle test Wave 3's INV-007/INV-038 sensitivity required.
+`TODO-PERF-001` is closed; the two follow-ups this plan deliberately did not close continue as
+`TODO-PERF-002` (`physical_state_digest`'s thermal-receipt growth) and `TODO-PERF-003` (regression
+flagging and reference hardware).
+**Revision 7**, incorporating three independent review passes that corrected several claims in
+earlier drafts, plus what implementing all five waves established — see Decision log for what changed
+and why across all revisions.
 
 ## Goal
 
@@ -620,10 +623,22 @@ existence, not yet any implemented fix): `CHANGELOG.md`, `PLANS.md`, `docs/devel
 
 ## TODO changes
 
-`TODO-PERF-001`: remains Pending. Acceptance criteria name Wave 1's harness output, Finding 1's
+`TODO-PERF-001`: **Completed.** Its acceptance criteria named Wave 1's harness output, Finding 1's
 exhaustively-located config-boundary regression test, and Finding 2's `history_digest` before/after
 measurement (not `physical_state_digest`, which this plan does not fix) as the concrete acceptance
-evidence.
+evidence, and each is now in place. Its own Out of Scope list had already excluded reference-hardware
+runs, CI regression gating and any treatment of `physical_state_digest`, so nothing in scope remains;
+leaving it Pending would have meant a status no remaining wave could ever clear.
+
+Two successors were opened rather than letting the excluded work stay implicit in a closed TODO:
+
+- `TODO-PERF-002` — `physical_state_digest`'s unbounded `thermal_receipts`/
+  `thermal_conservation_receipts` growth, carrying this plan's three named candidate approaches
+  (retention/compaction, reorder-plus-schema-migration, or a composable digest primitive) and the
+  measured cost that motivates it. A design decision, not an implementation task.
+- `TODO-PERF-003` — the two `docs/performance/benchmarks.md` Reporting requirements Wave 4's
+  capture-only step does not satisfy: regression flagging, which needs a historical series before a
+  threshold means anything, and a reference-hardware run, which does not exist.
 
 ## Decision log
 
@@ -839,3 +854,37 @@ stages, which record completed implementation, not the existence of this Draft):
   it the largest single named cost now that the trace scan is gone. Its growth between the two cases
   is about 1.7 ms, so it explains part but not all of the 9.4 ms that still separates them; the rest
   is other run-length-dependent state this investigation did not decompose.
+
+- **Wave 4 (CI capture, not gating), checkpoint `84f743f`:** `.github/workflows/benchmarks.yml` (runs
+  the harness, uploads its output as an artifact named for the commit SHA),
+  `docs/performance/benchmarks.md` (the methodology-gaps section rewritten to separate what is now
+  fixed from what is still open), `CHANGELOG.md`, `docs/development/todo-backlog.md`.
+  No threshold and no regression flag, per this plan's Non-goals. The upload step carries
+  `if: always()` so a failing capture still preserves its evidence, and `if-no-files-found: error` so
+  a silently-empty artifact cannot pass for a recorded measurement. The capture step is allowed to
+  fail the job on one condition only — the boundary sweep finding a configuration `validate()`
+  accepted that then exceeded the cue cap at a tick — which is a Wave 2 soundness bug, not a
+  performance threshold, and is documented as such in both the workflow and `benchmarks.md`.
+  `actions/upload-artifact` is pinned by commit SHA to match every other action in the repository;
+  the pin was resolved against the upstream tag rather than assumed.
+  Sizing: the full three-mode run measures 39 s locally after Wave 3 (it was ~54 s before), against
+  the job's default 360-minute timeout, so no timeout change was needed. Artifacts fall under the
+  repository's default retention, which means "stored in version control" in `benchmarks.md`'s
+  Reporting list is satisfied in spirit — durably keyed to a commit — but not literally.
+
+- **Wave 5 (close-out):** `TODO-PERF-001` re-evaluated against its full criteria and closed, with the
+  reasoning recorded in the TODO itself rather than only here; `TODO-PERF-002` and `TODO-PERF-003`
+  opened for the work its Out of Scope list had excluded, so closing it drops nothing.
+  `PLANS.md` moved this plan to accepted-and-implemented. Cross-document consistency pass: every
+  reference to this plan outside itself was re-read and corrected —
+  `docs/roadmap/roadmap.md` still called it "Draft, not-yet-accepted" with "no implementation has
+  landed", `docs/simulation/long-run-experiments.md` and `docs/ontology/domain-coverage-matrix.md`
+  still carried "(Draft)"/"(Accepted)" status markers, and `long-run-experiments.md` had become
+  internally contradictory, describing both digests as full-rescan in one paragraph and
+  `history_digest` as incremental in the next.
+  Problems found during this plan's work but outside its scope, recorded rather than fixed:
+  `.github/workflows/benchmarks.yml` and `ci.yml` both pin `dtolnay/rust-toolchain` with a trailing
+  `# 1.85.0` comment, but that action is invoked with no `toolchain` input, so it resolves to current
+  stable — which `CHANGELOG.md` already notes when recording the 1.97.1 bump. The comment therefore
+  names a version CI does not use. Left alone: it is a pre-existing annotation defect on a line this
+  plan had no reason to touch.

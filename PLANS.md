@@ -92,9 +92,10 @@ Progress
 - [`plans/mana-gate-calibration.md`](plans/mana-gate-calibration.md) — accepted and implemented; the local mana effect gate's threshold and hysteresis are recalibrated against the population it actually reads, which discriminates worlds at every candidate lattice rather than latching (`TODO-MANA-007`).
 - [`plans/coherent-surface-material-regions.md`](plans/coherent-surface-material-regions.md) — accepted and implemented; surface material is generated as spatially coherent regions instead of per-cell noise, closing the constant floor this left in the terrain carrier's mana-facing structure magnitude (`TODO-GEO-004`).
 - [`plans/performance-baseline-and-digest-cost.md`](plans/performance-baseline-and-digest-cost.md) —
-  accepted evidence-based performance investigation for `TODO-PERF-001` with pending implementation
-  stages; Wave 1 (checked-in benchmark/diagnostic harness) implemented, Waves 2-4 (config-validation
-  fix, incremental `history_digest`, CI capture) pending.
+  accepted and implemented; a checked-in statistical benchmark harness, construction-time rejection of
+  configurations the cognition cue cap cannot execute, an incremental `history_digest` whose value
+  stays bit-identical, and per-commit CI capture of the harness output (`TODO-PERF-001`). Two
+  deliberately-unclosed follow-ups continue as `TODO-PERF-002` and `TODO-PERF-003`.
 
 ## Draft Plans
 

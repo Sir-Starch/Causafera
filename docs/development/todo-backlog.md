@@ -1062,7 +1062,7 @@ attribution. These do not complete the domain-aware Explanation requirement for 
 slices.
 
 ## TODO-PERF-001: Benchmark Framework
-**Status:** Pending
+**Status:** Completed
 **Phase:** Detailed Development — Cross-cutting
 **Priority:** High
 **Dependencies:** TODO-ARCH-001, TODO-DEPTH-001
@@ -1121,6 +1121,67 @@ is in scope, per the plan's Wave 4); SoA conversion, scheduler parallelization, 
 incremental treatment of `physical_state_digest` (all of it, not only its current-state-bounded terms
 — its unbounded thermal-receipt terms are a real, measured gap this TODO's plan identifies but does
 not fix, pending a separate design decision; see the plan's Non-goals and Decision log)
+**Closed because:** every in-scope criterion is met — the harness exists and is checked in, both
+findings are reproducible without throwaway instrumentation, finding (1) is fixed at construction
+time, finding (2)'s `history_digest` half is fixed bit-identically, and CI captures the output per
+commit. The three things still open were each named Out of Scope above before the work started, and
+are carried forward as `TODO-PERF-002` and `TODO-PERF-003` rather than left implicit in a Pending
+status that no remaining wave would ever clear.
+
+## TODO-PERF-002: Unbounded Thermal Receipt Growth in `physical_state_digest`
+**Status:** Pending
+**Phase:** Detailed Development — Cross-cutting
+**Priority:** Medium
+**Dependencies:** TODO-PERF-001
+**Goal:** Bound `physical_state_digest`'s per-tick cost over a run's length
+**Acceptance Criteria:** `RuntimeState::physical_state_digest` no longer grows without bound with run
+length. `thermal_receipts` and `thermal_conservation_receipts` gain one entry per tick from
+`ThermalEvolutionSystem::execute` with no eviction, pruning or truncation anywhere in the crate, and
+the digest re-walks both on every tick and every observer poll. Measured after `TODO-PERF-001`'s Wave
+3: about 6.3 ms of `baseline_batch0`'s 13.0 ms and 8.0 ms of `baseline_batch7`'s 22.4 ms per 64 ticks,
+making it the largest single named cost now that the trace scan is incremental. The technique that
+fixed `history_digest` does **not** apply: these maps are written in the *middle* of the digest's
+write sequence, with further arbitrarily-mutable current-tick state written after them, so there is no
+resume point past which the output depends only on append-only growth. A fix requires one of three
+approaches, and picking one is the substance of this TODO rather than an implementation detail: (a) a
+retention or compaction policy bounding how many receipts stay retained, which is a domain decision
+about how much thermal history must remain reconstructable rather than a performance change; (b)
+reordering the write sequence so the unbounded maps come last, paired with a deliberate digest schema
+migration and a persistence-compatibility plan for existing snapshots; or (c) a composable digest
+primitive able to combine independently-computed partial digests, which `CanonicalDigest` does not
+provide. Evidence for the chosen approach must come from the checked-in harness, not a scratch probe.
+**Performance Requirements:** Per-tick digest cost must not grow with the number of ticks already run
+**Determinism Requirements:** Any change to the digest's byte output requires an explicit
+`CURRENT_DIGEST_SCHEMA_VERSION` bump and a stated persistence-compatibility position (INV-007,
+INV-038); an approach that keeps the output identical must be verified by a differential oracle test
+against a retained full-rescan reference, as `TODO-PERF-001`'s Wave 3 was
+**Ontology Implications:** Approach (a) decides what thermal history remains reconstructable, which is
+a domain question, not a caching one
+**Observer Implications:** Approach (b) changes the digest every observer poll reports
+**Explanation Implications:** N/A
+**Out of Scope:** `history_digest` (already incremental); any change to thermal physics itself
+
+## TODO-PERF-003: Benchmark Regression Flagging and Reference Hardware
+**Status:** Pending
+**Phase:** Detailed Development — Cross-cutting
+**Priority:** Medium
+**Dependencies:** TODO-PERF-001
+**Goal:** Close the two `docs/performance/benchmarks.md` Reporting requirements CI capture does not
+**Acceptance Criteria:** `benchmarks.md` requires benchmark results to be stored, compared across
+commits, flagged on regression, and reproducible on reference hardware. `TODO-PERF-001`'s Wave 4
+stores them as a per-commit artifact, which makes comparison possible but performs neither the
+comparison nor the flagging, and no reference-hardware run exists. This TODO adds a regression signal
+derived from an actual historical series rather than a guessed threshold — the harness already reports
+stddev per case, so the threshold should be expressed against observed run-to-run spread — and a
+documented run on the reference machine named in `benchmarks.md`. Deliberately not started earlier: a
+threshold chosen before any series exists measures nothing.
+**Performance Requirements:** The regression check must not itself distort the measurement it gates
+**Determinism Requirements:** Every flagged number must trace to the checked-in harness (INV-018)
+**Ontology Implications:** N/A
+**Observer Implications:** N/A
+**Explanation Implications:** N/A
+**Out of Scope:** Full performance suite; a CI gate that blocks merges before the series justifies its
+threshold
 
 ## TODO-PERSIST-001: Snapshot Format
 **Status:** Completed

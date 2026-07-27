@@ -60,16 +60,17 @@ material loop and observer projection under its stated envelope.
 
 Runs, checkpoints, field dimensions, pattern batches, resolution signals, and research observations are capped. Provenance grows with accepted state transitions, so substantially larger workloads require TODO-PERF-001 benchmarks and later persistence/compaction work.
 
-`plans/performance-baseline-and-digest-cost.md` (Draft) measured the concrete mechanism behind this
-caveat: `RuntimeState::snapshot`, called on every tick and every observer poll, recomputes two digests
-from scratch every time rather than incrementally. `history_digest` re-scans the *entire* causal trace
-store from tick 0; `physical_state_digest` re-scans, among other state, the unpruned `thermal_receipts`/
-`thermal_conservation_receipts` maps, which also gain one new entry every tick with no eviction found
-anywhere in the runtime. At a fixed, unchanging small workload, this made mean per-tick wall time grow
-6.8x over 512 ticks, driven mainly by trace-store accumulation (`history_digest` alone rose from 9.7 ms
-to 125.7 ms across the same span) with a smaller contribution from `physical_state_digest`'s own
-unbounded thermal-receipt growth (4.8 ms to 7.7 ms) — a long-run experiment's cost is not currently
-constant per tick, it grows over the run's own length, and by more than one mechanism.
+`plans/performance-baseline-and-digest-cost.md` (completed) measured the concrete mechanism behind this
+caveat. `RuntimeState::snapshot`, called on every tick and every observer poll, recomputed two digests
+from scratch every time rather than incrementally: `history_digest` re-scanned the *entire* causal
+trace store from tick 0, and `physical_state_digest` re-scanned, among other state, the unpruned
+`thermal_receipts`/`thermal_conservation_receipts` maps, which gain one new entry every tick with no
+eviction anywhere in the runtime. At a fixed, unchanging small workload this made mean per-tick wall
+time grow 6.8x over 512 ticks, driven mainly by trace-store accumulation (`history_digest` alone rose
+from 9.7 ms to 125.7 ms across that span) with a smaller contribution from `physical_state_digest`'s
+own unbounded thermal-receipt growth (4.8 ms to 7.7 ms) — a long-run experiment's cost was not
+constant per tick, it grew with the run's own length, and by more than one mechanism. One of those two
+mechanisms is now fixed and the other is not.
 
 `history_digest`'s trace-event scan is now incremental, with no schema change: that input is written
 first in the digest sequence, with nothing but cheap bounded content after it, so a running
