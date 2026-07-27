@@ -101,6 +101,40 @@ These are environment-specific baselines; no absolute latency claim is made with
 hardware. The benchmark harness, repeated measurements, and statistical reporting remain
 `TODO-PERF-001`.
 
+## Methodology Gaps Found by the Performance Baseline Investigation
+
+`plans/performance-baseline-and-digest-cost.md` swept the runtime's validated configuration space and
+audited every existing benchmark/diagnostic tool against the requirements above. Two methodology
+defects were found and are now fixed; the rest of the Reporting requirements are still open, and this
+section states which is which so the job's name is not mistaken for the guarantee.
+
+**Fixed.** None of the previously shipped tools (`benchmark.rs`, `material_surface_loop_benchmark`,
+`observer_overhead`, `extent_bench.rs`, `mana_gate_calibration.rs`) took repeated measurements — each
+reported a single timed run, not the mean/median/stddev this document already requires. That was not
+hypothetical: two independent single runs of `material_surface_loop_benchmark` each produced a
+*negative* observer-overhead delta, which is only possible as single-run noise, since the compared
+mode does strictly more work. Separately, `MaterialSurfaceLoopBenchmarkMeasurement`'s `peak_rss_kib`/
+`steady_rss_kib` read `/proc/self/status` for the whole process while both measured modes ran
+sequentially in that one process, so the second mode's reported peak RSS included the first mode's
+already-torn-down `Runtime` — its figure was greater than the first's by construction rather than by
+any real difference in memory use. `crates/causafera-runtime/examples/performance_baseline.rs`
+replaces both: N=20 repetitions with the case order cyclically rotated per pass, mean/median/stddev
+plus every raw sample, and one subprocess per (case, repetition) pair so each RSS reading covers one
+`Runtime` and nothing else. It also records logical core count, `rustc --version` and profile
+alongside every report, and states in its own output that the environment is not the reference
+hardware below.
+
+**Still open.** The CI job named "Benchmarks and Long Runs"
+(`.github/workflows/benchmarks.yml`) now runs that harness and stores its output as an artifact named
+for the commit SHA, which satisfies "stored" — as a build artifact under the run's retention, not in
+version control — and makes "compared across commits" *possible* for the first time. It does not do
+the comparing: there is deliberately no threshold and no regression flag, because a threshold chosen
+before any historical series exists would be a guess rather than a measurement. "Flagged on
+regression" and "reproducible on reference hardware" therefore remain unmet, and `TODO-PERF-001`
+stays open on exactly those. The job does fail if the harness's boundary sweep finds a configuration
+`RuntimeConfig::validate` accepted that then exceeded the cognition cue cap at a tick, which is a
+soundness bug rather than a performance threshold.
+
 ## Reference Hardware
 
 - Linux;

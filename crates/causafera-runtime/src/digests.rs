@@ -51,6 +51,36 @@ impl ExperimentDigest {
     }
 }
 
+/// Write one committed causal event into a history digest.
+///
+/// Shared by the incremental accumulator and the full-rescan oracle so the two
+/// cannot drift apart: a field added here reaches both, and a differential test
+/// that passes is then evidence about the accumulator rather than about two
+/// copies of the same loop.
+///
+/// Deliberately does not touch `CausalTraceStore::children`, which
+/// `commit_batch` back-patches onto already-committed parents — see
+/// [`HistoryDigestPrefix`].
+pub(crate) fn write_trace_event(digest: &mut CanonicalDigest, event: CausalEventRef<'_>) {
+    digest.write(event.event_id.raw());
+    digest.write(event.trace_id.raw());
+    digest.write(event.time.raw());
+    digest.write(u64::from(event.phase.id().0));
+    digest.write(event.kind.raw());
+    digest.write(event.causes.len() as u64);
+    for cause in event.causes {
+        digest.write(cause.raw());
+    }
+    digest.write(event.effects.len() as u64);
+    for effect in event.effects {
+        digest.write(effect.target().object_kind().raw());
+        digest.write(effect.target().object_id());
+        digest.write(effect.target().property().raw());
+        digest.write_bytes(effect.before().bytes());
+        digest.write_bytes(effect.after().bytes());
+    }
+}
+
 pub(crate) fn write_chart_chunk(digest: &mut CanonicalDigest, chunk: ChartChunkCoord) {
     digest.write(chunk.chart.raw());
     digest.write(chunk.chunk.x as u64);
@@ -193,6 +223,7 @@ pub(crate) fn mix64(mut value: u64) -> u64 {
     value ^ (value >> 31)
 }
 
+#[derive(Clone, Copy)]
 pub(crate) struct CanonicalDigest([u64; 4]);
 
 impl CanonicalDigest {
@@ -222,6 +253,78 @@ impl CanonicalDigest {
 
     pub(crate) fn finish(self) -> StateFingerprint {
         fingerprint_words(self.0)
+    }
+}
+
+/// A `history_digest` accumulator that has already folded in a prefix of the
+/// causal trace store.
+///
+/// `history_digest` used to re-walk every event ever committed on every call,
+/// which meant every tick and every observer poll paid for the whole run so far
+/// — measured at 46% of tick time in the first 64-tick batch of the smallest
+/// workload and 87% by tick 512. `CanonicalDigest` is a pure streaming
+/// accumulator, so the same sequence of `write` calls reaches the same state
+/// whether it is performed in one pass or resumed across many, and
+/// `history_digest` writes the trace store *first* with only bounded state after
+/// it. Keeping the absorbed prefix here therefore reproduces the full rescan's
+/// output exactly, with no digest schema change, while charging each call only
+/// for what was committed since the previous one.
+///
+/// Three preconditions make that sound, all of them properties of
+/// `CausalTraceStore` rather than assumptions about it:
+///
+/// - It is append-only. `commit_batch` is its only `&mut self` method, and it
+///   only pushes; no path truncates, clears, removes, drains or retains, so an
+///   event this prefix has folded in can never change afterwards.
+/// - `commit_batch` never rewrites an earlier event's `cause_offsets` or
+///   `effect_offsets` entries — it pushes new ones — so the causes and effects
+///   an absorbed event contributed stay the bytes that were absorbed.
+/// - **`children` is the one exception and must stay unread.** `commit_batch`
+///   back-patches it, appending to an already-committed parent's entry, so
+///   folding it into the prefix would be wrong. `history_digest` reads
+///   `event_id`, `trace_id`, `time`, `phase`, `kind`, `causes` and `effects`,
+///   and never `children`; adding it would silently break this.
+pub(crate) struct HistoryDigestPrefix {
+    accumulator: CanonicalDigest,
+    absorbed_events: usize,
+}
+
+impl HistoryDigestPrefix {
+    /// An empty prefix carrying only the digest's fixed header.
+    pub(crate) fn new() -> Self {
+        let mut accumulator = CanonicalDigest::new();
+        accumulator.write(u64::from(CURRENT_DIGEST_SCHEMA_VERSION.raw()));
+        accumulator.write(HISTORY_DIGEST_DOMAIN);
+        Self {
+            accumulator,
+            absorbed_events: 0,
+        }
+    }
+
+    /// How many trace events are already folded in.
+    ///
+    /// Callers resume from exactly this index into the store.
+    pub(crate) fn absorbed_events(&self) -> usize {
+        self.absorbed_events
+    }
+
+    /// A copy of the accumulated prefix, to write further state into.
+    ///
+    /// Copying rather than draining is what keeps the prefix reusable: the
+    /// bounded tail `history_digest` writes after the trace store differs every
+    /// tick, so it goes into a throwaway copy and never into the prefix itself.
+    pub(crate) fn resume(&self) -> CanonicalDigest {
+        self.accumulator
+    }
+
+    /// Adopt `accumulator` as the prefix through `absorbed_events`.
+    ///
+    /// The caller must have produced it by folding exactly the store's events in
+    /// `self.absorbed_events()..absorbed_events` into [`Self::resume`], in
+    /// commit order and with nothing else written.
+    pub(crate) fn advance(&mut self, accumulator: CanonicalDigest, absorbed_events: usize) {
+        self.accumulator = accumulator;
+        self.absorbed_events = absorbed_events;
     }
 }
 

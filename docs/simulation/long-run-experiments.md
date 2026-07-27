@@ -60,6 +60,34 @@ material loop and observer projection under its stated envelope.
 
 Runs, checkpoints, field dimensions, pattern batches, resolution signals, and research observations are capped. Provenance grows with accepted state transitions, so substantially larger workloads require TODO-PERF-001 benchmarks and later persistence/compaction work.
 
+`plans/performance-baseline-and-digest-cost.md` (completed) measured the concrete mechanism behind this
+caveat. `RuntimeState::snapshot`, called on every tick and every observer poll, recomputed two digests
+from scratch every time rather than incrementally: `history_digest` re-scanned the *entire* causal
+trace store from tick 0, and `physical_state_digest` re-scanned, among other state, the unpruned
+`thermal_receipts`/`thermal_conservation_receipts` maps, which gain one new entry every tick with no
+eviction anywhere in the runtime. At a fixed, unchanging small workload this made mean per-tick wall
+time grow 6.8x over 512 ticks, driven mainly by trace-store accumulation (`history_digest` alone rose
+from 9.7 ms to 125.7 ms across that span) with a smaller contribution from `physical_state_digest`'s
+own unbounded thermal-receipt growth (4.8 ms to 7.7 ms) — a long-run experiment's cost was not
+constant per tick, it grew with the run's own length, and by more than one mechanism. One of those two
+mechanisms is now fixed and the other is not.
+
+`history_digest`'s trace-event scan is now incremental, with no schema change: that input is written
+first in the digest sequence, with nothing but cheap bounded content after it, so a running
+accumulator is resumed and a small bounded tail appended on each call. The digest's value is
+unchanged, asserted against a retained full-rescan reference across ticks, repeated observer polls,
+and snapshot export/import/resume. Measured at the same fixed workloads: 64 ticks that cost 147 ms
+after seven warm-up batches now cost 22 ms, and the run-length penalty those batches represent falls
+from 6.7x to 1.7x — what remains of it is the second mechanism below, not this one.
+`physical_state_digest`'s thermal-receipt growth is measured and real but is **not** fixed by that
+plan, and remains present: the unbounded maps sit in the *middle* of its write sequence, with further
+arbitrarily-mutable current-tick state written after them, so the same technique does not apply
+without reordering the write sequence — which would itself change the digest's output and require a
+deliberate schema
+migration this plan does not attempt. It is recorded as an open follow-up (retention/compaction of
+thermal receipts, a reordered-and-versioned digest, or a composable digest primitive) rather than
+closed by that plan.
+
 This bounded path includes a causally bootstrapped promoted actor, physical perception, subjective
 scene construction, and later action. It does not establish a broad resident population model,
 language, economy, city growth, historical synthesis adapters, or social emergence. Those domain

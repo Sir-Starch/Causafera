@@ -2689,7 +2689,7 @@ pub fn assemble_envelope(data: &RuntimeSnapshotData) -> Result<SnapshotEnvelope,
     }
 
     let (physical_digest, history_digest) = {
-        let temp_state = RuntimeState::import_snapshot(data.clone())
+        let mut temp_state = RuntimeState::import_snapshot(data.clone())
             .map_err(|e| PersistenceError::codec(format!("digest computation failed: {e}")))?;
         let phys = temp_state.physical_state_digest(data.recipe.completed_time);
         let hist = temp_state.history_digest();
@@ -3827,10 +3827,10 @@ mod tests {
     #[test]
     fn runtime_state_import_restores_physical_and_history_digest() {
         let data = populated_snapshot_data();
-        let restored = RuntimeState::import_snapshot(data.clone()).unwrap();
+        let mut restored = RuntimeState::import_snapshot(data.clone()).unwrap();
         let snapshot = restored.snapshot(data.recipe.completed_time);
 
-        let original = RuntimeState::import_snapshot(data).unwrap();
+        let mut original = RuntimeState::import_snapshot(data).unwrap();
         let original_snapshot = original.snapshot(snapshot.time);
 
         assert_eq!(

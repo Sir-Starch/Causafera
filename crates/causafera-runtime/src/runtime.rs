@@ -99,7 +99,7 @@ pub const THERMAL_ENERGY_PROPERTY: u64 = 21;
 pub const THERMAL_BATCH_SEQUENCE_PROPERTY: u64 = 22;
 pub(crate) const RESOLUTION_CHANNEL: u64 = 1;
 const PHYSICAL_DIGEST_DOMAIN: u64 = 0x5048_5953_4943_414C;
-const HISTORY_DIGEST_DOMAIN: u64 = 0x4849_5354_4F52_595F;
+pub(crate) const HISTORY_DIGEST_DOMAIN: u64 = 0x4849_5354_4F52_595F;
 const EXPERIMENT_DIGEST_DOMAIN: u64 = 0x4558_5045_5249_4D45;
 
 /// Headless deterministic runtime for the first executable causal experiment.
@@ -182,7 +182,7 @@ impl Runtime {
             return Err(RuntimeError::TickLimitExceeded);
         }
         self.scheduler.tick();
-        let state = self.lock_state()?;
+        let mut state = self.lock_state()?;
         if let Some(error) = state.failure.clone() {
             return Err(error);
         }
@@ -204,7 +204,7 @@ impl Runtime {
     }
 
     pub fn snapshot(&self) -> Result<RuntimeSnapshot, RuntimeError> {
-        let state = self.lock_state()?;
+        let mut state = self.lock_state()?;
         if let Some(error) = state.failure.clone() {
             return Err(error);
         }
@@ -330,6 +330,19 @@ pub enum RuntimeError {
     #[error("actor runtime configuration is invalid")]
     InvalidActorConfig,
     #[error(
+        "actor configuration admits up to {worst_case} scene cues per actor \
+         ({sensor_count} sensors x ({actor_count} actor objects + {surface_count} contacted \
+         material surfaces)) and cognition accepts at most {maximum}; lower sensor_count or \
+         actor_count, narrow the active chunk set, or set material_surface_signals_enabled = false"
+    )]
+    SceneCueBudgetExceeded {
+        worst_case: usize,
+        maximum: usize,
+        sensor_count: u8,
+        actor_count: u8,
+        surface_count: usize,
+    },
+    #[error(
         "experiment recipe contains {count} mana sources, maximum is {MAX_EXPERIMENT_RECIPE_MANA_SOURCES}"
     )]
     ExperimentRecipeSourceCountExceeded { count: usize },
@@ -445,6 +458,12 @@ impl From<ThermalError> for RuntimeError {
 pub struct RuntimeState {
     pub(crate) config: RuntimeConfig,
     pub(crate) traces: CausalTraceStore,
+    /// Trace-store prefix already folded into `history_digest`.
+    ///
+    /// A cache of work, not state: it is rebuilt by absorbing whatever the
+    /// store holds, so it is deliberately absent from the persisted snapshot
+    /// envelope and an imported state simply starts empty and absorbs once.
+    pub(crate) history_digest_prefix: HistoryDigestPrefix,
     pub(crate) mana: ManaFieldSet,
     pub(crate) thermal_fields: ThermalFieldSet,
     pub(crate) thermal_active_region: ThermalActiveRegion,
@@ -596,6 +615,7 @@ impl RuntimeState {
         let mut state = Self {
             config: config.clone(),
             traces,
+            history_digest_prefix: HistoryDigestPrefix::new(),
             mana,
             thermal_fields,
             thermal_active_region,
@@ -978,6 +998,7 @@ impl RuntimeState {
         let state = Self {
             config,
             traces,
+            history_digest_prefix: HistoryDigestPrefix::new(),
             mana,
             thermal_fields,
             thermal_active_region,
@@ -1270,7 +1291,7 @@ impl RuntimeState {
         Ok(())
     }
 
-    pub(crate) fn snapshot(&self, time: SimulationTime) -> RuntimeSnapshot {
+    pub(crate) fn snapshot(&mut self, time: SimulationTime) -> RuntimeSnapshot {
         let mana_total = self.mana.total_intensity();
         let mana_maximum = self.mana.maximum_intensity();
         let (resolution_relevance, resolution_level) = self
@@ -1982,39 +2003,69 @@ impl RuntimeState {
         }
     }
 
-    pub(crate) fn history_digest(&self) -> HistoryDigest {
+    /// The history digest, resuming from the events already absorbed.
+    ///
+    /// Bit-identical to [`Self::history_digest_full_rescan`] for the same state,
+    /// which is the property `history_digest_matches_a_full_rescan_*` assert
+    /// rather than assume — see [`HistoryDigestPrefix`] for why resuming is
+    /// sound and which trace-store property would break it.
+    pub(crate) fn history_digest(&mut self) -> HistoryDigest {
+        let absorbed = self.history_digest_prefix.absorbed_events();
+        let committed = self.traces.len();
+        if committed > absorbed {
+            let mut accumulator = self.history_digest_prefix.resume();
+            for event in self.traces.iter().skip(absorbed) {
+                write_trace_event(&mut accumulator, event);
+            }
+            self.history_digest_prefix.advance(accumulator, committed);
+        }
+        let mut digest = self.history_digest_prefix.resume();
+        self.write_history_digest_tail(&mut digest);
+        HistoryDigest {
+            schema_version: CURRENT_DIGEST_SCHEMA_VERSION,
+            fingerprint: digest.finish(),
+        }
+    }
+
+    /// The history digest computed by re-walking the whole trace store.
+    ///
+    /// This is the implementation `history_digest` had before it became
+    /// incremental, retained as the differential oracle its tests check against.
+    /// The existing replay and locale suites compare two runs produced by the
+    /// *same* implementation, so they cannot distinguish a correct incremental
+    /// accumulator from one with an absorption bug that moves both runs
+    /// identically; only a reference computed a different way can.
+    #[doc(hidden)]
+    pub fn history_digest_full_rescan(&self) -> HistoryDigest {
         let mut digest = CanonicalDigest::new();
         digest.write(u64::from(CURRENT_DIGEST_SCHEMA_VERSION.raw()));
         digest.write(HISTORY_DIGEST_DOMAIN);
         for event in self.traces.iter() {
-            digest.write(event.event_id.raw());
-            digest.write(event.trace_id.raw());
-            digest.write(event.time.raw());
-            digest.write(u64::from(event.phase.id().0));
-            digest.write(event.kind.raw());
-            digest.write(event.causes.len() as u64);
-            for cause in event.causes {
-                digest.write(cause.raw());
-            }
-            digest.write(event.effects.len() as u64);
-            for effect in event.effects {
-                digest.write(effect.target().object_kind().raw());
-                digest.write(effect.target().object_id());
-                digest.write(effect.target().property().raw());
-                digest.write_bytes(effect.before().bytes());
-                digest.write_bytes(effect.after().bytes());
-            }
+            write_trace_event(&mut digest, event);
         }
+        self.write_history_digest_tail(&mut digest);
+        HistoryDigest {
+            schema_version: CURRENT_DIGEST_SCHEMA_VERSION,
+            fingerprint: digest.finish(),
+        }
+    }
+
+    /// The bounded state the history digest writes after the trace store.
+    ///
+    /// This is what keeps the incremental form possible: everything past the
+    /// unbounded trace scan is small, capped, and rewritten into a throwaway
+    /// copy of the prefix on every call.
+    fn write_history_digest_tail(&self, digest: &mut CanonicalDigest) {
         digest.write(self.material_surfaces.len() as u64);
         for (id, surface) in &self.material_surfaces {
-            write_chart_chunk(&mut digest, id.chunk);
+            write_chart_chunk(digest, id.chunk);
             digest.write(u64::from(id.cell_index));
             digest.write(u64::from(surface.gate.active));
-            write_optional_trace(&mut digest, surface.gate.last_transition);
+            write_optional_trace(digest, surface.gate.last_transition);
         }
         digest.write(self.material_surface_gate_transitions.len() as u64);
         for transition in &self.material_surface_gate_transitions {
-            write_chart_chunk(&mut digest, transition.id.chunk);
+            write_chart_chunk(digest, transition.id.chunk);
             digest.write(u64::from(transition.id.cell_index));
             digest.write(transition.occurred_at.raw());
             digest.write(u64::from(transition.before_active));
@@ -2022,12 +2073,8 @@ impl RuntimeState {
             digest.write(transition.local_mana_before as u64);
             digest.write(transition.local_mana_after as u64);
             digest.write(transition.local_mana_trace.raw());
-            write_optional_trace(&mut digest, transition.contact_trace);
+            write_optional_trace(digest, transition.contact_trace);
             digest.write(transition.transition_trace.raw());
-        }
-        HistoryDigest {
-            schema_version: CURRENT_DIGEST_SCHEMA_VERSION,
-            fingerprint: digest.finish(),
         }
     }
 
@@ -3155,10 +3202,95 @@ mod tests {
         assert!(control.physical_events > intervention.physical_events);
     }
 
+    // The differential oracle for the incremental `history_digest`. The replay
+    // and locale suites compare two runs produced by the same implementation,
+    // so they would agree with each other even if the accumulator absorbed
+    // wrongly in a way that moved both. Only a reference computed the other way
+    // — a full rescan — can tell those apart, which is why these assert against
+    // `history_digest_full_rescan` rather than against a second run.
+
+    #[test]
+    fn history_digest_matches_a_full_rescan_at_every_tick() {
+        let mut runtime = Runtime::new(production_loop_config(17)).unwrap();
+        let mut absorbed_at_start = 0;
+        for tick in 1..=48 {
+            runtime.tick().unwrap();
+            let mut state = runtime.lock_state().unwrap();
+            let incremental = state.history_digest();
+            let rescanned = state.history_digest_full_rescan();
+            assert_eq!(
+                incremental, rescanned,
+                "incremental and full-rescan history digests diverged at tick {tick}"
+            );
+            let absorbed = state.history_digest_prefix.absorbed_events();
+            assert!(
+                absorbed > absorbed_at_start,
+                "tick {tick} committed no events, so this tick tested nothing"
+            );
+            absorbed_at_start = absorbed;
+        }
+    }
+
+    #[test]
+    fn history_digest_is_independent_of_how_often_it_was_observed() {
+        // Observer polls run the same `RuntimeState::snapshot` that `tick` does,
+        // so a prefix that double-absorbed, or advanced without absorbing, would
+        // make the digest depend on how often a session happened to look at it.
+        let mut polled = Runtime::new(production_loop_config(29)).unwrap();
+        let mut unpolled = Runtime::new(production_loop_config(29)).unwrap();
+        for _ in 0..24 {
+            polled.tick().unwrap();
+            for _ in 0..3 {
+                polled.snapshot().unwrap();
+            }
+            unpolled.tick().unwrap();
+        }
+        let polled_digest = polled.snapshot().unwrap().history_digest;
+        assert_eq!(polled_digest, unpolled.snapshot().unwrap().history_digest);
+        assert_eq!(
+            polled_digest,
+            polled.lock_state().unwrap().history_digest_full_rescan()
+        );
+    }
+
+    #[test]
+    fn history_digest_matches_a_full_rescan_across_export_import_and_resume() {
+        let mut runtime = Runtime::new(production_loop_config(23)).unwrap();
+        runtime.run_ticks(24).unwrap();
+        let live = runtime.snapshot().unwrap().history_digest;
+        let data = runtime.export_snapshot().unwrap();
+
+        // An imported state has absorbed nothing, so its first call rebuilds the
+        // whole prefix in one pass; it has to land on the same bytes the live
+        // runtime reached incrementally, and stay there when called again.
+        let mut imported = RuntimeState::import_snapshot(data.clone()).unwrap();
+        assert_eq!(
+            imported.history_digest(),
+            imported.history_digest_full_rescan()
+        );
+        assert_eq!(imported.history_digest(), live);
+        assert_eq!(imported.history_digest(), live);
+
+        // `assemble_envelope` computes the header digest through that same
+        // import path, and the header is what a later reader compares against,
+        // so an absorption bug would be written into every exported snapshot.
+        let envelope = assemble_envelope(&data).unwrap();
+        assert_eq!(
+            envelope.header.history_digest,
+            imported.history_digest_full_rescan().bytes()
+        );
+
+        // Resuming and ticking on keeps the two in step past the boundary.
+        let mut resumed = Runtime::from_snapshot(data).unwrap();
+        resumed.run_ticks(8).unwrap();
+        let mut state = resumed.lock_state().unwrap();
+        assert_eq!(state.history_digest(), state.history_digest_full_rescan());
+    }
+
     #[test]
     fn identical_physical_state_can_have_different_history_digest() {
         let config = RuntimeConfig::new(13);
-        let first = RuntimeState::new(&config).unwrap();
+        let mut first = RuntimeState::new(&config).unwrap();
         let mut second = RuntimeState::new(&config).unwrap();
         let event = CausalEventProposal::new(
             EventProposalKey::new(99, 0, 0),

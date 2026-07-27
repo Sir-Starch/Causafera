@@ -214,6 +214,19 @@ of one aggregate per chunk.
 The frozen-baseline maturity audit is paused after preserving its completed groundwork; it does not
 block accepted vertical-slice work.
 
+A completed performance investigation (`plans/performance-baseline-and-digest-cost.md`) root-caused
+`TODO-PERF-001`'s representative-performance gap: two full-rescan digests unconditionally recomputed
+every tick, one of them (`history_digest`) unbounded by design over the causal trace store and the
+other (`physical_state_digest`) unbounded by omission over an unpruned thermal-receipt log, plus a
+`RuntimeConfig` validation gap that admitted actor/sensor/surface-contact combinations the cognition
+layer's perception cap cannot execute. All five waves landed: a checked-in statistical harness,
+construction-time rejection of unrunnable configurations, an incremental `history_digest` whose value
+is bit-identical and asserted so against a retained full-rescan oracle, and CI capture of the
+harness's output per commit. Two follow-ups it deliberately did not close are carried forward as
+`TODO-PERF-002` (`physical_state_digest`'s thermal-receipt growth, which needs a design decision
+rather than an implementation) and `TODO-PERF-003` (regression flagging and a reference-hardware run,
+which need a historical series first).
+
 See `docs/architecture/detailed-development-rebaseline.md`; the completed planning record is in
 `plans/history/detailed-development-rebaseline.md`.
 

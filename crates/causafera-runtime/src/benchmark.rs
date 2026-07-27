@@ -6,13 +6,13 @@ use causafera_types::{ChartChunkCoord, ChunkCoord};
 
 use crate::benchmark_validation::{
     MaterialSurfaceLoopBenchmarkError, validate_benchmark_config, validate_benchmark_measurement,
-    validate_experiment_recipe_mana_source_benchmark_config,
+    validate_benchmark_report, validate_experiment_recipe_mana_source_benchmark_config,
     validate_experiment_recipe_mana_source_benchmark_measurement,
 };
 use crate::{
     EXPERIMENT_RECIPE_MANA_SOURCE_EVENT_KIND, EXPERIMENT_RECIPE_MANA_SOURCE_POLICY_SCHEMA_V1,
-    ExperimentRecipeManaSource, ExperimentRecipeManaSourceRecipe,
-    MAX_EXPERIMENT_RECIPE_MANA_SOURCES, Runtime, RuntimeConfig, assemble_envelope,
+    ExperimentDigest, ExperimentRecipeManaSource, ExperimentRecipeManaSourceRecipe,
+    MAX_EXPERIMENT_RECIPE_MANA_SOURCES, Runtime, RuntimeConfig, RuntimeError, assemble_envelope,
 };
 
 pub const MATERIAL_SURFACE_LOOP_BENCHMARK_VERSION: u32 = 1;
@@ -117,6 +117,12 @@ pub struct MaterialSurfaceLoopBenchmarkMeasurement {
     pub material_surface_site_count: u64,
     pub material_contact_count: u64,
     pub mana_material_transition_count: u64,
+    /// The canonical digest after the measured ticks. `ObserverOff` and `WorldChunksQuery` runs
+    /// share a seed and config and differ only in whether a read-only observer query ran each
+    /// tick, so this is required to match between them (`validate_benchmark_report`) — a canonical
+    /// difference here would mean the harness is silently comparing two non-equivalent runs and
+    /// mislabeling the difference as "observer overhead".
+    pub canonical_state: ExperimentDigest,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -128,13 +134,44 @@ pub struct MaterialSurfaceLoopBenchmarkReport {
     pub world_chunks_observer_overhead_ns: i128,
 }
 
+/// The wall-clock cost, in nanoseconds, of computing each of `RuntimeState`'s two digests once.
+/// Measured by calling the same `pub(crate)` functions `RuntimeState::snapshot` calls on every
+/// tick; read-only and side-effect-free, so calling it in addition to a normal tick does not
+/// change simulation state or determinism.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DigestCostSample {
+    pub physical_state_digest_ns: u128,
+    pub history_digest_ns: u128,
+}
+
+/// Measure `physical_state_digest`/`history_digest` cost at the runtime's current tick, in
+/// isolation from the rest of `RuntimeState::snapshot`. Same-crate access to both `pub(crate)`
+/// functions is exactly why this lives in `benchmark.rs` rather than a standalone example crate.
+pub fn measure_digest_cost(runtime: &Runtime) -> Result<DigestCostSample, RuntimeError> {
+    let mut state = runtime
+        .state
+        .lock()
+        .map_err(|_| RuntimeError::StatePoisoned)?;
+    let time = runtime.current_time();
+    let started = Instant::now();
+    std::hint::black_box(state.physical_state_digest(time));
+    let physical_state_digest_ns = started.elapsed().as_nanos();
+    let started = Instant::now();
+    std::hint::black_box(state.history_digest());
+    let history_digest_ns = started.elapsed().as_nanos();
+    Ok(DigestCostSample {
+        physical_state_digest_ns,
+        history_digest_ns,
+    })
+}
+
 pub fn run_material_surface_loop_benchmark(
     config: MaterialSurfaceLoopBenchmarkConfig,
 ) -> Result<MaterialSurfaceLoopBenchmarkReport, MaterialSurfaceLoopBenchmarkError> {
     validate_benchmark_config(config)?;
     let observer_off = measure(config, MaterialSurfaceLoopBenchmarkMode::ObserverOff)?;
     let world_chunks_query = measure(config, MaterialSurfaceLoopBenchmarkMode::WorldChunksQuery)?;
-    Ok(MaterialSurfaceLoopBenchmarkReport {
+    let report = MaterialSurfaceLoopBenchmarkReport {
         version: MATERIAL_SURFACE_LOOP_BENCHMARK_VERSION,
         config,
         world_chunks_observer_overhead_ns: i128::try_from(world_chunks_query.tick_elapsed_ns)
@@ -146,7 +183,9 @@ pub fn run_material_surface_loop_benchmark(
             .ok_or(MaterialSurfaceLoopBenchmarkError::MetricOverflow)?,
         observer_off,
         world_chunks_query,
-    })
+    };
+    validate_benchmark_report(&report)?;
+    Ok(report)
 }
 
 pub fn run_experiment_recipe_mana_source_benchmark(
@@ -256,8 +295,10 @@ fn measure(
     let provenance_before = trace_count(&runtime.export_snapshot()?)?;
     let started = Instant::now();
     let mut observer_response_bytes = 0_u64;
+    let mut last_snapshot = None;
     for _ in 0..config.measurement_ticks {
         let snapshot = runtime.tick()?;
+        last_snapshot = Some(snapshot);
         if matches!(mode, MaterialSurfaceLoopBenchmarkMode::WorldChunksQuery) {
             let response_bytes = bounded_world_chunks_query(&runtime, snapshot)?;
             observer_response_bytes = observer_response_bytes
@@ -266,6 +307,9 @@ fn measure(
         }
     }
     let tick_elapsed_ns = started.elapsed().as_nanos();
+    let canonical_state = last_snapshot
+        .ok_or(MaterialSurfaceLoopBenchmarkError::MissingMeasurement)?
+        .canonical_state;
     let exported = runtime.export_snapshot()?;
     let provenance_after = trace_count(&exported)?;
     let encoded_snapshot_bytes = u64::try_from(assemble_envelope(&exported)?.encode()?.len())
@@ -292,6 +336,7 @@ fn measure(
         material_surface_site_count,
         material_contact_count,
         mana_material_transition_count,
+        canonical_state,
     };
     validate_benchmark_measurement(&measurement)?;
     Ok(measurement)

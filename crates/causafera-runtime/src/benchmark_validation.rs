@@ -6,6 +6,7 @@ use crate::benchmark::{
     ExperimentRecipeManaSourceBenchmarkConfig, ExperimentRecipeManaSourceBenchmarkMeasurement,
     ExperimentRecipeManaSourceBenchmarkMode, MaterialSurfaceLoopBenchmarkConfig,
     MaterialSurfaceLoopBenchmarkMeasurement, MaterialSurfaceLoopBenchmarkMode,
+    MaterialSurfaceLoopBenchmarkReport,
 };
 
 #[derive(Debug, Error)]
@@ -34,6 +35,10 @@ pub enum MaterialSurfaceLoopBenchmarkError {
     MissingMeasurement,
     #[error("experiment-recipe mana-source benchmark workload does not match its mode")]
     InvalidExperimentRecipeSourceWorkload,
+    #[error(
+        "observer_off and world_chunks_query canonical state diverged; the harness compared two non-equivalent runs"
+    )]
+    CanonicalStateDivergedAcrossObserverModes,
 }
 
 pub(crate) fn validate_benchmark_config(
@@ -72,6 +77,20 @@ pub(crate) fn validate_benchmark_measurement(
     ) && measurement.observer_response_bytes == 0
     {
         return Err(MaterialSurfaceLoopBenchmarkError::MissingObserverPayload);
+    }
+    Ok(())
+}
+
+/// `observer_off` and `world_chunks_query` share a seed and config and differ only in whether a
+/// read-only observer query ran each tick, so their canonical state after the same number of
+/// measured ticks must match. This is the cross-measurement check the plan's Finding "existing
+/// benchmark-infrastructure gaps" section called for: without it, a harness bug that silently ran
+/// two non-equivalent configs would still report a difference and label it "observer overhead".
+pub(crate) fn validate_benchmark_report(
+    report: &MaterialSurfaceLoopBenchmarkReport,
+) -> Result<(), MaterialSurfaceLoopBenchmarkError> {
+    if report.observer_off.canonical_state != report.world_chunks_query.canonical_state {
+        return Err(MaterialSurfaceLoopBenchmarkError::CanonicalStateDivergedAcrossObserverModes);
     }
     Ok(())
 }
@@ -132,6 +151,10 @@ mod tests {
             material_surface_site_count: 1,
             material_contact_count: 1,
             mana_material_transition_count: 1,
+            canonical_state: crate::ExperimentDigest {
+                schema_version: crate::DigestSchemaVersion::new(0),
+                fingerprint: causafera_core::StateFingerprint::new([0; 32]),
+            },
         }
     }
 
@@ -199,6 +222,65 @@ mod tests {
         assert!(matches!(
             result,
             Err(MaterialSurfaceLoopBenchmarkError::MissingMeasurement)
+        ));
+    }
+
+    #[test]
+    fn report_accepts_matching_canonical_state_across_modes() {
+        // Given: observer_off and world_chunks_query measurements with the same canonical state,
+        // as a same-seed, same-config, read-only-query-only pair of runs should produce.
+        let observer_off = valid_measurement();
+        let world_chunks_query = MaterialSurfaceLoopBenchmarkMeasurement {
+            mode: MaterialSurfaceLoopBenchmarkMode::WorldChunksQuery,
+            observer_response_bytes: 1,
+            ..valid_measurement()
+        };
+        let report = MaterialSurfaceLoopBenchmarkReport {
+            version: crate::MATERIAL_SURFACE_LOOP_BENCHMARK_VERSION,
+            config: MaterialSurfaceLoopBenchmarkConfig::default(),
+            observer_off,
+            world_chunks_query,
+            world_chunks_observer_overhead_ns: 0,
+        };
+
+        // When: the report-level validation boundary checks canonical equality.
+        let result = validate_benchmark_report(&report);
+
+        // Then: a genuinely equivalent pair of runs is accepted.
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn report_rejects_diverged_canonical_state_across_modes() {
+        // Given: a world_chunks_query measurement whose canonical state differs from
+        // observer_off's — the failure mode this check exists to catch, where the harness would
+        // otherwise silently compare two non-equivalent runs and call the difference "overhead".
+        let observer_off = valid_measurement();
+        let world_chunks_query = MaterialSurfaceLoopBenchmarkMeasurement {
+            mode: MaterialSurfaceLoopBenchmarkMode::WorldChunksQuery,
+            observer_response_bytes: 1,
+            canonical_state: crate::ExperimentDigest {
+                schema_version: crate::DigestSchemaVersion::new(0),
+                fingerprint: causafera_core::StateFingerprint::new([1; 32]),
+            },
+            ..valid_measurement()
+        };
+        let report = MaterialSurfaceLoopBenchmarkReport {
+            version: crate::MATERIAL_SURFACE_LOOP_BENCHMARK_VERSION,
+            config: MaterialSurfaceLoopBenchmarkConfig::default(),
+            observer_off,
+            world_chunks_query,
+            world_chunks_observer_overhead_ns: 0,
+        };
+
+        // When: the report-level validation boundary checks canonical equality.
+        let result = validate_benchmark_report(&report);
+
+        // Then: the harness rejects the report instead of reporting a comparison between
+        // non-equivalent runs.
+        assert!(matches!(
+            result,
+            Err(MaterialSurfaceLoopBenchmarkError::CanonicalStateDivergedAcrossObserverModes)
         ));
     }
 
