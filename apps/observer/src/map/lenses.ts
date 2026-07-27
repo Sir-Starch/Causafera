@@ -1092,11 +1092,10 @@ export const LENS_BY_ID = new Map(LENSES.map((lens) => [lens.id, lens]));
  *
  * It is the one field the runtime maintains that is continuous across the whole
  * charted extent, so it is the one that shows the instrument reading a world
- * rather than a set of chunks. Terrain contours are deliberately not a default
- * overlay: the generator restarts its ridge in every chunk, so contours over it
- * bunch along every chunk boundary and would put a grid back on the sheet. That
- * is world state and the relief lens draws it, but it is not what the chart
- * should open on.
+ * rather than a set of chunks. Terrain is now continuous across chunk boundaries
+ * too (TODO-GEO-005), so contours over it no longer bunch along every seam; they
+ * still are not the default overlay, but that is a UI choice rather than a
+ * consequence of the generator, left to a UI-facing plan.
  */
 export const DEFAULT_PRIMARY_LENS = "mana";
 export const DEFAULT_OVERLAYS = ["mana-isolines", "population", "surface"];

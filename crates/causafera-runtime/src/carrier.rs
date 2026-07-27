@@ -20,7 +20,7 @@ const MATERIAL_SURFACE_PATTERN_DOMAIN: u64 = 0x4D41_5453_5552_4643;
 /// every column unique and leave that channel permanently silent.
 const TERRAIN_ROUGHNESS_CLASS_MM: u64 = 32;
 const TERRAIN_GENERATOR: TerrainGeneratorFingerprint =
-    TerrainGeneratorFingerprint::new(0x2405_0001);
+    TerrainGeneratorFingerprint::new(0x2407_0001);
 const TERRAIN_PARAMETERS: TerrainParameterFingerprint =
     TerrainParameterFingerprint::new(0x2405_0001);
 
@@ -318,25 +318,52 @@ pub fn deterministic_terrain_chunk(
         TERRAIN_PARAMETERS,
         vec![generation_trace],
     );
-    TerrainChunk::from_cells(chunk.chunk, provenance, terrain_cells(seed))
+    TerrainChunk::from_cells(chunk.chunk, provenance, terrain_cells(seed, chunk))
         .expect("deterministic terrain fixture has one complete chunk")
 }
 
-pub fn terrain_cells(seed: u64) -> Vec<TerrainCell> {
+/// Generate one chunk's cells as a function of each cell's position in its
+/// chart, so adjacent chunks meet at their shared edge (`TODO-GEO-005`).
+///
+/// `chunk.chunk.world_origin()` is the chunk's chart-local origin; every cell's
+/// hash key is derived from that origin plus its position inside the chunk, so
+/// a cell's value depends only on where it sits in the chart, never on which
+/// chunk window happened to contain it. `chart_seed` varies terrain between
+/// charts without varying it between chunks of the same chart, which is what
+/// continuity requires: a per-chunk seed term would reintroduce exactly the
+/// jump this generator exists to remove.
+pub fn terrain_cells(seed: u64, chunk: ChartChunkCoord) -> Vec<TerrainCell> {
+    let chart_seed = mix64(seed ^ mix64(chunk.chart.raw()));
+    let origin = chunk.chunk.world_origin();
     (0..TERRAIN_CELLS_PER_CHUNK)
         .map(|index| {
-            let x = index % usize::from(CHUNK_SIZE);
-            let y = index / usize::from(CHUNK_SIZE);
-            let base = mix64(seed ^ (index as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15));
-            let ridge = ((x as i32 - y as i32) * 17) + i32::from((base & 0x3F) as u8);
-            let material_band = ((base >> 17) ^ (x as u64 * 3) ^ (y as u64 * 5)) & 0xF;
+            let local_x = (index % usize::from(CHUNK_SIZE)) as i64;
+            let local_y = (index / usize::from(CHUNK_SIZE)) as i64;
+            let global_x = origin.x + local_x;
+            let global_y = origin.y + local_y;
+            let base = mix64(chart_seed ^ position_key(global_x, global_y));
+            let ridge = (global_x - global_y) * 17 + i64::from((base & 0x3F) as u8);
+            let material_band = (base >> 17) & 0xF;
             TerrainCell::new(
-                ElevationMm::new(ridge * 64),
+                ElevationMm::new(clamp_to_i32(ridge * 64)),
                 MaterialId::new(material_band + 1),
-                RoughnessMm::new(((base >> 33) as u32 & 0x7F) + ((x ^ y) as u32 & 0x1F)),
+                RoughnessMm::new((base >> 33) as u32 & 0x7F),
             )
         })
         .collect()
+}
+
+/// A well-mixed key for one chart-local cell position, so two cells at the
+/// same global position always hash the same regardless of which chunk they
+/// were read through.
+fn position_key(global_x: i64, global_y: i64) -> u64 {
+    let x = mix64((global_x as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15));
+    let y = mix64((global_y as u64).wrapping_mul(0xC2B2_AE3D_27D4_EB4F));
+    x ^ y.rotate_left(29)
+}
+
+fn clamp_to_i32(value: i64) -> i32 {
+    value.clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32
 }
 
 pub fn terrain_pattern(cell: TerrainCell) -> PhysicalPatternId {
