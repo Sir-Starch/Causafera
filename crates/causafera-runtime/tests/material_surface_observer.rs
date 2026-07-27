@@ -326,7 +326,12 @@ fn below_threshold_source_changes_mana_without_material_consequence_or_supported
         .iter()
         .find(|field| field.chunk == source_chunk)
         .expect("source chunk mana field must be exported");
-    assert_eq!(source_field.intensity[0], 3);
+    // Unlike `source_config`, this test leaves terrain participation at its
+    // default `Standing`, so cell 0 also carries the standing carrier's own
+    // structure alongside the injected amount of 3. 182 is still far below the
+    // default effect threshold of 4 096, which is what "below threshold" below
+    // asserts.
+    assert_eq!(source_field.intensity[0], 182);
     assert!(
         exported
             .material_surfaces

@@ -151,13 +151,9 @@ impl HistoricalBootstrapAdapter for TerrainBootstrapStage {
                 PHYSICAL_OBJECT_KIND,
                 PHYSICAL_PROPERTY,
                 fingerprint_u64(0x0B01, 0),
-                fingerprint_u64(0x0B01, self.terrain_seed ^ chart_chunk_hash(chunk)),
+                fingerprint_u64(0x0B01, self.terrain_seed),
             )?;
-            let terrain = deterministic_terrain_chunk(
-                self.terrain_seed ^ chart_chunk_hash(chunk),
-                chunk,
-                trace,
-            );
+            let terrain = deterministic_terrain_chunk(self.terrain_seed, chunk, trace);
             let field_extent = state.config.chunk_extent;
             state.carrier_adapters.insert(
                 chunk,

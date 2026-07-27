@@ -2842,12 +2842,11 @@ fn runtime_carrier_adapters(
         CarrierAdapterConfig::TerrainSeed { terrain_seed } => chunks
             .iter()
             .map(|chunk| {
-                let seed = terrain_seed ^ chart_chunk_hash(*chunk);
                 (
                     *chunk,
                     TerrainCarrierAdapter::new(
                         *chunk,
-                        deterministic_terrain_chunk(seed, *chunk, root_trace),
+                        deterministic_terrain_chunk(terrain_seed, *chunk, root_trace),
                         field_extent,
                     ),
                 )

@@ -92,6 +92,53 @@ fn main() {
         );
     }
 
+    // TODO-GEO-005 evidence: is the elevation step across a chunk boundary the
+    // same order of magnitude as the step between two neighbouring cells inside
+    // one chunk, or does the ridge reset at every chunk edge?
+    let mut by_x: BTreeMap<i32, &_> = BTreeMap::new();
+    for carrier in &data.spatial.carrier_adapters {
+        if carrier.chunk.chunk.y == 0 && carrier.chunk.chunk.z == 0 {
+            by_x.insert(carrier.chunk.chunk.x, carrier);
+        }
+    }
+    let interior_steps = by_x
+        .values()
+        .flat_map(|carrier| {
+            (0..32).flat_map(move |row| {
+                (1..32).map(move |column| {
+                    (carrier.elevations_mm[row * 32 + column]
+                        - carrier.elevations_mm[row * 32 + column - 1])
+                        .unsigned_abs()
+                })
+            })
+        })
+        .collect::<Vec<_>>();
+    let boundary_steps = by_x
+        .keys()
+        .copied()
+        .collect::<Vec<_>>()
+        .windows(2)
+        .flat_map(|pair| {
+            let west = by_x[&pair[0]];
+            let east = by_x[&pair[1]];
+            (0..32).map(move |row| {
+                (east.elevations_mm[row * 32] - west.elevations_mm[row * 32 + 31]).unsigned_abs()
+            })
+        })
+        .collect::<Vec<_>>();
+    let mean =
+        |values: &[u32]| values.iter().map(|v| f64::from(*v)).sum::<f64>() / values.len() as f64;
+    println!(
+        "\nTODO-GEO-005: interior step mean {:.0}mm max {}mm ({} pairs) | boundary step mean {:.0}mm max {}mm ({} pairs, {} adjacent chunk pairs)",
+        mean(&interior_steps),
+        interior_steps.iter().copied().max().unwrap_or(0),
+        interior_steps.len(),
+        mean(&boundary_steps),
+        boundary_steps.iter().copied().max().unwrap_or(0),
+        boundary_steps.len(),
+        by_x.len().saturating_sub(1),
+    );
+
     println!("\nmana fields: {}", data.mana.fields.len());
     for field in &data.mana.fields {
         let extent = usize::from(field.extent);
