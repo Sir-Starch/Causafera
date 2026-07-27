@@ -871,6 +871,7 @@ fn apply_boundary_exchange(
                     target_chunk,
                     target_index,
                     amount,
+                    parameters.maximum_intensity,
                     &source_causes,
                     target_field.last_change[target_index],
                 )?;
@@ -896,11 +897,23 @@ fn touches_chunk_boundary(index: usize, extent: u8) -> bool {
 /// receiving cell's own injection explain the value it landed on. A cell that
 /// only receives across a seam has no interior change to inherit causes from, so
 /// this is the sole point where its ancestry is established.
+///
+/// The running total is clamped to `0..=maximum_intensity` after every
+/// delivery, the same bound `diffuse_cell` applies once at the end of its own
+/// computation for a cell fed from inside its chunk (`TODO-MANA-006`). In
+/// production `delta` is always non-negative (`diffusion_share` never returns a
+/// negative share of a non-negative value), so only the ceiling engages; the
+/// floor exists for symmetry with `diffuse_cell` and so this function's own net-
+/// zero unit test can exercise a negative delta directly. Because addition is
+/// commutative, clamping the running total after each of several deliveries to
+/// the same cell yields the same result as clamping their sum once, regardless
+/// of the order the deliveries are visited in.
 fn apply_exchange_delta(
     proposals: &mut BTreeMap<ChartChunkCoord, ManaEvolutionProposal>,
     chunk: ChartChunkCoord,
     index: usize,
     delta: i64,
+    maximum_intensity: i64,
     source_causes: &[TraceId],
     target_last_change: Option<TraceId>,
 ) -> Result<(), ManaError> {
@@ -909,7 +922,7 @@ fn apply_exchange_delta(
         .ok_or(ManaError::UnknownFieldChunk)?;
     let before = proposal.proposed[index];
     let base = proposal.base_intensity[index];
-    let after = before.saturating_add(delta);
+    let after = before.saturating_add(delta).clamp(0, maximum_intensity);
     proposal.proposed[index] = after;
     let cell_index = index as u16;
     if let Some(change_index) = proposal
@@ -1360,8 +1373,9 @@ mod tests {
         let mut proposals = BTreeMap::from([(chart_chunk(), proposal)]);
 
         let causes = [TraceId::new(9)];
-        apply_exchange_delta(&mut proposals, chart_chunk(), 0, 5, &causes, None).unwrap();
-        apply_exchange_delta(&mut proposals, chart_chunk(), 0, -5, &causes, None).unwrap();
+        let ceiling = parameters().maximum_intensity;
+        apply_exchange_delta(&mut proposals, chart_chunk(), 0, 5, ceiling, &causes, None).unwrap();
+        apply_exchange_delta(&mut proposals, chart_chunk(), 0, -5, ceiling, &causes, None).unwrap();
 
         assert!(
             proposals[&chart_chunk()].changes().is_empty(),
@@ -1388,6 +1402,7 @@ mod tests {
             chart_chunk(),
             0,
             5,
+            parameters().maximum_intensity,
             &[TraceId::new(5)],
             Some(TraceId::new(3)),
         )
@@ -1782,5 +1797,49 @@ mod tests {
 
         assert!(same_neighbor_total > 0);
         assert_eq!(cross_neighbor_total, 0);
+    }
+
+    /// `TODO-MANA-006`: a cell fed across a seam was not bounded by
+    /// `maximum_intensity` the way a cell fed from inside its own chunk is.
+    /// Two adjacent extent-3 chunks (54 cells total), every cell seeded at the
+    /// ceiling, reproduces the exact scenario the TODO's Evidence measured.
+    #[test]
+    fn seam_delivery_never_exceeds_the_saturation_ceiling() {
+        const EXTENT: u8 = 3;
+        const CEILING: i64 = 1_000;
+        let side = usize::from(EXTENT);
+        let volume = side.pow(3);
+
+        let left = chart_chunk_at(1, 0);
+        let right = chart_chunk_at(1, 1);
+        let saturated = |id: u64, chunk: ChartChunkCoord| {
+            ManaField::import_snapshot(ManaFieldSnapshot {
+                id: ManaFieldId::new(id),
+                chunk,
+                extent: EXTENT,
+                observed_through: SimulationTime::default(),
+                intensity: vec![CEILING; volume],
+                last_change: vec![Some(TraceId::new(id)); volume],
+                last_change_before: vec![0; volume],
+            })
+            .unwrap()
+        };
+
+        let mut params = parameters();
+        params.maximum_intensity = CEILING;
+
+        let fields = ManaFieldSet::new(vec![saturated(1, left), saturated(2, right)]).unwrap();
+        let proposal = fields
+            .propose_evolution(SimulationTime::new(1), params, &[], &[])
+            .unwrap();
+
+        for (chunk, field_proposal) in proposal.field_proposals() {
+            for (index, value) in field_proposal.proposed_intensity().iter().enumerate() {
+                assert!(
+                    *value <= CEILING,
+                    "cell {index} in {chunk:?} proposed {value}, exceeding ceiling {CEILING}"
+                );
+            }
+        }
     }
 }
