@@ -227,6 +227,11 @@ harness's output per commit. Two follow-ups it deliberately did not close are ca
 rather than an implementation) and `TODO-PERF-003` (regression flagging and a reference-hardware run,
 which need a historical series first).
 
+Local world detail below the chunk — parcels, structures, and interior spaces — remains
+architecturally scoped (`docs/world/spatial-hierarchy.md`, RFC-GEO-002, INV-037, INV-043) but not
+scheduled: `TODO-WORLD-003` records a bounded future validation slice. It does not displace the
+current priority on physical-state coupling, production bootstrap, and cross-domain depth.
+
 See `docs/architecture/detailed-development-rebaseline.md`; the completed planning record is in
 `plans/history/detailed-development-rebaseline.md`.
 

@@ -28,7 +28,7 @@ Evaluation is pure and proposal-only. Commit requires exactly one new trace for 
 
 ## Aggregation boundary
 
-The field says how much causal detail a chunk should receive; it does not define how terrain, biology, populations, language, mana, or future organizations aggregate. Each domain needs conservation, provenance, promotion, and demotion contracts before consuming levels. Phase 18 does not destroy detailed state or synthesize individuals from aggregates.
+The field says how much causal detail a chunk should receive; it does not define how terrain, biology, populations, language, mana, or future organizations aggregate. Each domain needs conservation, provenance, promotion, and demotion contracts before consuming levels. Phase 18 does not destroy detailed state or synthesize individuals, objects, or structures from aggregates (INV-039).
 
 RFC-GEO-002 further separates resolution from geometry: a level may trigger future promotion from a 2.5D surface/layer representation to bounded local volumetric 3D, but it cannot change topology, curvature, physical distance, or chart adjacency. Existing bare chunk keys are local-chart identities pending a chart-qualified migration.
 

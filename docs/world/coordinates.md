@@ -52,7 +52,7 @@ The conversion is deterministic and lossless within one chart lattice. Despite i
 
 ## Structures, Interiors, and Bodies
 
-Parcel, structure, interior, body, and object coordinates use their own local frames and explicit transforms. Containment alone does not define shape, pose, or metric geometry. Rendering coordinates are derived observer state and never authoritative.
+Parcel, structure, interior, body, and object coordinates use their own local frames and explicit transforms. Containment alone does not define shape, pose, or metric geometry. These local frames are independent of `CHUNK_SIZE`, the terrain lattice, and the mana `chunk_extent`; a `LocalMetricFrame`'s own bound (`maximum_offset_mm`) is the only limit on its extent. Rendering coordinates are derived observer state and never authoritative.
 
 ## Precision and Determinism
 

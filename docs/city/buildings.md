@@ -46,6 +46,8 @@ Buildings contain interior spaces with:
 - contents and inventory;
 - fire and safety characteristics.
 
+Interior, structure, and parcel coordinates use their own bounded local metric frames rather than the terrain or mana lattice; see `docs/world/coordinates.md` and `RFC-GEO-002`.
+
 ## Related Documents
 
 - `docs/city/parcels.md` - Land parcels that hold buildings

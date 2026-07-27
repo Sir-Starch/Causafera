@@ -925,6 +925,20 @@ The prior decision of extent 6 is void, along with its stated 98.1% convergence 
 **Out of Scope:** Observer-driven activation, cross-chart activation
 **Evidence:** `RuntimeConfig::validate` builds the active set once from `active_chunk_keys`; no activation or deactivation path exists in the runtime
 
+## TODO-WORLD-003: Minimal Local Detail Vertical Slice (Parcel/Structure/Interior)
+**Status:** Pending
+**Phase:** Detailed Development — World
+**Priority:** Low
+**Dependencies:** TODO-RES-001, TODO-CITY-001, TODO-MANA-002, TODO-THERMAL-000 (completed same-chart slice)
+**Goal:** Validate the Chunk → Parcel/Site → Structure → Interior Space local-detail path (`spatial-hierarchy.md`) end to end on one minimal bounded scenario, proving the promotion contract rather than building city content
+**Acceptance Criteria:** One chunk, one parcel/site, one structure, several interior spaces; each interior addressed through its own bounded `LocalMetricFrame` with an explicit chart transform, not derived from `CHUNK_SIZE` or `chunk_extent`; interior physical materials exist as chart-qualified surfaces; at least one interaction with the existing thermal carrier and one with the existing mana carrier crossing the parcel/structure/interior boundary; a persistence round-trip; causal provenance for every promoted element; a bounded observer projection exposing the promoted structure with no fabricated content (INV-039)
+**Performance Requirements:** Cost of one promoted structure measured against an unpromoted chunk of the same size before any claim about scaling to many structures
+**Determinism Requirements:** Same seed and promotion inputs reproduce identical local geometry, material state, and provenance; demotion is lossless for every conserved quantity it retains
+**Ontology Implications:** Local detail is a domain-owned promotion contract (INV-037, INV-043); no specific resident, object, or building content may be synthesized from an aggregate outside this validated contract (INV-039)
+**Observer Implications:** One additive bounded projection for the promoted structure and its interiors; no protocol-wide interior/parcel query surface
+**Explanation Implications:** Promotion and demotion events are trace-backed and inspectable like any other committed state change
+**Out of Scope:** City/road/settlement generation, mass building construction, full indoor physics (light, acoustics, airflow), a general promotion/demotion system for arbitrary chunks, persistence schema changes beyond this slice's own section, observer-protocol changes beyond this slice's own additive query, UI work
+
 ## TODO-UI-004: Observer Projection Requests
 **Status:** Pending
 **Phase:** Detailed Development — Observer Surface

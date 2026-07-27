@@ -152,7 +152,7 @@ Local physical space is three-dimensional. Global geography is a charted planeta
 
 ## INV-037: Geometry is not containment or resolution
 
-Containment, physical geometry, ownership/jurisdiction, rendering, and causal resolution are structurally separate. A hierarchy edge does not define shape or distance. A resolution transition may change representation detail but cannot alter topology, metric distance, geometric adjacency, or physical extent without a committed physical process.
+Containment, physical geometry, ownership/jurisdiction, rendering, and causal resolution are structurally separate. A hierarchy edge does not define shape or distance. A resolution transition may change representation detail but cannot alter topology, metric distance, geometric adjacency, or physical extent without a committed physical process. A chunk's distinct domain aspects — surface terrain, volumetric physical fields, aggregated population/ecology/economy state, and locally detailed parcels, structures, and interior spaces — may each carry an independent resolution; raising one aspect's detail does not imply raising another's.
 
 ## INV-038: State digests are identities, not physical metrics
 
@@ -178,4 +178,4 @@ Runtime implementation must remain modular and cohesive. Distinct domain or exec
 
 ## INV-043: The world is one coherent spatial system
 
-Cells and chunks are a deterministic discretization of one shared spatial world, not isolated voxel islands. Physical fields may have local state and must potentially interact across space. Any missing transport, adjacency, carrier, terrain, material, or energy mechanism is to be identified as an unimplemented physical process rather than intentionally impossible. The engine must not rely on chunk boundaries as absolute physical barriers unless caused by explicitly modeled physical occlusion.
+Cells and chunks are a deterministic discretization of one shared spatial world, not isolated voxel islands. Physical fields may have local state and must potentially interact across space. Any missing transport, adjacency, carrier, terrain, material, or energy mechanism is to be identified as an unimplemented physical process rather than intentionally impossible. The engine must not rely on chunk boundaries as absolute physical barriers unless caused by explicitly modeled physical occlusion. A spatial chunk is a unit of addressing, storage, computation, and causal-resolution bookkeeping. It is not a material, biome, building, or physically indivisible cell, and its size carries no privileged metric scale beyond what an explicit registered schema states for a given domain grid.
