@@ -363,9 +363,10 @@ architectural requirements, validation commands, the policy on AI-assisted contr
 Contributor License Agreement requirements.
 
 > [!NOTE]
-> The CLA acceptance service is not yet configured. Until it is, external pull requests may be
-> prepared and discussed but cannot be merged. Issues and evidence-backed design discussion are
-> unaffected.
+> CLA Assistant is configured and linked to this repository, but the acceptance workflow is not yet
+> verified end to end and the CLA check is not yet required on `main`. Until it is, external pull
+> requests may be prepared and discussed but cannot be merged. Issues and evidence-backed design
+> discussion are unaffected.
 
 | Resource | Purpose |
 | --- | --- |

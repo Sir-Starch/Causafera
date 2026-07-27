@@ -1,12 +1,13 @@
 # Causafera TODO Backlog
 
 ## TODO-LEGAL-001: CLA Assistant Configuration and Verification
-**Status:** Pending
+**Status:** In Progress
 **Phase:** 0
-**Priority:** Critical — before first external contribution
+**Priority:** Critical — before first external contribution is merged
 **Dependencies:** None
 **Goal:** Configure and end-to-end verify the hosted CLA Assistant acceptance workflow for CLA version 1.1, following the checklist in `docs/legal/cla-service-setup.md`.
-**Acceptance Criteria:** CLA 1.1 published as a public Gist whose text is identical to `CLA.md`, with its Gist URL and revision hash recorded; CLA Assistant connected to `Sir-Starch/Causafera` and linked to that Gist, with the accepted Gist revision recorded and exported; acceptance cannot be inferred from pull-request submission; a test pull request from a second account confirms the check fails before acceptance and passes after; exported records carry authenticated contributor GitHub identity, repository, accepted Gist revision, and timestamp, with PR association established through the service comment, GitHub history, or a private register; a new Gist revision triggers re-acceptance; the CLA status check is required on `main` and confirmed to block merging; automation accounts are allowlisted and verified; acceptance-record exports are privately retained and backed up; contribution-status text updated only after the service is confirmed operational.
+**Completed:** CLA 1.1 published as a public Gist (`eb32d78ea648f989831f7aa0a3bac81c`, revision `7c6daa72020318c47d14bca27655097cce236d6b`), verified byte-identical to `CLA.md` at blob `3c89692912e7d645e376cded4d6547ca1f874fc7`; CLA Assistant linked to `Sir-Starch/Causafera` against that Gist's `CLA.md`, with Shared Gist disabled and no minimum file-count or line-count exemption; the service reports the link as active.
+**Acceptance Criteria:** Remaining before this TODO closes — a test pull request from a second account confirms the CLA check appears, fails before acceptance, and passes after acceptance without a further push; the exported acceptance record is inspected and carries authenticated contributor GitHub identity, repository, accepted Gist revision, and timestamp, with PR association established through the service comment, GitHub history, or a private register; a later Gist revision is confirmed to trigger re-acceptance; the CLA status check is required on `main` and confirmed to block merging an unsigned contribution; automation accounts are allowlisted and verified against a real bot pull request; acceptance-record exports are privately retained and backed up; contribution-status text is updated to enable external merging only after all of the above.
 **Performance Requirements:** N/A
 **Determinism Requirements:** N/A
 **Ontology Implications:** None

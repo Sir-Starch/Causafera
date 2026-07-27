@@ -9,16 +9,18 @@ governance rights — read [GOVERNANCE.md](GOVERNANCE.md) before investing signi
 Technically valid work may still be declined because it does not fit the project's vision;
 discussing a substantial change in an issue first is the cheapest way to find that out.
 
-> **Current contribution status: preparing.** The CLA acceptance service is **not yet configured or
-> tested**. Until it is, external pull requests may be prepared, submitted, and discussed, but they
-> **cannot be merged**, because CLA acceptance is a precondition for merge and no working acceptance
-> mechanism exists yet. Nothing below should be read as saying the CLA workflow is already
-> operational. Issues, reproducible bug reports, review, and design discussion are unaffected.
+> **Current contribution status: configured, not yet verified.** CLA Assistant is configured and
+> linked to this repository against the published CLA Gist. The acceptance workflow has **not** been
+> verified end to end, and the CLA check is **not** yet a required check on `main`. Until it is,
+> external pull requests may be prepared, submitted, and discussed, but they **cannot be merged**.
+> Nothing below should be read as saying the CLA workflow is operational. Issues, reproducible bug
+> reports, review, and design discussion are unaffected.
 >
-> Enabling the service is tracked as `TODO-LEGAL-001` in
-> [`docs/development/todo-backlog.md`](docs/development/todo-backlog.md); the maintainer steps are in
+> Remaining work is tracked as `TODO-LEGAL-001` in
+> [`docs/development/todo-backlog.md`](docs/development/todo-backlog.md); the maintainer steps and
+> what is already done are in
 > [`docs/legal/cla-service-setup.md`](docs/legal/cla-service-setup.md). This notice is updated only
-> after the service is confirmed working.
+> after the workflow is tested end to end and merge enforcement is in place.
 
 ## Contribution flow
 

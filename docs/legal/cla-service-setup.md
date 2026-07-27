@@ -1,15 +1,22 @@
 # CLA Service Setup — Maintainer Checklist
 
-Status of the CLA acceptance service: **not configured.** External pull requests can be prepared and
-discussed, but cannot be merged until every step below is complete and verified.
+Status of the CLA acceptance service: **configured and linked, not yet verified.** CLA Assistant is
+configured and linked to the repository. End-to-end verification and merge enforcement are still
+pending, so external contributions cannot yet be merged.
+
+Concretely: steps 1 and 2 below are done — the CLA is published as a public Gist and CLA Assistant is
+linked to `Sir-Starch/Causafera`. Steps 3 to 6 are not. Nothing has yet been tested against a real
+pull request, no acceptance record has been produced or inspected, the CLA check is not a required
+check on `main`, bot handling is untested, and no records have been exported. A configuration page
+that reports an active link is not the same as a verified workflow.
 
 This document is the repository-side record of the manual work required to enable CLA acceptance.
 Every step happens **outside this repository**, in a GitHub Gist, in GitHub settings, and in the
-hosted [CLA Assistant](https://cla-assistant.io/) service. Nothing here has been performed. Do not
-update the contribution-status text in [`CONTRIBUTING.md`](../../CONTRIBUTING.md),
-[`README.md`](../../README.md), [`docs/development/contributing.md`](../development/contributing.md),
-or [`.github/pull_request_template.md`](../../.github/pull_request_template.md) until the workflow
-has been tested end to end.
+hosted [CLA Assistant](https://cla-assistant.io/) service. Do not update the contribution-status text
+in [`CONTRIBUTING.md`](../../CONTRIBUTING.md), [`README.md`](../../README.md),
+[`docs/development/contributing.md`](../development/contributing.md), or
+[`.github/pull_request_template.md`](../../.github/pull_request_template.md) to say contributions can
+be merged until the workflow has been tested end to end.
 
 > **[`CLA.md`](../../CLA.md) deliberately carries no operational status.** It is the text people
 > sign, and it must read identically before and after the service is configured. Putting a
@@ -29,30 +36,54 @@ CLA Assistant reads the agreement text from a **GitHub Gist** and tracks accepta
 specific **Gist revision**. This is the mechanism the service actually supports; release assets,
 arbitrary commit permalinks, and other generic immutable URLs are not alternatives here.
 
-- [ ] Create a **public** Gist containing the exact text of [`CLA.md`](../../CLA.md).
-- [ ] Confirm the Gist content is byte-identical to the repository copy — the Gist is what
+- [x] Create a **public** Gist containing the exact text of [`CLA.md`](../../CLA.md).
+- [x] Use the filename `CLA.md` and the description `Causafera Contributor License Agreement v1.1`.
+- [x] Confirm the Gist content is byte-identical to the repository copy — the Gist is what
       contributors legally accept, and a drift between the two means people accepted something other
       than what the repository documents.
-- [ ] Note the Gist URL and the **specific revision hash** shown under the Gist's Revisions tab.
-- [ ] Record both in the table below.
+- [x] Note the Gist URL and the **specific revision hash** shown under the Gist's Revisions tab.
+- [x] Record both in the table below.
 
 | CLA version | Gist URL | Gist revision | Recorded |
 | --- | --- | --- | --- |
-| 1.1 | _not yet published_ | _not yet published_ | — |
+| 1.1 | https://gist.github.com/Sir-Starch/eb32d78ea648f989831f7aa0a3bac81c | `7c6daa72020318c47d14bca27655097cce236d6b` | 2026-07-27 |
+
+Gist ID `eb32d78ea648f989831f7aa0a3bac81c`, public. Integrity evidence for the published revision,
+which matches the branch copy of `CLA.md`:
+
+```text
+Size: 15587 bytes
+SHA-256: d32a10dfd75d4efd6ee42792632d002e78a13fe4d1a0f549bd81267afc5b6e36
+Git blob SHA: 3c89692912e7d645e376cded4d6547ca1f874fc7
+```
+
+Reproduce the repository side with `wc -c < CLA.md`, `sha256sum CLA.md`, and `git hash-object CLA.md`.
+Any future change to `CLA.md` must go through step 7, not through an unrecorded edit.
 
 Editing the Gist creates a **new revision**; it does not rewrite the old one. That is what makes
 versioned acceptance work, and why the revision hash — not just the URL — must be recorded.
 
 ## 2. Connect the repository
 
-- [ ] Sign in to CLA Assistant with the maintainer GitHub account (user ID `281476371`).
-- [ ] Authorize the app against `Sir-Starch/Causafera` only, not the whole account, and review the
+Configuration page: <https://cla-assistant.io/Sir-Starch/Causafera>
+
+- [x] Sign in to CLA Assistant with the maintainer GitHub account (user ID `281476371`).
+- [x] Authorize the app against `Sir-Starch/Causafera` only, not the whole account, and review the
       permissions it requests before granting them.
-- [ ] Create the CLA configuration linked to the Gist from step 1. The service follows that Gist and
-      picks up its later revisions; there is no per-revision configuration to maintain.
-- [ ] Confirm the resulting status check name, so it can be required in step 4.
+- [x] Create the CLA configuration linked to the Gist from step 1, using the `CLA.md` file. The
+      service follows that Gist and picks up its later revisions; there is no per-revision
+      configuration to maintain.
+- [x] Leave **Shared Gist** disabled — this agreement covers one repository, not an account-wide set.
+- [x] Configure **no** minimum file-count or line-count exemption, so no contribution is small enough
+      to bypass the CLA.
+- [x] Confirm the service reports the repository/Gist link as active.
+- [ ] Confirm the resulting status check name, so it can be required in step 4. **Not done** — the
+      check name cannot be confirmed until it has actually appeared on a pull request in step 3.
 
 ## 3. Test with a real pull request
+
+**Not started.** This is the step that turns a configured service into a verified one, and until it
+passes, external contributions cannot be merged.
 
 - [ ] Open a throwaway pull request from a **second** account that has never accepted the CLA. The
       maintainer account cannot test this path, because it will typically be treated as exempt.
@@ -117,12 +148,13 @@ A material change to the CLA is not just a repository edit.
 - [ ] If the service cannot enforce re-acceptance, record that as a limitation and handle
       re-acceptance manually before merging further external work.
 
-## 8. Only then, update repository status text
+## 8. Only then, enable external contribution merging
 
-After — and only after — steps 1–6 are complete and verified:
+After — and only after — steps 3 to 6 are complete and verified. Steps 1 and 2 alone are not
+sufficient; the current documentation state already reflects them.
 
-- [ ] Replace the "preparing" notice in [`CONTRIBUTING.md`](../../CONTRIBUTING.md) with the
-      operational status.
+- [ ] Replace the "configured but unverified" notice in [`CONTRIBUTING.md`](../../CONTRIBUTING.md)
+      with the operational status.
 - [ ] Leave [`CLA.md`](../../CLA.md) untouched — it carries no status by design, so the Gist stays
       byte-identical and nobody is asked to re-accept.
 - [ ] Update the contribution paragraph in [`README.md`](../../README.md).
@@ -133,7 +165,7 @@ After — and only after — steps 1–6 are complete and verified:
       and record the change in [`CHANGELOG.md`](../../CHANGELOG.md).
 
 Do not perform step 8 partially. Contradictory contribution-status text across these files is worse
-than a stale but consistent "not yet configured".
+than a consistent statement that the workflow is not yet verified.
 
 ## Optional: professional legal review
 
