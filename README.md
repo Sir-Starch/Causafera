@@ -2,7 +2,7 @@
 
 <h1 id="causafera">Causafera</h1>
 
-<p><strong>An author-led free and open-source deterministic causal simulation engine for persistent fantasy worlds.</strong></p>
+<p><strong>A deterministic causal simulation engine for persistent fantasy worlds.</strong></p>
 
 <p>
   Causafera models how physical processes, bounded subjective agents, language, institutions,<br>
@@ -347,10 +347,10 @@ The [roadmap](docs/roadmap/roadmap.md) is the authoritative status source. The
 
 Causafera is an author-led free and open-source project. It is open for inspection, research,
 modification, forks, and aligned contributions, while its canonical philosophy, architecture, and
-roadmap remain under the sole direction of the maintainer,
-[`Sir-Starch`](https://github.com/Sir-Starch). Contributing does not create governance rights, and
-technically valid work may be declined because it does not fit the project's vision. Anyone wanting
-materially different behaviour is free to fork under the public licences.
+roadmap remain under the sole direction of the maintainer, currently
+[`Sir-Starch`](https://github.com/Sir-Starch). Contributing does not automatically create governance
+rights, and technically valid work may be declined because it does not fit the project's vision.
+Anyone wanting materially different behaviour is free to fork under the public licences.
 [GOVERNANCE.md](GOVERNANCE.md) is the authoritative statement of all of this.
 
 The engine is free and open source so that its results can be inspected, reproduced, and verified
@@ -386,8 +386,8 @@ Causafera uses separate licenses for software and explanatory documentation:
   license. Contributors retain their copyright; the CLA transfers no ownership and does not replace
   the public licenses.
 - The CLA preserves the possibility of alternative commercial or proprietary licensing in future.
-  That possibility is additional to the public licenses and cannot withdraw the continuing public
-  availability of accepted contributions.
+  That possibility is additional to the public licenses and cannot revoke the license already
+  granted to any release in which a contribution has been published.
 
 ---
 

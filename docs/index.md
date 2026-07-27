@@ -220,7 +220,7 @@ Later documents supersede conflicting initialization-spec sections **only when t
 
 - `GOVERNANCE.md` - Author-led governance, maintainer authority, forks, and why the engine is FOSS
 - `CONTRIBUTING.md` - Authoritative contribution policy, flow, AI-agent rules, and validation
-- `CLA.md` - Contributor License Agreement and its open questions for legal review
+- `CLA.md` - Contributor License Agreement (version 1.1, acceptance workflow not yet enabled)
 - `docs/legal/cla-service-setup.md` - Maintainer checklist for enabling CLA acceptance
 
 ## Development

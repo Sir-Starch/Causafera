@@ -6,8 +6,14 @@ specific about decision-making authority, this document governs.
 
 ## Maintainer authority
 
-The project is maintained by the GitHub identity [`Sir-Starch`](https://github.com/Sir-Starch), who
-holds final authority over the canonical repository at
+The project is maintained by the person holding the GitHub account with stable user ID
+`281476371`, currently using the login [`Sir-Starch`](https://github.com/Sir-Starch). Identity is
+anchored to that numeric account ID rather than to the login string or to whoever controls the
+repository at a given moment: a username change does not transfer authority, a released login gives
+a later holder nothing, and moving or forking the repository does not carry governance with it. The
+same anchoring governs licensing rights under [CLA.md](CLA.md).
+
+The maintainer holds final authority over the canonical repository, currently at
 `https://github.com/Sir-Starch/Causafera`, including:
 
 - simulation philosophy and foundational assumptions;
@@ -30,10 +36,14 @@ External contributors are welcome to propose ideas, report defects, discuss desi
 changes. Contributions are evaluated on whether they support the canonical vision and satisfy the
 project's architectural, determinism, provenance, and evidence requirements.
 
-Contributing does not create governance or decision-making rights. Neither the number, size, nor
-significance of accepted contributions confers proportional influence over direction. A contributor
-whose work has been merged holds exactly the same standing in project decisions as one whose work
-has not.
+Contributing does not automatically create governance or decision-making rights. Neither the number,
+size, nor significance of accepted contributions confers proportional influence over direction —
+there is no threshold of merged work that earns a say.
+
+Authority over any part of the project exists only where the maintainer has **explicitly delegated
+it**. Such delegation is scoped to what it says it covers, may be changed or revoked at any time,
+and does not accumulate through continued contribution. Final authority remains with the maintainer
+unless it is separately and explicitly transferred.
 
 The maintainer may reject a contribution that is technically correct, well tested, and useful, on
 the sole ground that it does not fit the project's vision. That is a normal outcome, not a defect in
@@ -88,18 +98,24 @@ Six things are distinct and are deliberately not merged in project documentation
 | Governance authority | The maintainer decides direction and acceptance; this document |
 | Copyright ownership | Contributors retain copyright in their contributions; nothing here transfers it |
 | CLA-granted rights | The additional licensing rights contributors grant the maintainer under [CLA.md](CLA.md) |
-| Commercial licensing | Possible alternative outbound terms the CLA preserves, alongside — never instead of — public FOSS availability |
+| Commercial licensing | Possible alternative outbound terms the CLA preserves, alongside — never instead of — the public licence granted to each release |
 | Scientific or technical validation | Independent of all of the above; established by evidence, not by licence or authority |
 
-The public engine remains available under its applicable FOSS licences. The
-[Contributor License Agreement](CLA.md) requires that accepted contributions incorporated into the
-public codebase remain available under the public licence that applied when they were submitted.
+The public engine is released under its applicable FOSS licences. The
+[Contributor License Agreement](CLA.md) requires that every public release containing an accepted
+contribution licenses it under the applicable public licence, and that a licence once granted cannot
+later be revoked by commercial licensing.
+
+That is a licensing commitment, not a promise to host files forever. The maintainer may modify,
+replace, or remove a contribution in later versions, and is not obliged to keep any repository,
+release, or distribution channel available indefinitely. Removing something from a later version
+does not retroactively affect the licence granted to the releases that contained it.
 
 The CLA additionally grants the maintainer sufficient rights to offer alternative commercial or
 proprietary licensing in the future. Causafera represents years of unpaid work, and the project is
 not intended to convert that work into an open-ended obligation governed by community expectations.
-The maintainer may pursue commercial opportunities. Doing so cannot withdraw or replace the
-continuing public availability of accepted contributions under the applicable FOSS licence.
+The maintainer may pursue commercial opportunities. Doing so cannot revoke or replace the FOSS
+licence already granted to any public release.
 
 ## Conduct
 

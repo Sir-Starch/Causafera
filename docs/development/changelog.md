@@ -58,8 +58,8 @@ This project follows a structured changelog format. Each entry includes:
 #### Documentation
 
 - Revised CLA to support commercial and proprietary outbound licensing while preserving public AGPL-3.0-only/CC BY-SA 4.0 availability, require separately recorded electronic acceptance, and select Netherlands law;
-- Added `GOVERNANCE.md` recording author-led, maintainer-governed direction under the `Sir-Starch` GitHub identity, and the distinction between public source availability and validation;
-- Released CLA version 1.1 identifying the accepting maintainer, making the acceptance-record elements explicit, adding a no-governance-rights clause, and recording the questions reserved for legal review;
+- Added `GOVERNANCE.md` recording author-led, maintainer-governed direction anchored to GitHub user ID `281476371` rather than a mutable login, explicit-delegation-only authority, and the distinction between public source availability and validation;
+- Released CLA version 1.1 (acceptance workflow not yet enabled): durable maintainer identity, a narrowed Contribution definition excluding issues and discussion, a patent grant directed at the maintainer and recipients, per-release irrevocable public licensing without a hosting obligation, service-realistic acceptance records, and a no-governance-rights clause;
 - Replaced the blanket prohibition on external contributions with a staged policy: external pull requests may be prepared and discussed, but cannot be merged until the CLA acceptance service is configured and tested;
 - Documented that AI coding agents are permitted while the human contributor remains accountable for review, validation, and the right to submit;
 - Created project vision documents (project-thesis, core-loop, isekai-targets, uniqueness);

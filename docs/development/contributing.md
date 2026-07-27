@@ -8,7 +8,7 @@ Thank you for your interest in Causafera. This project has strict architectural 
 > statement of decision-making authority. This page is the documentation-tree summary of the
 > architectural expectations; where the two differ, the root documents govern.
 
-Causafera is an author-led free and open-source project. External contributions are welcome when they support the maintainer's canonical vision, but contributing does not create governance or decision-making rights, and technically valid work may be declined because it does not fit the project's direction.
+Causafera is an author-led free and open-source project. External contributions are welcome when they support the maintainer's canonical vision, but contributing does not automatically create governance or decision-making rights, and technically valid work may be declined because it does not fit the project's direction.
 
 ## Required Reading
 
@@ -74,11 +74,11 @@ Functional software material is licensed under **AGPL-3.0-only**. Prose and non-
 
 > **Current contribution status: preparing.** The CLA acceptance service is not yet configured or tested. Until it is, external pull requests may be prepared and discussed but cannot be merged, because CLA acceptance is a precondition for merge. Issues, discussion, and feedback are unaffected. The maintainer steps are tracked in [`docs/legal/cla-service-setup.md`](/docs/legal/cla-service-setup.md) and as `TODO-LEGAL-001` in [`docs/development/todo-backlog.md`](/docs/development/todo-backlog.md).
 
-Before a contribution can be accepted, the contributor must separately accept the [Contributor License Agreement (CLA)](/CLA.md) through the designated CLA service or electronic-signature process. Opening a pull request does not by itself constitute acceptance. The acceptance record identifies the authenticated contributor, the exact CLA version accepted, the timestamp, and an associated pull request or commit; a materially changed CLA version requires a new acceptance.
+Before a contribution can be accepted, the contributor must separately accept the [Contributor License Agreement (CLA)](/CLA.md) through the designated CLA service. Opening a pull request does not by itself constitute acceptance. The acceptance record identifies the authenticated GitHub identity, the repository, the exact CLA revision accepted, and the timestamp; a materially changed CLA is published as a new revision and requires a new acceptance.
 
-Contributors retain their copyright. The CLA transfers no ownership. It permits proprietary and commercial outbound licensing in addition to — never instead of — the requirement that accepted functional software material remain available in the public project under AGPL-3.0-only and accepted prose and non-functional documentation under CC BY-SA 4.0.
+Only material intentionally submitted for inclusion — a pull request, a commit or patch, or another explicitly designated channel — is a contribution. Issues, bug reports, feature requests, and design discussion are not placed under the CLA.
 
-The CLA has not been reviewed by a lawyer. It calls for Netherlands-qualified legal review before external contributions are accepted.
+Contributors retain their copyright. The CLA transfers no ownership. It permits proprietary and commercial outbound licensing in addition to — never instead of — the commitment that every public release containing an accepted contribution licenses it under AGPL-3.0-only for functional software material, or CC BY-SA 4.0 for prose and non-functional documentation. That is a licensing commitment, not an obligation to host or retain any file indefinitely.
 
 ## AI-Assisted Contributions
 

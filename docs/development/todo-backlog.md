@@ -1,12 +1,12 @@
 # Causafera TODO Backlog
 
-## TODO-LEGAL-001: CLA Legal Review and Acceptance Automation
+## TODO-LEGAL-001: CLA Assistant Configuration and Verification
 **Status:** Pending
 **Phase:** 0
 **Priority:** Critical — before first external contribution
 **Dependencies:** None
-**Goal:** Have CLA version 1.1 and its acceptance workflow reviewed by a Netherlands-qualified IP/open-source lawyer, resolving the questions listed at the end of `CLA.md`, then configure a CLA service or equivalent electronic-signature process following the checklist in `docs/legal/cla-service-setup.md`.
-**Acceptance Criteria:** Counsel review recorded; the reserved legal questions in `CLA.md` answered or explicitly deferred by counsel; acceptance cannot be inferred from pull-request submission; durable records include authenticated contributor identity, CLA version, timestamp, and associated pull request or commit; changed CLA versions require new acceptance; the CLA status check is required on `main` and verified against a test pull request; automation accounts are handled explicitly; contribution-status text updated only after the service is confirmed operational.
+**Goal:** Configure and end-to-end verify the hosted CLA Assistant acceptance workflow for CLA version 1.1, following the checklist in `docs/legal/cla-service-setup.md`.
+**Acceptance Criteria:** CLA 1.1 published as a public Gist whose text is identical to `CLA.md`, with its Gist URL and revision hash recorded; CLA Assistant connected to `Sir-Starch/Causafera` and pointed at that revision; acceptance cannot be inferred from pull-request submission; a test pull request from a second account confirms the check fails before acceptance and passes after; exported records carry authenticated contributor GitHub identity, repository, accepted Gist revision, and timestamp, with PR association established through the service comment, GitHub history, or a private register; a new Gist revision triggers re-acceptance; the CLA status check is required on `main` and confirmed to block merging; automation accounts are allowlisted and verified; acceptance-record exports are privately retained and backed up; contribution-status text updated only after the service is confirmed operational.
 **Performance Requirements:** N/A
 **Determinism Requirements:** N/A
 **Ontology Implications:** None

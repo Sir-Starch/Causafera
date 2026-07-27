@@ -4,10 +4,10 @@ Causafera is an author-led free and open-source causal world-simulation engine
 (**Experimental pre-alpha**) with strict deterministic and provenance requirements.
 
 External contributions are welcome when they support the project's canonical vision. Direction,
-scope, and acceptance remain with the maintainer, and contributing does not create governance
-rights — read [GOVERNANCE.md](GOVERNANCE.md) before investing significant effort. Technically valid
-work may still be declined because it does not fit the project's vision; discussing a substantial
-change in an issue first is the cheapest way to find that out.
+scope, and acceptance remain with the maintainer, and contributing does not automatically create
+governance rights — read [GOVERNANCE.md](GOVERNANCE.md) before investing significant effort.
+Technically valid work may still be declined because it does not fit the project's vision;
+discussing a substantial change in an issue first is the cheapest way to find that out.
 
 > **Current contribution status: preparing.** The CLA acceptance service is **not yet configured or
 > tested**. Until it is, external pull requests may be prepared, submitted, and discussed, but they
@@ -186,23 +186,26 @@ tools or skipped commands as passing.
 
 Submitting a pull request does not automatically accept the CLA. Before an external contribution
 can be merged, you must separately accept the [Contributor License Agreement](CLA.md) through the
-configured electronic-signature or CLA service. The acceptance record identifies the authenticated
-contributor, the exact CLA version accepted, the timestamp, and the associated pull request or
-commit. A materially changed CLA version requires a new acceptance; earlier acceptances are not
-carried over.
+configured CLA service. The acceptance record identifies your authenticated GitHub identity, the
+repository, the exact CLA revision you accepted, and the timestamp. A materially changed CLA is
+published as a new revision and requires a new acceptance; earlier acceptances are not carried over.
+
+Only material you intentionally submit for inclusion is a contribution — a pull request, a commit or
+patch, or another channel explicitly designated for that purpose. Filing an issue, reporting a bug,
+proposing a feature, or taking part in a design discussion does **not** place that material under
+the CLA.
 
 Under the CLA you retain your copyright — accepting a contribution does not transfer it. You grant
 the maintainer additional rights, including the ability to offer other commercial or proprietary
-outbound terms. That possibility is additional to, and cannot withdraw, the public availability of
-accepted contributions: accepted functional software material — source, scripts, schemas,
-manifests, CI configuration, and machine-readable software configuration — remains available under
-AGPL-3.0-only, and accepted prose and non-functional explanatory documentation remains available
-under CC BY-SA 4.0.
+outbound terms. That possibility is additional to the public licenses and cannot revoke one already
+granted: every public release containing your accepted contribution licenses it under AGPL-3.0-only
+for functional software material, or CC BY-SA 4.0 for prose and non-functional explanatory
+documentation. This is a licensing commitment rather than a hosting one — the maintainer may modify,
+replace, or remove a contribution in later versions, which does not affect the license granted to
+releases that already contained it.
 
 The CLA supplements those public licenses; it does not replace them, and it grants no governance
-rights (see [GOVERNANCE.md](GOVERNANCE.md)). The CLA has not been reviewed by a lawyer and calls for
-Netherlands-qualified legal review before external contributions are accepted; its open questions
-are listed at the end of [CLA.md](CLA.md).
+rights (see [GOVERNANCE.md](GOVERNANCE.md)).
 
 ## Reporting security issues
 
