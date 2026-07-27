@@ -338,3 +338,4 @@ here) — but flags it in the backlog as due for its own re-review with current 
 - Wave 1 (region generator, wiring, test fallout), checkpoint `f90fc71`.
 - Wave 2 (evidence), checkpoint `402fb60`.
 - Wave 3 (documentation), checkpoint `d517e06`.
+- Wave 4 (5x5 justification and same-material/region metric correctness fixes), checkpoint `c231296`.
