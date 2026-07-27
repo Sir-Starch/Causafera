@@ -1,9 +1,10 @@
 # Performance Baseline and Digest Cost ExecPlan
 
-**Status:** Draft. Investigation and evidence complete; implementation waves not started and require
-acceptance before any wave begins, because Wave 3 touches determinism-critical digest computation
-(INV-007, INV-038). **Revision 4**, incorporating three independent review passes that corrected
-several claims in earlier drafts — see Decision log for what changed and why across all revisions.
+**Status:** Accepted; Wave 1 implemented (checkpoint `c873f31`, see Progress). Waves 2-4 not started;
+Wave 3 specifically requires care given it touches determinism-critical digest computation (INV-007,
+INV-038) and needs the differential oracle test described in its own section before landing.
+**Revision 4**, incorporating three independent review passes that corrected several claims in
+earlier drafts — see Decision log for what changed and why across all revisions.
 
 ## Goal
 
@@ -653,14 +654,34 @@ evidence.
 
 ## Progress
 
-Investigation and Draft-plan authoring (now Revision 4) on `perf/detailed-dev-baseline-investigation`
-(branched from `main` at `1557c9e`). No implementation waves started; no `crates/`/`apps/` source file
-is modified by this plan's authoring at any revision (all instrumentation and probe examples used
-during the investigation were written, run, and then reverted/deleted).
-
-Documentation touched while authoring this Draft plan across all four revisions (distinct from the
-per-wave documentation updates specified in Implementation stages, which record completed
-implementation, not the existence of this Draft): `CHANGELOG.md`, `PLANS.md`,
-`docs/development/todo-backlog.md`, `docs/performance/benchmarks.md`,
+Investigation and Draft-plan authoring (Revision 4) on `perf/detailed-dev-baseline-investigation`
+(branched from `main` at `1557c9e`), checkpoint `8475af0`: no `crates/`/`apps/` source file is
+modified by the investigation or plan-authoring itself (all instrumentation and probe examples used
+during the investigation were written, run, and then reverted/deleted). Documentation touched across
+all four revisions (distinct from the per-wave documentation updates specified in Implementation
+stages, which record completed implementation, not the existence of this Draft): `CHANGELOG.md`,
+`PLANS.md`, `docs/development/todo-backlog.md`, `docs/performance/benchmarks.md`,
 `docs/simulation/long-run-experiments.md`, `docs/ontology/domain-coverage-matrix.md`,
 `docs/roadmap/roadmap.md`.
+
+- **Wave 1 (checked-in benchmark/diagnostic harness), checkpoint `c873f31`:**
+  `crates/causafera-runtime/src/benchmark.rs` (`DigestCostSample`, `measure_digest_cost`,
+  `canonical_state` added to `MaterialSurfaceLoopBenchmarkMeasurement`),
+  `crates/causafera-runtime/src/benchmark_validation.rs` (`validate_benchmark_report`, new
+  `CanonicalStateDivergedAcrossObserverModes` error variant, two new unit tests),
+  `crates/causafera-runtime/examples/performance_baseline.rs` (new: `boundary-sweep`,
+  `worst-case-contact`, `digest-cost` modes, `N=20`, cyclic case rotation, one subprocess per
+  case/repetition for RSS isolation, hardware/toolchain metadata).
+  Verified: `cargo test --release --workspace` (zero failures), `cargo fmt --all -- --check`,
+  `cargo clippy --release --workspace --all-targets -- -D warnings` (all clean).
+  Ran all three modes locally: `boundary-sweep` locates the exact boundary per `sensor_count`
+  (e.g. `sensor_count=1` fails first at `actor_count=64`, cue count 65 — matching Finding 1's
+  provisional number, now reproducible and exhaustive rather than sparse); `worst-case-contact`
+  found `contacted_surface_count` stays flat at 3 regardless of `active_chunk_count` (1, 9, 25, 81
+  across the tested radii) for an `actor_count=8` workload — real data superseding the "worst case
+  assumed" framing in Finding 1's prose, informing Wave 2's design; `digest-cost` reproduced the
+  plan's provisional scratch-probe numbers closely (e.g. `radius_4_area` 916 ms here vs. 924 ms in
+  the deleted probe; `chunk_extent_16` 719 ms both times), with `history_digest` again the dominant
+  named cost and low relative stddev across the 20 repetitions per case.
+  This plan's provisional Context tables are superseded by this harness's output per Verification;
+  they are retained as the historical record of what motivated this plan, not as ongoing evidence.

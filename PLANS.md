@@ -91,14 +91,13 @@ Progress
 - [`plans/terrain-structure-cross-chunk-neighbours.md`](plans/terrain-structure-cross-chunk-neighbours.md) — accepted and implemented; the standing terrain carrier's mana-facing structure magnitude reads real neighbouring chunks' terrain across a chunk boundary instead of truncating at it (`TODO-GEO-006`).
 - [`plans/mana-gate-calibration.md`](plans/mana-gate-calibration.md) — accepted and implemented; the local mana effect gate's threshold and hysteresis are recalibrated against the population it actually reads, which discriminates worlds at every candidate lattice rather than latching (`TODO-MANA-007`).
 - [`plans/coherent-surface-material-regions.md`](plans/coherent-surface-material-regions.md) — accepted and implemented; surface material is generated as spatially coherent regions instead of per-cell noise, closing the constant floor this left in the terrain carrier's mana-facing structure magnitude (`TODO-GEO-004`).
+- [`plans/performance-baseline-and-digest-cost.md`](plans/performance-baseline-and-digest-cost.md) —
+  accepted evidence-based performance investigation for `TODO-PERF-001` with pending implementation
+  stages; Wave 1 (checked-in benchmark/diagnostic harness) implemented, Waves 2-4 (config-validation
+  fix, incremental `history_digest`, CI capture) pending.
 
 ## Draft Plans
 
-- [`plans/performance-baseline-and-digest-cost.md`](plans/performance-baseline-and-digest-cost.md) —
-  Draft evidence-based performance investigation for `TODO-PERF-001`: roots two concrete findings
-  (an unrunnable `actor_count`/`sensor_count` region admitted by config validation, and an unbounded
-  per-tick full-rescan digest cost) in measured local evidence, and proposes narrowly scoped fixes;
-  not yet accepted or implemented.
 - [`plans/experiment-recipe-mana-source.md`](plans/experiment-recipe-mana-source.md) — Draft
   bounded production-path experiment-recipe mana source slice; not active and not an operator API.
 - [`plans/observer-field-raster-map.md`](plans/observer-field-raster-map.md) — Draft bounded
