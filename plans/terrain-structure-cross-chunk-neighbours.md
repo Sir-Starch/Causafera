@@ -313,4 +313,4 @@ small, measured amount (see Evidence). No domain outside geography and mana is t
   `cargo test -p causafera-runtime --lib carrier` (9 passed) and
   `cargo test -p causafera-runtime --test terrain_carrier` (19 passed, no re-pointing needed).
 - Wave 2 — documentation: `CHANGELOG.md`, `docs/development/todo-backlog.md` (`TODO-GEO-006`
-  completed), `docs/ontology/domain-coverage-matrix.md`, `PLANS.md`.
+  completed), `docs/ontology/domain-coverage-matrix.md`, `PLANS.md`. Checkpoint `f54a71e`.
