@@ -1093,7 +1093,14 @@ measured evidence, proposed fix waves, and non-goals. Finding (2)'s `history_dig
 Wave 3**: the trace-event scan is incremental, its value bit-identical and asserted so against a
 retained full-rescan oracle, with 64 ticks after seven warm-up batches falling from 147 ms to 22 ms
 and the run-length penalty from 6.7x to 1.7x. `physical_state_digest`'s unbounded thermal-receipt
-growth is the residual and stays open. Remaining before this TODO can close: Wave 4 (CI capture).
+growth is the residual and stays open. CI capture is **done, Wave 4**: `benchmarks.yml` runs the
+harness and stores its output as an artifact named for the commit SHA, with no threshold and no
+regression flag, which makes cross-commit comparison possible without performing it. What keeps this
+TODO open is therefore no longer any wave of that plan — all five are complete — but the two
+Reporting requirements in `docs/performance/benchmarks.md` that the plan explicitly placed out of
+scope: "flagged on regression" (which needs a historical series before a threshold can be anything
+but a guess) and "reproducible on reference hardware" (no such run exists). Both need their own
+decision, as does `physical_state_digest`'s thermal-receipt growth.
 The cue-budget bound landed in Wave 2 is
 worst-case rather than exact, so it rejects some configurations that run today — `Area` charts at
 radius 2 or more no longer admit 8 actors on 2 sensors — which is deliberate, since surface contact

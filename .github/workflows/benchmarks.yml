@@ -29,3 +29,27 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev
       - run: cargo test --workspace --all-features --release -- --ignored
+      # Capture only. This job records what the harness measured on this commit
+      # and stores it; it deliberately sets no pass/fail threshold, because a
+      # threshold chosen before any historical series exists would be a guess.
+      # Comparing commits is what the stored artifacts are for, and closing
+      # TODO-PERF-001's "compared across commits" requirement needs that series
+      # plus a decision this step does not make.
+      #
+      # The harness does exit non-zero if the boundary sweep finds a
+      # configuration that `RuntimeConfig::validate` accepted and that then
+      # exceeded the cue cap at a tick. That is a soundness bug in the Wave 2
+      # bound, not a performance regression, so it is allowed to fail the job.
+      - name: Capture performance baseline
+        run: |
+          mkdir -p target/benchmark-output
+          cargo run --release -p causafera-runtime --example performance_baseline \
+            2>&1 | tee "target/benchmark-output/performance-baseline-${GITHUB_SHA}.txt"
+          exit "${PIPESTATUS[0]}"
+      - name: Store performance baseline
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: performance-baseline-${{ github.sha }}
+          path: target/benchmark-output/
+          if-no-files-found: error
