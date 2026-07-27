@@ -5,7 +5,7 @@ mod session;
 use std::sync::{Arc, Mutex};
 
 use session::ObserverSession;
-use tauri::{ipc::Response, State};
+use tauri::{State, ipc::Response};
 
 struct ObserverState(Arc<Mutex<ObserverSession>>);
 
