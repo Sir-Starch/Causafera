@@ -260,40 +260,37 @@
   contain: paint;
 }
 
+/*
+ * The workspace uses the width it is given.
+ *
+ * It used to cap itself and centre, which on a wide display left several hundred
+ * pixels of margin on each side of an instrument that wanted the room. The
+ * density argument for a cap holds for prose, not for panels: the area grids are
+ * `auto-fit`, so extra width becomes extra columns, and the chart becomes a
+ * larger chart. The side gutter is a hairline so a panel border does not fuse
+ * with the rail beside it.
+ */
 .workspace__inner {
   display: flex;
   flex-direction: column;
-  gap: var(--s4);
-  padding: var(--s5) var(--s5) var(--s10);
+  gap: var(--s3);
+  padding: var(--s3) var(--s2) var(--s6);
   min-height: 100%;
-  /* Beyond this the grids stop adding density and just stretch each panel. */
-  max-width: 132rem;
-  margin-inline: auto;
   width: 100%;
 }
 
-.area-head {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: var(--s6);
-  padding-bottom: var(--s3);
-  border-bottom: 1px solid var(--line-faint);
-}
-
-.area-head__titles {
-  display: flex;
-  flex-direction: column;
-  gap: var(--s1);
-  min-width: 0;
-}
-
-.area-head__meta {
-  display: flex;
-  align-items: center;
-  gap: var(--s4);
-  flex-shrink: 0;
-}
+/*
+ * There is no area head.
+ *
+ * Each area used to open with an eyebrow, a display title and a paragraph of
+ * prose, restating what the rail already names in the most expensive vertical
+ * space on the sheet. Cutting the prose left a row reserved for one chip, which
+ * was the same waste with less in it, so the row is gone too and the rule is now
+ * simply this: **the workspace holds instruments and nothing else.** What an area
+ * wants to say about itself goes into an instrument's own chrome — a panel head,
+ * its tools slot, or the chart's own caption — where it costs no reserved space
+ * and sits next to the thing it describes.
+ */
 
 /* Grid helpers used by the areas. */
 .grid {
@@ -500,6 +497,6 @@
   }
 
   .workspace__inner {
-    padding: var(--s4) var(--s3) var(--s8);
+    padding: var(--s3) var(--s2) var(--s6);
   }
 }

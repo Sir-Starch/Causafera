@@ -206,8 +206,11 @@ without fixtures, domain-valid recovery and phenomenon metrics, and causal/domai
 bounded vertical slices are complete: the actor/material/mana loop (`plans/actor-material-mana-loop.md`),
 the local mana-material-surface coupling (`plans/local-mana-material-surface-coupling.md`), the
 bounded conserved thermal storage and same-chart transfer slice (`plans/conserved-thermal-energy-carrier.md`),
-and terrain carrier participation (`plans/terrain-carrier-participation.md`), which makes the world
-seed reach the running simulation so that two seeds produce two different worlds.
+terrain carrier participation (`plans/terrain-carrier-participation.md`), which makes the world
+seed reach the running simulation so that two seeds produce two different worlds, and the field
+raster projection (`plans/observer-field-raster-map.md`), which gives the observer the per-cell
+terrain and mana lattices and the chart a second dimension, so the map draws measured fields instead
+of one aggregate per chunk.
 The frozen-baseline maturity audit is paused after preserving its completed groundwork; it does not
 block accepted vertical-slice work.
 

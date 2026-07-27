@@ -19,8 +19,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { MONO_FONT, MONO_FONT_SM, hatchPattern, readPalette } from "../viz/canvas";
 import { withAlpha } from "../viz/ChartRecorder";
 import type { ChunkRecord } from "../observer/models";
-import { fieldIntensity, type Lens, type LensContext, type LensLayers } from "./lens";
-import { lensLayers } from "./lenses";
+import { sampleFieldAtWorld } from "./field";
+import {
+  fieldIntensity,
+  type Lens,
+  type LensContext,
+  type LensLayers,
+  type LensSurface,
+} from "./lens";
+import { fieldBounds, renderSurface } from "./surface";
 import {
   CELLS_PER_EDGE,
   CHUNK_UNITS,
@@ -40,6 +47,36 @@ import {
   type Viewport,
 } from "./projection";
 
+/**
+ * Painted surfaces, kept against the signature of the measurements they came
+ * from. Panning and zooming then cost a scaled blit rather than a repaint of the
+ * field, and a surface is repainted only when the observer sends new values.
+ */
+const surfaceCache = new Map<string, HTMLCanvasElement>();
+const SURFACE_CACHE_CAPACITY = 6;
+
+function paintedSurface(surface: LensSurface): HTMLCanvasElement | undefined {
+  const cached = surfaceCache.get(surface.signature);
+  if (cached !== undefined) return cached;
+  if (typeof document === "undefined") return undefined;
+  const canvas = document.createElement("canvas");
+  const context = canvas.getContext("2d");
+  if (context === null) return undefined;
+  const image = renderSurface(surface.field, surface.style, (width, height) => {
+    canvas.width = width;
+    canvas.height = height;
+    return context.createImageData(width, height);
+  });
+  context.putImageData(image, 0, 0);
+  while (surfaceCache.size >= SURFACE_CACHE_CAPACITY) {
+    const oldest = surfaceCache.keys().next().value;
+    if (oldest === undefined) break;
+    surfaceCache.delete(oldest);
+  }
+  surfaceCache.set(surface.signature, canvas);
+  return canvas;
+}
+
 export interface MapSelection {
   chunkKey?: string;
   cell?: { chunkKey: string; x: number; y: number };
@@ -55,7 +92,9 @@ export interface ChartMapLabels {
 interface ChartMapProps {
   context: LensContext;
   primary?: Lens;
-  overlays: Lens[];
+  /** Resolved once by the area, which also needs them for the legend. */
+  primaryLayers: LensLayers;
+  overlayLayers: { lens: Lens; layers: LensLayers }[];
   selection: MapSelection;
   onSelect(selection: MapSelection): void;
   onHover(hover: HoverReading | undefined): void;
@@ -74,7 +113,8 @@ export interface HoverReading {
 export function ChartMap({
   context,
   primary,
-  overlays,
+  primaryLayers,
+  overlayLayers,
   selection,
   onSelect,
   onHover,
@@ -97,15 +137,6 @@ export function ChartMap({
   }, [context.atlas]);
 
   const extent = useMemo(() => extentOf(context.atlas.chunks), [context.atlas]);
-
-  const primaryLayers = useMemo<LensLayers>(
-    () => (primary === undefined ? {} : lensLayers(primary, context)),
-    [primary, context],
-  );
-  const overlayLayers = useMemo(
-    () => overlays.map((lens) => ({ lens, layers: lensLayers(lens, context) })),
-    [overlays, context],
-  );
 
   /* ------------------------------------------------------------ sizing -- */
 
@@ -158,46 +189,13 @@ export function ChartMap({
       const project = (worldX: number, worldY: number) =>
         toScreen(viewport, screen, worldX, worldY);
 
-      // 1. Unsurveyed ground everywhere; charted chunks are painted over it.
+      // 1. Unsurveyed ground everywhere; the survey is painted over it.
       context2d.fillStyle = hatchPattern(context2d, withAlpha(palette.inkDim!, 0.26), 7, 0.6);
       context2d.fillRect(0, 0, screen.width, screen.height);
 
-      // 2. Chart graticule.
-      const step = graticuleStep(viewport.scale);
       const window_ = visibleChunks(viewport, screen);
-      context2d.lineWidth = 1;
-      context2d.font = MONO_FONT_SM;
-      context2d.textBaseline = "top";
-      context2d.textAlign = "left";
-      for (let cx = Math.ceil(window_.minX / step) * step; cx <= window_.maxX; cx += step) {
-        const world = worldOfChunk(cx, 0);
-        const x = Math.round(project(world.x - CHUNK_UNITS / 2, 0).x) + 0.5;
-        context2d.strokeStyle = cx === 0 ? palette.ruleFaint! : palette.ruleGhost!;
-        context2d.beginPath();
-        context2d.moveTo(x, 0);
-        context2d.lineTo(x, screen.height);
-        context2d.stroke();
-        if (pixels > 22) {
-          context2d.fillStyle = palette.inkGhost!;
-          context2d.fillText(`${cx}`, x + 3, 4);
-        }
-      }
-      for (let cy = Math.ceil(window_.minY / step) * step; cy <= window_.maxY; cy += step) {
-        const world = worldOfChunk(0, cy);
-        const y = Math.round(project(0, world.y - CHUNK_UNITS / 2).y) + 0.5;
-        context2d.strokeStyle = cy === 0 ? palette.ruleFaint! : palette.ruleGhost!;
-        context2d.beginPath();
-        context2d.moveTo(0, y);
-        context2d.lineTo(screen.width, y);
-        context2d.stroke();
-        if (pixels > 22) {
-          context2d.fillStyle = palette.inkGhost!;
-          context2d.fillText(`${cy}`, 4, y + 3);
-        }
-      }
-
-      // 3. Charted chunks.
       const field = primaryLayers.field;
+      const surface = primaryLayers.surface;
       const drawn: { chunk: ChunkRecord; x: number; y: number; size: number }[] = [];
       for (let cy = window_.minY; cy <= window_.maxY; cy += 1) {
         for (let cx = window_.minX; cx <= window_.maxX; cx += 1) {
@@ -205,34 +203,129 @@ export function ChartMap({
           if (chunk === undefined) continue;
           const world = worldOfChunk(cx, cy);
           const topLeft = project(world.x - CHUNK_UNITS / 2, world.y - CHUNK_UNITS / 2);
-          const size = CHUNK_UNITS * viewport.scale;
-          drawn.push({ chunk, x: topLeft.x, y: topLeft.y, size });
+          drawn.push({
+            chunk,
+            x: topLeft.x,
+            y: topLeft.y,
+            size: CHUNK_UNITS * viewport.scale,
+          });
+        }
+      }
 
+      // 2. The survey ground, then the primary field over it.
+      //
+      // A continuous field is one image across the whole surveyed extent, so a
+      // gradient that crosses a chunk boundary is drawn as one gradient. Only a
+      // lens with nothing but chunk aggregates falls back to a tint per chunk,
+      // and that is the honest drawing of one value over one area.
+      const painted = surface === undefined ? undefined : paintedSurface(surface);
+      if (painted !== undefined && surface !== undefined) {
+        const bounds = fieldBounds(surface.field);
+        const a = project(bounds.west, bounds.north);
+        const b = project(bounds.east, bounds.south);
+        context2d.fillStyle = palette.paperDeep ?? palette.paper!;
+        context2d.fillRect(a.x, a.y, b.x - a.x, b.y - a.y);
+        context2d.imageSmoothingEnabled = true;
+        context2d.imageSmoothingQuality = "high";
+        context2d.drawImage(painted, a.x, a.y, b.x - a.x, b.y - a.y);
+      } else {
+        for (const { chunk, x, y, size } of drawn) {
           // Surveyed ground masks the hatching beneath it.
           context2d.fillStyle = palette.paper!;
-          context2d.fillRect(topLeft.x, topLeft.y, size, size);
-
+          context2d.fillRect(x, y, size, size);
           const value = field?.values.get(chunk.key);
           if (field !== undefined && value !== undefined) {
             context2d.fillStyle = withAlpha(signal, 0.05 + fieldIntensity(field, value) * 0.3);
-            context2d.fillRect(topLeft.x, topLeft.y, size, size);
+            context2d.fillRect(x, y, size, size);
           }
+        }
+      }
 
-          context2d.strokeStyle = palette.ruleFaint!;
-          context2d.lineWidth = 1;
+      // 3. The chart graticule.
+      //
+      // Ruled across the sheet it turns any map into a grid of squares, so over
+      // a drawn field the lattice is stated by ticks at the intersections and by
+      // the coordinate labels, and only resolves into rules once a chunk is
+      // large enough that its boundary is a real reading rather than a frame.
+      const step = graticuleStep(viewport.scale);
+      const ticked = painted !== undefined && detail !== "cell";
+      context2d.lineWidth = 1;
+      context2d.font = MONO_FONT_SM;
+      context2d.textBaseline = "top";
+      context2d.textAlign = "left";
+      const columns: number[] = [];
+      const rows: number[] = [];
+      for (let cx = Math.ceil(window_.minX / step) * step; cx <= window_.maxX; cx += step) {
+        columns.push(cx);
+      }
+      for (let cy = Math.ceil(window_.minY / step) * step; cy <= window_.maxY; cy += step) {
+        rows.push(cy);
+      }
+      for (const cx of columns) {
+        const world = worldOfChunk(cx, 0);
+        const x = Math.round(project(world.x - CHUNK_UNITS / 2, 0).x) + 0.5;
+        context2d.strokeStyle = cx === 0 ? palette.ruleFaint! : palette.ruleGhost!;
+        if (!ticked) {
+          context2d.beginPath();
+          context2d.moveTo(x, 0);
+          context2d.lineTo(x, screen.height);
+          context2d.stroke();
+        }
+        if (pixels > 22) {
+          context2d.fillStyle = palette.inkGhost!;
+          context2d.fillText(`${cx}`, x + 3, 4);
+        }
+      }
+      for (const cy of rows) {
+        const world = worldOfChunk(0, cy);
+        const y = Math.round(project(0, world.y - CHUNK_UNITS / 2).y) + 0.5;
+        context2d.strokeStyle = cy === 0 ? palette.ruleFaint! : palette.ruleGhost!;
+        if (!ticked) {
+          context2d.beginPath();
+          context2d.moveTo(0, y);
+          context2d.lineTo(screen.width, y);
+          context2d.stroke();
+        }
+        if (pixels > 22) {
+          context2d.fillStyle = palette.inkGhost!;
+          context2d.fillText(`${cy}`, 4, y + 3);
+        }
+      }
+      if (ticked) {
+        const arm = Math.max(2.5, Math.min(pixels * 0.06, 6));
+        context2d.strokeStyle = withAlpha(palette.inkDim!, 0.4);
+        context2d.beginPath();
+        for (const cx of columns) {
+          for (const cy of rows) {
+            const world = worldOfChunk(cx, cy);
+            const point = project(world.x - CHUNK_UNITS / 2, world.y - CHUNK_UNITS / 2);
+            const x = Math.round(point.x) + 0.5;
+            const y = Math.round(point.y) + 0.5;
+            context2d.moveTo(x - arm, y);
+            context2d.lineTo(x + arm, y);
+            context2d.moveTo(x, y - arm);
+            context2d.lineTo(x, y + arm);
+          }
+        }
+        context2d.stroke();
+      }
+      if (painted === undefined) {
+        context2d.strokeStyle = palette.ruleFaint!;
+        context2d.lineWidth = 1;
+        for (const { x, y, size } of drawn) {
           context2d.strokeRect(
-            Math.round(topLeft.x) + 0.5,
-            Math.round(topLeft.y) + 0.5,
+            Math.round(x) + 0.5,
+            Math.round(y) + 0.5,
             Math.round(size) - 1,
             Math.round(size) - 1,
           );
         }
       }
 
-      // 4. Cell lattice, once a cell can carry a mark.
+      // 4. The measurement lattice, once a cell can carry a mark.
       if (detail === "cell") {
         const cellSize = (CHUNK_UNITS * viewport.scale) / CELLS_PER_EDGE;
-        context2d.strokeStyle = palette.ruleGhost!;
+        context2d.strokeStyle = withAlpha(palette.inkGhost!, painted === undefined ? 1 : 0.35);
         context2d.lineWidth = 1;
         for (const { x, y, size } of drawn) {
           context2d.beginPath();
@@ -249,6 +342,19 @@ export function ChartMap({
         if (primary !== undefined && primary.cellProjection === "none" && field !== undefined) {
           context2d.fillStyle = hatchPattern(context2d, withAlpha(signal, 0.16), 10, 0.7);
           for (const { x, y, size } of drawn) context2d.fillRect(x, y, size, size);
+          // Hatching alone is a convention; at cell scale there is room to name it.
+          context2d.font = MONO_FONT_SM;
+          context2d.textAlign = "center";
+          context2d.textBaseline = "middle";
+          for (const { x, y, size } of drawn) {
+            const caption = labels.chunkAggregate.toUpperCase();
+            const width = context2d.measureText(caption).width;
+            if (width + 12 > size) break;
+            context2d.fillStyle = withAlpha(palette.paper!, 0.86);
+            context2d.fillRect(x + size / 2 - width / 2 - 4, y + size / 2 - 7, width + 8, 14);
+            context2d.fillStyle = palette.inkFaint!;
+            context2d.fillText(caption, x + size / 2, y + size / 2);
+          }
         }
       }
 
@@ -268,21 +374,45 @@ export function ChartMap({
         context2d.rect(a.x, a.y, b.x - a.x, b.y - a.y);
         context2d.clip();
       }
+      //
+      // Contours are drawn one path per line rather than one path per segment:
+      // a measured contour over a thousand-sample lattice is thousands of
+      // segments, and a stroke each would cost more than the whole field.
       for (const { lens, layers } of overlayLayers) {
         if (layers.isolines === undefined) continue;
         const colour = palette[lens.signal]!;
-        for (const line of layers.isolines) {
-          if (line.points.length < 2) continue;
-          context2d.strokeStyle = withAlpha(colour, 0.24 + line.level * 0.4);
-          context2d.lineWidth = line.level > 0.66 ? 1.3 : 0.9;
+        let labelled = 0;
+        layers.isolines.forEach((line, index) => {
+          if (line.points.length < 2) return;
+          // Every fifth contour carries the weight, which is how a reader finds
+          // the interval without counting.
+          const indexed = (line.ordinal ?? index) % 5 === 0;
+          context2d.strokeStyle = withAlpha(colour, (indexed ? 0.46 : 0.28) + line.level * 0.3);
+          context2d.lineWidth = indexed ? 1.15 : 0.75;
           context2d.beginPath();
-          line.points.forEach(([wx, wy], index) => {
+          line.points.forEach(([wx, wy], at) => {
             const point = project(wx, wy);
-            if (index === 0) context2d.moveTo(point.x, point.y);
+            if (at === 0) context2d.moveTo(point.x, point.y);
             else context2d.lineTo(point.x, point.y);
           });
           context2d.stroke();
-        }
+          // A contour label is only worth its ink on a line long enough to
+          // carry it, and only a few of them before the sheet is cluttered.
+          if (!indexed || detail === "field" || line.label === undefined) return;
+          if (labelled >= 6 || line.points.length < 12) return;
+          const anchor = line.points[Math.floor(line.points.length / 2)]!;
+          const point = project(anchor[0], anchor[1]);
+          if (point.x < 8 || point.y < 8 || point.x > screen.width - 8) return;
+          labelled += 1;
+          context2d.font = MONO_FONT_SM;
+          context2d.textAlign = "center";
+          context2d.textBaseline = "middle";
+          const width = context2d.measureText(line.label).width;
+          context2d.fillStyle = withAlpha(palette.paper!, 0.86);
+          context2d.fillRect(point.x - width / 2 - 3, point.y - 5.5, width + 6, 11);
+          context2d.fillStyle = withAlpha(colour, 0.92);
+          context2d.fillText(line.label, point.x, point.y);
+        });
       }
       context2d.restore();
 
@@ -494,16 +624,26 @@ export function ChartMap({
       const detail = detailFor(viewport.scale);
       const cell = detail === "cell" ? cellAt(world.x, world.y) : undefined;
       const field = primaryLayers.field;
+      const surface = primaryLayers.surface;
+      // A drawn field is read where the pointer is, not where the chunk is: the
+      // whole point of the raster is that a chunk no longer holds one value.
+      const sampled =
+        surface === undefined ? undefined : sampleFieldAtWorld(surface.field, world.x, world.y);
       const raw = chunk === undefined ? undefined : field?.values.get(chunk.key);
       return {
         chunkX: position.chunkX,
         chunkY: position.chunkY,
         chunk,
         cell: cell === undefined ? undefined : { x: cell.cellX, y: cell.cellY },
-        value: raw === undefined || field === undefined ? undefined : field.format(raw),
+        value:
+          sampled !== undefined && surface !== undefined
+            ? surface.format(sampled)
+            : raw === undefined || field === undefined
+              ? undefined
+              : field.format(raw),
       };
     },
-    [chunkIndex, primaryLayers.field, screen, viewport],
+    [chunkIndex, primaryLayers.field, primaryLayers.surface, screen, viewport],
   );
 
   // Wheel must be non-passive to keep the page from scrolling under the map.

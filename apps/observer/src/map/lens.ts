@@ -12,10 +12,12 @@
  * than quietly omitted or, worse, invented.
  */
 
-import type { RuntimeSummary } from "@causafera/observer-protocol";
+import type { FieldRaster, RuntimeSummary } from "@causafera/observer-protocol";
 
 import type { ObserverLocale } from "../observer/format";
 import type { Atlas, ChunkRecord, GateRecord, SignalId, SurfaceLadder } from "../observer/models";
+import type { ChartField } from "./field";
+import type { SurfaceStyle } from "./surface";
 
 export type LensId = string;
 
@@ -41,8 +43,33 @@ export interface LensContext {
   atlas: Atlas;
   ladders: readonly SurfaceLadder[];
   gates: readonly GateRecord[];
+  /** Per-cell lattices keyed by `rasterKey`; empty until the observer sends one. */
+  rasters: ReadonlyMap<string, FieldRaster>;
+  /** A trace anchor being followed elsewhere in the interface, if any. */
+  traceFilter?: bigint;
   summary?: RuntimeSummary;
   locale: ObserverLocale;
+}
+
+/**
+ * A continuous field over the surveyed extent, drawn as one surface.
+ *
+ * This is what makes the chart a map rather than a grid: the whole extent is
+ * painted from one assembled field, so a gradient crossing a chunk boundary is
+ * drawn as one gradient. The renderer caches the painted image against
+ * `signature`, which must identify the measurements exactly.
+ */
+export interface LensSurface {
+  signature: string;
+  field: ChartField;
+  style: SurfaceStyle;
+  format(value: number): string;
+  /**
+   * Where the field's own values are quantised for reading — millimetres drawn
+   * as metres pass 1000 here, so a contour interval is a round measured value
+   * rather than a round fraction of the range.
+   */
+  unit?: number;
 }
 
 /** A scalar over chunks, drawn as the base fill of the chart. */
@@ -96,9 +123,14 @@ export interface LensIsoline {
   /** 0..1 within the isoline set, used for line weight. */
   level: number;
   label?: string;
+  /** The measured value the line follows, where the lens traced a real one. */
+  value?: number;
+  /** Index of the line's value within the set, so every fifth can be weighted. */
+  ordinal?: number;
 }
 
 export interface LensLayers {
+  surface?: LensSurface;
   field?: LensField;
   symbols?: LensSymbol[];
   cells?: LensCellMark[];
@@ -111,6 +143,13 @@ export interface Lens {
   group: LensGroupId;
   signal: SignalId;
   availability: LensAvailability;
+  /**
+   * Availability that follows what was received rather than what the lens
+   * claims. A field drawn from a lattice too coarse to show directly is a
+   * preview for exactly as long as that is true, so refining the lattice
+   * promotes the lens with no change to the catalogue.
+   */
+  availabilityFor?(context: LensContext): LensAvailability;
   roles: LensRole[];
   title: Record<ObserverLocale, string>;
   detail: Record<ObserverLocale, string>;
@@ -267,6 +306,12 @@ export const AVAILABILITY_DETAIL: Record<LensAvailability, Record<ObserverLocale
       "Todavía no hay modelo de lectura. La lente aparece en la lista y declara qué está esperando.",
   },
 };
+
+/** What a lens is actually in right now, which may depend on what has arrived. */
+export function availabilityOf(lens: Lens, context?: LensContext): LensAvailability {
+  if (context === undefined || lens.availabilityFor === undefined) return lens.availability;
+  return lens.availabilityFor(context);
+}
 
 /** A lens may be chosen as the base field only when it can actually draw one. */
 export function canBePrimary(lens: Lens): boolean {

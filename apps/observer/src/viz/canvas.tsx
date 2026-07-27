@@ -145,6 +145,7 @@ export function readPalette(): Record<string, string> {
     ramp500: cssColor("--ramp-500", "#9f6e13"),
     ramp700: cssColor("--ramp-700", "#5f4110"),
     paper: cssColor("--paper", "#07080a"),
+    paperDeep: cssColor("--paper-deep", "#040506"),
   };
   return paletteCache;
 }

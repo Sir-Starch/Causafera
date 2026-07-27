@@ -17,12 +17,22 @@ import { HoverCard, anchorOf, type HoverAnchor } from "../components/HoverCard";
 
 import { SIGNAL_VARIABLE } from "../observer/models";
 import type { ObserverLocale } from "../observer/format";
-import { AVAILABILITY_TITLE, LENS_GROUPS, canBePrimary, type Lens, type LensId } from "./lens";
+import {
+  AVAILABILITY_TITLE,
+  LENS_GROUPS,
+  availabilityOf,
+  canBePrimary,
+  type Lens,
+  type LensContext,
+  type LensId,
+} from "./lens";
 import { LENSES } from "./lenses";
 import { LensIcon } from "./LensIcon";
 
 interface LensDockProps {
   locale: ObserverLocale;
+  /** Availability of a lattice-backed lens depends on what arrived, not on the lens. */
+  context: LensContext;
   primaryId: LensId;
   overlayIds: readonly LensId[];
   onPrimary(id: LensId): void;
@@ -40,6 +50,7 @@ interface Hint {
 
 export function LensDock({
   locale,
+  context,
   primaryId,
   overlayIds,
   onPrimary,
@@ -48,6 +59,7 @@ export function LensDock({
   labels,
 }: LensDockProps) {
   const [hint, setHint] = useState<Hint>();
+  const stateOf = (lens: Lens) => availabilityOf(lens, context);
   const overlays = LENSES.filter(
     (lens) => lens.roles.includes("overlay") && lens.availability !== "awaiting",
   );
@@ -74,7 +86,7 @@ export function LensDock({
                   key={lens.id}
                   type="button"
                   className="lens-dock__key"
-                  data-availability={lens.availability}
+                  data-availability={stateOf(lens)}
                   data-role="primary"
                   aria-pressed={lens.id === primaryId}
                   aria-label={lens.title[locale]}
@@ -99,7 +111,7 @@ export function LensDock({
               key={lens.id}
               type="button"
               className="lens-dock__key"
-              data-availability={lens.availability}
+              data-availability={stateOf(lens)}
               data-role="overlay"
               aria-pressed={overlayIds.includes(lens.id)}
               aria-label={lens.title[locale]}
@@ -141,11 +153,8 @@ export function LensDock({
           ) : (
             <>
               <strong>{hint.lens.title[locale]}</strong>
-              <span
-                className="lens-availability"
-                data-availability={hint.lens.availability}
-              >
-                {AVAILABILITY_TITLE[hint.lens.availability][locale]}
+              <span className="lens-availability" data-availability={stateOf(hint.lens)}>
+                {AVAILABILITY_TITLE[stateOf(hint.lens)][locale]}
               </span>
               <p>{hint.lens.detail[locale]}</p>
               {hint.lens.caveat !== undefined && (

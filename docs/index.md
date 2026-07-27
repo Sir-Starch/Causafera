@@ -200,8 +200,10 @@ Later documents supersede conflicting initialization-spec sections **only when t
 - `docs/ui/views.md` - User views
 - `docs/ui/observer-application.md` - Desktop observer frontend architecture and operation
 - `docs/ui/observer-projection-gaps.md` - Observer projections the frontend is waiting on
+- `docs/ui/map-lenses.md` - The chart instrument's lens contract and how to extend it
 - `docs/ui/map-perspectives.md` - Map perspectives
 - `docs/ui/language-inspection.md` - Language inspection
+- `docs/media/README.md` - Screenshots of real runtime output, and how to retake them
 
 ## Analytics
 

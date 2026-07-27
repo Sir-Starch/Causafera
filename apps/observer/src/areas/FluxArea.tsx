@@ -16,7 +16,6 @@ import {
   Fields,
   Panel,
   RateTable,
-  Readout,
   Tag,
   TraceChip,
   Unsurveyed,
@@ -93,28 +92,6 @@ export function FluxArea({ workspace, update }: AreaProps) {
 
   return (
     <>
-      <div className="area-head">
-        <div className="area-head__titles">
-          <span className="eyebrow">{copy.flux.eyebrow}</span>
-          <h1 className="display">{copy.flux.title}</h1>
-          <p className="lede">{copy.flux.lede}</p>
-        </div>
-        <div className="area-head__meta">
-          <Readout
-            label={copy.flux.rate}
-            value={
-              rates.get("traces")?.available === true
-                ? rates.get("traces")!.perTick.toFixed(1)
-                : "—"
-            }
-            unit={`${copy.station.traces.toLowerCase()}${copy.flux.perTick}`}
-            signal="trace"
-            size="hero"
-            align="end"
-          />
-        </div>
-      </div>
-
       <div className="grid grid--thirds">
         <Panel
           variant="flush"

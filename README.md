@@ -38,6 +38,7 @@
 </p>
 
 <sub>
+  <a href="#the-observer">Observer</a> ·
   <a href="#overview">Overview</a> ·
   <a href="#causal-model">Causal model</a> ·
   <a href="#project-status">Status</a> ·
@@ -55,6 +56,38 @@
 > finished product, binary distribution, production service, playable game, or scientific-model
 > release. The Foundation Era contracts and a bounded causal loop are implemented, but simulation
 > depth remains uneven and many domains are incomplete.
+
+## The observer
+
+The desktop observer is a read-only instrument attached to a live deterministic runtime. Everything
+below is real output at the seed and tick stated in the caption, not a mock-up — the runtime is
+deterministic, so each of these is reproducible rather than illustrative.
+
+<div align="center">
+
+<img alt="The chart instrument drawing the mana field as a continuous surface across nine chunks, with measured isolines, a chunk-to-chunk gradient and population overlays" src="docs/media/observer-chart.png" width="820">
+
+<sub><b>Chart</b> — the mana field drawn as one continuous surface across the surveyed extent, with
+contours traced through the received lattice. Chunk boundaries carry ticks rather than rules,
+because the field crosses them. Seed 2026, tick 20.</sub>
+
+<br><br>
+
+<img alt="The flux area showing derived rate recorders, a bounded surface condition ladder, the transition ledger and a rate register" src="docs/media/observer-flux.png" width="820">
+
+<sub><b>Flux</b> — causal activity over the run: derived rates the observer computed between
+received frames, the bounded surface condition ladder, and the transition ledger with its trace
+anchors. Seed 2026, tick 404.</sub>
+
+<br><br>
+
+<img alt="The explanation area showing six typed claims with confidence, evidence traces and an overall assessment" src="docs/media/observer-explanation.png" width="820">
+
+<sub><b>Explanation</b> — typed Explanation IR rendered from authoritative state: each claim carries
+its confidence and its evidence traces, and a claim the observer could not support is marked
+unknown rather than omitted. Seed 2026, tick 404.</sub>
+
+</div>
 
 ## Overview
 
@@ -291,6 +324,7 @@ tests and dependency advisory checks. GitHub Actions runs equivalent Rust and fr
 | `tools/xtask/` | Canonical Rust CI orchestration |
 | `tools/audit/` | Reproducible maturity-audit schemas, fixtures, and regression tests |
 | `docs/` | Vision, invariants, architecture, ontology, subsystems, roadmap, ADRs, and RFCs |
+| `docs/media/` | Screenshots of real runtime output, with the seed and tick each was taken at |
 | `plans/` | Accepted, active, draft, and completed ExecPlans |
 
 ## Roadmap

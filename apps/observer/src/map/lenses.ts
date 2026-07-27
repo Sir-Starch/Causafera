@@ -10,9 +10,12 @@
  * those names correspond to `docs/ui/observer-projection-gaps.md`.
  */
 
+import { FieldRasterKind } from "@causafera/observer-protocol";
+
 import { copyFor } from "../i18n";
 import { formatCompact, formatInteger, formatMillimetresAsMetres } from "../observer/format";
 import { CHUNK_SIZE } from "../observer/models";
+import { contourLevels, contourLines, refineField, type ChartField } from "./field";
 import {
   EMPTY_LAYERS,
   fieldFrom,
@@ -20,9 +23,80 @@ import {
   type LensCellMark,
   type LensContext,
   type LensLayers,
+  type LensSurface,
   type LensSymbol,
 } from "./lens";
 import { previewGradient, previewIsolines } from "./preview";
+import {
+  cellsChangedBy,
+  columnField,
+  receivedEdge,
+  surfaceField,
+  type ColumnReading,
+} from "./rasterFields";
+import { MANA_STYLE, RELIEF_STYLE, TEXTURE_STYLE } from "./surface";
+
+/**
+ * The lattice edge at which a field no longer has to be upsampled to be drawn.
+ *
+ * Below it the map is showing more resolution than it received and says so; at
+ * or above it the samples are dense enough to read directly. The threshold is
+ * compared against the received edge, so raising `chunk_extent` promotes the
+ * mana lens with no change here.
+ */
+const DIRECTLY_DRAWABLE_EDGE = 8;
+
+function manaAvailability(context: LensContext): Lens["availability"] {
+  const edge = receivedEdge(context.rasters, FieldRasterKind.ManaIntensity);
+  if (edge === 0) return "partial";
+  return edge >= DIRECTLY_DRAWABLE_EDGE ? "observed" : "preview";
+}
+
+/** The mana field in plan view, under whichever reading the lens names. */
+function manaSurface(context: LensContext, reading: ColumnReading): LensSurface | undefined {
+  const field = columnField(context.rasters, FieldRasterKind.ManaIntensity, reading);
+  if (field === undefined) return undefined;
+  return {
+    signature: `mana-${reading}:${field.min}:${field.max}:${field.patches}:${field.edge}`,
+    field,
+    style: MANA_STYLE,
+    format: (value) => formatCompact(Math.round(value), context.locale),
+  };
+}
+
+/**
+ * Contours over an assembled field, at a round interval in the field's own unit.
+ *
+ * A coarse lattice is refined first so the line follows the same interpolation
+ * the surface is painted with; a lattice already dense enough is traced directly.
+ */
+function measuredIsolines(
+  field: ChartField,
+  target: number,
+  unit: number,
+  label: (value: number) => string,
+) {
+  const traced = refineField(field, field.edge >= 16 ? 1 : Math.ceil(16 / field.edge));
+  return contourLines(traced, contourLevels(field, target, unit)).map((line) => ({
+    points: line.points,
+    level: line.level,
+    ordinal: line.ordinal,
+    label: label(line.value),
+    value: line.value,
+  }));
+}
+
+function reliefSurface(context: LensContext): LensSurface | undefined {
+  const field = surfaceField(context.rasters, FieldRasterKind.TerrainElevation);
+  if (field === undefined) return undefined;
+  return {
+    signature: `relief:${field.min}:${field.max}:${field.patches}`,
+    field,
+    style: RELIEF_STYLE,
+    unit: 1_000,
+    format: (value) => `${formatMillimetresAsMetres(value, 1)} ${metreMark(context)}`,
+  };
+}
 
 /**
  * Units are copy, not data. They come from the active dictionary so a metre reads as `m`,
@@ -91,29 +165,38 @@ export const LENSES: Lens[] = [
       "es-ES": "Relieve",
     },
     detail: {
-      "en-US": "The chunk's greatest elevation, from the terrain carrier.",
-      "ru-RU": "Наибольшая высота чанка по данным террейн-носителя.",
-      "zh-Hans": "该区块的最大高程，来自地形载体。",
-      "de-DE": "Die größte Höhe des Chunks, vom Geländeträger.",
-      "es-ES": "La mayor elevación del bloque, según el portador de terreno.",
+      "en-US": "Measured elevation per cell, hypsometrically tinted and shaded.",
+      "ru-RU": "Измеренная высота по ячейкам, гипсометрическая окраска и отмывка.",
+      "zh-Hans": "逐单元格的实测高程，配以等高彩色分层与晕渲。",
+      "de-DE": "Gemessene Höhe je Zelle, hypsometrisch getönt und schattiert.",
+      "es-ES": "Elevación medida por celda, con tintado hipsométrico y sombreado.",
     },
     unit: METRES,
-    cellProjection: "none",
+    cellProjection: "full",
     caveat: {
-      "en-US": "Per-cell elevation is not projected, so the lens is silent at cell scale.",
-      "ru-RU": "Высота по ячейкам наблюдателю не проецируется — на масштабе ячеек линза молчит.",
-      "zh-Hans": "逐单元格的高程不会被投影，因此该透镜在单元格尺度上保持沉默。",
+      "en-US":
+        "Shading is a lighting choice made by the observer, and the tint between samples is interpolated. Elevation steps at a chunk boundary are world state, not a seam in the drawing.",
+      "ru-RU":
+        "Отмывка — выбор освещения наблюдателем, а окраска между отсчётами интерполирована. Скачок высоты на границе чанка — это состояние мира, а не шов рисунка.",
+      "zh-Hans":
+        "晕渲是观测器所作的光照选择，采样点之间的着色为插值结果。区块边界处的高程落差属于世界状态，而非绘图接缝。",
       "de-DE":
-        "Die Höhe je Zelle wird nicht projiziert, daher schweigt die Linse auf Zellebene.",
+        "Die Schattierung ist eine Lichtwahl des Beobachters, und die Tönung zwischen den Messpunkten ist interpoliert. Ein Höhensprung an einer Chunk-Grenze ist Weltzustand, keine Naht der Zeichnung.",
       "es-ES":
-        "La elevación por celda no se proyecta, así que la lente calla a escala de celda.",
+        "El sombreado es una elección de iluminación del observador, y el tintado entre muestras está interpolado. Un salto de elevación en el límite de un bloque es estado del mundo, no una costura del dibujo.",
     },
     layers: (context) => ({
-      field: fieldFrom(
-        context.atlas.chunks,
-        (chunk) => chunk.maximumElevationMm,
-        (value) => `${formatMillimetresAsMetres(value, 1)} ${metreMark(context)}`,
-      ),
+      surface: reliefSurface(context),
+      // Until a raster arrives the chunk aggregate is all there is, and one
+      // value over one area is honestly drawn as one tint.
+      field:
+        reliefSurface(context) === undefined
+          ? fieldFrom(
+              context.atlas.chunks,
+              (chunk) => chunk.maximumElevationMm,
+              (value) => `${formatMillimetresAsMetres(value, 1)} ${metreMark(context)}`,
+            )
+          : undefined,
     }),
   },
   {
@@ -160,27 +243,44 @@ export const LENSES: Lens[] = [
       "es-ES": "Rugosidad",
     },
     detail: {
-      "en-US": "Mean surface roughness across the chunk.",
-      "ru-RU": "Средняя шероховатость поверхности чанка.",
-      "zh-Hans": "该区块表面的平均粗糙度。",
-      "de-DE": "Mittlere Oberflächenrauheit über den Chunk.",
-      "es-ES": "Rugosidad media de la superficie a lo largo del bloque.",
+      "en-US": "Measured surface roughness per cell.",
+      "ru-RU": "Измеренная шероховатость поверхности по ячейкам.",
+      "zh-Hans": "逐单元格的实测表面粗糙度。",
+      "de-DE": "Gemessene Oberflächenrauheit je Zelle.",
+      "es-ES": "Rugosidad de la superficie medida por celda.",
     },
     unit: MILLIMETRES,
-    cellProjection: "none",
-    layers: (context) => ({
-      field: fieldFrom(
-        context.atlas.chunks,
-        (chunk) => chunk.meanRoughnessMm,
-        (value) => `${Math.round(value)} ${millimetreMark(context)}`,
-      ),
-    }),
+    cellProjection: "full",
+    layers: (context) => {
+      const field = surfaceField(
+        context.rasters,
+        FieldRasterKind.TerrainElevation,
+        "auxiliary",
+      );
+      if (field === undefined) {
+        return {
+          field: fieldFrom(
+            context.atlas.chunks,
+            (chunk) => chunk.meanRoughnessMm,
+            (value) => `${Math.round(value)} ${millimetreMark(context)}`,
+          ),
+        };
+      }
+      return {
+        surface: {
+          signature: `roughness:${field.min}:${field.max}:${field.patches}`,
+          field,
+          style: TEXTURE_STYLE,
+          format: (value) => `${Math.round(value)} ${millimetreMark(context)}`,
+        },
+      };
+    },
   },
   {
     id: "contours",
     group: "geography",
     signal: "physical",
-    availability: "preview",
+    availability: "observed",
     roles: ["overlay"],
     title: {
       "en-US": "Contours",
@@ -190,33 +290,43 @@ export const LENSES: Lens[] = [
       "es-ES": "Curvas de nivel",
     },
     detail: {
-      "en-US": "Isolines over interpolated chunk elevation.",
-      "ru-RU": "Изолинии по интерполированной высоте чанков.",
-      "zh-Hans": "基于插值后区块高程的等值线。",
-      "de-DE": "Isolinien über interpolierter Chunk-Höhe.",
-      "es-ES": "Isolíneas sobre la elevación interpolada de los bloques.",
+      "en-US": "Contours traced through the measured elevation lattice.",
+      "ru-RU": "Изогипсы, проведённые по измеренной решётке высот.",
+      "zh-Hans": "沿实测高程格网追踪出的等高线。",
+      "de-DE": "Höhenlinien, dem gemessenen Höhengitter entlang gezogen.",
+      "es-ES": "Curvas trazadas a través de la retícula de elevación medida.",
     },
     caveat: {
       "en-US":
-        "Elevation between chunk centres is interpolated by the observer. It is a way of reading chunk values, not measured terrain.",
+        "Every vertex lies between two measured cells. Where no raster has arrived the lens falls back to interpolating chunk values, and says so in the legend.",
       "ru-RU":
-        "Между центрами чанков высота интерполирована наблюдателем. Это способ читать значения чанков, а не измеренный рельеф.",
+        "Каждая вершина лежит между двумя измеренными ячейками. Там, где растр не получен, линза переходит к интерполяции значений чанков и сообщает об этом в легенде.",
       "zh-Hans":
-        "区块中心之间的高程由观测器插值得出。这是一种读取区块数值的方式，而不是实测地形。",
+        "每个顶点都位于两个实测单元格之间。若尚未收到栅格，该透镜会退回到对区块数值的插值，并在图例中说明。",
       "de-DE":
-        "Die Höhe zwischen den Chunk-Mittelpunkten interpoliert der Beobachter. Das ist eine Lesart der Chunk-Werte, kein gemessenes Gelände.",
+        "Jeder Stützpunkt liegt zwischen zwei gemessenen Zellen. Wo kein Raster eingetroffen ist, weicht die Linse auf interpolierte Chunk-Werte aus und sagt es in der Legende.",
       "es-ES":
-        "La elevación entre los centros de los bloques la interpola el observador. Es una forma de leer los valores del bloque, no terreno medido.",
+        "Cada vértice está entre dos celdas medidas. Donde no ha llegado ningún ráster, la lente recurre a interpolar valores de bloque y lo indica en la leyenda.",
     },
-    cellProjection: "none",
-    layers: (context) => ({
-      isolines: previewIsolines(
-        context.atlas.chunks,
-        (chunk) => chunk.maximumElevationMm,
-        9,
-        (value) => `${formatMillimetresAsMetres(value, 0)} ${metreMark(context)}`,
-      ),
-    }),
+    cellProjection: "full",
+    layers: (context) => {
+      const field = surfaceField(context.rasters, FieldRasterKind.TerrainElevation);
+      if (field === undefined) {
+        return {
+          isolines: previewIsolines(
+            context.atlas.chunks,
+            (chunk) => chunk.maximumElevationMm,
+            9,
+            (value) => `${formatMillimetresAsMetres(value, 0)} ${metreMark(context)}`,
+          ),
+        };
+      }
+      return {
+        isolines: measuredIsolines(field, 9, 1_000, (value) =>
+          `${formatMillimetresAsMetres(value, 0)} ${metreMark(context)}`,
+        ),
+      };
+    },
   },
   awaiting(
     "ecology",
@@ -330,6 +440,7 @@ export const LENSES: Lens[] = [
     group: "mana",
     signal: "mana",
     availability: "observed",
+    availabilityFor: manaAvailability,
     roles: ["primary"],
     title: {
       "en-US": "Mana field",
@@ -339,31 +450,175 @@ export const LENSES: Lens[] = [
       "es-ES": "Campo de maná",
     },
     detail: {
-      "en-US": "Total mana intensity within the chunk.",
-      "ru-RU": "Суммарная интенсивность маны в чанке.",
-      "zh-Hans": "该区块内的魔力总强度。",
-      "de-DE": "Die Gesamtintensität des Mana innerhalb des Chunks.",
-      "es-ES": "Intensidad total de maná dentro del bloque.",
+      "en-US": "Measured mana intensity, summed through each column of the lattice.",
+      "ru-RU": "Измеренная интенсивность маны, просуммированная по каждому столбцу решётки.",
+      "zh-Hans": "实测魔力强度，沿格网每一列求和。",
+      "de-DE": "Gemessene Mana-Intensität, über jede Säule des Gitters summiert.",
+      "es-ES": "Intensidad de maná medida, sumada a lo largo de cada columna de la retícula.",
     },
-    cellProjection: "none",
+    cellProjection: "full",
     caveat: {
       "en-US":
-        "The runtime holds a per-cell field; only the chunk total and the peak cell are projected.",
+        "The column sum is one reading of a volumetric field; the peak lens reads the same volume differently. The lattice is coarser than the drawn surface, which is upsampled between samples.",
       "ru-RU":
-        "Среда хранит поле по ячейкам, наблюдателю проецируется только сумма по чанку и пиковая ячейка.",
-      "zh-Hans": "运行时持有逐单元格的场；只有区块总量与峰值单元格会被投影。",
+        "Сумма по столбцу — одно из прочтений объёмного поля; линза пика читает тот же объём иначе. Решётка грубее нарисованной поверхности, которая интерполирована между отсчётами.",
+      "zh-Hans":
+        "列求和只是对体场的一种读法；峰值透镜以另一种方式读取同一体积。格网比所绘表面更粗，采样点之间经过了上采样。",
       "de-DE":
-        "Die Laufzeitumgebung hält ein Feld je Zelle; projiziert werden nur die Chunk-Summe und die Spitzenzelle.",
+        "Die Säulensumme ist eine Lesart eines volumetrischen Feldes; die Spitzenlinse liest dasselbe Volumen anders. Das Gitter ist gröber als die gezeichnete Fläche, die zwischen den Messpunkten hochgerechnet wird.",
       "es-ES":
-        "El entorno de ejecución mantiene un campo por celda; sólo se proyectan el total del bloque y la celda máxima.",
+        "La suma por columna es una lectura de un campo volumétrico; la lente de pico lee el mismo volumen de otro modo. La retícula es más gruesa que la superficie dibujada, que se sobremuestrea entre muestras.",
     },
-    layers: (context) => ({
-      field: fieldFrom(
-        context.atlas.chunks,
-        (chunk) => chunk.manaTotal,
-        (value) => formatCompact(value, context.locale),
-      ),
-    }),
+    layers: (context) => {
+      const surface = manaSurface(context, "sum");
+      if (surface === undefined) {
+        return {
+          field: fieldFrom(
+            context.atlas.chunks,
+            (chunk) => chunk.manaTotal,
+            (value) => formatCompact(value, context.locale),
+          ),
+        };
+      }
+      return { surface };
+    },
+  },
+  {
+    id: "mana-peak",
+    group: "mana",
+    signal: "mana",
+    availability: "observed",
+    availabilityFor: manaAvailability,
+    roles: ["primary"],
+    title: {
+      "en-US": "Mana peak",
+      "ru-RU": "Пик маны",
+      "zh-Hans": "魔力峰值",
+      "de-DE": "Mana-Spitze",
+      "es-ES": "Pico de maná",
+    },
+    detail: {
+      "en-US": "The most intense cell anywhere in each column of the lattice.",
+      "ru-RU": "Наиболее интенсивная ячейка в каждом столбце решётки.",
+      "zh-Hans": "格网每一列中强度最高的单元格。",
+      "de-DE": "Die intensivste Zelle irgendwo in jeder Säule des Gitters.",
+      "es-ES": "La celda más intensa en cualquier punto de cada columna de la retícula.",
+    },
+    cellProjection: "full",
+    caveat: {
+      "en-US":
+        "A maximum answers where the field gets strongest, not how much stands over the ground; the field lens reads the same volume as a sum.",
+      "ru-RU":
+        "Максимум отвечает, где поле сильнее всего, а не сколько его стоит над землёй; линза поля читает тот же объём как сумму.",
+      "zh-Hans":
+        "最大值回答的是场在何处最强，而不是地面之上有多少；场透镜将同一体积读作总和。",
+      "de-DE":
+        "Ein Maximum beantwortet, wo das Feld am stärksten wird, nicht wie viel über dem Boden steht; die Feldlinse liest dasselbe Volumen als Summe.",
+      "es-ES":
+        "Un máximo responde dónde el campo es más intenso, no cuánto se alza sobre el terreno; la lente de campo lee el mismo volumen como suma.",
+    },
+    layers: (context) => {
+      const surface = manaSurface(context, "maximum");
+      return surface === undefined ? EMPTY_LAYERS : { surface };
+    },
+  },
+  {
+    id: "mana-isolines",
+    group: "mana",
+    signal: "mana",
+    availability: "observed",
+    availabilityFor: manaAvailability,
+    roles: ["overlay"],
+    title: {
+      "en-US": "Mana isolines",
+      "ru-RU": "Изолинии маны",
+      "zh-Hans": "魔力等值线",
+      "de-DE": "Mana-Isolinien",
+      "es-ES": "Isolíneas de maná",
+    },
+    detail: {
+      "en-US": "Lines of equal column intensity, at stated levels.",
+      "ru-RU": "Линии равной интенсивности столбца на указанных уровнях.",
+      "zh-Hans": "等列强度线，标注所在层级。",
+      "de-DE": "Linien gleicher Säulenintensität auf angegebenen Stufen.",
+      "es-ES": "Líneas de igual intensidad por columna, en niveles declarados.",
+    },
+    caveat: {
+      "en-US": "Traced through the received lattice, which is coarse; the levels are labelled.",
+      "ru-RU": "Проведены по полученной решётке, которая груба; уровни подписаны.",
+      "zh-Hans": "沿收到的格网追踪，该格网较粗；各层级均有标注。",
+      "de-DE":
+        "Durch das empfangene Gitter gezogen, das grob ist; die Stufen sind beschriftet.",
+      "es-ES": "Trazadas a través de la retícula recibida, que es gruesa; los niveles se rotulan.",
+    },
+    cellProjection: "full",
+    layers: (context) => {
+      const field = columnField(context.rasters, FieldRasterKind.ManaIntensity, "sum");
+      if (field === undefined) return EMPTY_LAYERS;
+      return {
+        isolines: measuredIsolines(field, 6, 1, (value) =>
+          formatCompact(Math.round(value), context.locale),
+        ),
+      };
+    },
+  },
+  {
+    id: "mana-provenance",
+    group: "mana",
+    signal: "trace",
+    availability: "observed",
+    roles: ["overlay"],
+    title: {
+      "en-US": "Traced cells",
+      "ru-RU": "Ячейки трассы",
+      "zh-Hans": "受迹线影响的单元格",
+      "de-DE": "Verfolgte Zellen",
+      "es-ES": "Celdas trazadas",
+    },
+    detail: {
+      "en-US": "The mana cells a followed trace last changed.",
+      "ru-RU": "Ячейки маны, которые последний раз изменила отслеживаемая трасса.",
+      "zh-Hans": "所跟踪迹线最后一次改变的魔力单元格。",
+      "de-DE": "Die Mana-Zellen, die eine verfolgte Spur zuletzt verändert hat.",
+      "es-ES": "Las celdas de maná que una traza seguida cambió por última vez.",
+    },
+    caveat: {
+      "en-US":
+        "Only the latest change is recorded per cell, so a trace that has since been overwritten leaves nothing. Select a trace anywhere in the interface to light its ground.",
+      "ru-RU":
+        "На ячейку записывается только последнее изменение, поэтому перекрытая трасса не оставляет ничего. Выберите трассу в любом месте интерфейса, чтобы подсветить её землю.",
+      "zh-Hans":
+        "每个单元格只记录最近一次变更，因此已被覆盖的迹线不会留下任何痕迹。在界面任意处选择一条迹线即可点亮其所在地面。",
+      "de-DE":
+        "Je Zelle wird nur die letzte Änderung festgehalten; eine seither überschriebene Spur hinterlässt nichts. Wählen Sie irgendwo in der Oberfläche eine Spur, um ihren Boden aufleuchten zu lassen.",
+      "es-ES":
+        "Sólo se registra el último cambio por celda, así que una traza ya sobrescrita no deja nada. Seleccione una traza en cualquier parte de la interfaz para iluminar su terreno.",
+    },
+    cellProjection: "full",
+    layers: (context) => {
+      if (context.traceFilter === undefined) return EMPTY_LAYERS;
+      const cells = cellsChangedBy(
+        context.rasters,
+        FieldRasterKind.ManaIntensity,
+        context.traceFilter,
+      );
+      return {
+        cells: cells.map((cell) => ({
+          chunkKey: `${cell.chunkX}:${cell.chunkY}:0`,
+          chunkX: cell.chunkX,
+          chunkY: cell.chunkY,
+          // The mana lattice is coarser than the cell lattice the marks are
+          // drawn on, so a mana cell is placed at the centre of the ground it
+          // covers rather than pretending to be one terrain cell.
+          cellX: Math.round(((cell.x + 0.5) / cell.edge) * CHUNK_SIZE - 0.5),
+          cellY: Math.round(((cell.y + 0.5) / cell.edge) * CHUNK_SIZE - 0.5),
+          cellZ: cell.z,
+          intensity: 1,
+          shape: "ring" as const,
+          label: `z${cell.z}`,
+        })),
+      };
+    },
   },
   {
     id: "mana-gradient",
@@ -832,8 +1087,19 @@ export const LENSES: Lens[] = [
 
 export const LENS_BY_ID = new Map(LENSES.map((lens) => [lens.id, lens]));
 
-export const DEFAULT_PRIMARY_LENS = "relief";
-export const DEFAULT_OVERLAYS = ["population", "surface"];
+/**
+ * The chart opens on the mana field.
+ *
+ * It is the one field the runtime maintains that is continuous across the whole
+ * charted extent, so it is the one that shows the instrument reading a world
+ * rather than a set of chunks. Terrain contours are deliberately not a default
+ * overlay: the generator restarts its ridge in every chunk, so contours over it
+ * bunch along every chunk boundary and would put a grid back on the sheet. That
+ * is world state and the relief lens draws it, but it is not what the chart
+ * should open on.
+ */
+export const DEFAULT_PRIMARY_LENS = "mana";
+export const DEFAULT_OVERLAYS = ["mana-isolines", "population", "surface"];
 
 /** The lattice ordinal decoded back to a cell position. */
 function cellOf(ordinal: number): { x: number; y: number; z: number } {

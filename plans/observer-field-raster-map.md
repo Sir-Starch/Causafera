@@ -1,6 +1,6 @@
 # Observer Field Raster Map ExecPlan
 
-**Status:** Draft, awaiting acceptance.
+**Status:** Accepted and complete. See Progress.
 
 ## Goal
 
@@ -476,6 +476,81 @@ generation, which is the prerequisite for a landcover lens, and a mana-domain it
 
 ## Progress
 
-Not started. The measurements in the context section were taken with
+**Complete.** The measurements in the context section were taken with
 `apps/observer/src-tauri/examples/field_probe.rs` against seed 7 at 48 ticks and should be re-taken
 if terrain generation, mana propagation or `chunk_extent` changes.
+
+Stages 1–5 and 9 landed as one read-model checkpoint; stages 6, 7 and the map rewrite as a second.
+Stage 8 was already closed by `TODO-MANA-004` before implementation began.
+
+### What was measured
+
+Encoded size, on the demonstration session at seed 7 over nine active chunks:
+
+| Payload | Per chunk | Against |
+|---|---|---|
+| Terrain elevation with its roughness band, detail 0 | 3 369 bytes | 8 192 bytes of raw `i32` arrays |
+| Mana volume at `chunk_extent` 3, with per-cell traces | 181 bytes | — |
+| The `WorldChunks` snapshot the map already fetched | 1 874 bytes for the whole chart | — |
+
+The surface is resolved in sample space and cached against a signature naming the measurements, so
+panning and zooming cost a scaled blit rather than a repaint; a nine-chunk terrain surface is a
+384 x 384 texture and a nine-chunk mana surface 288 x 288.
+
+### Decisions taken during implementation
+
+- **`ActiveChunkShape::Disc` became `Area`.** The plan named a disc; at radius 1 a Euclidean disc is
+  a five-chunk cross, and the observer session's own bound was already written for nine chunks. The
+  variant is the square block, and its documentation says so rather than implying a circle.
+- **The mana field is the default primary lens, and terrain contours are not a default overlay.**
+  See the finding below. The plan assumed relief would be the headline; it is available, measured and
+  honest, but it is not what the chart should open on.
+- **Contours refine a coarse lattice before tracing.** Marching squares on a nine-sample-per-chunk
+  lattice draws polygons that visibly disagree with the smooth surface painted underneath. The
+  refinement uses the same interpolant the surface is painted with, so the two are readings of one
+  field; every original sample survives at its own position because the interpolant passes through
+  it exactly.
+- **The graticule stopped ruling the sheet.** Full-bleed rules over a continuous field reimpose the
+  grid the projection was meant to remove. Over a drawn field the lattice is stated by ticks at the
+  intersections and by the coordinate labels, and resolves into rules only at cell detail.
+- **Availability is derived through `Lens::availabilityFor`.** The plan required mana availability to
+  follow the received edge; that needed a contract addition, because `availability` was a constant.
+
+### Two defects found, both only visible once the chart had two dimensions
+
+**`chart_chunk_hash` collided.** Each axis was sign-extended, so a coordinate of −1 became all ones
+on every axis and `(-1, -1, 0)` hashed identically to `(0, 0, 0)`, as did `(-1, 0, 0)` and
+`(0, -1, 0)`. Object identity is keyed by that hash, so the mana cell validator rejected the first
+area-shaped runtime outright. The x term is unchanged and the off-line terms are zero at zero, so
+every chunk of every line-shaped chart — which is every recorded fixture and every replay-verified
+experiment — keeps exactly the identity it had. A test asserts both halves: separation across the
+whole radius-4 block with at least fifteen bits between any two identities, and the recorded values
+for the line.
+
+**Terrain restarts in every chunk.** `terrain_cells` computes `ridge = (x - y) * 17` from
+chunk-local coordinates and takes the chunk only through the seed, so all nine chunks carry the same
+diagonal ridge and the chart has a scarp on every boundary: +13.1 m … +19.5 m on the east edge of
+chunk (−1, 0) against −13.5 m on the abutting west edge of chunk (0, 0), where the mean neighbour
+step inside a chunk is 1.6 m. This is world state and the relief lens draws it, with a caveat saying
+the step is world state rather than a seam in the drawing. It is also why terrain contours are not a
+default overlay — over this terrain they bunch along every boundary and put a grid back on the
+sheet. Changing terrain generation is a non-goal of this plan and it changes every digest, so it is
+recorded as `TODO-GEO-005` rather than done here.
+
+### Verification
+
+- `cargo test --workspace` green, including the runtime, wire and session suites added here.
+- Replay and locale invariance: the existing session tests compare payload bytes and both digests
+  across all five locales; adding the query kind moved neither.
+- Bounds: a raster request for an inactive chunk answers `NotAvailable`, a detail level outside the
+  contract `InvalidRequest`.
+- Downsample correctness: level 1 equals the block mean of level 0, cell by cell, against the live
+  session rather than a fixture.
+- Delta encoding round-trips at `i64::MIN`, `i64::MAX` and both `i32` bounds.
+- Mana fidelity: the projected volume and its per-cell traces equal the field cell for cell, and the
+  lattice a raster declares must match the payload it carries or the decoder refuses it, in both Rust
+  and TypeScript.
+- Frontend: `pnpm smoke` renders every area in two locales, and additionally each raster lens with
+  the lattices a session would hold and then without them, since that is the state every session
+  starts in. The surfaces were also painted headlessly through the real modules — `renderSurface`
+  takes an `ImageData` factory precisely so it needs no DOM — and inspected as images.

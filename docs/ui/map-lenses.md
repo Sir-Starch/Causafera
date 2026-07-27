@@ -12,16 +12,22 @@ Companion documents:
 
 ## What a lens is
 
-A lens is one class of information projected onto the chart. The renderer draws five kinds of
+A lens is one class of information projected onto the chart. The renderer draws six kinds of
 geometry and knows nothing about what any of them mean:
 
 | Layer | Geometry | Drawn at |
 |-------|----------|----------|
+| `surface` | a continuous field over the whole surveyed extent, painted as one image | every scale |
 | `field` | a scalar per chunk, painted as a tint of the lens hue | every scale |
 | `symbols` | a mark at a chunk centre — a proportional circle, or a fixed glyph | chunk and cell scale |
 | `cells` | a mark at a real cell position inside a chunk | cell scale only |
 | `vectors` | a directed magnitude between two chunk centres | every scale |
 | `isolines` | polylines in chart space, clipped to the charted extent | every scale |
+
+`surface` and `field` answer the same question at different resolutions, and a lens supplies
+whichever it can: a `surface` when the observer has sent the lattice, a `field` when one value per
+chunk is all there is. One value over one area is honestly drawn as one tint, so the fallback is not
+a degraded surface — it is the correct drawing of what arrived.
 
 A lens returns whichever of those it can produce from the observer payloads it is handed. Adding a
 domain means adding an entry to `src/map/lenses.ts`; it never means editing `src/map/ChartMap.tsx`.
@@ -39,6 +45,38 @@ Every lens declares one of four states, and the interface draws the difference:
 
 `caveat` on a lens names the exact limitation or construction. Those sentences are the user-facing
 half of `docs/ui/observer-projection-gaps.md` and should be kept in step with it.
+
+## Continuous fields
+
+`src/map/field.ts` assembles received lattices into one `ChartField` over the surveyed extent, and
+`src/map/surface.ts` paints it. Everything the map says about a field is a reading of that one
+surface — the tint, the relief shading, the contours and the hover readout — so a gradient crossing a
+chunk boundary is drawn as one gradient and any discontinuity in the drawing is a discontinuity in
+the world.
+
+Four rules govern it:
+
+1. **Only received samples enter.** Ground the observer has not been given is marked uncovered and
+   drawn as unsurveyed. The field is never interpolated across a hole.
+2. **Interpolation is stated.** Between samples the field is resampled with a Catmull-Rom kernel,
+   which passes exactly through every measurement and is clamped to the bracketing pair so it cannot
+   reach a value outside the local range. Lenses that draw it say so in their caveat.
+3. **Contours follow the same interpolant.** A coarse lattice is refined before marching squares
+   runs, so the line and the tint underneath it are readings of one field rather than two.
+4. **Shading is presentation.** The Lambertian term is computed here and never returns to the
+   runtime (INV-022). It is applied only to fields whose gradient is a slope: mana intensity is not a
+   height, so it is not hillshaded.
+
+The painted image is cached against the `signature` a lens supplies, which must identify the
+measurements exactly. Panning and zooming then cost a scaled blit, and a surface is repainted only
+when the observer sends new values.
+
+## Availability that follows what arrived
+
+A lens may supply `availabilityFor(context)` instead of relying on its constant `availability`. The
+mana lenses use it: they report `preview` while the received lattice edge is too coarse to draw
+without upsampling and `observed` when it is not. Refining `chunk_extent` therefore promotes them
+with no change to the catalogue, and coarsening it cannot quietly overstate what is drawn.
 
 ## Preview projections
 
@@ -66,6 +104,11 @@ To promote an `awaiting` lens once its projection lands:
 5. Draw a glyph in `src/map/LensIcon.tsx`; without one the lens falls back to a survey mark and
    still works.
 
+To connect a lens to a per-cell lattice instead, build a `ChartField` through
+`src/map/rasterFields.ts` and return it as a `surface` with a `signature`, a `style` and a `format`.
+A volumetric lattice must state which reduction to plan view it is showing, because the runtime
+projects the volume unreduced precisely so that choice stays a reading of the field.
+
 Nothing else in the map changes. The dock, the legend, the catalogue, the hover readout and the
 level-of-detail rules all read the lens contract.
 
@@ -80,25 +123,32 @@ preference:
 | 30–190 px | `chunk` | borders, coordinates, the field value, symbols |
 | over 190 px | `cell` | the 32³ cell lattice and cell marks at real positions |
 
-Culling is by viewport (`visibleChunks`), so a screenful costs the same whether the chart holds
-three chunks or thousands. The three-chunk demonstration configuration is not an assumption
-anywhere in the renderer.
+Culling is by viewport (`visibleChunks`), so a screenful costs the same whether the chart holds nine
+chunks or thousands. The demonstration configuration is not an assumption anywhere in the renderer.
 
-## Why the current map looks blocky
+A surface is resolved in sample space rather than screen space, so painting it costs what has been
+surveyed rather than how far the chart is zoomed in; the canvas scales the cached image.
 
-Two reasons, both outside the frontend, both recorded in
-`docs/ui/observer-projection-gaps.md`:
+## The graticule, and why it no longer rules the sheet
 
-- **One value per chunk.** The terrain carrier holds a 32×32 raster of elevation, surface material
-  and roughness per chunk; the observer snapshot reduces it to a minimum, a maximum and a mean. A
-  flat tint is the honest rendering of one number over one area, and the cell lattice is hatched at
-  cell zoom to say exactly that. The interpolated contour lens exists because that is the most a
-  lens can honestly build from chunk aggregates, which is why it is marked `preview`.
-- **A line, not an area.** `active_chunk_keys` varies only x, so the active set is a strip of at
-  most nine chunks.
+A lattice ruled across the paper turns any map into a grid of squares. Over a drawn field the chunk
+lattice is therefore stated by ticks at the intersections and by the coordinate labels, and only
+resolves into rules once a chunk is large enough on screen that its boundary is a reading rather than
+a frame. A lens with only chunk aggregates keeps the full rules, because there the boundary really is
+where one measurement stops and the next begins.
 
-Neither is a limit of the renderer. When the terrain raster is projected, a per-cell lens with
-hypsometric tinting and hillshading is a new catalogue entry, not a new map.
+## What the chart opens on, and why
+
+The default primary lens is the mana field. It is the one field the runtime maintains that is
+continuous across the whole charted extent, so it is the one that shows the instrument reading a
+world rather than a set of chunks.
+
+Terrain contours are deliberately not a default overlay. `terrain_cells` derives elevation from
+chunk-local coordinates only, so every chunk repeats the same diagonal ridge and the chart has a
+thirty-metre scarp on every chunk boundary. The relief lens draws that, because it is world state,
+and its caveat says the step is world state rather than a seam in the drawing — but contours over it
+bunch along every boundary and would put a grid back on the sheet. The generation gap is recorded as
+`TODO-GEO-005`.
 
 ## What the map deliberately does not do
 

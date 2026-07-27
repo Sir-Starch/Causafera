@@ -72,8 +72,8 @@ Areas are independent. Switching areas changes no simulation state and no other 
 ## Session Envelope
 
 The default interactive session uses a real deterministic runtime with eight promoted actors, two
-sensors per actor, at most three active chunks in the demonstrated configuration, and a causal
-bootstrap population of 512. The comparative Explanation query runs the existing replay-verified
+sensors per actor, a nine-chunk square block of active chunks in the demonstrated configuration, and
+a causal bootstrap population of 512. The comparative Explanation query runs the existing replay-verified
 control/intervention experiment within its in-memory experiment envelope.
 
 Pause is local: the UI stops requesting tick batches.
@@ -139,11 +139,37 @@ measured distance.
 
 ### The chart instrument
 
+### The workspace holds instruments and nothing else
+
+No area reserves a row above its instruments. Each used to open with an eyebrow, a display title and
+a paragraph of prose, restating what the rail already names in the most expensive vertical space the
+sheet has; cutting the prose left a row reserved for one chip, which was the same waste with less in
+it. The rule that replaced both is that an area begins with an instrument, and anything it wants to
+say about itself goes into an instrument's own chrome:
+
+| Area | What it had above the instruments | Where it lives now |
+|------|-----------------------------------|--------------------|
+| Observatory | A hero readout of causal traces | First cell of the readout cluster it sat above |
+| Chart | Chart and chunk counts | The chart's own caption line, opposite the usage hint |
+| Flux | A hero trace rate | Nowhere: the dock's rate register already carries it |
+| Explanation | A run control | The report panel's tools slot; the empty state keeps its own |
+| Instrument | Nothing | — |
+
+The longer description each area used to print reaches the reader through the rail entry's tooltip,
+where it costs no layout. A fuller home for it is an open question rather than a settled one.
+
 The Chart area is built around a pannable, zoomable plan view of one chart's chunk lattice, drawn
 on canvas with viewport culling and three levels of detail. Analytical lenses supply what it draws:
-a field, proportional symbols, cell marks at real lattice positions, vectors and isolines. Lens
-controls float on the chart as a dock of glyphs whose names and availability arrive on hover, and
-the legend sits on the chart as a cartouche.
+a continuous surface, a field of chunk aggregates, proportional symbols, cell marks at real lattice
+positions, vectors and isolines. Lens controls float on the chart as a dock of glyphs whose names and
+availability arrive on hover, and the legend sits on the chart as a cartouche carrying the ramp the
+surface is actually painted in.
+
+Where the observer has sent per-cell lattices, every received chunk is assembled into one field over
+the whole surveyed extent and painted as a single image, so the chart reads as a map rather than as a
+grid of squares and the graticule steps back to ticks at the intersections. Where only chunk
+aggregates exist, one value over one area is drawn as one tint, which is the honest drawing of what
+arrived.
 
 Every lens declares whether it is observed, partial, a preview construction, or awaiting a read
 model, and the interface draws that difference rather than footnoting it. Ground beyond the received

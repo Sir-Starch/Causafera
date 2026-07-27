@@ -67,14 +67,6 @@ export function InstrumentArea({ goTo }: AreaProps) {
 
   return (
     <>
-      <div className="area-head">
-        <div className="area-head__titles">
-          <span className="eyebrow">{copy.instrument.eyebrow}</span>
-          <h1 className="display">{copy.instrument.title}</h1>
-          <p className="lede">{copy.instrument.lede}</p>
-        </div>
-      </div>
-
       <div className="grid grid--halves">
         <Panel title={copy.instrument.negotiation} eyebrow={copy.marginalia.protocol}>
           <Fields>
@@ -151,7 +143,12 @@ export function InstrumentArea({ goTo }: AreaProps) {
                 {recent.map((exchange) => (
                   <tr key={exchange.id}>
                     <td className="num muted">{exchange.id}</td>
-                    <td className="numeric emphasis">{exchange.command.replace("observer_", "")}</td>
+                    <td className="numeric emphasis">
+                      {exchange.command.replace("observer_", "")}
+                      {exchange.count !== undefined && (
+                        <span className="muted"> ×{exchange.count}</span>
+                      )}
+                    </td>
                     <td className="muted">{exchange.detail ?? "—"}</td>
                     <td className="num">
                       {exchange.requestBytes === 0
@@ -289,7 +286,8 @@ export function InstrumentDock() {
     const counts = new Map<string, number>();
     for (const exchange of exchanges) {
       const key = exchange.command.replace("observer_", "");
-      counts.set(key, (counts.get(key) ?? 0) + 1);
+      // Folded raster entries stand for several requests and are counted as such.
+      counts.set(key, (counts.get(key) ?? 0) + (exchange.count ?? 1));
     }
     return [...counts.entries()].sort((a, b) => b[1] - a[1]);
   }, [exchanges]);

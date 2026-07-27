@@ -717,7 +717,7 @@
 **Out of Scope:** Traditional Chinese, right-to-left layout, locale-specific number and date formats beyond `Intl` grouping, translating protocol nouns, logs or domain identifiers
 
 ## TODO-OBS-001: Field Raster Projection and Chart Shape
-**Status:** Pending
+**Status:** Completed
 **Phase:** Detailed Development — Observer Surface
 **Priority:** High
 **Dependencies:** TODO-UI-005
@@ -730,6 +730,35 @@
 **Explanation Implications:** None; generation provenance travels with the raster for future claims
 **Out of Scope:** Landcover from surface materials, per-cell causal resolution, raising `chunk_extent`, joined charts, terrain generation changes
 **Plan:** `plans/observer-field-raster-map.md`
+**Evidence:** A `FieldRaster` query kind, its wire codec, a session bound and a TypeScript decoder;
+`ActiveChunkShape::Area` behind a config field with `Line` still the default. Measured on the
+demonstration session (seed 7, 48 ticks, nine chunks): terrain elevation with its roughness band
+encodes to 3 369 bytes per chunk against 8 192 bytes of raw arrays, the mana volume to 181 bytes per
+chunk, and the world-chunk snapshot the map already fetched is 1 874 bytes. The map assembles the
+received lattices into one field over the surveyed extent and draws hypsometric tinting, hillshading
+and measured contours from it; mana availability is derived from the received lattice edge and
+therefore reads `preview` at `chunk_extent` 3 and `observed` above it with no frontend change.
+
+Two defects surfaced only once the chart had two dimensions. `chart_chunk_hash` sign-extended each
+axis, so `(-1, -1, 0)` collided with `(0, 0, 0)` and the mana cell object identity validator rejected
+the first area-shaped runtime; the fix leaves every line-shaped chart with the identity it was
+recorded with. `terrain_cells` derives elevation from chunk-local coordinates only, which is recorded
+separately as `TODO-GEO-005`.
+
+## TODO-OBS-002: Batched Per-Frame Field Raster Query
+**Status:** Pending
+**Phase:** Detailed Development — Observer Surface
+**Priority:** Medium
+**Dependencies:** TODO-OBS-001
+**Goal:** Replace the nine-to-eighteen separate `FieldRaster` calls a world frame issues today (one per active chunk per field) with a single query carrying a list of chunks, so a frame pays the bridge's per-call overhead once instead of once per chunk
+**Acceptance Criteria:** One additive query variant answering a bounded list of `(chunk, field, detailLevel)` requests in one response, still bounded to the active chunk set (never a chart dump); `refreshRasters` in `apps/observer/src/observer/session.ts` issues one call per frame; every existing fixture, replay capture and digest is unchanged, since this only changes how already-computed per-chunk rasters are transported, not what they contain
+**Performance Requirements:** Before-and-after wall-clock span of a full frame, measured with the corrected Instrument log (see below), not a byte-count estimate
+**Determinism Requirements:** Read-only; no runtime state or digest is touched
+**Ontology Implications:** None; this is a transport shape, not a domain contract
+**Observer Implications:** One additive query kind; existing per-chunk `FieldRaster` stays for callers that want a single chunk
+**Explanation Implications:** None
+**Out of Scope:** Raising `chunk_extent`, joined charts, a landcover lens
+**Evidence:** The Instrument log folded concurrent per-frame `observer_field_raster` exchanges by summing their individual `durationMs`, and each individual duration already included the wait for every call ahead of it on the session's Tauri mutex — the fold therefore reported a batch's cost roughly as the square of its size rather than its real span (fixed in `apps/observer/src/observer/session.ts`, `recordExchange`). Re-measured against a real desktop session (seed 0, debug build) with the fold bypassed: consecutive per-call completions land 3-5 ms apart regardless of payload — a 113-byte mana raster and a ~3.4 KB terrain raster cost about the same marginal time. Fixed per-call overhead (mutex acquisition, command dispatch) dominates in this range; payload size barely registers. Switching every observer command's response from a `Vec<u8>` return (serialised by Tauri as a JSON array of numbers, four times the wire bytes for the elevation raster) to `tauri::ipc::Response` (raw bytes, confirmed to arrive as an `ArrayBuffer` on the JS side) did not move this measurement at these payload sizes, which is consistent with fixed overhead rather than serialisation cost dominating today — but it removes a real inefficiency that will matter once payloads grow, including under this TODO's own batched response. Batching removes that fixed overhead (n-1) times per frame; it does not remove per-byte cost, which the same measurement shows is not the bottleneck at current sizes
 
 ## TODO-GEO-004: Coherent Surface Material Regions
 **Status:** Pending
@@ -745,6 +774,21 @@
 **Explanation Implications:** Material regions become available as causal context for surface claims
 **Out of Scope:** Biome semantics, climate coupling, named regions
 **Evidence:** `apps/observer/src-tauri/examples/terrain_probe.rs` measures 6.5% same-material neighbours against 6.2% expected from chance over 16 materials. `TODO-MANA-004` reaches the same finding from the mana side and puts a cost on it: projected onto the mana lattice, the terrain's structural variation survives at only 1.32x to 2.75x what averaging pure noise would retain, and the ratio falls as the lattice refines. There is little coherent structure for a finer field to resolve, so this is the work that would make a finer mana lattice worth its cost rather than the other way round
+
+## TODO-GEO-005: Terrain Continuity Across Chunk Boundaries
+**Status:** Pending
+**Phase:** Detailed Development — Geography
+**Priority:** Medium
+**Dependencies:** None
+**Goal:** Generate elevation as a function of a cell's position in its chart rather than of its position in its chunk, so adjacent chunks meet
+**Acceptance Criteria:** Measured elevation step across a chunk boundary is of the same order as the step between neighbouring cells inside a chunk; the field stays deterministic from the world seed
+**Performance Requirements:** Generation cost measured against the current per-chunk assignment
+**Determinism Requirements:** Changing terrain changes state hashes by construction, so it ships with regenerated fixtures and replay evidence
+**Ontology Implications:** Terrain is authoritative geography; continuity between chunks is a property of the world, not of the drawing
+**Observer Implications:** The relief lens already draws the discontinuity and states that the step is world state rather than a seam. With this closed, terrain contours become a defensible default overlay, which they are not today
+**Explanation Implications:** None
+**Out of Scope:** Landforms, erosion, hydrology, biomes, raising the terrain lattice
+**Evidence:** `terrain_cells` in `crates/causafera-runtime/src/carrier.rs` computes `ridge = (x - y) * 17` from chunk-local `x` and `y` and takes the chunk only through the seed, so every chunk repeats the same diagonal ridge. Measured on the demonstration session at seed 7: the east edge of chunk (−1, 0) reads +13.1 m … +19.5 m against −13.5 m … −13.7 m on the abutting west edge of chunk (0, 0), a step of about thirty metres where the mean neighbour step inside a chunk is 1.6 m. `TODO-OBS-001` made this visible by giving the chart two dimensions and a per-cell projection; before that the map drew one tint per chunk and the strip was one chunk deep, so nothing showed it
 
 ## TODO-MANA-004: Mana Field Lattice Cost Decision
 **Status:** Completed — `chunk_extent` stays 3

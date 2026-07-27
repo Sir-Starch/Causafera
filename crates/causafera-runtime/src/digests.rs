@@ -84,13 +84,33 @@ pub(crate) fn write_population_aggregate(
     }
 }
 
+/// A chunk's identity within its chart.
+///
+/// The three axis terms must not be able to cancel each other, because the hash
+/// keys object identity: two chunks that hash alike make their mana cells and
+/// population aggregates the same object, which the snapshot validators reject.
+/// A sign-extended `-1` is all ones on every axis, so the original form
+/// collapsed `(-1, -1, 0)` onto `(0, 0, 0)` and `(-1, 0, 0)` onto `(0, -1, 0)`
+/// the moment a chart had two dimensions.
+///
+/// The x term is unchanged and the off-line terms are zero at zero, so every
+/// chunk of every line-shaped chart — which is every recorded fixture and every
+/// replay-verified experiment — keeps exactly the identity it had.
 pub(crate) fn chart_chunk_hash(chunk: ChartChunkCoord) -> u64 {
     mix64(
         chunk.chart.raw()
             ^ (chunk.chunk.x as u64).rotate_left(7)
-            ^ (chunk.chunk.y as u64).rotate_left(19)
-            ^ (chunk.chunk.z as u64).rotate_left(31),
+            ^ off_line_axis(chunk.chunk.y, 19)
+            ^ off_line_axis(chunk.chunk.z, 31),
     )
+}
+
+/// An axis term that is zero at the origin and cannot reproduce a sign-extended
+/// x term: the lane is taken as thirty-two bits and folded against itself, so no
+/// coordinate maps to all ones.
+fn off_line_axis(value: i32, rotation: u32) -> u64 {
+    let lane = u64::from(value as u32);
+    lane.rotate_left(rotation) ^ lane.rotate_left(rotation.wrapping_add(22) % 64)
 }
 
 pub(crate) fn ordered_trace_causes(causes: [TraceId; 2]) -> Vec<TraceId> {
@@ -202,5 +222,58 @@ impl CanonicalDigest {
 
     pub(crate) fn finish(self) -> StateFingerprint {
         fingerprint_words(self.0)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use causafera_types::{ChunkCoord, SpatialChartId};
+
+    use super::*;
+
+    fn chunk(x: i32, y: i32, z: i32) -> ChartChunkCoord {
+        ChartChunkCoord::new(SpatialChartId::new(1), ChunkCoord::new(x, y, z))
+    }
+
+    /// Object identity keyed by this hash is only sound while it separates
+    /// chunks, and the mana validator compares hashes exclusive-ored with a cell
+    /// index, so near-collisions in the low bits are collisions too.
+    #[test]
+    fn chunk_identity_separates_every_chunk_of_the_largest_block() {
+        let radius = 4;
+        let mut seen = std::collections::BTreeMap::new();
+        for z in -radius..=radius {
+            for y in -radius..=radius {
+                for x in -radius..=radius {
+                    let hash = chart_chunk_hash(chunk(x, y, z));
+                    if let Some(other) = seen.insert(hash, (x, y, z)) {
+                        panic!("({x}, {y}, {z}) collides with {other:?}");
+                    }
+                }
+            }
+        }
+        // The mana lattice runs to 32³ cells, so any two chunk identities must
+        // differ above the fifteen bits a cell index can occupy.
+        let hashes = seen.keys().copied().collect::<Vec<_>>();
+        for (index, left) in hashes.iter().enumerate() {
+            for right in &hashes[index + 1..] {
+                assert!(
+                    left ^ right >= 1 << 15,
+                    "chunk identities {left} and {right} are within one cell index"
+                );
+            }
+        }
+    }
+
+    /// Every recorded fixture was produced against a line-shaped chart. The
+    /// identity of those chunks may not move.
+    #[test]
+    fn line_shaped_charts_keep_the_identity_they_were_recorded_with() {
+        for x in -4..=4 {
+            assert_eq!(
+                chart_chunk_hash(chunk(x, 0, 0)),
+                mix64(SpatialChartId::new(1).raw() ^ (x as u64).rotate_left(7)),
+            );
+        }
     }
 }

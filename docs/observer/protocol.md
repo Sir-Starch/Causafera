@@ -27,11 +27,29 @@ proto/causafera/observer/v1/
 
 Generate Rust and TypeScript bindings from the proto definitions. Do not manually duplicate schemas.
 
-The implemented v1 surface supports negotiation and three request kinds:
+The implemented v1 surface supports negotiation and four request kinds:
 
 - runtime summary;
 - typed Explanation IR;
-- a bounded chart-qualified world-chunk snapshot.
+- a bounded chart-qualified world-chunk snapshot;
+- a bounded per-chunk field raster.
+
+`FieldRaster` is the one request that carries parameters, in the query payload rather than in a
+second envelope shape: one chunk, one field, one detail level. `TerrainElevation` and
+`TerrainRoughness` project the carrier's own 32 x 32 lattice, or a block-mean reduction of it at
+detail level 1 or 2; `ManaIntensity` projects the mana volume whole at its configured extent,
+together with the trace that last changed each cell. Values travel as packed ZigZag varints of
+successive differences along the scan order, which is why nine chunks of elevation and roughness
+encode to about 3.4 KB each against 8 KB of raw arrays.
+
+The runtime performs exactly one reduction on a raster, the block mean, and it is order-independent
+and introduces no value the field does not contain. It never flattens the mana volume to plan view:
+a column sum and a column maximum answer different questions, so choosing between them is a reading
+of the field rather than a property of it and the map states which reading it draws. It never shades
+a surface either, because lighting is presentation (INV-022).
+
+A request for a chunk outside the active set is answered `NotAvailable` and a malformed one
+`InvalidRequest`; neither is answered with substituted data.
 
 The world projection contains numeric terrain bounds, roughness, local mana total, causal-resolution
 relevance/level, population aggregate, activity count, and trace anchor. Its additive

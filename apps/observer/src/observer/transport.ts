@@ -14,15 +14,19 @@ import {
   StreamKind,
   decodeConnectResponse,
   decodeExplanationReport,
+  decodeFieldRaster,
   decodeQueryResponse,
   decodeRuntimeSummary,
   decodeStreamEnvelope,
   decodeWorldChunkSnapshot,
   digestHex,
   encodeConnectRequest,
+  encodeFieldRasterQuery,
   encodeQuery,
   type ConnectResponse,
   type ExplanationReport,
+  type FieldRaster,
+  type FieldRasterRequest,
   type RuntimeSummary,
   type WorldChunkSnapshot,
 } from "@causafera/observer-protocol";
@@ -42,6 +46,7 @@ export type ObserverCommand =
   | "observer_open_stream"
   | "observer_advance"
   | "observer_query"
+  | "observer_field_raster"
   | "observer_analyze"
   | "observer_reset";
 
@@ -67,7 +72,16 @@ export interface Exchange {
   outcome: "ok" | "failed";
   message?: string;
   at: number;
+  /** Exchanges folded into this entry by the session log; absent means one. */
+  count?: number;
 }
+
+/** Exchange-log labels only; the wire carries the numeric field selector. */
+const FieldRasterKindLabel: Record<number, string> = {
+  1: "elevation",
+  2: "roughness",
+  3: "mana",
+};
 
 export function hasTauriTransport(): boolean {
   return typeof window !== "undefined" && window.__TAURI__?.core.invoke !== undefined;
@@ -87,8 +101,9 @@ export const tauriChannel: ByteChannel = {
               value instanceof Uint8Array ? Array.from(value) : value,
             ]),
           );
-    const response = await invoke<number[] | Uint8Array>(command, serialized);
-    return response instanceof Uint8Array ? response : Uint8Array.from(response);
+    const response = await invoke<number[] | Uint8Array | ArrayBuffer>(command, serialized);
+    if (response instanceof ArrayBuffer) return new Uint8Array(response);
+    return response instanceof Uint8Array ? response : Uint8Array.from(response as number[]);
   },
 };
 
@@ -140,6 +155,32 @@ export class ObserverClient {
 
   async analyze(): Promise<ExplanationReport> {
     return decodeExplanationReport(await this.query("observer_analyze", QueryKind.ExplanationIr));
+  }
+
+  /**
+   * One chunk of one measured lattice.
+   *
+   * `undefined` means the observer answered that it has nothing for this chunk,
+   * which is a finding rather than a failure: ground outside the active set is
+   * unsurveyed, and the map draws it as such instead of retrying.
+   */
+  async fieldRaster(request: FieldRasterRequest): Promise<FieldRaster | undefined> {
+    const encoded = encodeFieldRasterQuery(this.nextRequestId(), request);
+    const bytes = await this.exchange(
+      "observer_field_raster",
+      { request: encoded },
+      encoded.length,
+      `${FieldRasterKindLabel[request.field]} ${request.chunkX},${request.chunkY}`,
+    );
+    const response = decodeQueryResponse(bytes);
+    if (response.protocolVersion !== OBSERVER_PROTOCOL_V1) {
+      throw new Error(`unsupported observer response version ${response.protocolVersion}`);
+    }
+    if (response.status === QueryStatus.NotAvailable) return undefined;
+    if (response.status !== QueryStatus.Ok) {
+      throw new Error(`observer raster query failed with status ${QueryStatus[response.status]}`);
+    }
+    return decodeFieldRaster(response.payload);
   }
 
   private async query(command: ObserverCommand, kind: QueryKind): Promise<Uint8Array> {

@@ -6,6 +6,7 @@ mod carrier;
 mod config;
 mod digests;
 mod experiment;
+mod field_raster;
 mod mana;
 mod material_surface;
 mod pattern_history;
