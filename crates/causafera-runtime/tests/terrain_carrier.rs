@@ -603,6 +603,14 @@ fn terrain_is_continuous_across_chunk_boundaries() {
     );
 }
 
+/// `ObserverSession::new(0)` — the desktop app's default session — bootstraps at `terrain_seed
+/// = 0`. The bootstrap event's fingerprint pair must still register as a change at that seed, not
+/// collide with the `0` "before" sentinel and panic every default-seed launch.
+#[test]
+fn a_world_bootstraps_at_the_zero_seed() {
+    assert!(Runtime::from_seed(0).is_ok());
+}
+
 /// A chunk-position seed term would reintroduce the seam this generator exists to remove, so
 /// chart identity — not chunk identity — is what must still vary terrain.
 #[test]

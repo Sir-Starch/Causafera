@@ -151,7 +151,14 @@ impl HistoricalBootstrapAdapter for TerrainBootstrapStage {
                 PHYSICAL_OBJECT_KIND,
                 PHYSICAL_PROPERTY,
                 fingerprint_u64(0x0B01, 0),
-                fingerprint_u64(0x0B01, self.terrain_seed),
+                // The event fingerprint must differ from the `0` sentinel above even
+                // when `terrain_seed` is exactly 0 (the default observer session's
+                // seed), or `CausalEffect::new` rejects the bootstrap event as an
+                // unchanged state. `chart_chunk_hash` is safe to use here — it is
+                // event-identity bookkeeping, not the value handed to generation, so
+                // it cannot reintroduce the per-chunk seam `terrain_cells` no longer
+                // has.
+                fingerprint_u64(0x0B01, self.terrain_seed ^ chart_chunk_hash(chunk)),
             )?;
             let terrain = deterministic_terrain_chunk(self.terrain_seed, chunk, trace);
             let field_extent = state.config.chunk_extent;
