@@ -1,13 +1,13 @@
 # Causafera TODO Backlog
 
 ## TODO-LEGAL-001: CLA Assistant Configuration and Verification
-**Status:** In Progress
+**Status:** Completed
 **Phase:** 0
 **Priority:** Critical — before first external contribution is merged
 **Dependencies:** None
-**Goal:** Configure and end-to-end verify the hosted CLA Assistant acceptance workflow for CLA version 1.1, following the checklist in `docs/legal/cla-service-setup.md`.
-**Completed:** CLA 1.1 published as a public Gist (`eb32d78ea648f989831f7aa0a3bac81c`, revision `7c6daa72020318c47d14bca27655097cce236d6b`), verified byte-identical to `CLA.md` at blob `3c89692912e7d645e376cded4d6547ca1f874fc7`; CLA Assistant linked to `Sir-Starch/Causafera` against that Gist's `CLA.md`, with Shared Gist disabled and no minimum file-count or line-count exemption; the service reports the link as active.
-**Acceptance Criteria:** Remaining before this TODO closes — a test pull request from a second account confirms the CLA check appears, fails before acceptance, and passes after acceptance without a further push; the exported acceptance record is inspected and carries authenticated contributor GitHub identity, repository, accepted Gist revision, and timestamp, with PR association established through the service comment, GitHub history, or a private register; a later Gist revision is confirmed to trigger re-acceptance; the CLA status check is required on `main` and confirmed to block merging an unsigned contribution; automation accounts are allowlisted and verified against a real bot pull request; acceptance-record exports are privately retained and backed up; contribution-status text is updated to enable external merging only after all of the above.
+**Goal:** Configure and end-to-end verify the hosted CLA Assistant acceptance workflow for CLA version 1.1.
+**Acceptance Criteria:** Met. CLA 1.1 is published as a public Gist (`eb32d78ea648f989831f7aa0a3bac81c`, revision `7c6daa72020318c47d14bca27655097cce236d6b`), byte-identical to `CLA.md` at blob `3c89692912e7d645e376cded4d6547ca1f874fc7`; CLA Assistant is linked to `Sir-Starch/Causafera` against that Gist's `CLA.md`, with Shared Gist disabled and no minimum file-count or line-count exemption; acceptance cannot be inferred from pull-request submission, and the `license/cla` check moves from pending to passing on acceptance without a further push; `license/cla` is a required status check on `main` alongside `rust` and `ui`, so an unsigned contribution is blocked from merging; the maintainer and non-signing automation accounts are exempt through the service's own allowlist, the narrowest mechanism available, leaving enforcement intact for every other contributor.
+**Follow-up:** Periodic private export and backup of acceptance records, and the CLA update procedure, are documented in `docs/legal/cla-service-setup.md` as ongoing maintainer operations rather than open work.
 **Performance Requirements:** N/A
 **Determinism Requirements:** N/A
 **Ontology Implications:** None

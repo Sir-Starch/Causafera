@@ -2,9 +2,9 @@
 
 Describe the bounded change and why it is needed.
 
-> CLA Assistant is configured but the acceptance workflow is not yet verified end to end, so
-> external contributions cannot be merged. Until then, external pull requests may be prepared and
-> discussed but will not be merged. See [CONTRIBUTING.md](../CONTRIBUTING.md) and
+> External contributions are merged once the CLA is accepted, the required checks pass, and the
+> maintainer approves. Opening this pull request does not by itself accept the CLA — the
+> `license/cla` check will prompt you. See [CONTRIBUTING.md](../CONTRIBUTING.md) and
 > [GOVERNANCE.md](../GOVERNANCE.md).
 
 ## Evidence

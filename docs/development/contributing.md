@@ -72,7 +72,7 @@ Open an issue for discussion before major architectural changes.
 
 Functional software material is licensed under **AGPL-3.0-only**. Prose and non-functional explanatory documentation are licensed under **CC BY-SA 4.0**.
 
-> **Current contribution status: configured, not yet verified.** CLA Assistant is configured and linked to this repository against the published CLA Gist, but the acceptance workflow has not been verified end to end and the CLA check is not yet required on `main`. Until it is, external pull requests may be prepared and discussed but cannot be merged. Issues, discussion, and feedback are unaffected. What is already done and what remains are recorded in [`docs/legal/cla-service-setup.md`](/docs/legal/cla-service-setup.md) and as `TODO-LEGAL-001` in [`docs/development/todo-backlog.md`](/docs/development/todo-backlog.md).
+> **CLA acceptance is live.** External contributions may be merged once the contributor has accepted the CLA, the required checks pass, and the maintainer approves the change. `license/cla` is a required status check on `main`, so an unsigned contribution cannot be merged. Opening a pull request does not by itself accept the CLA. How the workflow is wired is recorded in [`docs/legal/cla-service-setup.md`](/docs/legal/cla-service-setup.md).
 
 Before a contribution can be accepted, the contributor must separately accept the [Contributor License Agreement (CLA)](/CLA.md) through the designated CLA service. Opening a pull request does not by itself constitute acceptance. The acceptance record identifies the authenticated GitHub identity, the repository, the exact CLA revision accepted, and the timestamp; a materially changed CLA is published as a new revision and requires a new acceptance.
 

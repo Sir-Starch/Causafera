@@ -363,10 +363,9 @@ architectural requirements, validation commands, the policy on AI-assisted contr
 Contributor License Agreement requirements.
 
 > [!NOTE]
-> CLA Assistant is configured and linked to this repository, but the acceptance workflow is not yet
-> verified end to end and the CLA check is not yet required on `main`. Until it is, external pull
-> requests may be prepared and discussed but cannot be merged. Issues and evidence-backed design
-> discussion are unaffected.
+> External contributions may be merged once the contributor has accepted the
+> [CLA](CLA.md), the required checks pass, and the maintainer approves the change. `license/cla` is
+> a required status check on `main`; opening a pull request does not by itself accept the CLA.
 
 | Resource | Purpose |
 | --- | --- |
