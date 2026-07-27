@@ -340,4 +340,4 @@ No domain outside geography and mana is touched.
 - Wave 2 — documentation: `CHANGELOG.md`, `docs/development/todo-backlog.md` (`TODO-GEO-005`
   completed, `TODO-GEO-006` opened), `docs/ontology/domain-coverage-matrix.md`,
   `docs/ui/map-lenses.md`, `docs/ui/observer-projection-gaps.md`,
-  `apps/observer/src/map/lenses.ts` (comment only), and `PLANS.md`.
+  `apps/observer/src/map/lenses.ts` (comment only), and `PLANS.md`. Checkpoint `ac8e767`.
