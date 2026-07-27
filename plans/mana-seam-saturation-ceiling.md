@@ -23,8 +23,11 @@ The TODO's own Evidence entry argued a plain clamp is not the fix, reasoning tha
 excess would destroy mana the giving cell already parted with and reopen the conservation defect
 `TODO-MANA-002` closed, and that returning it to whichever giver fed a saturated cell needs an
 ordering-independent rule when several givers share one receiver — a corner or edge cell of a chunk
-can receive from as many as six distinct neighbouring chunks at once, since the 18-neighbour stencil's
-edge offsets touch two axes at a time. That framing does not hold up:
+can receive from more than one distinct neighbouring chunk at once, since the 18-neighbour stencil's
+edge offsets touch two axes at a time. (The stencil's geometry permits as many as six such directions
+per cell — face_x/y/z and edge_xy/xz/yz — though whether that many are ever simultaneously active
+depends on `active_chunk_shape`, which today stacks in at most two axes; the point below does not
+depend on the count.) That framing does not hold up:
 
 - **The interior path does not refund givers when its own clamp engages.** `diffuse_cell` subtracts
   `outgoing` unconditionally and adds `incoming` unconditionally, then clamps the sum once. If that
@@ -123,6 +126,10 @@ not a new primitive, not a new domain enum.
   Scope).
 - Changing the interior `diffuse_cell` clamp's own truncation behaviour when it engages under
   saturation — this plan makes the seam path match it, not the reverse.
+- Bounding `ManaFieldSet::propose_experiment_recipe_mana_source`, which still saturates at
+  `i64::MAX` rather than `maximum_intensity`. It is a separate root-event source with its own
+  per-record maximum and recipe-wide budget, not the diffusion/seam-delivery path this TODO's
+  Evidence measured; left untouched deliberately, not by oversight.
 
 ## Implementation stages
 
@@ -268,9 +275,20 @@ None beyond mana.
   standard seeds and both gate configurations (default and open) at the production `chunk_extent` of
   3; only compiler-log lines and expected run-to-run timing noise differed. Worktree removed after
   comparison.
-- Wave 4 (documentation), checkpoint pending: `docs/world/mana-topology.md`,
+- Wave 4 (documentation), checkpoint `2a15c8d`: `docs/world/mana-topology.md`,
   `docs/ontology/unresolved-assumptions.md`, `docs/development/todo-backlog.md`,
   `docs/ontology/domain-coverage-matrix.md`, `CHANGELOG.md`, `PLANS.md`. `docs/roadmap/roadmap.md` was
   checked and deliberately left unchanged: it does not mention any individual `TODO-MANA-*` entry
   (002/004/005/007 included), tracking only larger vertical slices, so adding one here would be an
   inconsistent one-off rather than following existing practice.
+- Wave 5 (Advisor review fixes), checkpoint pending: two documentation-accuracy corrections from a
+  post-completion Advisor pass. The "up to six distinct neighbouring chunks" claim in
+  `mana-topology.md` and `CHANGELOG.md` stated a reachable scenario when it is really a property of
+  the stencil's geometry (six chunk-delta directions with no offset touching all three axes); current
+  `active_chunk_shape` values (`Line`, `Area`) stack in at most two axes, so six simultaneous givers is
+  unmeasured and likely unreachable today. Softened to "several"/"more than one" and added a
+  parenthetical in this plan's Context noting the count does not affect the order-independence
+  argument. Also added an explicit Non-goals entry and a `todo-backlog.md` Resolution clause stating
+  `ManaFieldSet::propose_experiment_recipe_mana_source` deliberately still saturates at `i64::MAX`
+  rather than `maximum_intensity` — a separate root-event source path, out of this TODO's scope, not
+  an oversight.

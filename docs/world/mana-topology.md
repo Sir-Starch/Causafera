@@ -115,10 +115,11 @@ that section of the same document. Its provenance gap is closed: a share crossin
 ancestry of the value that crossed, and the proposal boundary refuses any cell change it cannot
 attribute. Its saturation gap is also closed: a seam delivery is clamped to `0..=maximum_intensity`
 after every delivery, the same bound a cell fed from inside its own chunk already had, so a seam cell
-can no longer exceed the ceiling (`TODO-MANA-006`). Because addition is commutative, clamping the
-running total after each of several deliveries to one cell — which happens at a chunk corner or edge,
-where up to six distinct neighbouring chunks can feed the same cell — yields the same result
-regardless of delivery order, so no giver is singled out for refusal.
+can no longer exceed the ceiling (`TODO-MANA-006`). A chunk corner or edge cell can receive from
+several distinct neighbouring chunks in one tick, not only one — the stencil's edge offsets reach two
+axes at once, so the delivery count a cell can receive is a property of the stencil rather than
+necessarily one. Because addition is commutative, clamping the running total after each delivery to
+one cell yields the same result regardless of delivery order, so no giver is singled out for refusal.
 
 ## Related documents
 
