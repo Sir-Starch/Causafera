@@ -1067,13 +1067,41 @@ slices.
 **Priority:** High
 **Dependencies:** TODO-ARCH-001, TODO-DEPTH-001
 **Goal:** Benchmark harness
-**Acceptance Criteria:** Can measure ticks/second, memory, active sets
-**Performance Requirements:** Minimal measurement overhead
-**Determinism Requirements:** Benchmarks reproducible
+**Acceptance Criteria:** A checked-in harness reports mean/median/stddev over `N=20` repeated,
+deterministically round-robin-ordered runs (not single-shot timing) and per-case RSS isolated across
+process boundaries (not shared-process `/proc/self/status` reads across sequential cases); it
+reproduces, without the throwaway instrumentation used to find them, the two concrete findings
+recorded in `plans/performance-baseline-and-digest-cost.md`: (1) `RuntimeConfig::validate()` accepts
+`actor_count`/`sensor_count`/surface-contact combinations that fail at the first tick against
+`causafera-cognition::MAX_SCENE_CUES` (exact boundary not yet formula-derived — Wave 1 locates it
+exhaustively, Wave 2 mirrors the actual perception code rather than an approximate formula), and (2)
+`RuntimeState::snapshot`'s unconditional full-rescan `history_digest` dominates tick cost (46-87% of
+tick time across the plan's measured run-length sweep) and grows unboundedly with run length by
+design (the causal trace store, per INV-014); `physical_state_digest` is not the dominant share at any
+measured point (2-23% in the same sweep) but has its own real, unbounded, run-length-dependent growth
+term — the unpruned `thermal_receipts`/`thermal_conservation_receipts` maps (one new entry per tick, no
+eviction found in the crate) — that also compounds over a long enough run even though it is currently
+the smaller cost. Only `history_digest`'s growth is fixed by this plan's Wave 3.
+`physical_state_digest`'s growth is written in the *middle* of its digest-write sequence, with further
+arbitrarily-mutable state written after it, so it cannot use the same incremental technique without
+reordering the write sequence (which would itself change the digest's output); it is left as a named,
+explicitly open follow-up requiring its own design (see the plan's Non-goals). See that plan for the
+measured evidence, proposed fix waves, and non-goals.
+**Performance Requirements:** Minimal measurement overhead; the harness itself must not distort the
+measurements it takes (see the plan's finding on the shipped `benchmark.rs` harness's own RSS-sharing
+defect).
+**Determinism Requirements:** Benchmarks reproducible (INV-018); every reported number must trace to
+a checked-in, re-runnable tool, not a deleted scratch probe. `history_digest`'s incremental rewrite
+must produce bit-identical output to the current implementation, verified by a differential oracle
+test, with no digest schema version change.
 **Ontology Implications:** N/A
 **Observer Implications:** Exposes performance metrics
 **Explanation Implications:** N/A
-**Out of Scope:** Full performance suite
+**Out of Scope:** Full performance suite; reference-hardware runs; CI regression gating (capture-only
+is in scope, per the plan's Wave 4); SoA conversion, scheduler parallelization, CUDA work, or any
+incremental treatment of `physical_state_digest` (all of it, not only its current-state-bounded terms
+— its unbounded thermal-receipt terms are a real, measured gap this TODO's plan identifies but does
+not fix, pending a separate design decision; see the plan's Non-goals and Decision log)
 
 ## TODO-PERSIST-001: Snapshot Format
 **Status:** Completed

@@ -60,6 +60,28 @@ material loop and observer projection under its stated envelope.
 
 Runs, checkpoints, field dimensions, pattern batches, resolution signals, and research observations are capped. Provenance grows with accepted state transitions, so substantially larger workloads require TODO-PERF-001 benchmarks and later persistence/compaction work.
 
+`plans/performance-baseline-and-digest-cost.md` (Draft) measured the concrete mechanism behind this
+caveat: `RuntimeState::snapshot`, called on every tick and every observer poll, recomputes two digests
+from scratch every time rather than incrementally. `history_digest` re-scans the *entire* causal trace
+store from tick 0; `physical_state_digest` re-scans, among other state, the unpruned `thermal_receipts`/
+`thermal_conservation_receipts` maps, which also gain one new entry every tick with no eviction found
+anywhere in the runtime. At a fixed, unchanging small workload, this made mean per-tick wall time grow
+6.8x over 512 ticks, driven mainly by trace-store accumulation (`history_digest` alone rose from 9.7 ms
+to 125.7 ms across the same span) with a smaller contribution from `physical_state_digest`'s own
+unbounded thermal-receipt growth (4.8 ms to 7.7 ms) — a long-run experiment's cost is not currently
+constant per tick, it grows over the run's own length, and by more than one mechanism.
+
+The plan proposes making only `history_digest`'s trace-event scan incremental, without a schema
+change: that input is written first in the digest sequence, with nothing but cheap bounded content
+after it, so a running accumulator can be resumed and a small bounded tail appended each tick.
+`physical_state_digest`'s thermal-receipt growth is measured and real but is **not** fixed by that
+plan: the unbounded maps sit in the *middle* of its write sequence, with further arbitrarily-mutable
+current-tick state written after them, so the same technique does not apply without reordering the
+write sequence — which would itself change the digest's output and require a deliberate schema
+migration this plan does not attempt. It is recorded as an open follow-up (retention/compaction of
+thermal receipts, a reordered-and-versioned digest, or a composable digest primitive) rather than
+closed by that plan.
+
 This bounded path includes a causally bootstrapped promoted actor, physical perception, subjective
 scene construction, and later action. It does not establish a broad resident population model,
 language, economy, city growth, historical synthesis adapters, or social emergence. Those domain

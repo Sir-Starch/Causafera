@@ -94,6 +94,11 @@ Progress
 
 ## Draft Plans
 
+- [`plans/performance-baseline-and-digest-cost.md`](plans/performance-baseline-and-digest-cost.md) —
+  Draft evidence-based performance investigation for `TODO-PERF-001`: roots two concrete findings
+  (an unrunnable `actor_count`/`sensor_count` region admitted by config validation, and an unbounded
+  per-tick full-rescan digest cost) in measured local evidence, and proposes narrowly scoped fixes;
+  not yet accepted or implemented.
 - [`plans/experiment-recipe-mana-source.md`](plans/experiment-recipe-mana-source.md) — Draft
   bounded production-path experiment-recipe mana source slice; not active and not an operator API.
 - [`plans/observer-field-raster-map.md`](plans/observer-field-raster-map.md) — Draft bounded

@@ -101,6 +101,25 @@ These are environment-specific baselines; no absolute latency claim is made with
 hardware. The benchmark harness, repeated measurements, and statistical reporting remain
 `TODO-PERF-001`.
 
+## Methodology Gaps Found by the Performance Baseline Investigation
+
+`plans/performance-baseline-and-digest-cost.md` (Draft) swept the runtime's validated configuration
+space and audited every existing benchmark/diagnostic tool against the requirements above. None of the
+shipped tools (`benchmark.rs`, `material_surface_loop_benchmark`, `observer_overhead`, `extent_bench.rs`,
+`mana_gate_calibration.rs`) take repeated measurements — each reports a single timed run, not the
+mean/median/stddev this document already requires. This is not hypothetical: a single local run of
+`material_surface_loop_benchmark` produced a negative observer-overhead delta, which is only possible
+as single-run measurement noise. `MaterialSurfaceLoopBenchmarkMeasurement`'s `peak_rss_kib`/
+`steady_rss_kib` also read `/proc/self/status` for the whole process while `run_material_surface_loop_benchmark`
+runs both measured modes sequentially in that same process, so the second mode's reported peak RSS
+includes the first mode's already-torn-down `Runtime` — confirmed locally, where the second mode's
+peak RSS was measured strictly greater than the first's by construction, not by actual difference in
+memory use. The CI job named "Benchmarks and Long Runs" (`.github/workflows/benchmarks.yml`) runs only
+`cargo test --release -- --ignored`; it does not capture, store, or compare any benchmark number, so
+the "stored in version control, compared across commits, flagged on regression" requirement above is
+currently unmet by any CI job despite the job's name. See that plan's Implementation stages for the
+proposed corrected harness (Wave 1) and CI capture (Wave 4, capture only — no regression gate yet).
+
 ## Reference Hardware
 
 - Linux;
