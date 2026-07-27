@@ -101,8 +101,9 @@ export const tauriChannel: ByteChannel = {
               value instanceof Uint8Array ? Array.from(value) : value,
             ]),
           );
-    const response = await invoke<number[] | Uint8Array>(command, serialized);
-    return response instanceof Uint8Array ? response : Uint8Array.from(response);
+    const response = await invoke<number[] | Uint8Array | ArrayBuffer>(command, serialized);
+    if (response instanceof ArrayBuffer) return new Uint8Array(response);
+    return response instanceof Uint8Array ? response : Uint8Array.from(response as number[]);
   },
 };
 

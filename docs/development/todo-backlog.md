@@ -745,6 +745,21 @@ the first area-shaped runtime; the fix leaves every line-shaped chart with the i
 recorded with. `terrain_cells` derives elevation from chunk-local coordinates only, which is recorded
 separately as `TODO-GEO-005`.
 
+## TODO-OBS-002: Batched Per-Frame Field Raster Query
+**Status:** Pending
+**Phase:** Detailed Development — Observer Surface
+**Priority:** Medium
+**Dependencies:** TODO-OBS-001
+**Goal:** Replace the nine-to-eighteen separate `FieldRaster` calls a world frame issues today (one per active chunk per field) with a single query carrying a list of chunks, so a frame pays the bridge's per-call overhead once instead of once per chunk
+**Acceptance Criteria:** One additive query variant answering a bounded list of `(chunk, field, detailLevel)` requests in one response, still bounded to the active chunk set (never a chart dump); `refreshRasters` in `apps/observer/src/observer/session.ts` issues one call per frame; every existing fixture, replay capture and digest is unchanged, since this only changes how already-computed per-chunk rasters are transported, not what they contain
+**Performance Requirements:** Before-and-after wall-clock span of a full frame, measured with the corrected Instrument log (see below), not a byte-count estimate
+**Determinism Requirements:** Read-only; no runtime state or digest is touched
+**Ontology Implications:** None; this is a transport shape, not a domain contract
+**Observer Implications:** One additive query kind; existing per-chunk `FieldRaster` stays for callers that want a single chunk
+**Explanation Implications:** None
+**Out of Scope:** Raising `chunk_extent`, joined charts, a landcover lens
+**Evidence:** The Instrument log folded concurrent per-frame `observer_field_raster` exchanges by summing their individual `durationMs`, and each individual duration already included the wait for every call ahead of it on the session's Tauri mutex — the fold therefore reported a batch's cost roughly as the square of its size rather than its real span (fixed in `apps/observer/src/observer/session.ts`, `recordExchange`). Re-measured against a real desktop session (seed 0, debug build) with the fold bypassed: consecutive per-call completions land 3-5 ms apart regardless of payload — a 113-byte mana raster and a ~3.4 KB terrain raster cost about the same marginal time. Fixed per-call overhead (mutex acquisition, command dispatch) dominates in this range; payload size barely registers. Switching every observer command's response from a `Vec<u8>` return (serialised by Tauri as a JSON array of numbers, four times the wire bytes for the elevation raster) to `tauri::ipc::Response` (raw bytes, confirmed to arrive as an `ArrayBuffer` on the JS side) did not move this measurement at these payload sizes, which is consistent with fixed overhead rather than serialisation cost dominating today — but it removes a real inefficiency that will matter once payloads grow, including under this TODO's own batched response. Batching removes that fixed overhead (n-1) times per frame; it does not remove per-byte cost, which the same measurement shows is not the bottleneck at current sizes
+
 ## TODO-GEO-004: Coherent Surface Material Regions
 **Status:** Pending
 **Phase:** Detailed Development — Geography
