@@ -88,6 +88,7 @@ Progress
 - [`plans/terrain-carrier-participation.md`](plans/terrain-carrier-participation.md) — accepted and implemented; the terrain carrier reaches the tick loop as a standing spatial structure, so the world seed varies the simulation (`TODO-RUNTIME-002`).
 - [`plans/observer-locale-coverage.md`](plans/observer-locale-coverage.md) — accepted and implemented; the observer presents itself in five locales across UI chrome, locale-keyed metadata and the authoritative Explanation renderer, with INV-007 covered across the whole set (`TODO-UI-006`).
 - [`plans/terrain-chunk-boundary-continuity.md`](plans/terrain-chunk-boundary-continuity.md) — accepted and implemented; terrain elevation, roughness and material are generated from a cell's position in its chart rather than its chunk, so adjacent chunks meet at their shared edge (`TODO-GEO-005`).
+- [`plans/terrain-structure-cross-chunk-neighbours.md`](plans/terrain-structure-cross-chunk-neighbours.md) — accepted and implemented; the standing terrain carrier's mana-facing structure magnitude reads real neighbouring chunks' terrain across a chunk boundary instead of truncating at it (`TODO-GEO-006`).
 
 ## Draft Plans
 

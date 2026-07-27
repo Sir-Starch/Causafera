@@ -12,7 +12,7 @@
 //! cargo run --release -p causafera-observer --example seed_variation
 //! ```
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::time::Instant;
 
 use causafera_runtime::{
@@ -59,7 +59,7 @@ const TRAJECTORY_TICKS: [u64; 6] = [1, 2, 4, 8, 48, TICKS];
 fn terrain(seed: u64) -> Terrain {
     let chunk = ChartChunkCoord::new(SpatialChartId::new(1), ChunkCoord::new(0, 0, 0));
     let chunk_terrain = deterministic_terrain_chunk(seed, chunk, TraceId::new(0));
-    let adapter = TerrainCarrierAdapter::new(chunk, chunk_terrain.clone(), 3);
+    let adapter = TerrainCarrierAdapter::new(chunk, chunk_terrain.clone(), 3, &BTreeMap::new());
     Terrain {
         distinct_patterns: (0..chunk_terrain.elevations().len())
             .filter_map(|index| adapter.source_cell(index as u32))
