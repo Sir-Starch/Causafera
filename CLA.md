@@ -2,17 +2,13 @@
 
 **Version 1.1** — Effective Date: 2026-07-27
 
-> **Status: acceptance workflow not yet enabled.** This is the text intended to become the active
-> agreement, unchanged, once the CLA acceptance service is configured and tested. Until then no
-> acceptance can be recorded, and no external Contribution can be merged.
-
 ## Preamble
 
-Causafera is a long-term research project. Its integrity depends on clear provenance of all intellectual property. This Contributor License Agreement (CLA) establishes the legal framework under which the project can accept and use contributions while respecting contributor rights.
+Causafera is a long-term research project. Its integrity depends on clear provenance of all intellectual property. This Contributor License Agreement (CLA) establishes the legal framework under which the Project Maintainer can accept and use contributions while respecting contributor rights.
 
-**You retain copyright on your contributions.** This CLA does not transfer ownership. It grants the project the rights necessary to operate, distribute, and defend the codebase.
+**You retain copyright on your contributions.** This CLA does not transfer ownership. It grants the Project Maintainer the rights necessary to operate, distribute, and defend the codebase.
 
-Causafera is an author-led project. This CLA governs licensing only; it does not govern direction. See [GOVERNANCE.md](GOVERNANCE.md) and section 13 below.
+Causafera is an author-led project. This CLA governs licensing only; it does not govern direction. See [GOVERNANCE.md](https://github.com/Sir-Starch/Causafera/blob/main/GOVERNANCE.md) and section 13 below.
 
 ## 1. Definitions
 
@@ -21,7 +17,8 @@ Causafera is an author-led project. This CLA governs licensing only; it does not
 
   Consequently:
 
-  - **Renaming the GitHub account transfers nothing.** Rights granted under this CLA follow the person identified by user ID `281476371`, not the login string.
+  - **Renaming the GitHub account transfers nothing.** Rights granted under this CLA follow the person identified by user ID `281476371` on the Effective Date, not the login string.
+  - **Transferring or losing control of that account transfers nothing.** The account is an evidentiary anchor to a specific date, not a token that carries rights. Whoever later controls user ID `281476371` by sale, transfer, or compromise does not thereby become the Project Maintainer.
   - **Moving, renaming, forking, or transferring the repository transfers nothing.** Rights granted under this CLA are not attached to a repository URL or to whoever controls it.
   - **A different person later holding the `Sir-Starch` login receives no rights** under this CLA. A released login is a name, not an identity.
   - **Transfer of CLA-granted rights requires a separate written assignment** signed by the Project Maintainer. It cannot occur by account change, repository transfer, or organization membership.
@@ -31,7 +28,7 @@ Causafera is an author-led project. This CLA governs licensing only; it does not
 
   1. a pull request against the canonical repository;
   2. a commit or patch supplied for inclusion;
-  3. another channel the Project has explicitly designated for accepting contributions.
+  3. another channel the Project Maintainer has explicitly designated for accepting contributions.
 
   Bug reports, feature requests, ideas, design discussions, review comments, and general feedback are **not** Contributions, however detailed or useful they are, and no licence is granted over them under this CLA. They become Contributions only if You explicitly submit specific material for inclusion under this CLA through one of the channels above. Non-code material — documentation, assets, data — is a Contribution when it is intentionally submitted for inclusion in the same way.
 - **"Copyright"** means all rights protecting works of authorship, including copyright, moral rights, and similar rights worldwide.
@@ -44,7 +41,9 @@ Subject to the terms and conditions of this CLA, You hereby grant to the Project
 - reproduce, prepare derivative works of, publicly display, publicly perform, sublicense, and distribute Your Contributions and such derivative works; and
 - incorporate Your Contributions into the Project or any successor work.
 
-This license applies to all present and future Contributions You submit.
+This license applies to Contributions submitted through the authenticated identity covered by Your acceptance of this CLA, until that acceptance is terminated under section 8 or the Project Maintainer requires acceptance of a later CLA revision for new Contributions.
+
+Neither termination nor a later revision affects the licenses already granted for Contributions submitted while this acceptance was in effect. Those grants are perpetual and irrevocable as stated above. What ends is the forward coverage of new Contributions, which then requires a fresh acceptance.
 
 ## 3. Grant of Patent License
 
@@ -97,9 +96,9 @@ You may terminate this CLA by providing written notice to the Project Maintainer
 
 ## 9. Agreement Method
 
-Submission of a pull request or other material does not by itself constitute acceptance of this CLA. Before the Project accepts Your first Contribution, You must separately accept the then-current CLA through the Project's designated CLA service or other electronic-signature process.
+Submission of a pull request or other material does not by itself constitute acceptance of this CLA. Before the Project Maintainer accepts Your first Contribution, You must separately accept the then-current CLA through the designated CLA service or other electronic-signature process.
 
-The Project will retain an acceptance record containing at least:
+The Project Maintainer will retain an acceptance record containing at least:
 
 1. **Contributor identity** — Your authenticated GitHub identity, including its stable numeric user ID where the service exports one.
 2. **Repository identity** — the repository the acceptance was given for.
@@ -110,7 +109,7 @@ Association between an acceptance and a particular pull request is established s
 
 The acceptance applies to future Contributions submitted through that identity, at the accepted CLA revision, unless the acceptance record states a narrower scope. Acceptance records are retained privately by the Project Maintainer; they are not published in this repository.
 
-This record is evidence of acceptance to the extent the CLA service's authentication and logging can establish it, and the Project does not claim it proves more than that.
+This record is evidence of acceptance to the extent the CLA service's authentication and logging can establish it, and no claim is made that it proves more than that.
 
 For organizations, the individual submitting the Contribution must be authorized to bind the organization to this CLA.
 
@@ -124,7 +123,7 @@ This CLA constitutes the entire agreement between You and the Project Maintainer
 
 ## 12. Modifications
 
-The Project may update this CLA from time to time. Material changes require a new, separately recorded acceptance before Contributions submitted after the change may be accepted. Continued submission alone does not constitute acceptance of an updated CLA.
+The Project Maintainer may publish an updated version of this CLA from time to time. Material changes require a new, separately recorded acceptance before Contributions submitted after the change may be accepted. Continued submission alone does not constitute acceptance of an updated CLA.
 
 Each published version is identified by the version number and effective date at the top of this document, and is published to the CLA service as a specific document revision. An acceptance record is always bound to the revision accepted; a later version never applies retroactively to Contributions already accepted under an earlier one. A material change is published as a new revision and requires a new acceptance before further Contributions can be merged.
 
@@ -135,7 +134,7 @@ Each published version is identified by the version number and effective date at
 
 ## 13. No Governance Rights
 
-Accepting this CLA and having a Contribution accepted does not by itself grant You governance or decision-making rights in the Project, and confers no influence over its direction proportional to the number, size, or significance of Your Contributions. Any authority over part of the Project exists only where the Project Maintainer has explicitly delegated it, and such delegation is scoped, revocable, and does not arise from contributing. Causafera is an author-led project; direction, scope, and acceptance criteria are decided by the Project Maintainer as described in [GOVERNANCE.md](GOVERNANCE.md).
+Accepting this CLA and having a Contribution accepted does not by itself grant You governance or decision-making rights in the Project, and confers no influence over its direction proportional to the number, size, or significance of Your Contributions. Any authority over part of the Project exists only where the Project Maintainer has explicitly delegated it, and such delegation is scoped, revocable, and does not arise from contributing. Causafera is an author-led project; direction, scope, and acceptance criteria are decided by the Project Maintainer as described in [GOVERNANCE.md](https://github.com/Sir-Starch/Causafera/blob/main/GOVERNANCE.md).
 
 This CLA is a licensing instrument. It does not create a partnership, joint venture, employment relationship, or entitlement to compensation, and it does not obligate the Project Maintainer to accept, retain, or continue to maintain any Contribution.
 

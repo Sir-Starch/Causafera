@@ -6,12 +6,15 @@ specific about decision-making authority, this document governs.
 
 ## Maintainer authority
 
-The project is maintained by the person holding the GitHub account with stable user ID
-`281476371`, currently using the login [`Sir-Starch`](https://github.com/Sir-Starch). Identity is
-anchored to that numeric account ID rather than to the login string or to whoever controls the
-repository at a given moment: a username change does not transfer authority, a released login gives
-a later holder nothing, and moving or forking the repository does not carry governance with it. The
-same anchoring governs licensing rights under [CLA.md](CLA.md).
+The project is maintained by the natural person who controlled GitHub user ID `281476371` on
+**27 July 2026**, then using the login [`Sir-Starch`](https://github.com/Sir-Starch). That person
+remains the maintainer under any later username.
+
+The account is an evidentiary anchor to a specific date, not a transferable token. Authority follows
+the person, not the account: a username change transfers nothing, a later holder of a released
+`Sir-Starch` login is not the maintainer, someone who acquires or seizes control of the account does
+not thereby acquire authority, and moving or forking the repository does not carry governance with
+it. [CLA.md](CLA.md) anchors licensing rights to the same person on the same date.
 
 The maintainer holds final authority over the canonical repository, currently at
 `https://github.com/Sir-Starch/Causafera`, including:

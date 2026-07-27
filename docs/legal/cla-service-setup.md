@@ -8,9 +8,17 @@ Every step happens **outside this repository**, in a GitHub Gist, in GitHub sett
 hosted [CLA Assistant](https://cla-assistant.io/) service. Nothing here has been performed. Do not
 update the contribution-status text in [`CONTRIBUTING.md`](../../CONTRIBUTING.md),
 [`README.md`](../../README.md), [`docs/development/contributing.md`](../development/contributing.md),
-[`CLA.md`](../../CLA.md), or
-[`.github/pull_request_template.md`](../../.github/pull_request_template.md) until the workflow has
-been tested end to end.
+or [`.github/pull_request_template.md`](../../.github/pull_request_template.md) until the workflow
+has been tested end to end.
+
+> **[`CLA.md`](../../CLA.md) deliberately carries no operational status.** It is the text people
+> sign, and it must read identically before and after the service is configured. Putting a
+> "not yet enabled" banner in it would mean editing it the moment the service goes live, breaking
+> the Gist's byte-identity and requiring everyone to re-accept a CLA they had just accepted. Status
+> belongs in the four files listed above; the agreement text stays stable.
+>
+> For the same reason, links inside `CLA.md` are absolute URLs. Relative links resolve against the
+> Gist, not the repository, and would be dead for the person reading the agreement.
 
 Related: [`CLA.md`](../../CLA.md), [`GOVERNANCE.md`](../../GOVERNANCE.md), and `TODO-LEGAL-001` in
 [`docs/development/todo-backlog.md`](../development/todo-backlog.md).
@@ -112,7 +120,8 @@ After — and only after — steps 1–6 are complete and verified:
 
 - [ ] Replace the "preparing" notice in [`CONTRIBUTING.md`](../../CONTRIBUTING.md) with the
       operational status.
-- [ ] Remove the "acceptance workflow not yet enabled" status note from [`CLA.md`](../../CLA.md).
+- [ ] Leave [`CLA.md`](../../CLA.md) untouched — it carries no status by design, so the Gist stays
+      byte-identical and nobody is asked to re-accept.
 - [ ] Update the contribution paragraph in [`README.md`](../../README.md).
 - [ ] Update the status note in [`docs/development/contributing.md`](../development/contributing.md).
 - [ ] Update the summary line in [`.github/pull_request_template.md`](../../.github/pull_request_template.md).
