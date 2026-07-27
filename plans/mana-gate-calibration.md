@@ -59,8 +59,9 @@ participate are all untouched, per the TODO's Out of Scope.
 
 - `docs/development/todo-backlog.md` — `TODO-MANA-007`, `TODO-MANA-004` (evidence tool origin),
   `TODO-MANA-005` (provenance boundary the gate's causes still route through, untouched here).
-- `docs/rfc/RFC-MANA-001.md` — the field model's canonical spec; lists empirical parameter
-  calibration as deferred work.
+- `docs/rfc/RFC-MANA-001.md` — the field model's canonical spec; its deferred-work list is narrowed
+  to note the gate is now calibrated against a populated field, while the response channel weights
+  remain deferred (untouched, per Non-goals).
 - `plans/local-mana-material-surface-coupling.md` — the local gate/hysteresis architecture this plan
   recalibrates, including the four-case boundary semantics `ManaEffectsSystem::execute` implements.
 - `apps/observer/src-tauri/examples/extent_decision.rs` — the `TODO-MANA-004` tool whose field-wide
@@ -92,6 +93,21 @@ only the two constants it reads move. The mechanism justifying the new values:
    five-field `Behaviour` tuple (`gate_crossings`, `gate_transitions`, `surface_conditions`,
    `actions_committed`, `population`) that `extent_decision.rs` uses, so the claim is checked against
    what the original evidence measured, not only the narrower proxy.
+
+Point 2 is only approximately true. `ManaEffectsSystem::execute` does not write `state.mana`
+directly, but a gate transition changes `surface.condition`, which can reach a later actor's
+signal/scene and action, and a different action can change which cells get contacted and sampled —
+a loop closing back into the field the trace was recorded from. A direct feedback check (real
+production runs at both the pre-calibration and chosen constants, same seed, same extent) measures
+this: `mana_total` shifts a few percent at the finer lattices (extent 3: 73 470 → 78 054 on seed 7,
+a 6.2% shift) and becomes negligible at the coarser ones (extent 12: 7 886 000 → 7 886 009, 0.0001%),
+while `actions_committed` is unmoved (245 at every seed and extent tested, both constants). The
+recorded-trace replay (points 3 sweep, neighbourhood check, hysteresis-axis check) is therefore an
+approximate screening tool for narrowing the search space, not an exact measurement, and `record()`
+pins a fixed reference config (the pre-calibration constants) so its output stays reproducible
+regardless of what `RuntimeConfig::new`'s current default is. The end-to-end check in point 4 uses
+fully independent real production runs per candidate and is not subject to this artifact; it is the
+authoritative evidence for the accepted operating point.
 
 ## Primitive vs emergent review
 
@@ -130,6 +146,14 @@ at a pair (7, 5) that still discriminates on every metric, with a comment record
 **Wave 3 — documentation.**
 Update `docs/development/todo-backlog.md` (close `TODO-MANA-007`), `docs/ontology/domain-coverage-matrix.md`
 (Mana row), `CHANGELOG.md`, `PLANS.md`.
+
+**Wave 4 — feedback verification and stale-constant sync.**
+Added the feedback check to `mana_gate_calibration.rs` (real runs at both constants, same seed,
+comparing `mana_total` and `actions_committed`) to verify rather than assume the replay's decoupling
+claim; found it real but small (see Benchmark plan), reworded the plan's claims about the replay
+accordingly, and pinned `record()`'s reference config so it no longer implicitly depends on
+`RuntimeConfig::new`'s current default. Synced `extent_decision.rs`'s `THRESHOLD`/`HYSTERESIS`
+constants to the new production defaults and narrowed `RFC-MANA-001.md`'s deferred-work line.
 
 ## Verification
 
@@ -193,8 +217,10 @@ population the gate does not read. The one real failure is extent 12, where the 
 | **6144** | **1536** | **4** | **4** | **3** | **4** | **4** |
 | 8192 | 2048 | 1 | 1 | 4 | 4 | 5 |
 
-6144/1536 is the only point in the sweep that discriminates at all 5 candidate lattices
-simultaneously.
+6144/1536 is the only point in this sweep that discriminates at all 5 candidate lattices
+simultaneously. This sweep is the approximate screening tool described in Proposed architecture —
+it narrows the search space, and the end-to-end check further below re-verifies the chosen point
+against independent real production runs, which is the authoritative evidence.
 
 **Neighbourhood check** (is 6144 a plateau or a one-point spike?), hysteresis = t/4:
 
@@ -206,13 +232,14 @@ simultaneously.
 | 6400 | 4 | 5 | 4 | 5 | 4 |
 | 6656 | 5 | 3 | 4 | 4 | 4 |
 
-ext6, ext8 and ext12 hold at ≥3 across the whole 5632–6656 band — a genuine plateau, not a knife-edge.
-ext3 and ext4 are noisier in this band (1→2→4→4→5, not monotone): their means (2038–2165) sit far
-below this threshold range, so the sweep is scoring the tail of their distribution rather than its
-bulk. This is stated rather than hidden: the calibration is solid for ext6/8/12 and directionally
-correct but less mechanically-grounded for ext3/4 in this exact neighbourhood — which is why the
-end-to-end check below (using real production behaviour, not the tail-sensitive proxy) is the
-deciding evidence for ext3/4.
+ext6, ext8 and ext12 hold at ≥3 across the whole 5632–6656 band in this screen — a plateau, not a
+knife-edge. ext3 and ext4 are noisier in this band (1→2→4→4→5, not monotone): their means
+(2038–2165) sit far below this threshold range, so the screen is scoring the tail of their
+distribution rather than its bulk, and — per the feedback check below — this screen's recorded
+trace is itself only an approximation of what production would produce at each candidate. This is
+stated rather than hidden: the deciding evidence for whether 6144/1536 actually holds at every
+extent is the end-to-end check further below, using independent real production runs per candidate,
+not this screen.
 
 **Hysteresis axis** (is the fix "narrower hysteresis at 4096" or does the threshold itself have to
 move?):
@@ -262,6 +289,35 @@ and close — consistent with distinct = 4 there.
 The chosen constants never discriminate worse than the current ones on the exact metric the
 original `TODO-MANA-007` evidence used, and strictly better at extents 3, 4, 8 and 12.
 
+**Feedback check**: does the constant choice change `mana_total` or `actions_committed` at the same
+seed (real production runs, pre-calibration vs. chosen constants)?
+
+| extent | seed | mana_total (4096/2000) | mana_total (6144/1536) | actions_committed (both) |
+|---|---|---|---|---|
+| 3 | 7 | 73 470 | 78 054 | 245 |
+| 3 | 11 | 79 044 | 81 270 | 245 |
+| 3 | 23 | 93 591 | 97 666 | 245 |
+| 3 | 41 | 40 856 | 43 087 | 245 |
+| 3 | 59 | 57 613 | 59 930 | 245 |
+| 3 | 97 | 89 398 | 89 877 | 245 |
+| 12 | 7 | 7 886 000 | 7 886 009 | 245 |
+| 12 | 11 | 8 425 561 | 8 425 508 | 245 |
+| 12 | 23 | 8 728 655 | 8 728 598 | 245 |
+| 12 | 41 | 8 831 824 | 8 831 858 | 245 |
+| 12 | 59 | 8 526 746 | 8 526 762 | 245 |
+| 12 | 97 | 7 653 519 | 7 653 533 | 245 |
+
+The gate is not fully decoupled from the field it reads: a transition changes `surface.condition`,
+which can reach a later actor's action and change which cells get contacted and sampled. `mana_total`
+shifts up to ~6% at extent 3 and falls to ~0.0001% at extent 12; `actions_committed` is unmoved at
+245 in every case tested. This confirms the recorded-trace replay above (threshold sweep,
+neighbourhood check, hysteresis axis) is an approximate screen, not an exact measurement — `record()`
+pins a fixed reference config precisely because of this, so its output does not additionally depend
+on whichever constants happen to be compiled into `RuntimeConfig::new` at build time. It does not
+undermine the chosen operating point: the end-to-end check above measures the real, feedback-inclusive
+production behaviour directly, at both constants, and that is what the acceptance criterion is
+checked against.
+
 ## Determinism impact
 
 Changes every world by construction (a different gate threshold changes committed
@@ -310,6 +366,11 @@ None beyond mana/material-surface, which are already coupled per
 
 - `docs/development/todo-backlog.md` — `TODO-MANA-007` marked Completed.
 - `docs/ontology/domain-coverage-matrix.md` — Mana row.
+- `docs/rfc/RFC-MANA-001.md` — deferred-work line narrowed: gate calibration done, response-channel
+  calibration remains deferred.
+- `apps/observer/src-tauri/examples/extent_decision.rs` — `THRESHOLD`/`HYSTERESIS` constants synced
+  to the new production defaults, so its printed ratio column keeps comparing against what
+  `RuntimeConfig::new` actually uses.
 - `CHANGELOG.md`, `PLANS.md`.
 
 ## TODO changes
@@ -336,6 +397,12 @@ None beyond mana/material-surface, which are already coupled per
   hand-picked seed pair (7, 30) — chosen after the `TODO-GEO-005` fix specifically because it
   discriminated then — collapsed onto the same behaviour tuple under the recalibrated gate. Re-swept
   the same seed range under the new constants and re-pointed the test at (7, 5).
+- Did not assume the recorded-trace replay's decoupling claim; checked it directly with a feedback
+  test (real runs at both constants, same seed). It found a real but small effect (see Benchmark
+  plan), which changes the replay's epistemic status from "exact" to "approximate screen" and is why
+  the end-to-end check, not the replay, is cited as the accepting evidence throughout this plan.
+  `record()` was changed to pin a fixed reference config rather than inherit `RuntimeConfig::new`'s
+  current default, for reproducibility independent of this finding.
 
 ## Progress
 
@@ -351,3 +418,5 @@ None beyond mana/material-surface, which are already coupled per
   `cargo clippy --release -p causafera-runtime --all-targets -- -D warnings`.
 - Wave 3 (documentation), checkpoint `02401c0`: `docs/development/todo-backlog.md`,
   `docs/ontology/domain-coverage-matrix.md`, `CHANGELOG.md`, `PLANS.md`.
+- Checkpoint hashes recorded, checkpoint `833732b`.
+- Wave 4 (feedback verification + stale-constant sync): pending checkpoint.
