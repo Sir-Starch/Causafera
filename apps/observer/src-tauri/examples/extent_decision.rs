@@ -50,8 +50,8 @@ const TICKS: u64 = 192;
 /// intensities are being compared against. `RuntimeConfig::new` remains the
 /// authority; a mismatch would show up as the ratio column disagreeing with the
 /// gate crossings beside it.
-const THRESHOLD: i64 = 4_096;
-const HYSTERESIS: i64 = 2_000;
+const THRESHOLD: i64 = 6_144;
+const HYSTERESIS: i64 = 1_536;
 
 fn chunk() -> ChartChunkCoord {
     ChartChunkCoord::new(SpatialChartId::new(1), ChunkCoord::new(0, 0, 0))

@@ -66,7 +66,9 @@ Not primitive: mana types, spells, schools, rituals, sacredness, enchantment, sk
 
 - coupling to concrete acoustic, geometric, biological, material, glyph, and practice-emission producers;
 - field-to-physical-effect proposals;
-- empirical parameter calibration;
+- empirical parameter calibration of the response channel weights (the local effect gate's
+  `effect_threshold`/`effect_hysteresis` are calibrated against a populated field; see
+  `plans/mana-gate-calibration.md`, `TODO-MANA-007`);
 - sparse, multi-resolution, or accelerated layouts;
 - persistence and observer projections;
 - stateful attractors and metaphysical hypotheses;
