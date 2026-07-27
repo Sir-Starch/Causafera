@@ -628,12 +628,16 @@ fn suppressed_physical_signal_keeps_source_mana_material_traced_without_subjecti
 
 #[test]
 fn enabled_recipe_source_commits_once_and_drives_production_loop() {
-    // Given: a source at the production surface cell with decay and diffusion disabled so the
-    // exported post-source intensity isolates the configured amount.
+    // Given: a source at the production surface cell with decay and diffusion disabled, and
+    // terrain held inert, so the exported post-source intensity isolates the configured amount.
+    // Terrain participation defaults to Standing, and a standing carrier's structure at this cell
+    // is real ground state that a material-generation change can move (`TODO-GEO-004`); this test
+    // is about the recipe source, not about what the standing carrier happens to read here.
     let mut config = production_loop_config(982, true);
     config.mana_parameters.effect_threshold = 1;
     config.mana_parameters.diffusion = 0;
     config.mana_parameters.decay = 0;
+    config.terrain_participation = TerrainParticipation::Inert;
     let mut source = valid_recipe_source(&config);
     source.target_chunk = ChartChunkCoord::new(config.chart_id, ChunkCoord::new(0, 0, 0));
     source.cell_index = 0;

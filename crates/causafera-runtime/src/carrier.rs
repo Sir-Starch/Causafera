@@ -23,9 +23,9 @@ const MATERIAL_SURFACE_PATTERN_DOMAIN: u64 = 0x4D41_5453_5552_4643;
 /// every column unique and leave that channel permanently silent.
 const TERRAIN_ROUGHNESS_CLASS_MM: u64 = 32;
 const TERRAIN_GENERATOR: TerrainGeneratorFingerprint =
-    TerrainGeneratorFingerprint::new(0x2407_0001);
+    TerrainGeneratorFingerprint::new(0x2409_0001);
 const TERRAIN_PARAMETERS: TerrainParameterFingerprint =
-    TerrainParameterFingerprint::new(0x2405_0001);
+    TerrainParameterFingerprint::new(0x2409_0001);
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TerrainCarrierAdapter {
@@ -385,10 +385,9 @@ pub fn terrain_cells(seed: u64, chunk: ChartChunkCoord) -> Vec<TerrainCell> {
             let global_y = origin.y + local_y;
             let base = mix64(chart_seed ^ position_key(global_x, global_y));
             let ridge = (global_x - global_y) * 17 + i64::from((base & 0x3F) as u8);
-            let material_band = (base >> 17) & 0xF;
             TerrainCell::new(
                 ElevationMm::new(clamp_to_i32(ridge * 64)),
-                MaterialId::new(material_band + 1),
+                crate::terrain_regions::region_material(chart_seed, global_x, global_y),
                 RoughnessMm::new((base >> 33) as u32 & 0x7F),
             )
         })
