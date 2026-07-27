@@ -888,3 +888,10 @@ stages, which record completed implementation, not the existence of this Draft):
   stable — which `CHANGELOG.md` already notes when recording the 1.97.1 bump. The comment therefore
   names a version CI does not use. Left alone: it is a pre-existing annotation defect on a line this
   plan had no reason to touch.
+  Correction (see `CHANGELOG.md`, "Fixed the misleading `dtolnay/rust-toolchain` pin comment..."):
+  the "resolves to current stable" mechanism above is wrong. The pinned action commit hardcodes
+  exactly 1.85.0 with no live resolution at all; checking a real CI run showed `rust-toolchain.toml`'s
+  own toolchain-file override then silently superseded it on the first `cargo` invocation, so the job
+  had already been compiling and linting under 1.97.1 throughout — the pin only wasted a download on
+  an installed-but-unused 1.85.0 toolchain. Fixed by repointing both workflows to the action's
+  `1.97.1` branch commit.
