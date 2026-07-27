@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use causafera_domains::{ManaField, OpenNeighbors, PhysicalCarrierAdapter, PhysicalPatternSample};
 use causafera_geography::{
     TerrainChunk, TerrainGenerationProvenance, TerrainGeneratorFingerprint,
@@ -153,7 +155,10 @@ fn terrain_patterns(state: &causafera_runtime::RuntimeSnapshotData) -> Vec<Physi
         .carrier_adapters
         .iter()
         .flat_map(|snapshot| {
-            TerrainCarrierAdapter::import_snapshot(snapshot.clone())
+            // Patterns are composition only (dominant material, roughness
+            // class); they never read `structure`, so an empty neighbour map
+            // cannot change which fingerprints this set can ever emit.
+            TerrainCarrierAdapter::import_snapshot(snapshot.clone(), &BTreeMap::new())
                 .expect("an exported carrier re-imports")
                 .columns()
                 .iter()
@@ -212,6 +217,7 @@ fn terrain_carrier_produces_different_mana_response() {
         test_chunk(),
         deterministic_terrain_chunk(57, test_chunk(), TraceId::new(0)),
         EXTENT,
+        &BTreeMap::new(),
     );
     let terrain_samples = adapter.emit_samples(SimulationTime::new(1), TraceId::new(0));
     let fixture_samples = three_cell_fixture(
@@ -375,6 +381,7 @@ fn projecting_a_carrier_that_has_no_lattice_yields_no_columns() {
         test_chunk(),
         deterministic_terrain_chunk(7, test_chunk(), TraceId::new(0)),
         0,
+        &BTreeMap::new(),
     );
 
     // Then: no lattice means no columns and no samples, not a panic.
@@ -439,9 +446,9 @@ fn structurally_identical_terrain_has_identical_sample_fingerprints() {
         cells,
     )
     .unwrap();
-    let first = TerrainCarrierAdapter::new(test_chunk(), first, 3)
+    let first = TerrainCarrierAdapter::new(test_chunk(), first, 3, &BTreeMap::new())
         .emit_samples(SimulationTime::new(1), TraceId::new(0));
-    let second = TerrainCarrierAdapter::new(test_chunk(), second, 3)
+    let second = TerrainCarrierAdapter::new(test_chunk(), second, 3, &BTreeMap::new())
         .emit_samples(SimulationTime::new(1), TraceId::new(0));
 
     let first_patterns = first
@@ -462,11 +469,13 @@ fn terrain_carrier_determinism() {
         test_chunk(),
         deterministic_terrain_chunk(67, test_chunk(), TraceId::new(0)),
         3,
+        &BTreeMap::new(),
     );
     let second_adapter = TerrainCarrierAdapter::new(
         test_chunk(),
         deterministic_terrain_chunk(67, test_chunk(), TraceId::new(0)),
         3,
+        &BTreeMap::new(),
     );
     assert_eq!(
         first_adapter.emit_samples(SimulationTime::new(1), TraceId::new(0)),
@@ -487,6 +496,7 @@ fn adapter_input_trace_and_ordinal_reconstruct_source_terrain_column() {
         test_chunk(),
         deterministic_terrain_chunk(71, test_chunk(), TraceId::new(0)),
         EXTENT,
+        &BTreeMap::new(),
     );
     let samples = adapter.emit_samples(SimulationTime::new(1), TraceId::new(3));
     let sample = samples[4];

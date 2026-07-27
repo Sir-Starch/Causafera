@@ -1,7 +1,10 @@
+use std::collections::BTreeMap;
+
 use causafera_domains::{CarrierAdapterSchemaId, PhysicalCarrierAdapter, PhysicalPatternSample};
 use causafera_geography::{
     ElevationMm, RoughnessMm, TERRAIN_CELLS_PER_CHUNK, TerrainCell, TerrainChunk,
-    TerrainGenerationProvenance, TerrainGeneratorFingerprint, TerrainParameterFingerprint,
+    TerrainChunkError, TerrainGenerationProvenance, TerrainGeneratorFingerprint,
+    TerrainParameterFingerprint,
 };
 use causafera_types::{
     CHUNK_SIZE, ChartChunkCoord, LocalCoord, MaterialId, PhysicalPatternId, SimulationTime, TraceId,
@@ -88,8 +91,18 @@ pub struct TerrainCarrierSnapshot {
 }
 
 impl TerrainCarrierAdapter {
-    pub fn new(chunk: ChartChunkCoord, terrain: TerrainChunk, field_extent: u8) -> Self {
-        let columns = project_columns(&terrain, field_extent);
+    /// `neighboring_terrain` is whatever sibling chunks' terrain the caller has
+    /// on hand — typically every other chunk being built in the same batch. A
+    /// direction whose chunk is absent from the map degrades to the same
+    /// within-chunk-only computation this carrier always had (`TODO-GEO-006`);
+    /// nothing is invented for it.
+    pub fn new(
+        chunk: ChartChunkCoord,
+        terrain: TerrainChunk,
+        field_extent: u8,
+        neighboring_terrain: &BTreeMap<ChartChunkCoord, TerrainChunk>,
+    ) -> Self {
+        let columns = project_columns(chunk, &terrain, field_extent, neighboring_terrain);
         Self {
             chunk,
             terrain,
@@ -139,32 +152,20 @@ impl TerrainCarrierAdapter {
         }
     }
 
+    /// Decode a single snapshot in isolation. A batch import that wants every
+    /// sibling chunk visible to every other one — as the live runtime that
+    /// exported them had it — should decode every `TerrainChunk` first with
+    /// [`decode_terrain_chunk`] and build each adapter from that shared map
+    /// instead of calling this per snapshot; `import_carrier_adapters` in
+    /// `runtime.rs` does exactly that.
     pub fn import_snapshot(
         snapshot: TerrainCarrierSnapshot,
-    ) -> Result<Self, causafera_geography::TerrainChunkError> {
-        let provenance = TerrainGenerationProvenance::new(
-            snapshot.world_seed,
-            snapshot.generation_trace,
-            TerrainGeneratorFingerprint::new(snapshot.generator),
-            TerrainParameterFingerprint::new(snapshot.parameters),
-            snapshot.causal_inputs,
-        );
-        let terrain = TerrainChunk::from_fields(
-            snapshot.chunk.chunk,
-            provenance,
-            snapshot
-                .elevations_mm
-                .into_iter()
-                .map(ElevationMm::new)
-                .collect(),
-            snapshot.surface_materials,
-            snapshot
-                .roughness_mm
-                .into_iter()
-                .map(RoughnessMm::new)
-                .collect(),
-        )?;
-        Ok(Self::new(snapshot.chunk, terrain, snapshot.field_extent))
+        neighboring_terrain: &BTreeMap<ChartChunkCoord, TerrainChunk>,
+    ) -> Result<Self, TerrainChunkError> {
+        let chunk = snapshot.chunk;
+        let field_extent = snapshot.field_extent;
+        let terrain = decode_terrain_chunk(snapshot)?;
+        Ok(Self::new(chunk, terrain, field_extent, neighboring_terrain))
     }
 
     /// The standing terrain structure, one column per plan-view cell of the
@@ -186,7 +187,43 @@ impl TerrainCarrierAdapter {
     }
 }
 
-fn project_columns(terrain: &TerrainChunk, field_extent: u8) -> Vec<TerrainColumn> {
+/// Decode a snapshot's `TerrainChunk` without projecting it onto the mana
+/// lattice, so a batch import can decode every sibling chunk first and give
+/// each one real cross-chunk neighbours instead of building adapters one at a
+/// time against an empty map.
+pub fn decode_terrain_chunk(
+    snapshot: TerrainCarrierSnapshot,
+) -> Result<TerrainChunk, TerrainChunkError> {
+    let provenance = TerrainGenerationProvenance::new(
+        snapshot.world_seed,
+        snapshot.generation_trace,
+        TerrainGeneratorFingerprint::new(snapshot.generator),
+        TerrainParameterFingerprint::new(snapshot.parameters),
+        snapshot.causal_inputs,
+    );
+    TerrainChunk::from_fields(
+        snapshot.chunk.chunk,
+        provenance,
+        snapshot
+            .elevations_mm
+            .into_iter()
+            .map(ElevationMm::new)
+            .collect(),
+        snapshot.surface_materials,
+        snapshot
+            .roughness_mm
+            .into_iter()
+            .map(RoughnessMm::new)
+            .collect(),
+    )
+}
+
+fn project_columns(
+    chunk: ChartChunkCoord,
+    terrain: &TerrainChunk,
+    field_extent: u8,
+    neighboring_terrain: &BTreeMap<ChartChunkCoord, TerrainChunk>,
+) -> Vec<TerrainColumn> {
     let extent = usize::from(field_extent);
     // A zero extent is no lattice, so it has no columns and the carrier emits
     // nothing. `TerrainCarrierAdapter::new` is infallible and reachable from
@@ -202,7 +239,12 @@ fn project_columns(terrain: &TerrainChunk, field_extent: u8) -> Vec<TerrainColum
         let cell = terrain_cell_at(terrain, index);
         let block = &mut blocks[column];
         block.cells += 1;
-        block.structure += u64::from(terrain_structure(terrain, index));
+        block.structure += u64::from(terrain_structure(
+            chunk,
+            terrain,
+            neighboring_terrain,
+            index,
+        ));
         block.roughness += u64::from(cell.roughness.millimetres());
         block.material_counts.push(cell.surface_material);
     }
@@ -381,10 +423,16 @@ pub fn terrain_pattern(cell: TerrainCell) -> PhysicalPatternId {
 /// There is no constant term. Featureless ground is not a physical pattern, and
 /// a floor under every cell would make a flat plain drive the field as hard as
 /// a ridge does.
-fn terrain_structure(terrain: &TerrainChunk, index: usize) -> u32 {
+fn terrain_structure(
+    chunk: ChartChunkCoord,
+    terrain: &TerrainChunk,
+    neighboring_terrain: &BTreeMap<ChartChunkCoord, TerrainChunk>,
+    index: usize,
+) -> u32 {
     let cell = terrain_cell_at(terrain, index);
-    let contrast = elevation_contrast(terrain, index);
-    let material_delta = material_difference(terrain, index);
+    let neighbors = neighbor_cells(chunk, terrain, neighboring_terrain, index);
+    let contrast = elevation_contrast(cell, &neighbors);
+    let material_delta = material_difference(cell, &neighbors);
     let roughness = cell.roughness.millimetres();
     (contrast / 32)
         .saturating_add(material_delta.saturating_mul(16))
@@ -399,41 +447,66 @@ fn terrain_cell_at(terrain: &TerrainChunk, index: usize) -> TerrainCell {
     )
 }
 
-fn elevation_contrast(terrain: &TerrainChunk, index: usize) -> u32 {
-    let center = terrain.elevations()[index].millimetres();
-    neighbor_indices(index)
-        .into_iter()
-        .map(|neighbor| center.abs_diff(terrain.elevations()[neighbor].millimetres()))
+fn elevation_contrast(cell: TerrainCell, neighbors: &[TerrainCell]) -> u32 {
+    let center = cell.elevation.millimetres();
+    neighbors
+        .iter()
+        .map(|neighbor| center.abs_diff(neighbor.elevation.millimetres()))
         .max()
         .unwrap_or(0)
 }
 
-fn material_difference(terrain: &TerrainChunk, index: usize) -> u32 {
-    let center = terrain.surface_materials()[index].raw();
-    neighbor_indices(index)
-        .into_iter()
-        .map(|neighbor| (center ^ terrain.surface_materials()[neighbor].raw()).count_ones())
+fn material_difference(cell: TerrainCell, neighbors: &[TerrainCell]) -> u32 {
+    let center = cell.surface_material.raw();
+    neighbors
+        .iter()
+        .map(|neighbor| (center ^ neighbor.surface_material.raw()).count_ones())
         .max()
         .unwrap_or(0)
 }
 
-fn neighbor_indices(index: usize) -> Vec<usize> {
+/// The up-to-four axis-aligned neighbours of one cell, resolved across a
+/// chunk boundary when the adjacent chunk's terrain is available.
+///
+/// An interior neighbour always reads `terrain`'s own array. An edge
+/// neighbour reads the corresponding edge of the chunk `chunk.same_chart_neighbor`
+/// names in `neighboring_terrain`, which is exactly the ground that chunk
+/// holds — not a value invented for the occasion (`TODO-GEO-006`). A missing
+/// entry (the neighbouring chunk is outside the active set, or the caller has
+/// no cross-chunk context at all) drops that direction, the same graceful
+/// degradation an interior edge of the whole charted extent always had.
+fn neighbor_cells(
+    chunk: ChartChunkCoord,
+    terrain: &TerrainChunk,
+    neighboring_terrain: &BTreeMap<ChartChunkCoord, TerrainChunk>,
+    index: usize,
+) -> Vec<TerrainCell> {
     let side = usize::from(CHUNK_SIZE);
     let x = index % side;
     let y = index / side;
     let mut neighbors = Vec::with_capacity(4);
+
     if x > 0 {
-        neighbors.push(index - 1);
+        neighbors.push(terrain_cell_at(terrain, index - 1));
+    } else if let Some(west) = neighboring_terrain.get(&chunk.same_chart_neighbor(-1, 0, 0)) {
+        neighbors.push(terrain_cell_at(west, index + (side - 1)));
     }
     if x + 1 < side {
-        neighbors.push(index + 1);
+        neighbors.push(terrain_cell_at(terrain, index + 1));
+    } else if let Some(east) = neighboring_terrain.get(&chunk.same_chart_neighbor(1, 0, 0)) {
+        neighbors.push(terrain_cell_at(east, index - (side - 1)));
     }
     if y > 0 {
-        neighbors.push(index - side);
+        neighbors.push(terrain_cell_at(terrain, index - side));
+    } else if let Some(south) = neighboring_terrain.get(&chunk.same_chart_neighbor(0, -1, 0)) {
+        neighbors.push(terrain_cell_at(south, index + side * (side - 1)));
     }
     if y + 1 < side {
-        neighbors.push(index + side);
+        neighbors.push(terrain_cell_at(terrain, index + side));
+    } else if let Some(north) = neighboring_terrain.get(&chunk.same_chart_neighbor(0, 1, 0)) {
+        neighbors.push(terrain_cell_at(north, index - side * (side - 1)));
     }
+
     neighbors
 }
 
@@ -496,6 +569,7 @@ mod tests {
             test_chunk(),
             deterministic_terrain_chunk(seed, test_chunk(), TraceId::new(0)),
             extent,
+            &BTreeMap::new(),
         )
     }
 
@@ -619,9 +693,97 @@ mod tests {
         )
         .expect("a uniform chunk is a complete chunk");
 
-        let samples = TerrainCarrierAdapter::new(test_chunk(), flat, 3)
+        let samples = TerrainCarrierAdapter::new(test_chunk(), flat, 3, &BTreeMap::new())
             .emit_samples(SimulationTime::new(1), TraceId::new(0));
 
         assert!(samples.is_empty());
+    }
+
+    fn chunk_at(x: i32, y: i32) -> ChartChunkCoord {
+        ChartChunkCoord::new(
+            causafera_types::SpatialChartId::new(1),
+            ChunkCoord::new(x, y, 0),
+        )
+    }
+
+    /// `TODO-GEO-006`: an edge cell's structure must be computed against the
+    /// real ground of an active neighbouring chunk, not silently truncated to
+    /// the cells inside its own chunk.
+    #[test]
+    fn structure_near_a_chunk_edge_uses_the_real_neighbouring_terrain() {
+        let seed = 7;
+        let west = deterministic_terrain_chunk(seed, chunk_at(-1, 0), TraceId::new(0));
+        let origin = deterministic_terrain_chunk(seed, chunk_at(0, 0), TraceId::new(0));
+
+        let mut siblings = BTreeMap::new();
+        siblings.insert(chunk_at(-1, 0), west);
+        siblings.insert(chunk_at(0, 0), origin.clone());
+
+        let aware = TerrainCarrierAdapter::new(chunk_at(0, 0), origin.clone(), 3, &siblings);
+        let isolated = TerrainCarrierAdapter::new(chunk_at(0, 0), origin, 3, &BTreeMap::new());
+
+        // Then: at least one column touching the west edge sees a different
+        // structure once the real neighbouring chunk is visible. If this ever
+        // finds the two identical, a production call site silently reverted to
+        // the truncated in-chunk-only computation.
+        assert_ne!(aware.columns(), isolated.columns());
+    }
+
+    /// The four directions resolve the exact cell the neighbouring chunk's own
+    /// generation would put there — not an approximation, the same value
+    /// (`TODO-GEO-005` made this the same deterministic function of chart
+    /// position everywhere, which is what makes the comparison exact).
+    #[test]
+    fn neighbor_cells_read_the_true_edge_of_each_adjacent_chunk() {
+        let seed = 13;
+        let origin = deterministic_terrain_chunk(seed, chunk_at(0, 0), TraceId::new(0));
+        let west = deterministic_terrain_chunk(seed, chunk_at(-1, 0), TraceId::new(0));
+        let east = deterministic_terrain_chunk(seed, chunk_at(1, 0), TraceId::new(0));
+        let south = deterministic_terrain_chunk(seed, chunk_at(0, -1), TraceId::new(0));
+        let north = deterministic_terrain_chunk(seed, chunk_at(0, 1), TraceId::new(0));
+        let side = usize::from(CHUNK_SIZE);
+
+        let mut siblings = BTreeMap::new();
+        siblings.insert(chunk_at(-1, 0), west.clone());
+        siblings.insert(chunk_at(1, 0), east.clone());
+        siblings.insert(chunk_at(0, -1), south.clone());
+        siblings.insert(chunk_at(0, 1), north.clone());
+
+        // West edge, middle row: west neighbour's east column.
+        let row = 15;
+        let neighbors = neighbor_cells(chunk_at(0, 0), &origin, &siblings, row * side);
+        assert!(neighbors.contains(&terrain_cell_at(&west, row * side + side - 1)));
+
+        // East edge, middle row: east neighbour's west column.
+        let neighbors = neighbor_cells(chunk_at(0, 0), &origin, &siblings, row * side + side - 1);
+        assert!(neighbors.contains(&terrain_cell_at(&east, row * side)));
+
+        // South edge (y = 0), middle column: south neighbour's north row.
+        let column = 15;
+        let neighbors = neighbor_cells(chunk_at(0, 0), &origin, &siblings, column);
+        assert!(neighbors.contains(&terrain_cell_at(&south, side * (side - 1) + column)));
+
+        // North edge (y = side - 1), middle column: north neighbour's south row.
+        let neighbors = neighbor_cells(
+            chunk_at(0, 0),
+            &origin,
+            &siblings,
+            side * (side - 1) + column,
+        );
+        assert!(neighbors.contains(&terrain_cell_at(&north, column)));
+    }
+
+    /// A direction with no entry in the map drops out, exactly as an interior
+    /// cell drops a direction that does not exist — it never falls back to
+    /// inventing a flat or zero neighbour.
+    #[test]
+    fn a_missing_neighbor_chunk_drops_its_direction_rather_than_inventing_one() {
+        let origin = deterministic_terrain_chunk(7, chunk_at(0, 0), TraceId::new(0));
+
+        // The corner cell (0, 0) has two in-chunk neighbours and, with no
+        // sibling chunks at all, exactly those two — never four.
+        let neighbors = neighbor_cells(chunk_at(0, 0), &origin, &BTreeMap::new(), 0);
+
+        assert_eq!(neighbors.len(), 2);
     }
 }

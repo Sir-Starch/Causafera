@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use crate::*;
 use causafera_core::*;
 use causafera_domains::{
@@ -141,6 +143,10 @@ impl HistoricalBootstrapAdapter for TerrainBootstrapStage {
     fn bootstrap(&self, state: &mut RuntimeState) -> Result<Vec<TraceId>, BootstrapError> {
         let chunks = state.carrier_adapters.keys().copied().collect::<Vec<_>>();
         let mut traces = Vec::with_capacity(chunks.len());
+        // Every chunk's terrain is generated and its trace committed first, so
+        // the second pass below can give each adapter the real ground its
+        // neighbours hold rather than an empty map (`TODO-GEO-006`).
+        let mut generated = BTreeMap::new();
         for (ordinal, chunk) in chunks.into_iter().enumerate() {
             let trace = commit_bootstrap_stage_event(
                 state,
@@ -161,12 +167,15 @@ impl HistoricalBootstrapAdapter for TerrainBootstrapStage {
                 fingerprint_u64(0x0B01, self.terrain_seed ^ chart_chunk_hash(chunk)),
             )?;
             let terrain = deterministic_terrain_chunk(self.terrain_seed, chunk, trace);
-            let field_extent = state.config.chunk_extent;
-            state.carrier_adapters.insert(
-                chunk,
-                TerrainCarrierAdapter::new(chunk, terrain, field_extent),
-            );
+            generated.insert(chunk, terrain);
             traces.push(trace);
+        }
+        let field_extent = state.config.chunk_extent;
+        for (chunk, terrain) in &generated {
+            state.carrier_adapters.insert(
+                *chunk,
+                TerrainCarrierAdapter::new(*chunk, terrain.clone(), field_extent, &generated),
+            );
         }
         Ok(traces)
     }
