@@ -81,11 +81,20 @@ material at (global_x, global_y) = material of the nearest feature by squared di
 ```
 
 **Why Chebyshev-2 (5x5), not the more common Chebyshev-1 (3x3):** jitter is confined within its own
-coarse cell (range `[0, MATERIAL_REGION_SIZE)`). The own cell's feature alone bounds the best
-candidate at at most `sqrt(2) * MATERIAL_REGION_SIZE` (the cell diagonal), which is less than
-`2 * MATERIAL_REGION_SIZE` — the minimum possible distance from any point in the query's own cell to
-any point in a Chebyshev-3 cell. A 3x3 search is therefore not exact for full-cell jitter; Chebyshev-2
-is the provably sufficient radius. The extra 16 hash evaluations per cell (25 against 9) are
+coarse cell (range `[0, R)`, `R = MATERIAL_REGION_SIZE`), not centred on it. Two bounds, both against
+the own cell's worst case of `sqrt(2) * R` (query at one corner, feature at the opposite corner):
+
+- **3x3 is not sufficient.** A query near an edge of its own cell (not a corner) can sit as close as
+  `R` from a feature in the same-row Chebyshev-2 cell (query at `x = R - ε`, feature at the near edge
+  of the cell starting at `x = 2R`, distance `R + ε`). Since `R < sqrt(2) * R`, a Chebyshev-2 cell can
+  hold a nearer feature than the own cell guarantees, so it must be searched — 3x3 alone would miss it.
+- **Chebyshev-3 does not need to be searched.** The nearest any point in a Chebyshev-3 cell can be to
+  a query in the centre cell is `2R`, and `2R > sqrt(2) * R`. The own cell's feature is always found
+  within `sqrt(2) * R` in the worst case, which already beats anything Chebyshev-3 could offer, for
+  every query position and jitter configuration.
+
+Chebyshev-2 sits exactly between those two bounds (`R < sqrt(2) * R < 2R`), which is what makes it the
+minimal provably correct radius. The extra 16 hash evaluations per cell (25 against 9) are
 bootstrap-time only and immaterial next to the mix64 calls already running per cell.
 
 **Why `MATERIAL_REGION_SIZE = 16`, a power of two:** swept 4/8/16/32/64 against same-material
@@ -159,11 +168,24 @@ re-review), `docs/ontology/domain-coverage-matrix.md` (Geography row), `CHANGELO
   the three fixes required).
 - `cargo fmt --all -- --check` — clean.
 - `cargo clippy --release -p causafera-runtime --all-targets -- -D warnings` — clean.
-- Four new unit tests in `terrain_regions.rs`: coherence rate above 50% (well above the 6.25% chance
-  floor and the measured 93%+ production rate), chunk-boundary continuity within 25 points of the
-  interior rate, same-position determinism, cross-chart independence.
+- Five new unit tests in `terrain_regions.rs`: coherence rate above 50% (well above the 6.25% chance
+  floor and the measured 90%+ production rate), same-material rate never below the true same-region
+  rate (bounds how much a material collision at a region boundary can inflate the naive metric),
+  chunk-boundary continuity within 25 points of the interior rate, same-position determinism,
+  cross-chart independence.
 
 ## Benchmark plan / measured evidence
+
+A note on the metric before the numbers: most figures below, and `field_probe.rs`'s per-chunk print,
+measure same-*material* neighbours, which is what the acceptance criterion asks for but is not quite
+the same as same-*region*. Materials are drawn independently per feature point, so two adjacent but
+different regions agree on material by chance roughly `1/16`. Because most neighbour pairs are firmly
+interior to one region (where same-region trivially implies same-material, with no room to inflate),
+this collision only touches pairs that actually straddle a region boundary, and its effect is small:
+measured directly (`same_material_neighbours_are_mostly_the_same_region_not_a_material_collision`,
+64x64 chart cells, seed 7) at material rate 92.1% against the uninflated region rate 91.7% — a 0.4
+point gap, not several points. The tables below report the same-material figure as measured, with
+this caveat standing in for a per-row correction.
 
 **Region-size decision sweep** (three seeds, same-material rate; "regions/chunk" is `(32/region_size)²`):
 
@@ -191,7 +213,8 @@ material contribution + roughness contribution, three seeds):
 
 The old material term (50.0 of 204.4, 24.5%) was the constant floor described in Context. The new
 generator's real production same-material rate (93.0%–94.1%, from `field_probe.rs`, three chunks)
-matches the region-size-16 sweep prediction (93.15%/93.75%) closely.
+matches the region-size-16 sweep prediction (93.15%/93.75%) closely; the true same-region rate runs
+about 0.4 points below whatever same-material figure is quoted, per the note above.
 
 **Chunk-boundary continuity, real production run** (`field_probe.rs`, seed 7, three adjacent
 line-shaped chunks):
@@ -229,11 +252,12 @@ generation-time `mix64` calls `terrain_cells` was already making per cell.
 `region_material` is a pure function of `chart_seed` and chart-global position: no RNG, no floats, no
 hash-iteration order dependence. Same seed reproduces identically (covered by
 `the_same_chart_position_always_yields_the_same_material`); different charts can disagree at the same
-position (covered by `different_charts_can_disagree_at_the_same_position`). `TERRAIN_GENERATOR` and
-`TERRAIN_PARAMETERS` both moved to `0x2409_0001`, so every world's terrain (and therefore physical
-digest) changes by construction, exactly as `TODO-GEO-005` established as the precedent for this class
-of change. No checked-in fixture or replay capture exists in the repository, so none needed
-regeneration.
+position (covered by `different_charts_can_disagree_at_the_same_position`). `TERRAIN_GENERATOR` moves
+to `0x2409_0001` for the new algorithm, and `TERRAIN_PARAMETERS` moves too — a deliberate departure
+from `TODO-GEO-005`'s precedent, which bumped only the generator because no parameter *value* changed
+there. Here one does: `MATERIAL_REGION_SIZE` is a new tunable numeric constant, so both fingerprints
+move. Every world's terrain (and therefore physical digest) changes by construction either way. No
+checked-in fixture or replay capture exists in the repository, so none needed regeneration.
 
 ## Memory impact
 
@@ -289,12 +313,15 @@ here) — but flags it in the backlog as due for its own re-review with current 
 
 ## Decision log
 
-- Rejected 3x3 (Chebyshev-1) neighbourhood search as used in many Worley-noise references: proved it
-  is not exact for jitter confined to a full coarse cell (own-cell worst case `sqrt(2)*R` exceeds a
-  Chebyshev-2 cell's minimum possible distance in the adversarial case), so widened to 5x5
-  (Chebyshev-2), which the same bound proves sufficient. Chose exactness over the smaller, more
-  common but unproven radius, since the cost difference (16 extra bootstrap-time hashes per cell) is
-  immaterial.
+- Rejected 3x3 (Chebyshev-1) neighbourhood search as used in many Worley-noise references: proved a
+  same-row Chebyshev-2 cell can sit as close as `R` to an edge-positioned query, closer than the own
+  cell's worst-case guarantee of `sqrt(2)*R`, so 3x3 alone can miss the true nearest feature. Widened
+  to 5x5 (Chebyshev-2); separately proved Chebyshev-3 need not be searched, since its nearest possible
+  point (`2R`) is always farther than the own cell's worst case. Chose exactness over the smaller,
+  more common but unproven radius, since the cost difference (16 extra bootstrap-time hashes per
+  cell) is immaterial. (An earlier draft of this argument compared only the own-cell bound against
+  the Chebyshev-3 threshold, which shows Chebyshev-3 is safe to skip but does not by itself show
+  Chebyshev-2 is necessary — corrected to the two-sided bound above.)
 - Rejected halving jitter range to guarantee 3x3 sufficiency instead: would have worked, but 5x5 with
   full-cell jitter gives the same guarantee with simpler, more legible code (no separate "half-cell"
   invariant to maintain alongside the coarse-cell arithmetic).
