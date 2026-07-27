@@ -308,6 +308,6 @@ here) — but flags it in the backlog as due for its own re-review with current 
 
 ## Progress
 
-- Wave 1 (region generator, wiring, test fallout): pending checkpoint.
-- Wave 2 (evidence): pending checkpoint.
-- Wave 3 (documentation): pending checkpoint.
+- Wave 1 (region generator, wiring, test fallout), checkpoint `f90fc71`.
+- Wave 2 (evidence), checkpoint `402fb60`.
+- Wave 3 (documentation), checkpoint `d517e06`.
