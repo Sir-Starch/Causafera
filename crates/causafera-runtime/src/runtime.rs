@@ -2126,11 +2126,17 @@ fn runtime_system_registrations() -> Vec<SystemRegistrationSnapshot> {
     ]
 }
 
+/// Decode every snapshot's terrain before projecting any of them, so a chunk
+/// on the edge of the decoded set sees the same neighbouring ground the live
+/// runtime that exported it did (`TODO-GEO-006`). Building adapters one
+/// snapshot at a time would give each one an empty neighbour map, silently
+/// reverting to the within-chunk-only computation regardless of what was
+/// actually active when the snapshot was taken.
 fn import_carrier_adapters(
     snapshots: Vec<TerrainCarrierSnapshot>,
     chunk_extent: u8,
 ) -> Result<BTreeMap<ChartChunkCoord, TerrainCarrierAdapter>, RuntimeError> {
-    let mut adapters = BTreeMap::new();
+    let mut decoded = BTreeMap::new();
     for snapshot in snapshots {
         let chunk = snapshot.chunk;
         // The carrier projects onto this chunk's mana field, which is built at
@@ -2143,13 +2149,21 @@ fn import_carrier_adapters(
                 "terrain carrier extent does not match the configured chunk extent",
             ));
         }
-        let adapter = TerrainCarrierAdapter::import_snapshot(snapshot)
+        let terrain = decode_terrain_chunk(snapshot)
             .map_err(|_| RuntimeError::InvalidSnapshot("invalid terrain carrier"))?;
-        if adapters.insert(chunk, adapter).is_some() {
+        if decoded.insert(chunk, terrain).is_some() {
             return Err(RuntimeError::InvalidSnapshot("duplicate carrier chunk"));
         }
     }
-    Ok(adapters)
+    Ok(decoded
+        .iter()
+        .map(|(chunk, terrain)| {
+            (
+                *chunk,
+                TerrainCarrierAdapter::new(*chunk, terrain.clone(), chunk_extent, &decoded),
+            )
+        })
+        .collect())
 }
 
 fn import_active_chunks(
@@ -2832,6 +2846,12 @@ fn validate_trace_exists(store: &CausalTraceStore, trace: TraceId) -> Result<(),
     }
 }
 
+/// A placeholder carrier set keyed correctly, so `RuntimeState::new` has a
+/// `carrier_adapters` key set to hand to `TerrainBootstrapStage::bootstrap`
+/// before it runs. `HistoricalBootstrapPlan::bootstrap` always runs inside
+/// `RuntimeState::new` and unconditionally overwrites every entry here with
+/// its own cross-chunk-aware adapter (`TODO-GEO-006`), so no neighbouring
+/// terrain is threaded through this construction — it is never read.
 fn runtime_carrier_adapters(
     config: CarrierAdapterConfig,
     field_extent: u8,
@@ -2848,6 +2868,7 @@ fn runtime_carrier_adapters(
                         *chunk,
                         deterministic_terrain_chunk(terrain_seed, *chunk, root_trace),
                         field_extent,
+                        &BTreeMap::new(),
                     ),
                 )
             })

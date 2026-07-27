@@ -5,8 +5,9 @@
 //! Prints nothing that is not read straight from a real runtime snapshot.
 
 use std::collections::BTreeMap;
+use std::time::Instant;
 
-use causafera_runtime::{Runtime, RuntimeConfig};
+use causafera_runtime::{Runtime, RuntimeConfig, TerrainCarrierAdapter, decode_terrain_chunk};
 
 fn main() {
     let mut config = RuntimeConfig::new(7);
@@ -138,6 +139,56 @@ fn main() {
         boundary_steps.len(),
         by_x.len().saturating_sub(1),
     );
+
+    // TODO-GEO-006 evidence: does an edge column's structure actually change
+    // once its real neighbouring chunk is visible, against the same chunk
+    // built with no cross-chunk context at all (the pre-fix behaviour)?
+    let decoded: BTreeMap<_, _> = data
+        .spatial
+        .carrier_adapters
+        .iter()
+        .map(|snapshot| {
+            (
+                snapshot.chunk,
+                decode_terrain_chunk(snapshot.clone()).unwrap(),
+            )
+        })
+        .collect();
+    if let Some((chunk, terrain)) = decoded.iter().next() {
+        let aware = TerrainCarrierAdapter::new(*chunk, terrain.clone(), 3, &decoded);
+        let isolated = TerrainCarrierAdapter::new(*chunk, terrain.clone(), 3, &BTreeMap::new());
+        let changed = aware
+            .columns()
+            .iter()
+            .zip(isolated.columns())
+            .filter(|(a, b)| a.structure != b.structure)
+            .count();
+        println!(
+            "TODO-GEO-006: chunk {:?}, {changed}/{} columns changed structure once real neighbouring terrain was visible",
+            chunk.chunk,
+            aware.columns().len(),
+        );
+    }
+
+    // TODO-GEO-006 performance evidence: bootstrap wall-clock at increasing
+    // active chunk radius, since the fix generates every chunk's terrain
+    // before deriving any adapter's columns, and clones each TerrainChunk once
+    // into the neighbour map.
+    println!("\nTODO-GEO-006: bootstrap wall-clock by active_chunk_radius (Area shape)");
+    for radius in [1u8, 2, 3, 4] {
+        let mut config = RuntimeConfig::new(7);
+        config.active_chunk_radius = radius;
+        config.active_chunk_shape = causafera_runtime::ActiveChunkShape::Area;
+        let started = Instant::now();
+        let _runtime = Runtime::new(config).expect("runtime bootstraps");
+        let elapsed = started.elapsed();
+        let chunks = (usize::from(radius) * 2 + 1).pow(2);
+        println!(
+            "  radius {radius} ({chunks:>3} chunks): {:.3} ms ({:.3} us/chunk)",
+            elapsed.as_secs_f64() * 1000.0,
+            elapsed.as_micros() as f64 / chunks as f64,
+        );
+    }
 
     println!("\nmana fields: {}", data.mana.fields.len());
     for field in &data.mana.fields {

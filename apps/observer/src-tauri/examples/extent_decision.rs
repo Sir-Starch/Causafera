@@ -31,7 +31,7 @@
 //! cargo run --release -p causafera-observer --example extent_decision
 //! ```
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::time::Instant;
 
 use causafera_runtime::{
@@ -70,7 +70,7 @@ struct Reading {
 
 fn read_terrain(seed: u64, extent: u8) -> Reading {
     let terrain = deterministic_terrain_chunk(seed, chunk(), TraceId::new(1));
-    let adapter = TerrainCarrierAdapter::new(chunk(), terrain, extent);
+    let adapter = TerrainCarrierAdapter::new(chunk(), terrain, extent, &BTreeMap::new());
     let columns = adapter.columns();
     let side = usize::from(CHUNK_SIZE);
     let lattice = usize::from(extent);
