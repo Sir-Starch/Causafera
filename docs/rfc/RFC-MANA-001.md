@@ -48,6 +48,37 @@ READ FIELD + PHYSICAL SAMPLES
 
 `propose_evolution` cannot mutate the source field. Every changed-cell record includes canonical input causes from directly relevant samples and prior neighbouring field changes. `commit` requires exactly one newly assigned `TraceId` per changed cell. Scheduler integration is responsible for committing corresponding Ground Truth events before accepting the replacement field.
 
+## Runtime pipeline beyond the field
+
+This RFC's mutation boundary covers the field alone. What feeds it and what reads it back live in
+`causafera-runtime` and are added by later work (`TODO-MANA-005` through `TODO-MANA-007`,
+`plans/local-mana-material-surface-coupling.md`); this section is the map from field theory to the
+full loop, so a reader does not have to reconstruct it from several plans and a several-hundred-line
+diff:
+
+```text
+CARRIER (terrain, material contact, ...)
+→ PhysicalPatternSample (fingerprint, position, magnitude, cause)
+→ ManaField (pattern_score, diffuse, decay, commit)
+→ ManaEffectsSystem::execute — reads intensity[surface.id.cell_index] for
+  every MaterialSurface with contact_count > 0, applies the
+  effect_threshold/effect_hysteresis hysteresis gate
+→ MaterialSurface.gate / .condition — the gate's bounded output
+→ later actor perception/action (`material_surface_signal_access_changes_later_actor_action`)
+→ future contact, which is itself a new sample — closing the loop
+```
+
+**This topology is provisional, not a physical law.** `MaterialSurfaceBootstrapStage` places exactly
+one `MaterialSurface` per chunk, always at `cell_index` 0, so the gate currently reads one fixed
+cell per chunk rather than a real spatial surface, and a gate transition's only physical consequence
+is `condition += 1` — a bounded counter standing in for a real material response
+(`TODO-THERMAL-002`'s thermal analogue faces the same "no semantic toggle" requirement). Any
+calibration of `effect_threshold`/`effect_hysteresis` (`plans/mana-gate-calibration.md`) is a
+calibration of *this* topology — one surface, one cell, one abstract counter. When real spatial
+surfaces, multiple surfaces per chunk, or a concrete physical effect replace this placeholder, the
+population the gate reads changes shape and the calibration almost certainly needs re-measuring, not
+just re-reading.
+
 ## Determinism
 
 The model uses fixed-point integer arithmetic, stable row-major traversal, ordered maps/sets, canonical sample sorting, and saturating operations. It uses no RNG, floats, hash iteration, locale, system clock, or pointer identity. Reordering an equivalent sample batch cannot change the proposal.

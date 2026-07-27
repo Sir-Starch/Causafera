@@ -361,6 +361,13 @@ None beyond mana/material-surface, which are already coupled per
 - ext3/4's neighbourhood-robustness result is noisier than ext6/8/12's (see Benchmark plan); the
   end-to-end check is the stronger evidence there, and future work changing the response weights
   should re-run this tool rather than assume the operating point still holds.
+- **This calibration is a property of the current gate topology, not a fixed constant of the mana
+  field.** `MaterialSurfaceBootstrapStage` places exactly one surface per chunk at `cell_index` 0
+  with an abstract `condition += 1` response; see `docs/rfc/RFC-MANA-001.md`'s "Runtime pipeline
+  beyond the field" section. Real spatial surfaces, multiple surfaces per chunk, or a concrete
+  physical effect replacing the counter will change the population the gate reads, and 6144/1536
+  should be treated as this topology's working calibration, re-measured rather than assumed to
+  transfer, once any of those land.
 
 ## Documentation changes
 
