@@ -87,6 +87,7 @@ Progress
 - [`plans/local-mana-material-surface-coupling.md`](plans/local-mana-material-surface-coupling.md) — accepted bounded local mana-cell to material-surface coupling slice; replaces the global mana-total gate with per-surface local hysteresis.
 - [`plans/terrain-carrier-participation.md`](plans/terrain-carrier-participation.md) — accepted and implemented; the terrain carrier reaches the tick loop as a standing spatial structure, so the world seed varies the simulation (`TODO-RUNTIME-002`).
 - [`plans/observer-locale-coverage.md`](plans/observer-locale-coverage.md) — accepted and implemented; the observer presents itself in five locales across UI chrome, locale-keyed metadata and the authoritative Explanation renderer, with INV-007 covered across the whole set (`TODO-UI-006`).
+- [`plans/terrain-chunk-boundary-continuity.md`](plans/terrain-chunk-boundary-continuity.md) — accepted and implemented; terrain elevation, roughness and material are generated from a cell's position in its chart rather than its chunk, so adjacent chunks meet at their shared edge (`TODO-GEO-005`).
 
 ## Draft Plans
 

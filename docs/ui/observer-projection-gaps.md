@@ -58,11 +58,12 @@ fallback used where no raster has arrived.
 against 6.2% expected from chance, drawing it as landcover would show the world as having regions it
 does not have. `TODO-GEO-004` is the prerequisite.
 
-**Found while implementing it:** `terrain_cells` derives elevation from chunk-local coordinates
-only, so every chunk repeats the same diagonal ridge and a two-dimensional chart shows a thirty-metre
-scarp on every chunk boundary. The relief lens draws it and says in its caveat that the step is world
-state rather than a seam in the drawing, and the chart does not open on terrain contours because over
-this terrain they bunch along every boundary. Recorded as `TODO-GEO-005`.
+**Found while implementing it, since resolved:** `terrain_cells` derived elevation from chunk-local
+coordinates only, so every chunk repeated the same diagonal ridge and a two-dimensional chart showed
+a thirty-metre scarp on every chunk boundary — recorded as `TODO-GEO-005` and closed in
+`plans/terrain-chunk-boundary-continuity.md`. Terrain is now continuous across chunk boundaries; the
+chart still does not open on terrain contours, but that is a UI decision rather than a consequence of
+the generation gap.
 
 ## 4b. Two-dimensional chunk activation — resolved
 

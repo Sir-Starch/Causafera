@@ -143,12 +143,13 @@ The default primary lens is the mana field. It is the one field the runtime main
 continuous across the whole charted extent, so it is the one that shows the instrument reading a
 world rather than a set of chunks.
 
-Terrain contours are deliberately not a default overlay. `terrain_cells` derives elevation from
-chunk-local coordinates only, so every chunk repeats the same diagonal ridge and the chart has a
-thirty-metre scarp on every chunk boundary. The relief lens draws that, because it is world state,
-and its caveat says the step is world state rather than a seam in the drawing — but contours over it
-bunch along every boundary and would put a grid back on the sheet. The generation gap is recorded as
-`TODO-GEO-005`.
+Terrain contours are not the default overlay, but the reason is now a UI decision rather than a
+generation gap. `terrain_cells` used to derive elevation from chunk-local coordinates only, so every
+chunk repeated the same diagonal ridge and the chart carried a thirty-metre scarp on every chunk
+boundary; that closed with `TODO-GEO-005`, and the relief lens's caveat about the step being world
+state rather than a seam remains true — it is just no longer describing a defect. Promoting contours
+to a default overlay is left to a UI-facing plan (`AGENTS.md`: do not update UI for every internal
+field).
 
 ## What the map deliberately does not do
 

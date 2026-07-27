@@ -334,5 +334,10 @@ No domain outside geography and mana is touched.
 ## Progress
 
 - Wave 1 — generator fix, both call sites, fingerprint bump, tests and evidence tool, integrated and
-  verified together. Verified with `just ci` (green: full workspace build, fmt, clippy, tests,
-  doctests) and `cargo test -p causafera-runtime --test terrain_carrier` (18 passed, 0 failed).
+  verified together. Checkpoint `cd51ceb`. Verified with `just ci` (green: full workspace build,
+  fmt, clippy, tests, doctests) and `cargo test -p causafera-runtime --test terrain_carrier`
+  (18 passed, 0 failed).
+- Wave 2 — documentation: `CHANGELOG.md`, `docs/development/todo-backlog.md` (`TODO-GEO-005`
+  completed, `TODO-GEO-006` opened), `docs/ontology/domain-coverage-matrix.md`,
+  `docs/ui/map-lenses.md`, `docs/ui/observer-projection-gaps.md`,
+  `apps/observer/src/map/lenses.ts` (comment only), and `PLANS.md`.
