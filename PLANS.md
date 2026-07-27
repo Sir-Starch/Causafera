@@ -90,6 +90,7 @@ Progress
 - [`plans/terrain-chunk-boundary-continuity.md`](plans/terrain-chunk-boundary-continuity.md) — accepted and implemented; terrain elevation, roughness and material are generated from a cell's position in its chart rather than its chunk, so adjacent chunks meet at their shared edge (`TODO-GEO-005`).
 - [`plans/terrain-structure-cross-chunk-neighbours.md`](plans/terrain-structure-cross-chunk-neighbours.md) — accepted and implemented; the standing terrain carrier's mana-facing structure magnitude reads real neighbouring chunks' terrain across a chunk boundary instead of truncating at it (`TODO-GEO-006`).
 - [`plans/mana-gate-calibration.md`](plans/mana-gate-calibration.md) — accepted and implemented; the local mana effect gate's threshold and hysteresis are recalibrated against the population it actually reads, which discriminates worlds at every candidate lattice rather than latching (`TODO-MANA-007`).
+- [`plans/coherent-surface-material-regions.md`](plans/coherent-surface-material-regions.md) — accepted and implemented; surface material is generated as spatially coherent regions instead of per-cell noise, closing the constant floor this left in the terrain carrier's mana-facing structure magnitude (`TODO-GEO-004`).
 
 ## Draft Plans
 
