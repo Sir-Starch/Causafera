@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use causafera_domains::{
     THERMAL_SCALE, ThermalActiveRegion, ThermalBoundaryBehavior, ThermalEnergy,
@@ -33,12 +33,13 @@ fn face_reconstruct() {
     let proposal = fields
         .propose_evolution(ThermalEvolutionRequest {
             tick: 1,
-            parameters: ThermalParameters::new(128, THERMAL_SCALE, THERMAL_SCALE)
+            parameters: ThermalParameters::new(128, THERMAL_SCALE, THERMAL_SCALE, 0, 1)
                 .expect("parameters must be valid"),
             active_region: &region,
             boundary_behavior: ThermalBoundaryBehavior::NoFluxOutsideActiveRegion,
             reservoirs: &[],
             injections: &[],
+            materials: &BTreeMap::new(),
         })
         .expect("evolution must succeed");
     let receipt = proposal

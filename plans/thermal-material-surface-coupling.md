@@ -792,8 +792,14 @@ named follow-ups.
   bootstrap (single caller of `commit_material_surface_bootstrap_event`), one per active chunk at
   `cell_index = 0`, and that `state.active_chunks` and `thermal_active_region.active_chunks()` are
   built from the same `active_chunk_keys`, so every surface has a co-located resident thermal cell
-  today. The "surface outside the resident thermal region" path is implemented defensively (silent
-  exclusion, no tick failure) for forward compatibility rather than left unhandled.
+  today. Superseded by the next entry: a material site with no matching field cell is treated as an
+  internal invariant violation, not tolerated defensively.
+- 2026-07-28 (Advisor correction): rejected the earlier "silent exclusion" plan for a material site
+  with no co-located thermal cell. Since bootstrap guarantees the pairing today, a mismatch can only
+  mean an internal invariant broke; silently excluding it would hide that break instead of surfacing
+  it, and the repository's own guidance against defensive handling for scenarios that can't happen
+  applies directly. `preflight_faces` now rejects with `ThermalError::PositionOutsideField` before any
+  flux is computed (`crates/causafera-domains/src/thermal/diffusion.rs`).
 - 2026-07-28: Rejected reusing the mana-coupling's "historical contact eligibility" policy
   (`contact_count > 0`) for thermal exchange: heat exchange with the environment does not depend on
   whether an actor has touched the surface, and gating it on contact would make the conserved total
@@ -803,6 +809,19 @@ named follow-ups.
   than extending `condition` or `gate`, per the acceptance criteria's explicit "no condition +1"
   instruction and because the thermal exchange and the mana gate are independent physical couplings
   with independent trigger conditions.
+- 2026-07-28: `record_material_surface_thermal_transition`'s bounded history evicts with
+  `Vec::remove(0)` (oldest-first), unlike `MaterialSurfaceGateTransition`'s recorder, which
+  preferentially evicts an inactive/non-terminal entry to keep a rising-edge/falling-edge pair
+  together. Thermal transitions have no such asymmetry to preserve — every exchange is equally
+  inspectable regardless of direction — so plain oldest-first eviction is the correct, simpler rule
+  here rather than an oversight relative to the gate recorder.
+- 2026-07-28: Production `material_exchange_fraction = 64` (`RuntimeState::new`, out of
+  `scale = THERMAL_SCALE = 1024`, alongside `transfer_fraction = 128`). Chosen well below the
+  validated ceiling (`6 * 128 + material_exchange_fraction <= 1024` allows up to 256) so that a
+  material surface's exchange is visibly slower than face-to-face diffusion per tick rather than
+  dominating it — this is a foundation-phase default for observability of the new coupling, not a
+  tuned physical constant; heterogeneous per-material rates are explicitly out of scope (see
+  Non-goals) and follow-up TODOs.
 
 ## Progress
 

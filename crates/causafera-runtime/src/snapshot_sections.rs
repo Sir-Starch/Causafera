@@ -25,15 +25,16 @@ use crate::{
     ExperimentRecipeManaSourceRecipe, GenericFeature, MAX_EXPERIMENT_RECIPE_MANA_SOURCES,
     MAX_MATERIAL_SURFACE_TRANSITIONS, MaterialSurface, MaterialSurfaceGateTransition,
     MaterialSurfaceId, MaterialSurfaceManaGate, MaterialSurfaceRecordSnapshot,
-    MaterialSurfaceSnapshot, MaterialSurfaceTransition, MinimalBodyState, PatternHistorySnapshot,
-    PerceivedSelf, PhysicalCountersSnapshot, PopulationAggregate, PopulationAggregateSnapshot,
-    RuntimeConfig, RuntimeRecipeSnapshot, RuntimeSnapshotData, RuntimeState, SensorAperture,
-    SensorKindId, SpatialChunkSnapshot, SubjectiveSceneSnapshot, SubjectiveTarget,
-    SystemRegistrationSnapshot, TerrainCarrierSnapshot, TerrainParticipation,
-    ThermalActiveRegionSnapshot, ThermalBoundaryRecordSnapshot, ThermalCellTransferReceiptSnapshot,
+    MaterialSurfaceSnapshot, MaterialSurfaceThermalState, MaterialSurfaceThermalTransition,
+    MaterialSurfaceTransition, MinimalBodyState, PatternHistorySnapshot, PerceivedSelf,
+    PhysicalCountersSnapshot, PopulationAggregate, PopulationAggregateSnapshot, RuntimeConfig,
+    RuntimeRecipeSnapshot, RuntimeSnapshotData, RuntimeState, SensorAperture, SensorKindId,
+    SpatialChunkSnapshot, SubjectiveSceneSnapshot, SubjectiveTarget, SystemRegistrationSnapshot,
+    TerrainCarrierSnapshot, TerrainParticipation, ThermalActiveRegionSnapshot,
+    ThermalBoundaryRecordSnapshot, ThermalCellTransferReceiptSnapshot,
     ThermalConservationReceiptSnapshot, ThermalFaceRecordSnapshot, ThermalFieldSetSnapshot,
-    ThermalFieldSnapshot, ThermalReservoirScheduleSnapshot, ThermalReservoirSnapshot,
-    ThermalReservoirTransferRecordSnapshot, ThermalSnapshot,
+    ThermalFieldSnapshot, ThermalMaterialTransferRecordSnapshot, ThermalReservoirScheduleSnapshot,
+    ThermalReservoirSnapshot, ThermalReservoirTransferRecordSnapshot, ThermalSnapshot,
 };
 
 pub const SECTION_RUNTIME_RECIPE: u16 = 0x0001;
@@ -56,9 +57,14 @@ pub const THERMAL_SECTION_ID: u16 = 0x000E;
 const RUNTIME_RECIPE_SECTION_MAJOR: u16 = 5;
 const MANA_SECTION_MAJOR: u16 = 2;
 const PHYSICAL_COUNTERS_SECTION_MAJOR: u16 = 3;
-const MATERIAL_SURFACE_SECTION_MAJOR: u16 = 2;
+/// Bumped to 3 when `MaterialSurface` gained `thermal` (conserved retained-heat exchange,
+/// `TODO-THERMAL-002`), and `MaterialSurfaceSnapshot` gained `thermal_transitions`.
+const MATERIAL_SURFACE_SECTION_MAJOR: u16 = 3;
 pub const EXPERIMENT_RECIPE_MANA_SOURCE_RECEIPTS_SECTION_MAJOR: u16 = 1;
-pub const THERMAL_SECTION_MAJOR: u16 = 1;
+/// Bumped to 2 when `ThermalParameters` gained `material_exchange_fraction`/
+/// `material_thermal_capacity` and cell receipts/conservation receipts gained the material term
+/// (`TODO-THERMAL-002`).
+pub const THERMAL_SECTION_MAJOR: u16 = 2;
 const CURRENT_SECTION_MINOR: u16 = 0;
 const MAX_THERMAL_BOUNDARY_RECORDS: usize = 1_000_000;
 
@@ -459,6 +465,8 @@ pub fn encode_thermal_section(snapshot: &ThermalSnapshot) -> Vec<u8> {
     enc.write_i64(snapshot.parameters.transfer_fraction);
     enc.write_i64(snapshot.parameters.heat_capacity);
     enc.write_i64(snapshot.parameters.scale);
+    enc.write_i64(snapshot.parameters.material_exchange_fraction);
+    enc.write_i64(snapshot.parameters.material_thermal_capacity);
     enc.write_u64(snapshot.field_set.batch_sequence);
     enc.write_u64(snapshot.field_set.conservation_last_change.raw());
     enc.write_u64(snapshot.field_set.fields.len() as u64);
@@ -508,6 +516,7 @@ pub fn encode_thermal_section(snapshot: &ThermalSnapshot) -> Vec<u8> {
         for reservoir in &receipt.reservoirs {
             encode_thermal_reservoir_transfer_record(&mut enc, *reservoir);
         }
+        encode_thermal_material_transfer_record(&mut enc, receipt.material);
     }
     enc.write_u64(snapshot.conservation_receipts.len() as u64);
     for receipt in &snapshot.conservation_receipts {
@@ -517,6 +526,8 @@ pub fn encode_thermal_section(snapshot: &ThermalSnapshot) -> Vec<u8> {
         encode_i128(&mut enc, receipt.total_cell_energy_after);
         encode_i128(&mut enc, receipt.total_reservoir_budget_before);
         encode_i128(&mut enc, receipt.total_reservoir_budget_after);
+        encode_i128(&mut enc, receipt.total_material_retained_before);
+        encode_i128(&mut enc, receipt.total_material_retained_after);
         encode_i128(&mut enc, receipt.residual);
     }
     enc.write_u64(snapshot.boundary_records.len() as u64);
@@ -534,6 +545,8 @@ pub fn decode_thermal_section(bytes: &[u8]) -> Result<ThermalSnapshot, Persisten
         transfer_fraction: dec.read_i64()?,
         heat_capacity: dec.read_i64()?,
         scale: dec.read_i64()?,
+        material_exchange_fraction: dec.read_i64()?,
+        material_thermal_capacity: dec.read_i64()?,
     }
     .validate()
     .map_err(|error| PersistenceError::codec(format!("invalid thermal parameters: {error}")))?;
@@ -617,6 +630,7 @@ pub fn decode_thermal_section(bytes: &[u8]) -> Result<ThermalSnapshot, Persisten
             reservoir_records.push(decode_thermal_reservoir_transfer_record(&mut dec)?);
         }
         reject_unsorted_ids(reservoir_records.iter().map(|record| record.id.raw()))?;
+        let material = decode_thermal_material_transfer_record(&mut dec)?;
         transfer_receipts.push(ThermalCellTransferReceiptSnapshot {
             conservation_trace,
             cell,
@@ -625,6 +639,7 @@ pub fn decode_thermal_section(bytes: &[u8]) -> Result<ThermalSnapshot, Persisten
             cell_change_trace_id,
             faces,
             reservoirs: reservoir_records,
+            material,
         });
     }
     let conservation_count = read_count(&mut dec, 1_000_000, "thermal conservation receipt")?;
@@ -645,6 +660,8 @@ pub fn decode_thermal_section(bytes: &[u8]) -> Result<ThermalSnapshot, Persisten
             total_cell_energy_after: decode_i128(&mut dec)?,
             total_reservoir_budget_before: decode_i128(&mut dec)?,
             total_reservoir_budget_after: decode_i128(&mut dec)?,
+            total_material_retained_before: decode_i128(&mut dec)?,
+            total_material_retained_after: decode_i128(&mut dec)?,
             residual: decode_i128(&mut dec)?,
         });
     }
@@ -902,6 +919,8 @@ pub fn encode_material_surface_section(snapshot: &MaterialSurfaceSnapshot) -> Ve
         encode_option_trace(&mut enc, record.surface.last_contact_trace);
         encode_bool(&mut enc, record.surface.gate.active);
         encode_option_trace(&mut enc, record.surface.gate.last_transition);
+        enc.write_i64(record.surface.thermal.retained_energy.get());
+        encode_option_trace(&mut enc, record.surface.thermal.last_exchange);
     }
     enc.write_u64(snapshot.pending_physical_changes.len() as u64);
     for id in &snapshot.pending_physical_changes {
@@ -930,6 +949,17 @@ pub fn encode_material_surface_section(snapshot: &MaterialSurfaceSnapshot) -> Ve
         encode_option_trace(&mut enc, transition.contact_trace);
         enc.write_u64(transition.transition_trace.raw());
     }
+    enc.write_u64(snapshot.thermal_transitions.len() as u64);
+    for transition in &snapshot.thermal_transitions {
+        encode_material_surface_id(&mut enc, transition.id);
+        enc.write_u64(transition.occurred_at.raw());
+        enc.write_i64(transition.before_retained);
+        enc.write_i64(transition.after_retained);
+        enc.write_i64(transition.cell_pre_state);
+        enc.write_i64(transition.signed_flux);
+        enc.write_u64(transition.cell_trace.raw());
+        enc.write_u64(transition.transition_trace.raw());
+    }
     buf
 }
 
@@ -950,6 +980,12 @@ pub fn decode_material_surface_section(
                 gate: MaterialSurfaceManaGate {
                     active: decode_bool(&mut dec)?,
                     last_transition: decode_option_trace(&mut dec)?,
+                },
+                thermal: MaterialSurfaceThermalState {
+                    retained_energy: ThermalEnergy::new(dec.read_i64()?).map_err(|_| {
+                        PersistenceError::codec("material surface retained energy is negative")
+                    })?,
+                    last_exchange: decode_option_trace(&mut dec)?,
                 },
             },
         });
@@ -1014,12 +1050,39 @@ pub fn decode_material_surface_section(
         previous_gate_trace = Some(transition.transition_trace);
         gate_transitions.push(transition);
     }
+    let thermal_transition_count = read_count(
+        &mut dec,
+        MAX_MATERIAL_SURFACE_TRANSITIONS,
+        "material surface thermal transition",
+    )?;
+    let mut thermal_transitions = Vec::with_capacity(thermal_transition_count);
+    let mut previous_thermal_trace = None;
+    for _ in 0..thermal_transition_count {
+        let transition = MaterialSurfaceThermalTransition {
+            id: decode_material_surface_id(&mut dec)?,
+            occurred_at: SimulationTime::new(dec.read_u64()?),
+            before_retained: dec.read_i64()?,
+            after_retained: dec.read_i64()?,
+            cell_pre_state: dec.read_i64()?,
+            signed_flux: dec.read_i64()?,
+            cell_trace: TraceId::new(dec.read_u64()?),
+            transition_trace: TraceId::new(dec.read_u64()?),
+        };
+        if previous_thermal_trace.is_some_and(|previous| previous >= transition.transition_trace) {
+            return Err(PersistenceError::codec(
+                "material surface thermal transitions must be strictly trace ordered",
+            ));
+        }
+        previous_thermal_trace = Some(transition.transition_trace);
+        thermal_transitions.push(transition);
+    }
     require_empty(&dec)?;
     Ok(MaterialSurfaceSnapshot {
         records,
         pending_physical_changes,
         transitions,
         gate_transitions,
+        thermal_transitions,
     })
 }
 
@@ -2279,6 +2342,37 @@ fn decode_thermal_reservoir_transfer_record(
     })
 }
 
+fn encode_thermal_material_transfer_record(
+    enc: &mut LittleEndianEncoder<'_>,
+    record: Option<ThermalMaterialTransferRecordSnapshot>,
+) {
+    match record {
+        Some(record) => {
+            encode_bool(enc, true);
+            enc.write_i64(record.retained_before);
+            enc.write_i64(record.retained_after);
+            enc.write_i64(record.signed_flux);
+            enc.write_i64(record.rejected);
+        }
+        None => encode_bool(enc, false),
+    }
+}
+
+fn decode_thermal_material_transfer_record(
+    dec: &mut LittleEndianDecoder<'_>,
+) -> Result<Option<ThermalMaterialTransferRecordSnapshot>, PersistenceError> {
+    if decode_bool(dec)? {
+        Ok(Some(ThermalMaterialTransferRecordSnapshot {
+            retained_before: decode_thermal_energy(dec)?,
+            retained_after: decode_thermal_energy(dec)?,
+            signed_flux: dec.read_i64()?,
+            rejected: decode_thermal_energy(dec)?,
+        }))
+    } else {
+        Ok(None)
+    }
+}
+
 fn decode_thermal_energy(dec: &mut LittleEndianDecoder<'_>) -> Result<i64, PersistenceError> {
     let value = dec.read_i64()?;
     ThermalEnergy::new(value)
@@ -3216,7 +3310,7 @@ mod tests {
         );
         assert_eq!(
             envelope.sections[&u64::from(MATERIAL_SURFACE_SECTION_ID)].section_major,
-            2
+            3
         );
         assert!(disassemble_envelope(&incompatible_recipe_v3).is_err());
         assert!(disassemble_envelope(&incompatible_recipe_unknown).is_err());

@@ -593,6 +593,8 @@ mod tests {
             total_cell_energy_after: 160,
             total_reservoir_budget_before: 80,
             total_reservoir_budget_after: 20,
+            total_material_retained_before: 0,
+            total_material_retained_after: 0,
             residual: 0,
         };
         let claim = ThermalCarrierConservationClaim {

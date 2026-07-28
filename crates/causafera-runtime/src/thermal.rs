@@ -74,6 +74,7 @@ pub(crate) struct ThermalEvolutionSystem {
 #[derive(Clone, Copy)]
 pub(super) enum ThermalEventSubject {
     Reservoir(ThermalReservoirId),
+    Material(ThermalCellKey),
     Cell(ThermalCellKey),
     Conservation,
 }
@@ -102,6 +103,19 @@ impl ThermalEvolutionSystem {
             .values()
             .copied()
             .collect::<Vec<_>>();
+        let materials = state
+            .material_surfaces
+            .iter()
+            .map(|(id, surface)| {
+                (
+                    ThermalCellKey::new(id.chunk, id.cell_index),
+                    ThermalMaterialSite {
+                        retained_before: surface.thermal.retained_energy,
+                        last_exchange: surface.thermal.last_exchange,
+                    },
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
         let evolution = state
             .thermal_fields
             .propose_evolution(ThermalEvolutionRequest {
@@ -111,6 +125,7 @@ impl ThermalEvolutionSystem {
                 boundary_behavior: ThermalBoundaryBehavior::NoFluxOutsideActiveRegion,
                 reservoirs: &reservoirs,
                 injections: &state.pending_thermal_injections,
+                materials: &materials,
             })?;
         let accepted = accepted_reservoirs(evolution.transfer_receipts());
         let mut events = build_thermal_events(&state, &evolution, &accepted)?;
@@ -120,12 +135,16 @@ impl ThermalEvolutionSystem {
             .traces
             .commit_batch(self.next_time, Phase::Physics, proposals)?;
         let mut reservoir_traces = BTreeMap::new();
+        let mut material_traces = BTreeMap::new();
         let mut cell_traces = BTreeMap::new();
         let mut conservation_trace = state.thermal_fields.conservation_last_change();
         for (event, trace) in events.iter().zip(traces) {
             match event.subject {
                 ThermalEventSubject::Reservoir(id) => {
                     reservoir_traces.insert(id, trace);
+                }
+                ThermalEventSubject::Material(cell) => {
+                    material_traces.insert(cell, trace);
                 }
                 ThermalEventSubject::Cell(cell) => {
                     cell_traces.insert(cell, trace);
@@ -135,6 +154,48 @@ impl ThermalEvolutionSystem {
         }
         let mut receipts = evolution.transfer_receipts().to_vec();
         install_receipt_traces(&mut receipts, &cell_traces, &reservoir_traces);
+        // Collect the bounded transition records first (reading `state.thermal_fields` and
+        // `state.material_surfaces` immutably) so recording them afterward does not overlap
+        // with the mutable surface-state update below.
+        let mut thermal_transitions = Vec::new();
+        for receipt in evolution.transfer_receipts() {
+            let Some(material) = &receipt.material else {
+                continue;
+            };
+            let Some(trace) = material_traces.get(&receipt.cell).copied() else {
+                continue;
+            };
+            let cell_trace = state
+                .thermal_fields
+                .field(receipt.cell.chunk)
+                .and_then(|field| {
+                    field
+                        .last_change()
+                        .get(usize::from(receipt.cell.cell_index))
+                })
+                .copied()
+                .ok_or(RuntimeError::Thermal(ThermalError::PositionOutsideField))?;
+            thermal_transitions.push(MaterialSurfaceThermalTransition {
+                id: MaterialSurfaceId::new(receipt.cell.chunk, receipt.cell.cell_index),
+                occurred_at: self.next_time,
+                before_retained: material.retained_before.get(),
+                after_retained: material.retained_after.get(),
+                cell_pre_state: receipt.pre_state.get(),
+                signed_flux: material.signed_flux,
+                cell_trace,
+                transition_trace: trace,
+            });
+        }
+        for transition in &thermal_transitions {
+            if let Some(surface) = state.material_surfaces.get_mut(&transition.id) {
+                surface.thermal.retained_energy = ThermalEnergy::new(transition.after_retained)
+                    .map_err(|_| RuntimeError::Thermal(ThermalError::EnergyOutOfBounds))?;
+                surface.thermal.last_exchange = Some(transition.transition_trace);
+            }
+        }
+        for transition in thermal_transitions {
+            record_material_surface_thermal_transition(&mut state, transition);
+        }
         let mut after_fields = evolution.after_state().clone();
         after_fields.install_committed_traces(ThermalCommittedTraces {
             changes: evolution.cell_changes(),

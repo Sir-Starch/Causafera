@@ -273,6 +273,35 @@ fn runtime_import_rejects_non_latest_receipt_cell_index_out_of_bounds() {
 }
 
 #[test]
+fn runtime_import_rejects_non_latest_receipt_material_flux_forgery() {
+    // Given: a snapshot spanning two committed batches, so a non-latest receipt with a material
+    // exchange term exists alongside the latest one.
+    let mut runtime = Runtime::new(runtime_config(1_814)).expect("runtime bootstrap must succeed");
+    runtime.run_ticks(2).expect("thermal batches must execute");
+    let mut forged = runtime.export_snapshot().expect("snapshot must export");
+    let latest_trace = forged.thermal.field_set.conservation_last_change;
+    let non_latest_material_receipt = forged
+        .thermal
+        .transfer_receipts
+        .iter_mut()
+        .find(|receipt| receipt.conservation_trace != latest_trace && receipt.material.is_some())
+        .expect("an earlier batch must have a material transfer receipt");
+    non_latest_material_receipt
+        .material
+        .as_mut()
+        .expect("receipt must carry a material term")
+        .signed_flux += 1;
+
+    // When: a historical, non-latest receipt's material flux no longer matches its cell's
+    // pre/post-state transition.
+    let imported = RuntimeState::import_snapshot(forged);
+
+    // Then: the extended signed-flux equation (faces plus material) rejects the forgery
+    // regardless of which batch it appears in, not only the latest.
+    assert!(matches!(imported, Err(RuntimeError::InvalidSnapshot(_))));
+}
+
+#[test]
 fn runtime_import_rejects_reservoir_budget_subtraction_overflow() {
     // Given: a valid snapshot with an unrepresentable reservoir budget difference.
     let mut forged = evolved_snapshot(1_811);
@@ -361,7 +390,7 @@ fn unknown_thermal_section_or_version_rejects() {
         .sections
         .get_mut(&u64::from(THERMAL_SECTION_ID))
         .expect("thermal section must exist")
-        .section_major = 2;
+        .section_major = THERMAL_SECTION_MAJOR + 1;
     let mut unknown = envelope;
     unknown.sections.insert(
         0xFFFF,
@@ -388,11 +417,11 @@ fn thermal_persistence_literal_version_contract() {
 
     // Then: thermal persistence and digest versions retain their literal wire contract.
     assert_eq!(THERMAL_SECTION_ID, 0x000E);
-    assert_eq!(THERMAL_SECTION_MAJOR, 1);
-    assert_eq!(CURRENT_DIGEST_SCHEMA_VERSION.raw(), 5);
-    assert_eq!(envelope.sections[&u64::from(0x000E_u16)].section_major, 1);
-    assert_eq!(envelope.header.physical_digest_schema, 5);
-    assert_eq!(envelope.header.history_digest_schema, 5);
+    assert_eq!(THERMAL_SECTION_MAJOR, 2);
+    assert_eq!(CURRENT_DIGEST_SCHEMA_VERSION.raw(), 6);
+    assert_eq!(envelope.sections[&u64::from(0x000E_u16)].section_major, 2);
+    assert_eq!(envelope.header.physical_digest_schema, 6);
+    assert_eq!(envelope.header.history_digest_schema, 6);
 }
 
 #[test]

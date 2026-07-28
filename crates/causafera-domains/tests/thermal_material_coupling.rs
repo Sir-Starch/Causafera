@@ -1,8 +1,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use causafera_domains::{
-    ThermalActiveRegion, ThermalBoundaryBehavior, ThermalCellKey, ThermalEnergy,
-    ThermalEvolutionRequest, ThermalField, ThermalFieldSet, ThermalMaterialSite, ThermalParameters,
+    ThermalActiveRegion, ThermalBoundaryBehavior, ThermalCellKey, ThermalCommittedTraces,
+    ThermalEnergy, ThermalEvolutionRequest, ThermalField, ThermalFieldSet, ThermalMaterialSite,
+    ThermalParameters,
 };
 use causafera_types::{ChartChunkCoord, ChunkCoord, SpatialChartId, TraceId};
 
@@ -179,6 +180,81 @@ fn equilibrium_produces_no_material_record_or_change() {
     );
     assert!(proposal.cell_changes().is_empty());
     assert_eq!(proposal.conservation_receipt().residual, 0);
+}
+
+#[test]
+fn material_and_face_flux_cancel_leaving_no_cell_change_event() {
+    // Given: a face inflow to the material-bearing cell that exactly offsets its material outflow.
+    let fields = field_set(vec![
+        field(chunk(0), 1, vec![50]),
+        field(chunk(1), 1, vec![150]),
+    ]);
+    let cell = ThermalCellKey::new(chunk(0), 0);
+    let materials = BTreeMap::from([(cell, site(0))]);
+    let parameters = ThermalParameters::new(40, 1, 1_000, 80, 1_000).unwrap();
+
+    // When: one tick proposes both the face exchange and the material exchange together.
+    let proposal = evolve(&fields, parameters, &materials);
+
+    // Then: the cell's net energy is unchanged (no `ThermalCellChange` event fires for it) even
+    // though the material moved a nonzero amount and its transfer receipt still exists.
+    assert!(
+        proposal
+            .cell_changes()
+            .iter()
+            .all(|change| change.cell != cell)
+    );
+    let receipt = proposal
+        .transfer_receipts()
+        .iter()
+        .find(|receipt| receipt.cell == cell)
+        .expect("material-bearing cell must still have a transfer receipt");
+    assert_eq!(receipt.pre_state, energy(50));
+    assert_eq!(receipt.post_state, energy(50));
+    assert!(receipt.material.is_some());
+    assert_eq!(
+        *proposal.material_retained_after().get(&cell).unwrap(),
+        energy(4)
+    );
+    assert_eq!(proposal.conservation_receipt().residual, 0);
+}
+
+#[test]
+fn install_committed_traces_preserves_anchor_for_material_only_net_zero_cell() {
+    // Given: the same cancelling face/material exchange, whose cell receipt has no accepted
+    // reservoir transfer to anchor a new trace to.
+    let fields = field_set(vec![
+        field(chunk(0), 1, vec![50]),
+        field(chunk(1), 1, vec![150]),
+    ]);
+    let cell = ThermalCellKey::new(chunk(0), 0);
+    let materials = BTreeMap::from([(cell, site(0))]);
+    let parameters = ThermalParameters::new(40, 1, 1_000, 80, 1_000).unwrap();
+    let proposal = evolve(&fields, parameters, &materials);
+    assert!(
+        proposal
+            .cell_changes()
+            .iter()
+            .all(|change| change.cell != cell)
+    );
+    let original_trace = fields.field(chunk(0)).unwrap().last_change()[0];
+
+    // When: committed traces are installed with no cell-change and no reservoir trace for it.
+    let mut after = proposal.after_state().clone();
+    after.install_committed_traces(ThermalCommittedTraces {
+        changes: proposal.cell_changes(),
+        receipts: proposal.transfer_receipts(),
+        cell_traces: &BTreeMap::new(),
+        reservoir_traces: &BTreeMap::new(),
+        conservation_trace: TraceId::new(99),
+    });
+
+    // Then: the cell's field anchor is left exactly as it was, rather than dangling or being
+    // overwritten with a trace this tick never produced for it.
+    assert_eq!(
+        after.field(chunk(0)).unwrap().last_change()[0],
+        original_trace
+    );
 }
 
 #[test]
