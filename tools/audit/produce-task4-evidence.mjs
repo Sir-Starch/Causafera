@@ -36,14 +36,38 @@ function executableOnPath(name) {
   fail(`${name} is not available on PATH`);
 }
 function discoverLspProvider() {
-  const packageRoot = path.resolve(path.dirname(executableOnPath('omo')), '..');
-  const metadataPath = path.join(packageRoot, 'package.json');
-  const providerPath = path.join(packageRoot, 'packages/lsp-daemon/dist/cli.js');
-  if (!fs.existsSync(metadataPath) || !fs.existsSync(providerPath) || !fs.statSync(providerPath).isFile()) fail('no validated OMO LSP CLI is installed');
-  const metadata = JSON.parse(fs.readFileSync(metadataPath, 'utf8'));
-  if (!/^\d+\.\d+\.\d+$/.test(metadata.version)) fail('installed OMO LSP CLI has an invalid version');
-  const provider = { version: metadata.version, path: providerPath };
-  return { ...provider, sha256: crypto.createHash('sha256').update(fs.readFileSync(provider.path)).digest('hex') };
+  const executable = executableOnPath('omo');
+  const packageRoot = path.resolve(path.dirname(executable), '..');
+  const packageRoots = [packageRoot];
+  const npmCache = process.env.NPM_CONFIG_CACHE ?? process.env.npm_config_cache ?? path.join(os.homedir(), '.npm');
+  const npxRoot = path.resolve(npmCache, '_npx');
+  if (fs.existsSync(npxRoot)) {
+    for (const entry of fs.readdirSync(npxRoot, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const nodeModulesRoot = path.join(npxRoot, entry.name, 'node_modules');
+      if (!fs.existsSync(nodeModulesRoot)) continue;
+      for (const packageEntry of fs.readdirSync(nodeModulesRoot, { withFileTypes: true })) {
+        if (!packageEntry.isDirectory()) continue;
+        const packagePath = path.join(nodeModulesRoot, packageEntry.name);
+        if (packageEntry.name.startsWith('@')) {
+          for (const scopedPackage of fs.readdirSync(packagePath, { withFileTypes: true })) {
+            if (scopedPackage.isDirectory()) packageRoots.push(path.join(packagePath, scopedPackage.name));
+          }
+        } else packageRoots.push(packagePath);
+      }
+    }
+  }
+  const providers = packageRoots.flatMap((root) => {
+    const metadataPath = path.join(root, 'package.json');
+    const providerPath = path.join(root, 'packages/lsp-daemon/dist/cli.js');
+    if (!fs.existsSync(metadataPath) || !fs.existsSync(providerPath) || !fs.statSync(providerPath).isFile()) return [];
+    const metadata = JSON.parse(fs.readFileSync(metadataPath, 'utf8'));
+    return /^\d+\.\d+\.\d+$/.test(metadata.version) ? [{ root, version: metadata.version, path: providerPath }] : [];
+  });
+  const provider = providers.find((candidate) => candidate.root === packageRoot)
+    ?? providers.sort((left, right) => right.version.localeCompare(left.version, undefined, { numeric: true }) || left.path.localeCompare(right.path))[0];
+  if (!provider) fail('no validated OMO LSP CLI is installed');
+  return { version: provider.version, path: provider.path, sha256: crypto.createHash('sha256').update(fs.readFileSync(provider.path)).digest('hex') };
 }
 const LSP_PROVIDER = discoverLspProvider();
 const LSP_MCP = LSP_PROVIDER.path;
