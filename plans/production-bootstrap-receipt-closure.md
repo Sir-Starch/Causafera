@@ -758,6 +758,33 @@ The implementation worker updates only documents whose facts change:
 
   **Progress had no rows for the audit commits.** Added, with their focused verification.
 
+- **2026-07-28 (fourth audit):** A fourth audit of `5367351` found four more.
+
+  **Field 35 on a varint wire diverged.** TypeScript's generic `wire === 0` branch ran before the
+  bootstrap wire-type guard, so the field was stored as a scalar and then silently dropped while Rust
+  rejected it. The guard now runs first and is table-driven: each bootstrap field declares the one
+  wire type it may arrive on, which is harder to get partially right than a range check.
+
+  **An over-wide varint diverged.** Neither decoder checked the tenth byte's payload bits. Rust
+  shifted them into a `u64` and truncated — `0x02 << 63` becomes zero — while TypeScript accumulates
+  into a bigint, cannot truncate, and rejected the result downstream. This is the third divergence of
+  the same shape found in three consecutive audits, and unlike the first two it lives in the shared
+  `Cursor`, so it affected every field of every message rather than the bootstrap group. Both now
+  reject a tenth byte above one.
+
+  **The benchmark did not follow this repository's own methodology.**
+  `docs/performance/benchmarks.md` requires warm-up, mean/median/stddev and raw samples; the bootstrap
+  benchmark timed a loop and divided. It now warms up four repetitions, measures twenty per
+  distribution, and retains every raw sample. The consequence was not cosmetic: the observer encoding
+  overhead had been reported as unresolvable through three passes, and that turned out to be a
+  property of measuring the control and its counterpart as two sequential blocks. Interleaved at
+  twenty samples the control's spread collapses to tens of nanoseconds, the distributions separate,
+  and the overhead is now reported as a figure.
+
+  **`docs/performance/benchmarks.md` described `TODO-PERF-001` as open** in three places after the
+  backlog had closed it and carried the remainder to `TODO-PERF-003`. Corrected in the benchmarks
+  document, which was the stale source.
+
 - **2026-07-28 (post-audit, not done):** The audit asked for matching adversarial tests on the
   TypeScript side. The workspace has no JavaScript test runner, and adding one is not cheap here:
   `engines` allows Node 20.19, which cannot strip TypeScript, and the package has no build output to
@@ -796,7 +823,11 @@ The implementation worker updates only documents whose facts change:
 | 5 | `a676593` | `cargo test -p causafera-runtime --test historical_bootstrap` (33 passed), `cargo run -p xtask -- ci`, `git diff --check` |
 | audit 1 | `cf3f018` | `cargo test -p causafera-runtime --test historical_bootstrap` (37 passed), `cargo test -p causafera-observer-wire --test protocol` (17 passed), full workspace green |
 | audit 2 | `0ea17cb` | `cargo test -p causafera-runtime --test historical_bootstrap` (39 passed), `cargo test -p causafera-observer-wire --test protocol` (18 passed), full workspace green |
-| audit 3 | this commit | `cargo test -p causafera-runtime --test historical_bootstrap` (39 passed), `cargo test -p causafera-observer-wire --test protocol` (20 passed), `cargo run -p xtask -- ci`, `git diff --check` |
+| audit 3 | `5367351` | `cargo test -p causafera-runtime --test historical_bootstrap` (39 passed), `cargo test -p causafera-observer-wire --test protocol` (20 passed), `cargo run -p xtask -- ci`, `git diff --check` |
+| audit 4 | `5d47c0e` | `cargo test -p causafera-runtime --test historical_bootstrap` (40 passed), `cargo test -p causafera-observer-wire --test protocol` (20 passed), `cargo run -p xtask -- ci`, `git diff --check` |
+
+Each row names the round's **implementation** commit; the documentation commit that records a row's
+hash necessarily follows it and is not itself listed.
 
 ### Final verification
 
@@ -826,30 +857,45 @@ The implementation worker updates only documents whose facts change:
 ### Bounded measurement
 
 Envelope only: nine active chunks (`Area`, radius 1), bootstrap population 512, eight promoted
-actors, one sensor aperture each. AMD Ryzen 9 7950X3D, release profile. Each figure below is one
-eight-iteration mean; the ranges are across **five such runs invoked by hand**, not by the
-checked-in test, which runs the benchmark twice and asserts only that the authoritative outputs are
-identical.
+actors, one sensor aperture each. AMD Ryzen 9 7950X3D, `rustc 1.97.1`, release profile.
+
+Method: four unmeasured warm-up repetitions, then twenty measured repetitions per distribution, with
+the observer control and its counterpart interleaved. Every raw sample is retained on the report.
+The figures below are medians with population standard deviations, given as ranges across three
+consecutive runs of the benchmark.
+
+| Metric | Median | Stddev |
+| --- | --- | --- |
+| bootstrap wall time per `Runtime::new` | 3.14-3.23 ms | 32-126 us |
+| import wall time per `RuntimeState::import_snapshot` | 0.190-0.197 ms | 3.5-31 us |
+| observer poll, control (no encoding) | 9.38-9.53 us | 33-54 ns |
+| observer poll, with summary encoding | 9.67-9.88 us | 259-294 ns |
 
 | Metric | Measured |
 | --- | --- |
-| bootstrap wall time per `Runtime::new` | 3.52-3.58 ms warm; the first run of a cold process measured 5.07 ms and is reported rather than dropped |
-| import wall time per `RuntimeState::import_snapshot` | 0.20-0.21 ms warm, 0.29 ms on the same cold first run |
 | encoded snapshot bytes (complete envelope) | 177 071 |
 | canonical bootstrap record bytes | 1 676 |
 | bootstrap provenance events | 53 |
 | observer runtime-summary payload bytes | 436 |
-| observer poll, control (no encoding) | 9.80-11.78 us |
-| observer poll, with summary encoding | 10.16-10.89 us |
 
-The observer-encoding overhead is **not reported as a figure**. The measured mean exceeded the
-control in four of the five runs, but the two ranges overlap and the one run where the control was
-higher was the cold one, so the cost is below what this harness can resolve at this envelope.
+**Observer encoding overhead: roughly 300-350 ns per poll, about 3-4%.** Earlier passes reported
+this as unresolvable, and that was a property of the measurement rather than of the system: taken as
+two sequential blocks of eight, the two means straddled each other. Interleaved at twenty samples the
+control's spread collapses to tens of nanoseconds and the two distributions separate — in the
+cleanest of the three runs they do not overlap at all, the observer minimum sitting above the control
+maximum. The figure is now reported because it can be.
 
-"Encoded snapshot bytes" is the complete envelope — header and section directory included — which is
-the same measurement the material-surface and experiment-recipe benchmarks report, so the three are
-comparable. No generated benchmark output is committed. None of these numbers is a scale result or a
-regression threshold.
+Import cost did **not** measurably rise when `validate_bootstrap_stage_replay` was added, at this
+envelope: the median sits where the pre-hardening mean did. That is a statement about fifty-three
+bootstrap events and six recomputed fingerprints, not about a larger record.
+
+A fourth run, taken first on a cold process, is excluded from the ranges above and recorded here
+instead: bootstrap median 3.70 ms with a 551 us standard deviation, and one import sample of 2.83 ms
+against a 0.36 ms median. Four warm-up repetitions do not absorb a cold machine, which is a limit of
+this harness and is why the ranges name three runs rather than four.
+
+No generated benchmark output is committed. None of these numbers is a scale result or a regression
+threshold, and this machine is not reference hardware.
 
 ### Deviations from the accepted plan
 
@@ -890,6 +936,15 @@ A third audit of `0ea17cb` found five more.
 | A summary with every scalar on the wrong wire type decoded as "absent" instead of malformed | `a_mistyped_summary_field_is_rejected_rather_than_read_as_absent` |
 | `encoded_snapshot_bytes` summed payload sections while the neighbouring benchmarks measure the whole envelope | figures re-measured against the complete envelope |
 | Progress carried no rows for the audit commits | rows added above |
+
+A fourth audit of `5367351` found four more.
+
+| Defect | Regression coverage |
+| --- | --- |
+| TypeScript accepted wire field 35 on a varint wire and dropped it silently; Rust rejected it | `a_mistyped_summary_field_is_rejected_rather_than_read_as_absent` covers the Rust side; the guard is table-driven in both |
+| Neither decoder bounded the tenth byte of a varint, so Rust truncated where TypeScript rejected — in the shared cursor, affecting every message | both reject a tenth byte above one |
+| The bootstrap benchmark ignored the repository's warm-up / mean-median-stddev / raw-sample requirement | `benchmark_summary_statistics_are_computed_over_the_retained_samples`, and the envelope test now asserts every measured repetition is retained |
+| `docs/performance/benchmarks.md` described `TODO-PERF-001` as open after the backlog closed it | the benchmarks document corrected in three places |
 
 Two audit findings were deliberately **not** acted on, both recorded in the Decision Log: the
 TypeScript decoder still has no automated adversarial coverage (no JS test runner exists in the

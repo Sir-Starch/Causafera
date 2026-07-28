@@ -1076,15 +1076,19 @@ acceptance criteria are now backed by evidence, and the status stays In Progress
   material activity, thermal — and nothing else. `TODO-DEPTH-001` and `TODO-HIST-001` remain open
   and are not advanced by it.
 
-**Bounded measurement (envelope only, AMD Ryzen 9 7950X3D, release profile):** nine active chunks,
-bootstrap population 512, eight promoted actors, one sensor aperture each. Bootstrap wall time
-3.21-3.39 ms per `Runtime::new` (five samples of an eight-iteration mean); import wall time
-0.20-0.22 ms per `RuntimeState::import_snapshot` including canonical validation; encoded snapshot
-175 965 bytes of which the bootstrap record is 1 676; 53 provenance events committed by bootstrap;
-observer runtime-summary payload 435 bytes. Observer-poll overhead is **not reported**: the control
-and measured means (9.6-10.4 us against 9.9-10.8 us) straddle each other across runs, so the
-encoding cost is below this harness's noise at this envelope and no figure is claimed. These are
-measurements of one machine at one envelope, not a scale result and not a regression threshold.
+**Bounded measurement (envelope only, AMD Ryzen 9 7950X3D, `rustc 1.97.1`, release profile):** nine
+active chunks, bootstrap population 512, eight promoted actors, one sensor aperture each. Four
+warm-up repetitions, twenty measured repetitions per distribution, observer control and counterpart
+interleaved, every raw sample retained; medians and population standard deviations below are ranges
+across three consecutive runs. Bootstrap 3.14-3.23 ms (stddev 32-126 us) per `Runtime::new`; import
+0.190-0.197 ms (stddev 3.5-31 us) per `RuntimeState::import_snapshot` including canonical
+validation; complete encoded snapshot envelope 177 071 bytes of which the bootstrap record is 1 676;
+53 provenance events committed by bootstrap; observer runtime-summary payload 436 bytes. Observer
+encoding overhead is **roughly 300-350 ns per poll, about 3-4%** — earlier passes reported it as
+unresolvable, which was a property of sequential-block measurement rather than of the system;
+interleaved at twenty samples the distributions separate. These are measurements of one machine at
+one envelope, not a scale result and not a regression threshold, and this machine is not reference
+hardware. See `docs/performance/benchmarks.md`.
 
 ## TODO-RUNTIME-002: The World Seed Does Not Vary the Simulation
 **Status:** Completed — see `plans/terrain-carrier-participation.md`

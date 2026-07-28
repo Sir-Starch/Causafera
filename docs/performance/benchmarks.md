@@ -65,7 +65,24 @@ Benchmark results must be:
 
 ## Phase 24 Executable Baseline
 
-The headless runtime and lab report wall-clock duration for bounded runs and numeric activity counts. Duration is excluded from canonical replay equality and is not a throughput or scale claim. The full benchmark matrix, RSS measurement, statistical repetition, and reference-hardware reports remain `TODO-PERF-001`.
+The headless runtime and lab report wall-clock duration for bounded runs and numeric activity counts. Duration is excluded from canonical replay equality and is not a throughput or scale claim. Statistical repetition and RSS measurement were delivered by `plans/performance-baseline-and-digest-cost.md`, which closed `TODO-PERF-001`; the full benchmark matrix and reference-hardware reports were carried forward to `TODO-PERF-003`.
+
+## Bounded Bootstrap Closure Benchmark
+
+`run_bootstrap_closure_benchmark` measures the canonical production bootstrap at one bounded
+envelope: nine active chunks (`Area`, radius 1), bootstrap population 512, eight promoted actors,
+one sensor aperture each. It follows the Reporting requirements above as far as they can be met
+without reference hardware — four unmeasured warm-up repetitions, twenty measured repetitions per
+distribution, and mean, median, population standard deviation, minimum, maximum **and every raw
+sample** retained on the report rather than a single collapsed number.
+
+The observer control and its counterpart are interleaved rather than run as two blocks, so drift in
+machine state over the run biases both alike instead of landing entirely on whichever went second.
+That is what makes the encoding overhead resolvable at all: measured as two sequential blocks it sat
+inside run-to-run noise, and interleaved at twenty samples the two distributions separate.
+
+It defines no threshold and flags no regression, for the reason stated above: a threshold chosen
+before a historical series exists is a guess. `TODO-PERF-003` still owns that and reference hardware.
 
 ## Observer Transport Diagnostic
 
@@ -73,7 +90,8 @@ Run `cargo run --release -p causafera-runtime --example observer_overhead`. The 
 warms up for 16 ticks and measures 128 ticks in headless, idle, normal (one query/tick), and heavy
 (32 queries/tick) modes. A 2026-07-13 local run measured 357–368 ms across the four modes and
 encoded 0, 0, 18,198, and 582,336 bytes respectively. These are environment-specific diagnostics,
-not throughput or scale claims; the statistical/RSS framework remains `TODO-PERF-001`.
+not throughput or scale claims; the statistical/RSS framework has since landed with `TODO-PERF-001`,
+and this particular diagnostic predates it — it is a single run, not a distribution.
 
 ## Phase 26 UI Session Diagnostic
 
@@ -135,8 +153,9 @@ for the commit SHA, which satisfies "stored" — as a build artifact under the r
 version control — and makes "compared across commits" *possible* for the first time. It does not do
 the comparing: there is deliberately no threshold and no regression flag, because a threshold chosen
 before any historical series exists would be a guess rather than a measurement. "Flagged on
-regression" and "reproducible on reference hardware" therefore remain unmet, and `TODO-PERF-001`
-stays open on exactly those. The job does fail if the harness's boundary sweep finds a configuration
+regression" and "reproducible on reference hardware" therefore remain unmet. `TODO-PERF-001` was
+closed on the criteria it did meet and those two were carried forward as `TODO-PERF-003`, which is
+where they stay open. The job does fail if the harness's boundary sweep finds a configuration
 `RuntimeConfig::validate` accepted that then exceeded the cognition cue cap at a tick, which is a
 soundness bug rather than a performance threshold.
 
