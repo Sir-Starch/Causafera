@@ -36,6 +36,16 @@ pub struct MaterialSurfaceManaGate {
     pub last_transition: Option<TraceId>,
 }
 
+/// A material surface's conserved, bounded retained-heat state (`TODO-THERMAL-002`). Exchanges
+/// energy with the surface's co-located `ThermalField` cell inside the same atomic thermal batch
+/// that already diffuses cell-to-cell energy; see `plans/thermal-material-surface-coupling.md`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct MaterialSurfaceThermalState {
+    pub retained_energy: ThermalEnergy,
+    /// `None` until the surface's first non-zero thermal exchange.
+    pub last_exchange: Option<TraceId>,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct MaterialSurface {
     pub condition: i64,
@@ -43,6 +53,7 @@ pub struct MaterialSurface {
     pub last_transition: TraceId,
     pub last_contact_trace: Option<TraceId>,
     pub gate: MaterialSurfaceManaGate,
+    pub thermal: MaterialSurfaceThermalState,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -57,6 +68,7 @@ pub struct MaterialSurfaceSnapshot {
     pub pending_physical_changes: Vec<MaterialSurfaceId>,
     pub transitions: Vec<MaterialSurfaceTransition>,
     pub gate_transitions: Vec<MaterialSurfaceGateTransition>,
+    pub thermal_transitions: Vec<MaterialSurfaceThermalTransition>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -81,6 +93,18 @@ pub struct MaterialSurfaceGateTransition {
     pub local_mana_after: i64,
     pub local_mana_trace: TraceId,
     pub contact_trace: Option<TraceId>,
+    pub transition_trace: TraceId,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct MaterialSurfaceThermalTransition {
+    pub id: MaterialSurfaceId,
+    pub occurred_at: SimulationTime,
+    pub before_retained: i64,
+    pub after_retained: i64,
+    pub cell_pre_state: i64,
+    pub signed_flux: i64,
+    pub cell_trace: TraceId,
     pub transition_trace: TraceId,
 }
 pub(crate) fn validate_material_surface_object_ids(
@@ -260,6 +284,7 @@ pub(crate) fn validate_material_surface_last_transition(
                             active: false,
                             last_transition: None,
                         },
+                        thermal: bootstrap_material_surface_thermal_state(),
                     })
                 && before_contact_count == 0
                 && after_contact_count == 0
@@ -446,6 +471,193 @@ pub(crate) fn validate_material_surface_gate_state(
     }) {
         return Err(RuntimeError::InvalidSnapshot(
             "material surface gate state is not the latest gate transition",
+        ));
+    }
+    Ok(())
+}
+
+pub(crate) fn validate_material_surface_thermal_state(
+    traces: &CausalTraceStore,
+    id: MaterialSurfaceId,
+    surface: MaterialSurface,
+    material_thermal_capacity: i64,
+) -> Result<(), RuntimeError> {
+    if surface.thermal.retained_energy.get() > material_thermal_capacity {
+        return Err(RuntimeError::InvalidSnapshot(
+            "material surface retained energy exceeds capacity",
+        ));
+    }
+    let Some(trace) = surface.thermal.last_exchange else {
+        return if surface.thermal.retained_energy != ThermalEnergy::ZERO {
+            Err(RuntimeError::InvalidSnapshot(
+                "material surface has retained energy but no exchange transition",
+            ))
+        } else {
+            Ok(())
+        };
+    };
+    let event = traces
+        .event(trace)
+        .ok_or(RuntimeError::InvalidSnapshot("unknown trace reference"))?;
+    let object_id = material_surface_object_id(id);
+    let object_kind = StateObjectKindId::new(MATERIAL_SURFACE_OBJECT_KIND);
+    let thermal_property = StatePropertyId::new(MATERIAL_SURFACE_THERMAL_RETAINED_PROPERTY);
+    let thermal_effects: Vec<_> = event
+        .effects
+        .iter()
+        .filter(|effect| {
+            effect.target().object_kind() == object_kind
+                && effect.target().property() == thermal_property
+        })
+        .collect();
+    if thermal_effects.len() != 1 || thermal_effects[0].target().object_id() != object_id {
+        return Err(RuntimeError::InvalidSnapshot(
+            "material surface thermal transition does not target thermal property exactly once",
+        ));
+    }
+    if event.effects.iter().any(|effect| {
+        effect.target().object_kind() == object_kind && effect.target().object_id() != object_id
+    }) {
+        return Err(RuntimeError::InvalidSnapshot(
+            "material surface thermal event contains cross-surface effects",
+        ));
+    }
+    if event.kind != EventKindId::new(MATERIAL_SURFACE_THERMAL_EXCHANGE_EVENT_KIND)
+        || event.phase != Phase::Physics
+        || thermal_effects[0].after()
+            != material_surface_thermal_fingerprint(surface.thermal.retained_energy)
+    {
+        return Err(RuntimeError::InvalidSnapshot(
+            "material surface thermal state does not match its transition",
+        ));
+    }
+    if traces.iter().any(|candidate| {
+        candidate.trace_id > trace
+            && candidate.kind == EventKindId::new(MATERIAL_SURFACE_THERMAL_EXCHANGE_EVENT_KIND)
+            && candidate.effects.iter().any(|effect| {
+                effect.target().object_kind() == object_kind
+                    && effect.target().object_id() == object_id
+                    && effect.target().property() == thermal_property
+            })
+    }) {
+        return Err(RuntimeError::InvalidSnapshot(
+            "material surface thermal state is not the latest thermal transition",
+        ));
+    }
+    Ok(())
+}
+
+fn prior_material_surface_thermal_trace(
+    traces: &CausalTraceStore,
+    id: MaterialSurfaceId,
+    before: TraceId,
+) -> Option<TraceId> {
+    let object_id = material_surface_object_id(id);
+    let object_kind = StateObjectKindId::new(MATERIAL_SURFACE_OBJECT_KIND);
+    let thermal_property = StatePropertyId::new(MATERIAL_SURFACE_THERMAL_RETAINED_PROPERTY);
+    traces
+        .iter()
+        .filter(|event| {
+            event.trace_id < before
+                && event.kind == EventKindId::new(MATERIAL_SURFACE_THERMAL_EXCHANGE_EVENT_KIND)
+                && event.effects.iter().any(|effect| {
+                    effect.target().object_kind() == object_kind
+                        && effect.target().object_id() == object_id
+                        && effect.target().property() == thermal_property
+                })
+        })
+        .map(|event| event.trace_id)
+        .max()
+}
+
+pub(crate) fn validate_material_surface_thermal_transition_history(
+    traces: &CausalTraceStore,
+    surfaces: &BTreeMap<MaterialSurfaceId, MaterialSurface>,
+    thermal_transitions: &[MaterialSurfaceThermalTransition],
+) -> Result<(), RuntimeError> {
+    for transition in thermal_transitions {
+        if !surfaces.contains_key(&transition.id) {
+            return Err(RuntimeError::InvalidSnapshot(
+                "material surface thermal transition references unknown surface",
+            ));
+        }
+        let event = traces
+            .event(transition.transition_trace)
+            .ok_or(RuntimeError::InvalidSnapshot("unknown trace reference"))?;
+        let mut expected_causes = BTreeSet::new();
+        expected_causes.insert(transition.cell_trace);
+        if let Some(prior) =
+            prior_material_surface_thermal_trace(traces, transition.id, transition.transition_trace)
+        {
+            expected_causes.insert(prior);
+        }
+        let expected_causes: Vec<TraceId> = expected_causes.into_iter().collect();
+        if event.causes != expected_causes {
+            return Err(RuntimeError::InvalidSnapshot(
+                "material surface thermal transition has incorrect causal parent set",
+            ));
+        }
+    }
+    Ok(())
+}
+
+pub(crate) fn validate_material_surface_thermal_transition(
+    traces: &CausalTraceStore,
+    transition: &MaterialSurfaceThermalTransition,
+) -> Result<(), RuntimeError> {
+    let event = traces
+        .event(transition.transition_trace)
+        .ok_or(RuntimeError::InvalidSnapshot("unknown trace reference"))?;
+    if event.kind != EventKindId::new(MATERIAL_SURFACE_THERMAL_EXCHANGE_EVENT_KIND)
+        || event.phase != Phase::Physics
+        || event.time != transition.occurred_at
+    {
+        return Err(RuntimeError::InvalidSnapshot(
+            "material surface thermal transition has invalid event semantics",
+        ));
+    }
+    let object_id = material_surface_object_id(transition.id);
+    let object_kind = StateObjectKindId::new(MATERIAL_SURFACE_OBJECT_KIND);
+    let thermal_property = StatePropertyId::new(MATERIAL_SURFACE_THERMAL_RETAINED_PROPERTY);
+    if event.effects.len() != 1 {
+        return Err(RuntimeError::InvalidSnapshot(
+            "material surface thermal transition must have exactly one effect",
+        ));
+    }
+    let thermal_effect = event
+        .effects
+        .iter()
+        .find(|effect| {
+            effect.target().object_kind() == object_kind
+                && effect.target().object_id() == object_id
+                && effect.target().property() == thermal_property
+        })
+        .ok_or(RuntimeError::InvalidSnapshot(
+            "material surface thermal transition is missing its thermal effect",
+        ))?;
+    if thermal_effect.before() != fingerprint_i64(0x0D04, transition.before_retained)
+        || thermal_effect.after() != fingerprint_i64(0x0D04, transition.after_retained)
+    {
+        return Err(RuntimeError::InvalidSnapshot(
+            "material surface thermal transition effect does not match record",
+        ));
+    }
+    if !event.causes.contains(&transition.cell_trace) {
+        return Err(RuntimeError::InvalidSnapshot(
+            "material surface thermal transition does not cite its cell trace",
+        ));
+    }
+    let cell_event = traces
+        .event(transition.cell_trace)
+        .ok_or(RuntimeError::InvalidSnapshot("unknown trace reference"))?;
+    if !matches!(
+        cell_event.kind.raw(),
+        THERMAL_FIELD_BOOTSTRAP_EVENT_KIND
+            | THERMAL_CELL_CHANGE_EVENT_KIND
+            | THERMAL_RESERVOIR_TRANSFER_EVENT_KIND
+    ) {
+        return Err(RuntimeError::InvalidSnapshot(
+            "material surface thermal transition cell trace is not a thermal event",
         ));
     }
     Ok(())
@@ -814,6 +1026,7 @@ fn material_surface_fingerprint_matches_condition(
             active: false,
             last_transition: None,
         },
+        thermal: bootstrap_material_surface_thermal_state(),
     }) == fingerprint
 }
 
@@ -840,6 +1053,19 @@ pub(crate) fn material_surface_gate_fingerprint(active: bool) -> StateFingerprin
     fingerprint_u64(0x0D03, u64::from(active))
 }
 
+pub(crate) fn material_surface_thermal_fingerprint(
+    retained_energy: ThermalEnergy,
+) -> StateFingerprint {
+    fingerprint_i64(0x0D04, retained_energy.get())
+}
+
+fn bootstrap_material_surface_thermal_state() -> MaterialSurfaceThermalState {
+    MaterialSurfaceThermalState {
+        retained_energy: ThermalEnergy::ZERO,
+        last_exchange: None,
+    }
+}
+
 pub(crate) fn commit_material_surface_bootstrap_event(
     state: &mut RuntimeState,
     stage: HistoricalStageId,
@@ -856,6 +1082,7 @@ pub(crate) fn commit_material_surface_bootstrap_event(
             active: false,
             last_transition: None,
         },
+        thermal: bootstrap_material_surface_thermal_state(),
     };
     let after = MaterialSurface {
         condition: initial_condition,
@@ -866,6 +1093,7 @@ pub(crate) fn commit_material_surface_bootstrap_event(
             active: false,
             last_transition: None,
         },
+        thermal: bootstrap_material_surface_thermal_state(),
     };
     let event = CausalEventProposal::new(
         EventProposalKey::new(BOOTSTRAP_SYSTEM_ID, stage.raw(), ordinal),
@@ -1067,6 +1295,16 @@ fn record_material_surface_gate_transition(
         state.material_surface_gate_transitions.remove(evicted);
     }
     state.material_surface_gate_transitions.push(transition);
+}
+
+pub(crate) fn record_material_surface_thermal_transition(
+    state: &mut RuntimeState,
+    transition: MaterialSurfaceThermalTransition,
+) {
+    if state.material_surface_thermal_transitions.len() == MAX_MATERIAL_SURFACE_TRANSITIONS {
+        state.material_surface_thermal_transitions.remove(0);
+    }
+    state.material_surface_thermal_transitions.push(transition);
 }
 
 pub(crate) fn resolve_material_surface(

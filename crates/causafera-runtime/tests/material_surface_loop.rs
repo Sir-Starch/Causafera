@@ -1044,7 +1044,7 @@ fn enabled_source_same_seed_replays_exactly() {
         second_snapshot.canonical_state
     );
     assert_eq!(first_receipts, second_receipts);
-    assert_eq!(first_snapshot.physical_state_digest.schema_version.raw(), 5);
+    assert_eq!(first_snapshot.physical_state_digest.schema_version.raw(), 6);
 }
 
 #[test]

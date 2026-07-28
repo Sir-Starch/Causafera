@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use causafera_domains::{
     THERMAL_SCALE, ThermalActiveRegion, ThermalBoundaryBehavior, ThermalCellKey, ThermalEnergy,
@@ -21,7 +21,7 @@ fn exhaustion() {
     let initial = runtime
         .export_snapshot()
         .expect("initial state must export");
-    let initial_total = total_energy(&initial.thermal);
+    let initial_total = total_energy(&initial);
 
     // When: execution continues beyond its finite budget.
     runtime.run_ticks(10).expect("thermal ticks must execute");
@@ -29,7 +29,7 @@ fn exhaustion() {
 
     // Then: the budget reaches zero exactly and no extra transfer event is emitted.
     assert_eq!(exhausted.thermal.reservoirs[0].budget, 0);
-    assert_eq!(total_energy(&exhausted.thermal), initial_total);
+    assert_eq!(total_energy(&exhausted), initial_total);
     assert_eq!(
         exhausted
             .traces
@@ -45,19 +45,14 @@ fn exhaustion() {
 fn exact_global_conservation() {
     // Given: the production thermal carrier's initial conserved total.
     let mut runtime = Runtime::new(RuntimeConfig::new(1_702)).expect("runtime must bootstrap");
-    let initial_total = total_energy(
-        &runtime
-            .export_snapshot()
-            .expect("state must export")
-            .thermal,
-    );
+    let initial_total = total_energy(&runtime.export_snapshot().expect("state must export"));
 
     // When: reservoir injection and diffusion run over many ticks.
     runtime.run_ticks(64).expect("thermal ticks must execute");
     let after = runtime.export_snapshot().expect("state must export");
 
-    // Then: cell energy plus finite reservoir budget remains exact.
-    assert_eq!(total_energy(&after.thermal), initial_total);
+    // Then: cell energy plus finite reservoir budget and material retained energy remains exact.
+    assert_eq!(total_energy(&after), initial_total);
 }
 
 #[test]
@@ -188,6 +183,7 @@ fn net_zero_target() {
             boundary_behavior: ThermalBoundaryBehavior::NoFluxOutsideActiveRegion,
             reservoirs: &[reservoir],
             injections: &[injection],
+            materials: &BTreeMap::new(),
         })
         .expect("evolution must succeed");
 
@@ -223,12 +219,13 @@ fn domain_preflight_failure_preserves_field_set() {
     let error = fields
         .propose_evolution(ThermalEvolutionRequest {
             tick: 1,
-            parameters: ThermalParameters::new(128, THERMAL_SCALE, THERMAL_SCALE)
+            parameters: ThermalParameters::new(128, THERMAL_SCALE, THERMAL_SCALE, 0, 1)
                 .expect("parameters must be valid"),
             active_region: &region,
             boundary_behavior: ThermalBoundaryBehavior::NoFluxOutsideActiveRegion,
             reservoirs: &[],
             injections: &[],
+            materials: &BTreeMap::new(),
         })
         .expect_err("missing active field must reject");
 
@@ -273,6 +270,7 @@ fn same_target_headroom() {
             boundary_behavior: ThermalBoundaryBehavior::NoFluxOutsideActiveRegion,
             reservoirs: &reservoirs,
             injections: &injections,
+            materials: &BTreeMap::new(),
         })
         .expect("headroom-capped evolution must succeed");
     let receipt = proposal

@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use causafera_domains::{
     ThermalActiveRegion, ThermalBoundaryBehavior, ThermalEnergy, ThermalEvolutionRequest,
@@ -11,7 +11,9 @@ const SCALE: i64 = 60;
 const TRANSFER_FRACTION: i64 = 10;
 
 fn parameters() -> ThermalParameters {
-    ThermalParameters::new(TRANSFER_FRACTION, 1, SCALE).unwrap()
+    // No material coupling in these diffusion-only fixtures: fraction 0 leaves the six-face
+    // bound exactly as it was before the material-coupling tranche.
+    ThermalParameters::new(TRANSFER_FRACTION, 1, SCALE, 0, 1).unwrap()
 }
 
 fn chunk(x: i32) -> ChartChunkCoord {
@@ -47,6 +49,7 @@ fn evolve(fields: &ThermalFieldSet) -> causafera_domains::ThermalEvolutionPropos
             boundary_behavior: ThermalBoundaryBehavior::NoFluxOutsideActiveRegion,
             reservoirs: &[],
             injections: &[],
+            materials: &BTreeMap::new(),
         })
         .unwrap()
 }
@@ -129,6 +132,7 @@ fn accumulated_delta_bounds() {
                 target: reservoir.target,
                 scheduled_amount: energy(10),
             }],
+            materials: &BTreeMap::new(),
         })
         .unwrap();
 

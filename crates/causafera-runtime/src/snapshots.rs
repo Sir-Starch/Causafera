@@ -158,6 +158,15 @@ pub struct ThermalCellTransferReceiptSnapshot {
     pub cell_change_trace_id: Option<TraceId>,
     pub faces: Vec<ThermalFaceRecordSnapshot>,
     pub reservoirs: Vec<ThermalReservoirTransferRecordSnapshot>,
+    pub material: Option<ThermalMaterialTransferRecordSnapshot>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ThermalMaterialTransferRecordSnapshot {
+    pub retained_before: i64,
+    pub retained_after: i64,
+    pub signed_flux: i64,
+    pub rejected: i64,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -184,6 +193,8 @@ pub struct ThermalConservationReceiptSnapshot {
     pub total_cell_energy_after: i128,
     pub total_reservoir_budget_before: i128,
     pub total_reservoir_budget_after: i128,
+    pub total_material_retained_before: i128,
+    pub total_material_retained_after: i128,
     pub residual: i128,
 }
 

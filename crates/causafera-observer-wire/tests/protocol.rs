@@ -29,6 +29,7 @@ fn world_snapshot_roundtrips_local_mana_and_gate_only_deltas() {
             local_mana_after: Some(3),
             local_mana_transition_trace_id: Some(TraceId::new(11)),
         }],
+        material_surface_thermal_deltas: Vec::new(),
         material_surface_gate_deltas: vec![MaterialSurfaceGateDelta {
             chart_id: 1,
             chunk_x: 0,
@@ -79,6 +80,7 @@ fn v2_world_snapshot_omits_gate_only_deltas() {
             local_mana_after: None,
             local_mana_transition_trace_id: None,
         }],
+        material_surface_thermal_deltas: Vec::new(),
         material_surface_gate_deltas: vec![MaterialSurfaceGateDelta {
             chart_id: 1,
             chunk_x: 0,
@@ -115,6 +117,7 @@ fn thermal_roundtrip_preserves_signed_receipt_summaries() {
         chunks: Vec::new(),
         material_surface_delta_schema_version: 0,
         material_surface_deltas: Vec::new(),
+        material_surface_thermal_deltas: Vec::new(),
         material_surface_gate_deltas: Vec::new(),
         thermal_delta_schema_version: 1,
         thermal_deltas: vec![ThermalFieldDelta {
@@ -161,6 +164,7 @@ fn thermal_roundtrip_caps_deltas_at_sixty_four() {
         chunks: Vec::new(),
         material_surface_delta_schema_version: 0,
         material_surface_deltas: Vec::new(),
+        material_surface_thermal_deltas: Vec::new(),
         material_surface_gate_deltas: Vec::new(),
         thermal_delta_schema_version: 1,
         thermal_deltas: vec![delta; 65],

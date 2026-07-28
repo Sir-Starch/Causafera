@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use causafera_domains::{
     THERMAL_SCALE, ThermalActiveRegion, ThermalBoundaryBehavior, ThermalCellKey, ThermalEnergy,
@@ -24,12 +24,13 @@ fn active_neighbor_missing() {
     // When: runtime-facing evolution validates residency before arithmetic.
     let result = fields.propose_evolution(ThermalEvolutionRequest {
         tick: 1,
-        parameters: ThermalParameters::new(128, THERMAL_SCALE, THERMAL_SCALE)
+        parameters: ThermalParameters::new(128, THERMAL_SCALE, THERMAL_SCALE, 0, 1)
             .expect("parameters must be valid"),
         active_region: &region,
         boundary_behavior: ThermalBoundaryBehavior::NoFluxOutsideActiveRegion,
         reservoirs: &[],
         injections: &[],
+        materials: &BTreeMap::new(),
     });
 
     // Then: the domain failure maps to the dedicated runtime error without changing the fields.
@@ -59,12 +60,13 @@ fn real_arithmetic() {
     let proposal = fields
         .propose_evolution(ThermalEvolutionRequest {
             tick: 1,
-            parameters: ThermalParameters::new(128, THERMAL_SCALE, THERMAL_SCALE)
+            parameters: ThermalParameters::new(128, THERMAL_SCALE, THERMAL_SCALE, 0, 1)
                 .expect("parameters must be valid"),
             active_region: &region,
             boundary_behavior: ThermalBoundaryBehavior::NoFluxOutsideActiveRegion,
             reservoirs: &[],
             injections: &[],
+            materials: &BTreeMap::new(),
         })
         .expect("bounded near-maximum evolution must succeed");
 
@@ -108,12 +110,13 @@ fn outside_active_region_boundary_record() {
     let proposal = fields
         .propose_evolution(ThermalEvolutionRequest {
             tick: 1,
-            parameters: ThermalParameters::new(128, THERMAL_SCALE, THERMAL_SCALE)
+            parameters: ThermalParameters::new(128, THERMAL_SCALE, THERMAL_SCALE, 0, 1)
                 .expect("parameters must be valid"),
             active_region: &region,
             boundary_behavior: ThermalBoundaryBehavior::NoFluxOutsideActiveRegion,
             reservoirs: &[reservoir],
             injections: &[injection],
+            materials: &BTreeMap::new(),
         })
         .expect("outside-active-region evolution must succeed");
 

@@ -4,26 +4,49 @@ use causafera_types::ThermalEnergy;
 
 use super::{
     ThermalActiveRegion, ThermalBoundaryRecord, ThermalCellKey, ThermalError, ThermalFaceRecord,
-    ThermalFieldSet, ThermalParameters,
-    arithmetic::{check_energy_bounds, energy_from_i128},
+    ThermalFieldSet, ThermalMaterialSite, ThermalMaterialTransferRecord, ThermalParameters,
+    arithmetic::{check_energy_bounds, energy_from_i128, material_energy_from_i128},
     neighbor::neighbor_keys,
 };
 
 type AfterEnergy = BTreeMap<ThermalCellKey, ThermalEnergy>;
 type FaceRecords = BTreeMap<ThermalCellKey, Vec<ThermalFaceRecord>>;
+type AfterMaterials = BTreeMap<ThermalCellKey, ThermalEnergy>;
+type MaterialRecords = BTreeMap<ThermalCellKey, ThermalMaterialTransferRecord>;
 
+#[allow(clippy::type_complexity)]
 pub(crate) fn preflight_faces(
     fields: &ThermalFieldSet,
     active_region: &ThermalActiveRegion,
     pre_state: &BTreeMap<ThermalCellKey, i128>,
     parameters: ThermalParameters,
-) -> Result<(AfterEnergy, FaceRecords, Vec<ThermalBoundaryRecord>), ThermalError> {
+    materials: &BTreeMap<ThermalCellKey, ThermalMaterialSite>,
+) -> Result<
+    (
+        AfterEnergy,
+        FaceRecords,
+        Vec<ThermalBoundaryRecord>,
+        AfterMaterials,
+        MaterialRecords,
+    ),
+    ThermalError,
+> {
     let mut deltas = pre_state
         .keys()
         .map(|key| (*key, 0_i128))
         .collect::<BTreeMap<_, _>>();
     let mut faces = BTreeMap::<ThermalCellKey, Vec<ThermalFaceRecord>>::new();
     let mut boundary_records = Vec::new();
+    let mut materials_after = BTreeMap::new();
+    let mut material_records = BTreeMap::new();
+    for key in materials.keys() {
+        if !pre_state.contains_key(key) {
+            // A material site with no matching field cell is an internal invariant violation
+            // (every bootstrapped surface has a co-located resident thermal cell by
+            // construction), not a runtime condition to tolerate.
+            return Err(ThermalError::PositionOutsideField);
+        }
+    }
     for key in pre_state.keys().copied() {
         let source = *pre_state
             .get(&key)
@@ -44,7 +67,12 @@ pub(crate) fn preflight_faces(
             let destination = *pre_state
                 .get(&neighbor)
                 .ok_or(ThermalError::PositionOutsideField)?;
-            let flux = signed_flux(source, destination, parameters)?;
+            let flux = signed_flux(
+                source,
+                destination,
+                parameters.transfer_fraction,
+                parameters.scale,
+            )?;
             if flux == 0 {
                 continue;
             }
@@ -64,6 +92,54 @@ pub(crate) fn preflight_faces(
                 neighbor_pre_state: energy_from_i128(source)?,
             });
         }
+        if let Some(site) = materials.get(&key) {
+            let material_pre = i128::from(site.retained_before.get());
+            let candidate = signed_flux(
+                source,
+                material_pre,
+                parameters.material_exchange_fraction,
+                parameters.scale,
+            )?;
+            let (accepted, rejected) = if candidate > 0 {
+                let headroom = i128::from(parameters.material_thermal_capacity)
+                    .checked_sub(material_pre)
+                    .ok_or(ThermalError::ArithmeticOverflow)?
+                    .max(0);
+                let accepted = candidate.min(headroom);
+                let rejected = candidate
+                    .checked_sub(accepted)
+                    .ok_or(ThermalError::ArithmeticOverflow)?;
+                (accepted, rejected)
+            } else {
+                (candidate, 0_i128)
+            };
+            if accepted == 0 {
+                materials_after.insert(key, site.retained_before);
+            } else {
+                update_delta(pre_state, &mut deltas, key, -accepted)?;
+                let material_after_value = material_pre
+                    .checked_add(accepted)
+                    .ok_or(ThermalError::ArithmeticOverflow)?;
+                let retained_after = material_energy_from_i128(
+                    material_after_value,
+                    parameters.material_thermal_capacity,
+                )?;
+                materials_after.insert(key, retained_after);
+                material_records.insert(
+                    key,
+                    ThermalMaterialTransferRecord {
+                        retained_before: site.retained_before,
+                        retained_after,
+                        signed_flux: i64::try_from(accepted)
+                            .map_err(|_| ThermalError::ArithmeticOverflow)?,
+                        // `rejected` is bounded by `candidate`, itself bounded by cell energy
+                        // (<= ThermalEnergy::MAX), not by `material_thermal_capacity` — it is the
+                        // amount that never left the cell, not a material-side quantity.
+                        rejected: energy_from_i128(rejected)?,
+                    },
+                );
+            }
+        }
     }
     boundary_records.sort_unstable_by_key(|record| (record.cell, record.neighbor));
     let mut after = BTreeMap::new();
@@ -81,13 +157,20 @@ pub(crate) fn preflight_faces(
             )?,
         );
     }
-    Ok((after, faces, boundary_records))
+    Ok((
+        after,
+        faces,
+        boundary_records,
+        materials_after,
+        material_records,
+    ))
 }
 
 fn signed_flux(
     source: i128,
     destination: i128,
-    parameters: ThermalParameters,
+    fraction: i64,
+    scale: i64,
 ) -> Result<i128, ThermalError> {
     let difference = source
         .checked_sub(destination)
@@ -98,9 +181,9 @@ fn signed_flux(
         -difference
     };
     let scaled = magnitude
-        .checked_mul(i128::from(parameters.transfer_fraction))
+        .checked_mul(i128::from(fraction))
         .ok_or(ThermalError::ArithmeticOverflow)?
-        / i128::from(parameters.scale);
+        / i128::from(scale);
     if difference >= 0 {
         Ok(scaled)
     } else {

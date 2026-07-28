@@ -4,8 +4,9 @@ use causafera_types::ThermalEnergy;
 
 use super::{
     ThermalActiveRegion, ThermalBoundaryBehavior, ThermalBoundaryRecord, ThermalCellChange,
-    ThermalCellTransferReceipt, ThermalConservationReceipt, ThermalFieldSet,
-    ThermalInjectionProposal, ThermalParameters, ThermalReservoir, ThermalReservoirId,
+    ThermalCellKey, ThermalCellTransferReceipt, ThermalConservationReceipt, ThermalFieldSet,
+    ThermalInjectionProposal, ThermalMaterialSite, ThermalParameters, ThermalReservoir,
+    ThermalReservoirId,
 };
 
 #[derive(Clone, Copy, Debug)]
@@ -16,6 +17,7 @@ pub struct ThermalEvolutionRequest<'a> {
     pub boundary_behavior: ThermalBoundaryBehavior,
     pub reservoirs: &'a [ThermalReservoir],
     pub injections: &'a [ThermalInjectionProposal],
+    pub materials: &'a BTreeMap<ThermalCellKey, ThermalMaterialSite>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -26,9 +28,11 @@ pub struct ThermalEvolutionProposal {
     transfer_receipts: Vec<ThermalCellTransferReceipt>,
     reservoir_budgets_after: BTreeMap<ThermalReservoirId, ThermalEnergy>,
     boundary_records: Vec<ThermalBoundaryRecord>,
+    material_retained_after: BTreeMap<ThermalCellKey, ThermalEnergy>,
 }
 
 impl ThermalEvolutionProposal {
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         after_state: ThermalFieldSet,
         cell_changes: Vec<ThermalCellChange>,
@@ -36,6 +40,7 @@ impl ThermalEvolutionProposal {
         transfer_receipts: Vec<ThermalCellTransferReceipt>,
         reservoir_budgets_after: BTreeMap<ThermalReservoirId, ThermalEnergy>,
         boundary_records: Vec<ThermalBoundaryRecord>,
+        material_retained_after: BTreeMap<ThermalCellKey, ThermalEnergy>,
     ) -> Self {
         Self {
             after_state,
@@ -44,6 +49,7 @@ impl ThermalEvolutionProposal {
             transfer_receipts,
             reservoir_budgets_after,
             boundary_records,
+            material_retained_after,
         }
     }
 
@@ -69,5 +75,9 @@ impl ThermalEvolutionProposal {
 
     pub fn boundary_records(&self) -> &[ThermalBoundaryRecord] {
         &self.boundary_records
+    }
+
+    pub fn material_retained_after(&self) -> &BTreeMap<ThermalCellKey, ThermalEnergy> {
+        &self.material_retained_after
     }
 }

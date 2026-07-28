@@ -48,6 +48,44 @@ pub(super) fn build_thermal_events(
         });
         ordinal = next_ordinal(ordinal)?;
     }
+    for receipt in evolution.transfer_receipts() {
+        let Some(material) = &receipt.material else {
+            continue;
+        };
+        let id = MaterialSurfaceId::new(receipt.cell.chunk, receipt.cell.cell_index);
+        let cell_trace = state
+            .thermal_fields
+            .field(receipt.cell.chunk)
+            .and_then(|field| {
+                field
+                    .last_change()
+                    .get(usize::from(receipt.cell.cell_index))
+            })
+            .copied()
+            .ok_or(RuntimeError::Thermal(ThermalError::PositionOutsideField))?;
+        let mut causes = vec![cell_trace];
+        if let Some(surface) = state.material_surfaces.get(&id)
+            && let Some(prior_exchange) = surface.thermal.last_exchange
+        {
+            causes.push(prior_exchange);
+        }
+        events.push(ThermalEvent {
+            proposal: thermal_event(ThermalEventData {
+                ordinal,
+                kind: MATERIAL_SURFACE_THERMAL_EXCHANGE_EVENT_KIND,
+                causes,
+                target: CausalTarget::new(
+                    StateObjectKindId::new(MATERIAL_SURFACE_OBJECT_KIND),
+                    material_surface_object_id(id),
+                    StatePropertyId::new(MATERIAL_SURFACE_THERMAL_RETAINED_PROPERTY),
+                ),
+                before: material_surface_thermal_fingerprint(material.retained_before),
+                after: material_surface_thermal_fingerprint(material.retained_after),
+            })?,
+            subject: ThermalEventSubject::Material(receipt.cell),
+        });
+        ordinal = next_ordinal(ordinal)?;
+    }
     for change in evolution.cell_changes() {
         events.push(ThermalEvent {
             proposal: thermal_event(ThermalEventData {

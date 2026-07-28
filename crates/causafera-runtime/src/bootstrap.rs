@@ -211,6 +211,10 @@ impl HistoricalBootstrapAdapter for MaterialSurfaceBootstrapStage {
                         active: false,
                         last_transition: None,
                     },
+                    thermal: MaterialSurfaceThermalState {
+                        retained_energy: ThermalEnergy::ZERO,
+                        last_exchange: None,
+                    },
                 },
             );
             record_material_surface_transition(

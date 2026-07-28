@@ -79,7 +79,7 @@ Causafera/
 | Path | Purpose | Status |
 |------|---------|--------|
 | `crates/causafera-observer-api/src/lib.rs` | Re-exports `query` and `stream` modules | Stable |
-| `crates/causafera-observer-api/src/query.rs` | `QueryKind`, `ObserverQuery`, `ObserverSnapshot`, `ObserverWorldSnapshot`, `ObserverChunkSummary`, `MaterialSurfaceDelta`, `MaterialSurfaceGateDelta` | Stable |
+| `crates/causafera-observer-api/src/query.rs` | `QueryKind`, `ObserverQuery`, `ObserverSnapshot`, `ObserverWorldSnapshot`, `ObserverChunkSummary`, `MaterialSurfaceDelta`, `MaterialSurfaceGateDelta`, `MaterialSurfaceThermalDelta` | Stable |
 | `crates/causafera-observer-api/src/stream.rs` | `StreamKind`, `StreamScope`, `StreamEnvelope`, `ObserverStreamHub`, `DeliveryPolicy` | Stable |
 | `crates/causafera-observer-wire/src/protocol.rs` | `ProtocolHandler`, `ConnectRequest`, `ConnectResponse`, all encode/decode functions | Stable |
 | `crates/causafera-observer-wire/tests/protocol.rs` | Wire round-trip tests | Stable |
@@ -90,7 +90,7 @@ Causafera/
 |------|-----------|
 | `proto/.../common.proto` | `SimulationTime`, `Digest`, `ChunkScope`, `QueryStatus` |
 | `proto/.../control.proto` | `ConnectRequest`, `ConnectResponse`, `DisconnectRequest` |
-| `proto/.../query.proto` | `QueryKind`, `QueryRequest`, `QueryResponse`, `RuntimeSummary`, `WorldChunkSnapshot`, `MaterialSurfaceDelta`, `MaterialSurfaceGateDelta` |
+| `proto/.../query.proto` | `QueryKind`, `QueryRequest`, `QueryResponse`, `RuntimeSummary`, `WorldChunkSnapshot`, `MaterialSurfaceDelta`, `MaterialSurfaceGateDelta`, `MaterialSurfaceThermalDelta` |
 | `proto/.../stream.proto` | `StreamKind`, `DeliveryPolicy`, `SubscribeRequest`, `StreamHeader`, `StreamEnvelope` |
 | `proto/.../spatial.proto` | `SpatialChunkSummary` |
 | `proto/.../entity.proto` | `EntitySummary`, `NumericComponent` |
@@ -108,7 +108,7 @@ Causafera/
 **Constants:**
 - `OBSERVER_PROTOCOL_V1 = 1` — protocol version
 - `MAX_MATERIAL_SURFACE_DELTAS = 64` — bounded window
-- `MATERIAL_SURFACE_DELTA_SCHEMA_V3 = 3` — current delta schema
+- `MATERIAL_SURFACE_DELTA_SCHEMA_V4 = 4` — current delta schema (`V4` adds `MaterialSurfaceThermalDelta`, `TODO-THERMAL-002`)
 
 **Enums:**
 - `QueryKind { RuntimeSummary=1, ExplanationIr=2, WorldChunks=3 }`
@@ -119,9 +119,10 @@ Causafera/
 
 **Key interfaces:**
 - `RuntimeSummary` — 23 fields including ticks, digests, mana, population, actors, traces, events
-- `WorldChunkSnapshot` — ticks, chunks[], materialSurfaceDeltas[], materialSurfaceGateDeltas[]
+- `WorldChunkSnapshot` — ticks, chunks[], materialSurfaceDeltas[], materialSurfaceGateDeltas[], materialSurfaceThermalDeltas[]
 - `SpatialChunkSummary` — chartId, chunkX/Y/Z, elevation, roughness, mana, resolution, population, events, trace
 - `MaterialSurfaceDelta` — chunk coords, before/after condition, mana, traces (optional fields for V3)
+- `MaterialSurfaceThermalDelta` — chunk coords, before/after retained energy, cell pre-state, signed flux, exchange trace (`V4`, `TODO-THERMAL-002`)
 - `ExplanationReport` — experimentId, frames[], overallAssessment
 - `ExplanationFrame` — checkpointTicks, claims[], overallAssessment
 - `ExplanationClaim` — schemaId, value (scalar/range/ratio), confidence, evidenceTraceIds, comparison, evidenceState

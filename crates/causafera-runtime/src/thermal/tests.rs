@@ -21,6 +21,8 @@ fn atomic_failure_rollback() {
     let before_pending_injections;
     let before_boundary_records;
     let before_failure;
+    let before_material_surfaces;
+    let before_material_transitions;
     {
         let mut state = state.lock().expect("runtime state must be available");
         unknown_cause = TraceId::new(state.traces.export_snapshot().next_trace_id);
@@ -46,6 +48,8 @@ fn atomic_failure_rollback() {
         before_pending_injections = state.pending_thermal_injections.clone();
         before_boundary_records = state.thermal_boundary_records.clone();
         before_failure = state.failure.clone();
+        before_material_surfaces = state.material_surfaces.clone();
+        before_material_transitions = state.material_surface_thermal_transitions.clone();
     }
     let mut evolution_system = ThermalEvolutionSystem::new(Arc::clone(&state));
     let before_time = evolution_system.next_time;
@@ -77,7 +81,67 @@ fn atomic_failure_rollback() {
     assert_eq!(state.pending_thermal_injections, before_pending_injections);
     assert_eq!(state.thermal_boundary_records, before_boundary_records);
     assert_eq!(state.failure, before_failure);
+    assert_eq!(state.material_surfaces, before_material_surfaces);
+    assert_eq!(
+        state.material_surface_thermal_transitions,
+        before_material_transitions
+    );
     assert_eq!(evolution_system.next_time, before_time);
+}
+
+#[test]
+fn second_material_exchange_cites_prior_tick_cell_trace_not_current() {
+    // Given: a production runtime whose first tick both diffuses and exchanges material heat.
+    let mut runtime = Runtime::new(RuntimeConfig::new(1_702)).expect("runtime must bootstrap");
+    runtime.tick().expect("first thermal batch must commit");
+    let (first_transition, first_field_trace) = {
+        let state = runtime
+            .state
+            .lock()
+            .expect("runtime state must be available");
+        let transition = *state
+            .material_surface_thermal_transitions
+            .last()
+            .expect("first tick must record at least one material exchange");
+        let field_trace = state
+            .thermal_fields
+            .field(transition.id.chunk)
+            .and_then(|field| {
+                field
+                    .last_change()
+                    .get(usize::from(transition.id.cell_index))
+            })
+            .copied()
+            .expect("material cell must have a field anchor");
+        (transition, field_trace)
+    };
+
+    // When: a second tick exchanges material heat again for the same surface.
+    runtime.tick().expect("second thermal batch must commit");
+
+    // Then: the second exchange cites the trace the field anchor held *before* this tick's own
+    // mutation, not a trace this tick just produced for the same cell.
+    let state = runtime
+        .state
+        .lock()
+        .expect("runtime state must be available");
+    let second_transition = *state
+        .material_surface_thermal_transitions
+        .iter()
+        .rev()
+        .find(|transition| transition.id == first_transition.id)
+        .expect("second tick must record another exchange for the same surface");
+    assert_eq!(second_transition.cell_trace, first_field_trace);
+    let second_event = state
+        .traces
+        .event(second_transition.transition_trace)
+        .expect("second transition trace must exist");
+    assert!(
+        second_event
+            .causes
+            .contains(&first_transition.transition_trace),
+        "second exchange must chain onto the first exchange as its prior parent"
+    );
 }
 
 #[test]

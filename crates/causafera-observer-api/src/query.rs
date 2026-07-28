@@ -6,6 +6,7 @@ pub const MAX_QUERY_PAYLOAD_BYTES: usize = 1 << 20;
 pub const MATERIAL_SURFACE_DELTA_SCHEMA_V1: u32 = 1;
 pub const MATERIAL_SURFACE_DELTA_SCHEMA_V2: u32 = 2;
 pub const MATERIAL_SURFACE_DELTA_SCHEMA_V3: u32 = 3;
+pub const MATERIAL_SURFACE_DELTA_SCHEMA_V4: u32 = 4;
 pub const MAX_MATERIAL_SURFACE_DELTAS: usize = 64;
 pub const THERMAL_DELTA_SCHEMA_V1: u32 = 1;
 pub const MAX_THERMAL_DELTAS: usize = 64;
@@ -233,6 +234,7 @@ pub struct ObserverWorldSnapshot {
     pub material_surface_delta_schema_version: u32,
     pub material_surface_deltas: Vec<MaterialSurfaceDelta>,
     pub material_surface_gate_deltas: Vec<MaterialSurfaceGateDelta>,
+    pub material_surface_thermal_deltas: Vec<MaterialSurfaceThermalDelta>,
     pub thermal_delta_schema_version: u32,
     pub thermal_deltas: Vec<ThermalFieldDelta>,
 }
@@ -272,6 +274,24 @@ pub struct MaterialSurfaceGateDelta {
     pub local_mana_transition_trace_id: TraceId,
     pub gate_transition_trace_id: TraceId,
     pub contact_trace_id: Option<TraceId>,
+    pub transition_tick: u64,
+}
+
+/// A material surface's retained-heat exchange with its co-located thermal cell
+/// (`TODO-THERMAL-002`), a distinct addressed-object family from `MaterialSurfaceDelta`'s
+/// condition/mana pair even though both are keyed by the same `MaterialSurfaceId`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MaterialSurfaceThermalDelta {
+    pub chart_id: u64,
+    pub chunk_x: i32,
+    pub chunk_y: i32,
+    pub chunk_z: i32,
+    pub cell_ordinal: u16,
+    pub before_retained: i64,
+    pub after_retained: i64,
+    pub cell_pre_state: i64,
+    pub signed_flux: i64,
+    pub thermal_exchange_trace_id: TraceId,
     pub transition_tick: u64,
 }
 

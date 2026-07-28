@@ -99,6 +99,18 @@ residual and before/after totals for each batch. Canonically ordered boundary re
 same-chart face whose neighbor lies outside the active region, using the frozen post-injection
 pre-state; they are replaced only after a successful batch commit and persist in section `0x000E`.
 
+A material surface's retained thermal energy is a third conserved bucket alongside cells and
+reservoirs (`TODO-THERMAL-002`). Each bootstrapped surface exchanges energy with its co-located
+thermal cell inside the same atomic Physics-phase batch that diffuses cell-to-cell energy, using the
+identical signed-flux formula as face diffusion; the coefficient bound widens to
+`6 * transfer_fraction + material_exchange_fraction <= scale` so a cell cannot go negative even when
+all seven simultaneous outflows — six faces plus the material sink — are realized in the same tick.
+Headroom capping applies only to the heating direction: the cooling direction can never remove more
+than the material actually retains. A material site with no co-located thermal cell is an internal
+invariant violation, not a tolerated runtime condition, because bootstrap guarantees the pairing.
+Retained energy stays the authoritative unit; no temperature, expansion, damage, or phase-change
+response is derived from it yet.
+
 Terrain carrier participation adds the first standing physical carrier, and with it a boundary that
 the change-driven carriers did not need. A material surface, a recipe source, and a thermal
 reservoir all emit because something happened; terrain emits because something is there. That

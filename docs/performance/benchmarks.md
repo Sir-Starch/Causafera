@@ -88,18 +88,23 @@ throughput, or population-scale claims; `TODO-PERF-001` remains pending.
 ## Conserved Thermal Carrier Benchmark
 
 The thermal carrier workload is a fully populated `CHUNK_SIZE³` field plus one same-chart neighbor
-chunk, with a center-cell reservoir injection. Required measurements:
+chunk, with a center-cell reservoir injection. `TODO-THERMAL-002` added a bounded per-cell material
+exchange term to the same `ThermalEvolutionSystem` batch (one material surface per active chunk,
+exchanging every tick by production default); this workload should include it rather than measuring
+face diffusion alone. Required measurements:
 
-- wall time per tick for `ThermalEvolutionSystem`;
+- wall time per tick for `ThermalEvolutionSystem`, with material exchange active;
 - cells updated per tick;
 - peak memory for thermal working buffers;
-- snapshot bytes per chunk;
-- provenance event count growth per tick;
+- snapshot bytes per chunk, including the material exchange term now added to every participating
+  cell's transfer receipt;
+- provenance event count growth per tick, including `MATERIAL_SURFACE_THERMAL_EXCHANGE_EVENT_KIND`;
 - observer query payload bytes for thermal summary.
 
 These are environment-specific baselines; no absolute latency claim is made without reference
-hardware. The benchmark harness, repeated measurements, and statistical reporting remain
-`TODO-PERF-001`.
+hardware. `TODO-THERMAL-002`'s material exchange term was not benchmarked in that tranche — this
+section names the requirement, not a measurement already taken. The benchmark harness, repeated
+measurements, and statistical reporting remain `TODO-PERF-001`.
 
 ## Methodology Gaps Found by the Performance Baseline Investigation
 

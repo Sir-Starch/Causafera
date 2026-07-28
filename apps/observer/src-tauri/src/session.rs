@@ -166,7 +166,7 @@ pub enum SessionError {
 #[cfg(test)]
 mod tests {
     use causafera_observer_api::{
-        FieldRasterKind, FieldRasterRequest, MATERIAL_SURFACE_DELTA_SCHEMA_V3,
+        FieldRasterKind, FieldRasterRequest, MATERIAL_SURFACE_DELTA_SCHEMA_V4,
         MAX_MATERIAL_SURFACE_DELTAS, OBSERVER_PROTOCOL_V1, ObserverQuery, QueryKind, QueryStatus,
     };
     use causafera_observer_wire::{
@@ -235,7 +235,7 @@ mod tests {
         );
         assert_eq!(
             world.material_surface_delta_schema_version,
-            MATERIAL_SURFACE_DELTA_SCHEMA_V3
+            MATERIAL_SURFACE_DELTA_SCHEMA_V4
         );
         assert!(!world.material_surface_deltas.is_empty());
         assert!(

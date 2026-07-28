@@ -409,7 +409,7 @@
 **Out of Scope:** Climate, biology, material response, economy
 
 ## TODO-THERMAL-002: Thermal-to-Material Coupling
-**Status:** Pending
+**Status:** Completed
 **Phase:** Detailed Development
 **Priority:** Medium
 **Dependencies:** TODO-THERMAL-000 (completed same-chart slice), TODO-MATER-??? (material response model)
@@ -421,6 +421,7 @@
 **Observer Implications:** Material thermal exposure deltas
 **Explanation Implications:** Thermal exposure claims with trace support
 **Out of Scope:** Full climate, biology, economy
+**Resolution:** Retained heat is now a third conserved bucket, alongside thermal cells and reservoirs: every material surface exchanges energy with its co-located `ThermalField` cell inside the same atomic Physics-phase batch that already diffuses cell-to-cell energy, using the identical `signed_flux` formula as face diffusion (generalized to take an explicit `(fraction, scale)` pair so both paths share one implementation). The coefficient bound widened from `6 * transfer_fraction <= scale` to `6 * transfer_fraction + material_exchange_fraction <= scale`, so a cell can never go negative even when all seven simultaneous outflows (six faces plus the material sink) are realized in the same tick; headroom capping applies only to the heating direction, since the cooling direction can never remove more than the material actually retains. This landed as `ThermalMaterialSite`/`ThermalMaterialTransferRecord` in the domain layer, `MaterialSurfaceThermalState` and event kind `MATERIAL_SURFACE_THERMAL_EXCHANGE_EVENT_KIND` in the runtime, and a bounded transition history (`MAX_MATERIAL_SURFACE_TRANSITIONS`, oldest evicted first) mirroring the existing condition/gate transition recorders. Persistence bumped `CURRENT_DIGEST_SCHEMA_VERSION` 5→6 and `MATERIAL_SURFACE_SECTION_MAJOR`/`THERMAL_SECTION_MAJOR` accordingly; import extends the existing signed-flux receipt equation to include the material term (`pre_state - sum(face.signed_flux) - material.signed_flux == post_state`) so a coordinated forgery is rejected in any batch, not only the latest. No new scheduler `System` was registered and no RNG stream was added — the exchange is additive inside `ThermalEvolutionSystem`'s existing `propose_evolution` call, confirmed via `causafera-core/src/scheduler.rs` that RNG stream keys derive from registration order, a distinct namespace from the `*_SYSTEM_ID` constants used for `EventProposalKey` ordering, so adding a `System` would have been both unnecessary and RNG-destabilizing. A material site with no co-located thermal cell is treated as an internal invariant violation (`ThermalError::PositionOutsideField`), not tolerated defensively, since bootstrap guarantees the pairing today. Production defaults: `transfer_fraction = 128`, `material_exchange_fraction = 64`, `material_thermal_capacity = THERMAL_SCALE` (`1024`) — chosen well below the validated ceiling so the new coupling is observable rather than dominant; not a tuned physical constant. Observer/Explanation: `MaterialSurfaceThermalDelta` (bounded at 64, sharing `material_surface_delta_schema_version` with the existing condition/gate deltas since all three address the same `MaterialSurfaceId` family, bumped 3→4) and Explanation claim schema 17 (`MATERIAL_SURFACE_THERMAL_EXCHANGE_SCHEMA`), wired through a standalone `RuntimeState::material_surface_thermal_explanation` query rather than folded into the existing condition/mana loop explanation, because thermal exchange runs independent of contact and folding in would make a thermally-active-but-never-touched surface unexplainable. No UI panel, no temperature derivation, no heterogeneous per-material properties, no expansion/damage/phase-change response — see the follow-up TODOs this closure adds. Per-tick performance cost was not benchmarked in this tranche; the material record adds a small, bounded per-cell increment to the already-named unbounded thermal-receipt growth tracked by `TODO-PERF-002`/`TODO-PERF-003`, making that gap somewhat larger rather than introducing a new one. See `plans/thermal-material-surface-coupling.md` for the full design, Decision log, and V1-V15 verification mapping.
 
 ## TODO-THERMAL-003: Thermal Influence on Mana Field
 **Status:** Pending
@@ -478,6 +479,36 @@
 **Explanation Implications:** None.
 **Out of Scope:** Non-latest-batch per-cell bounds checking (closed in `3e46bc2`/follow-up commit) and the documented pre-alpha untrusted-snapshot threat-model carve-out (`SECURITY.md`).
 **Context:** Identified during the independent review of `3e46bc2` ("fix(runtime): reconcile thermal receipts and reuse domain geometry"): the per-cell latest-batch binding added there proves touched cells match current field energy, but the conservation receipt's own aggregate summary fields are still trusted literal values from the snapshot with no cross-check against a real recomputed sum, so an untouched cell's energy is never bound to anything.
+
+## TODO-THERMAL-007: Material Expansion, Damage, and Phase-Change Response
+**Status:** Pending
+**Phase:** Detailed Development
+**Priority:** Low
+**Dependencies:** TODO-THERMAL-002 (completed retained-heat coupling)
+**Goal:** Give a material surface's retained thermal energy a further physical consequence beyond storage — expansion, structural damage accumulation, or phase change — without a semantic toggle or a derived temperature figure standing in for the mechanism.
+**Acceptance Criteria:** Whatever response is defined is a bounded, conserved, or explicitly-accounted physical quantity with its own trace-backed transitions, not a label; retained energy remains the authoritative unit driving it.
+**Performance Requirements:** Benchmark before claims
+**Determinism Requirements:** Response deterministic given retained energy and its history
+**Ontology Implications:** Structural/phase state becomes causal state, not an English condition label
+**Observer Implications:** New bounded delta(s) for whatever state is added
+**Explanation Implications:** New claim schema(s) with trace support, scoped by `MaterialSurfaceId`
+**Out of Scope:** Climate, biology, economy; heterogeneous per-material response curves (`TODO-THERMAL-008`)
+**Context:** Named as an explicit Non-goal of `TODO-THERMAL-002` (`plans/thermal-material-surface-coupling.md`), which established the conserved retained-heat bucket this response would consume but deliberately did not define what retained energy causes beyond storage.
+
+## TODO-THERMAL-008: Heterogeneous Per-Material Thermal Properties
+**Status:** Pending
+**Phase:** Detailed Development
+**Priority:** Low
+**Dependencies:** TODO-THERMAL-002 (completed retained-heat coupling)
+**Goal:** Replace the homogeneous `material_exchange_fraction`/`material_thermal_capacity` parameters with per-material values drawn from `causafera_types::Material`'s existing `thermal_conductivity`/`specific_heat` fields, which the runtime does not yet read.
+**Acceptance Criteria:** Distinct materials exchange and retain heat at physically distinct rates; the widened `6 * transfer_fraction + material_exchange_fraction <= scale` bound (or its per-material analogue) still provably prevents negative energy for every realized material; existing homogeneous-parameter tests either still pass under a uniform-material configuration or are superseded by an equivalent per-material test.
+**Performance Requirements:** Benchmark before claims; per-material lookup must not turn the per-cell exchange step into a per-material-type branch explosion
+**Determinism Requirements:** Per-material response deterministic given material assignment and thermal state
+**Ontology Implications:** Matter's physical properties drive its thermal behavior directly, rather than a homogeneous stand-in
+**Observer Implications:** None beyond what `TODO-THERMAL-002` already exposes, unless a per-material property becomes independently queryable
+**Explanation Implications:** None beyond what `TODO-THERMAL-002` already exposes
+**Out of Scope:** Defining what retained energy causes beyond storage (`TODO-THERMAL-007`); climate, biology, economy
+**Context:** Named as Non-goal #2 of `TODO-THERMAL-002` (`plans/thermal-material-surface-coupling.md`): parameters stayed homogeneous "like `heat_capacity` today," and `causafera_types::Material`'s per-material `thermal_conductivity`/`specific_heat` (`f64`) were explicitly not pulled into that tranche.
 
 ## TODO-RES-001: Causal Resolution Field
 **Status:** Completed
