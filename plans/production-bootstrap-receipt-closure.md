@@ -730,6 +730,34 @@ The implementation worker updates only documents whose facts change:
   would version a contract nothing has seen. The pinned neutrality digests are re-recorded a second
   time with that reasoning stated.
 
+- **2026-07-28 (third audit):** A third audit of `0ea17cb` found five more, all real.
+
+  **The two decoders disagreed on which payloads are valid.** Rust bounds `configured_promotion_limit`
+  to 32 bits; TypeScript widened it with `Number()`, which neither rejects nor saturates. A payload at
+  2³² was rejected by one decoder and accepted by the other. That is the one failure mode a single
+  wire contract cannot tolerate, so the bound is now applied on the bigint before widening, and the
+  schema version and stage count are compared as bigints too rather than after a lossy conversion.
+
+  **`sensor_count` still did not drive execution.** The previous pass added it to the stage struct and
+  its fingerprint but left `promote_actor_from_aggregate` reading the configuration, so the parameter
+  described the promotion without parameterizing it. It is now passed by the caller that declares it,
+  and the regression test asserts the promoted actors actually carry that many apertures rather than
+  only that the fingerprint moved.
+
+  **A fully mistyped summary fell through to the absent schema.** A partly mistyped group was already
+  rejected as a missing field, but a payload with every scalar on the wrong wire type reported "this
+  reader predates the summary" about a peer that had tried to send one. Known fields 28..=35 on the
+  wrong wire type now fail closed in both decoders, matching what the nested receipt already did.
+
+  **The benchmark's byte figure was mislabelled.** `encoded_snapshot_bytes` summed payload sections
+  only, while the two benchmarks beside it measure the complete encoded envelope; the documented
+  figure was therefore not comparable with theirs and understated a file on disk. It now measures the
+  whole envelope, and the numbers are re-measured. The wall-time sampling is also stated precisely:
+  the checked-in test runs the benchmark twice as an identity check, and the five-sample ranges were
+  taken by hand.
+
+  **Progress had no rows for the audit commits.** Added, with their focused verification.
+
 - **2026-07-28 (post-audit, not done):** The audit asked for matching adversarial tests on the
   TypeScript side. The workspace has no JavaScript test runner, and adding one is not cheap here:
   `engines` allows Node 20.19, which cannot strip TypeScript, and the package has no build output to
@@ -765,7 +793,10 @@ The implementation worker updates only documents whose facts change:
 | 2 | `afc03f0` | `cargo test -p causafera-runtime` (all targets green, 27 bootstrap tests) |
 | 3 | `7ec9daa` | `cargo test -p causafera-observer-wire --test protocol` (10 passed), `cargo test -p causafera-observer --bin causafera-observer` (11 passed), `pnpm lint`/`typecheck`/`build` green |
 | 4 | `6791154` | `cargo test -p causafera-runtime --test historical_bootstrap` (31 passed), `cargo test -p causafera-lab --lib` (6 passed, 3 ignored benchmarks), `cargo test -p causafera-observer --bin causafera-observer` (12 passed) |
-| 5 | this commit | `cargo test -p causafera-runtime --test historical_bootstrap` (33 passed), `cargo run -p xtask -- ci`, `git diff --check` |
+| 5 | `a676593` | `cargo test -p causafera-runtime --test historical_bootstrap` (33 passed), `cargo run -p xtask -- ci`, `git diff --check` |
+| audit 1 | `cf3f018` | `cargo test -p causafera-runtime --test historical_bootstrap` (37 passed), `cargo test -p causafera-observer-wire --test protocol` (17 passed), full workspace green |
+| audit 2 | `0ea17cb` | `cargo test -p causafera-runtime --test historical_bootstrap` (39 passed), `cargo test -p causafera-observer-wire --test protocol` (18 passed), full workspace green |
+| audit 3 | this commit | `cargo test -p causafera-runtime --test historical_bootstrap` (39 passed), `cargo test -p causafera-observer-wire --test protocol` (20 passed), `cargo run -p xtask -- ci`, `git diff --check` |
 
 ### Final verification
 
@@ -795,23 +826,30 @@ The implementation worker updates only documents whose facts change:
 ### Bounded measurement
 
 Envelope only: nine active chunks (`Area`, radius 1), bootstrap population 512, eight promoted
-actors, one sensor aperture each. AMD Ryzen 9 7950X3D, release profile, five samples of an
-eight-iteration mean.
+actors, one sensor aperture each. AMD Ryzen 9 7950X3D, release profile. Each figure below is one
+eight-iteration mean; the ranges are across **five such runs invoked by hand**, not by the
+checked-in test, which runs the benchmark twice and asserts only that the authoritative outputs are
+identical.
 
 | Metric | Measured |
 | --- | --- |
-| bootstrap wall time per `Runtime::new` | 3.21-3.39 ms |
-| import wall time per `RuntimeState::import_snapshot` | 0.20-0.22 ms |
-| encoded snapshot bytes | 175 965 |
+| bootstrap wall time per `Runtime::new` | 3.52-3.58 ms warm; the first run of a cold process measured 5.07 ms and is reported rather than dropped |
+| import wall time per `RuntimeState::import_snapshot` | 0.20-0.21 ms warm, 0.29 ms on the same cold first run |
+| encoded snapshot bytes (complete envelope) | 177 071 |
 | canonical bootstrap record bytes | 1 676 |
 | bootstrap provenance events | 53 |
-| observer runtime-summary payload bytes | 435 |
-| observer poll, control (no encoding) | 9.64-10.42 us |
-| observer poll, with summary encoding | 9.91-10.85 us |
+| observer runtime-summary payload bytes | 436 |
+| observer poll, control (no encoding) | 9.80-11.78 us |
+| observer poll, with summary encoding | 10.16-10.89 us |
 
-The observer-encoding overhead is **not reported as a figure**: the two poll means straddle each
-other across runs, so the cost is below this harness's noise at this envelope. No generated benchmark
-output is committed. None of these numbers is a scale result or a regression threshold.
+The observer-encoding overhead is **not reported as a figure**. The measured mean exceeded the
+control in four of the five runs, but the two ranges overlap and the one run where the control was
+higher was the cold one, so the cost is below what this harness can resolve at this envelope.
+
+"Encoded snapshot bytes" is the complete envelope — header and section directory included — which is
+the same measurement the material-surface and experiment-recipe benchmarks report, so the three are
+comparable. No generated benchmark output is committed. None of these numbers is a scale result or a
+regression threshold.
 
 ### Deviations from the accepted plan
 
@@ -842,6 +880,16 @@ A second audit of `cf3f018` confirmed those fixes and found three more.
 | `chunk_extent` and `sensor_count` reached no stage parameter fingerprint, so configs differing only in them shared a plan identity **and** stage 1/4/6 result fingerprints | probed: all three compared equal across differing configs | `configuration_the_stages_execute_under_reaches_their_parameter_fingerprints` |
 | The canonical stage seed RFC-HIST-001 requires each stage to receive was never passed to adapters | the accessor had no callers | `every_stage_receives_a_stable_domain_separated_seed` |
 | Receipt fields 1..=4 allowed duplicates with last-value-wins and skipped a known field on the wrong wire type, while the enclosing group was strict | inspection of both decoders | `a_contradictory_nested_receipt_is_rejected`, with its own faithfulness control |
+
+A third audit of `0ea17cb` found five more.
+
+| Defect | Regression coverage |
+| --- | --- |
+| Rust bounded `configured_promotion_limit` to 32 bits, TypeScript widened it unchecked: one decoder accepted what the other rejected | `a_promotion_limit_past_thirty_two_bits_is_rejected` (Rust side; the TypeScript side remains uncovered — see below) |
+| `sensor_count` was declared on the stage and fingerprinted but not passed to the promotion, so the parameter described a promotion it did not parameterize | `configuration_the_stages_execute_under_reaches_their_parameter_fingerprints` now asserts the promoted actors carry that many apertures |
+| A summary with every scalar on the wrong wire type decoded as "absent" instead of malformed | `a_mistyped_summary_field_is_rejected_rather_than_read_as_absent` |
+| `encoded_snapshot_bytes` summed payload sections while the neighbouring benchmarks measure the whole envelope | figures re-measured against the complete envelope |
+| Progress carried no rows for the audit commits | rows added above |
 
 Two audit findings were deliberately **not** acted on, both recorded in the Decision Log: the
 TypeScript decoder still has no automated adversarial coverage (no JS test runner exists in the

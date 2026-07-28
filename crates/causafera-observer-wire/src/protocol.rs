@@ -518,6 +518,11 @@ pub fn decode_observer_snapshot(bytes: &[u8]) -> Result<ObserverSnapshot, WireEr
                 values[field as usize - 1] = c.varint()?;
                 present[field as usize - 1] = true;
             }
+            // A bootstrap field arriving on the wrong wire type is malformed,
+            // not unknown. Skipping it would let a summary whose every scalar is
+            // mistyped fall through to the absent schema, reporting "this reader
+            // predates the summary" about a payload that tried to carry one.
+            (28..=35, _) => return Err(WireError::UnexpectedFieldForSchema(field)),
             _ => c.skip(wire)?,
         }
     }

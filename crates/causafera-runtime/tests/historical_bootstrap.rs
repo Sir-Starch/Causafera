@@ -395,7 +395,24 @@ fn configuration_the_stages_execute_under_reaches_their_parameter_fingerprints()
     equipped.sensor_count = 2;
     let equipped = snapshot_of(equipped);
 
-    // Then: the promotion stage's parameters and result move with it.
+    // Then: the parameter is not merely declared — it drives what the stage
+    // produced, so the fingerprint and the effect describe one configuration.
+    assert!(
+        baseline
+            .actors_objective
+            .actors
+            .iter()
+            .all(|(_, actor)| actor.sensors.len() == 1)
+    );
+    assert!(
+        equipped
+            .actors_objective
+            .actors
+            .iter()
+            .all(|(_, actor)| actor.sensors.len() == 2)
+    );
+
+    // And: the promotion stage's parameters and result move with it.
     assert_ne!(baseline.bootstrap.plan.id, equipped.bootstrap.plan.id);
     assert_ne!(
         baseline.bootstrap.plan.stages[3].parameters,
@@ -1199,9 +1216,11 @@ fn the_bootstrap_benchmark_measures_the_stated_envelope_reproducibly() {
     assert!(first.observer_poll_wall_time_ns > 0);
     assert!(first.observer_summary_bytes > 0);
 
-    // And: the authoritative outputs are identical between runs. Wall times are
-    // deliberately not compared — they are measurements of a machine, and this
-    // benchmark establishes no threshold.
+    // And: the authoritative outputs are identical between runs. Two runs is what
+    // this test needs — it is an identity check, not a sample. The wall-time
+    // ranges recorded in the plan came from running the benchmark five times by
+    // hand, and are not asserted here: they are measurements of a machine, and
+    // this benchmark establishes no threshold.
     assert_eq!(first.plan_id, second.plan_id);
     assert_eq!(first.physical_state_digest, second.physical_state_digest);
     assert_eq!(first.history_digest, second.history_digest);

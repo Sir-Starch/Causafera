@@ -529,6 +529,9 @@ pub struct BootstrapClosureBenchmarkReport {
     /// Mean wall time of one `RuntimeState::import_snapshot`, canonical record
     /// validation included.
     pub import_wall_time_ns: u128,
+    /// The complete encoded snapshot envelope, header and section directory
+    /// included — the same measurement the other benchmarks in this module
+    /// report, so the figures are comparable.
     pub encoded_snapshot_bytes: u64,
     /// What the canonical record itself costs inside the population/bootstrap
     /// section, measured as the difference against an absent record.
@@ -573,13 +576,17 @@ pub fn run_bootstrap_closure_benchmark(
     let data = runtime.export_snapshot()?;
     let summary = runtime.snapshot()?;
 
-    let envelope = assemble_envelope(&data)
-        .map_err(|_| RuntimeError::InvalidSnapshot("bootstrap benchmark envelope must assemble"))?;
-    let encoded_snapshot_bytes = envelope
-        .sections
-        .values()
-        .map(|section| section.bytes.len() as u64)
-        .sum();
+    // The whole encoded envelope, header and section directory included, so this
+    // figure means the same thing as the one the material-surface and
+    // experiment-recipe benchmarks already report rather than a sections-only
+    // subtotal that quietly understates a file on disk.
+    let encoded_snapshot_bytes = u64::try_from(
+        assemble_envelope(&data)
+            .and_then(|envelope| envelope.encode())
+            .map_err(|_| RuntimeError::InvalidSnapshot("bootstrap benchmark envelope must encode"))?
+            .len(),
+    )
+    .map_err(|_| RuntimeError::InvalidSnapshot("bootstrap benchmark envelope is too large"))?;
     let with_record =
         crate::encode_population_section(&data.population, &data.bootstrap).len() as u64;
     let without_record = crate::encode_population_section(

@@ -504,6 +504,13 @@ export function decodeRuntimeSummary(input: Uint8Array): RuntimeSummary {
       }
       bootstrapReceipts.push(decodeBootstrapReceipt(cursor.bytes()));
     }
+    // A bootstrap field arriving on the wrong wire type is malformed, not
+    // unknown. Skipping it would let a summary whose every scalar is mistyped
+    // fall through to the absent schema, reporting "this reader predates the
+    // summary" about a payload that tried to carry one.
+    else if (field >= 28 && field <= 35) {
+      throw new Error(`observer bootstrap field ${field} has the wrong wire type`);
+    }
     else cursor.skip(wire);
   }
   if (physicalDigest.length !== 32 || historyDigest.length !== 32) {
@@ -583,9 +590,17 @@ function decodeBootstrapSummary(
     }
   }
 
+  // Compared as a bigint before widening: a value past 2^53 would otherwise be
+  // rounded, and could round onto the accepted version.
+  if (values.get(28)! !== BigInt(BOOTSTRAP_SUMMARY_SCHEMA_V1)) {
+    throw new Error(`unsupported observer bootstrap summary schema ${values.get(28)}`);
+  }
   const schemaVersion = Number(values.get(28));
   if (schemaVersion !== BOOTSTRAP_SUMMARY_SCHEMA_V1) {
     throw new Error(`unsupported observer bootstrap summary schema ${schemaVersion}`);
+  }
+  if (values.get(31)! > BigInt(MAX_BOOTSTRAP_RECEIPT_SUMMARIES)) {
+    throw new Error("observer bootstrap summary exceeds its stage bound");
   }
   const stageCount = Number(values.get(31));
   if (stageCount > MAX_BOOTSTRAP_RECEIPT_SUMMARIES) {
@@ -608,6 +623,14 @@ function decodeBootstrapSummary(
   if (complete !== stageCount > 0) {
     throw new Error("observer bootstrap completeness disagrees with its stage count");
   }
+  // Kept to the same bound Rust's `to_u32` applies. `Number()` on a bigint
+  // neither rejects nor saturates — it widens, silently and lossily past 2^53 —
+  // so without this the two decoders disagree on which payloads are valid, which
+  // is the one thing a single wire contract cannot afford.
+  const configuredPromotionLimit = values.get(34)!;
+  if (configuredPromotionLimit > 0xffff_ffffn) {
+    throw new Error("observer bootstrap promotion limit exceeds its 32-bit range");
+  }
   return {
     schemaVersion,
     planId: values.get(29)!,
@@ -615,7 +638,7 @@ function decodeBootstrapSummary(
     stageCount,
     complete,
     configuredPopulation: values.get(33)!,
-    configuredPromotionLimit: Number(values.get(34)!),
+    configuredPromotionLimit: Number(configuredPromotionLimit),
     receipts,
   };
 }

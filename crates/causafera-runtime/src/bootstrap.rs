@@ -93,10 +93,10 @@ pub struct ActorPromotionStage {
     pub max_promotions: u8,
     /// How many sensor apertures each promoted actor is given.
     ///
-    /// The value is consumed by `promote_actor_from_aggregate`, which reads it
-    /// from the runtime configuration rather than from here; it is declared on
-    /// the stage because it is part of what this stage executes, and a promotion
-    /// that produces differently-equipped actors is a different stage outcome.
+    /// The stage hands this value to `promote_actor_from_aggregate` itself, so
+    /// the equipment the promotion produces is the equipment this stage's
+    /// parameter fingerprint covers. A promotion producing differently-equipped
+    /// actors is a different stage outcome and must not share a fingerprint.
     pub sensor_count: u8,
 }
 
@@ -1004,7 +1004,7 @@ impl HistoricalBootstrapAdapter for ActorPromotionStage {
         for _ in 0..self.max_promotions {
             let before = state.actor_promotions;
             let chunk = first_population_chunk(state)?;
-            promote_actor_from_aggregate(state, SimulationTime::new(0), chunk)?;
+            promote_actor_from_aggregate(state, SimulationTime::new(0), chunk, self.sensor_count)?;
             if state.actor_promotions > before {
                 traces.push(state.latest_physical_trace);
             }

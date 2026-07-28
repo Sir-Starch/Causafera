@@ -552,6 +552,55 @@ mod bootstrap_summary {
         assert!(decode_observer_snapshot(&rebuild(wrong_wire)).is_err());
     }
 
+    /// A summary whose scalars all arrive on the wrong wire type is malformed,
+    /// not a payload from a reader that predates the summary. Skipping mistyped
+    /// known fields would let it decode as "absent" and report the wrong thing
+    /// about the peer.
+    #[test]
+    fn a_mistyped_summary_field_is_rejected_rather_than_read_as_absent() {
+        let snapshot = summary(vec![receipt(1, Vec::new())]);
+        let encoded = encode_observer_snapshot(&snapshot);
+
+        for field in 28..=34_u32 {
+            let mut mistyped = strip_field(&encoded, field);
+            // The same value, carried as a length-delimited field instead.
+            write_varint(&mut mistyped, (u64::from(field) << 3) | 2);
+            write_varint(&mut mistyped, 1);
+            mistyped.push(1);
+            assert!(
+                decode_observer_snapshot(&mistyped).is_err(),
+                "a mistyped field {field} must be rejected"
+            );
+        }
+
+        // And the whole group mistyped at once, which is the case that would
+        // otherwise fall through to the absent schema.
+        let mut all_mistyped = strip_fields_from(&encoded, 28);
+        for field in 28..=34_u32 {
+            write_varint(&mut all_mistyped, (u64::from(field) << 3) | 2);
+            write_varint(&mut all_mistyped, 1);
+            all_mistyped.push(1);
+        }
+        assert!(decode_observer_snapshot(&all_mistyped).is_err());
+    }
+
+    /// The Rust and TypeScript decoders are one wire contract. Rust bounds the
+    /// promotion limit to 32 bits; this pins that bound so the two cannot drift
+    /// into disagreeing about which payloads are valid.
+    #[test]
+    fn a_promotion_limit_past_thirty_two_bits_is_rejected() {
+        let snapshot = summary(vec![receipt(1, Vec::new())]);
+        let encoded = encode_observer_snapshot(&snapshot);
+
+        let mut at_bound = strip_field(&encoded, 34);
+        append_varint(&mut at_bound, 34, u64::from(u32::MAX));
+        assert!(decode_observer_snapshot(&at_bound).is_ok());
+
+        let mut past_bound = strip_field(&encoded, 34);
+        append_varint(&mut past_bound, 34, u64::from(u32::MAX) + 1);
+        assert!(decode_observer_snapshot(&past_bound).is_err());
+    }
+
     fn append_varint(out: &mut Vec<u8>, field: u32, value: u64) {
         write_varint(out, u64::from(field) << 3);
         write_varint(out, value);
