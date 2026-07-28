@@ -32,6 +32,9 @@ use causafera_types::{
 };
 use thiserror::Error;
 
+use crate::thermal_conservation_validation::{
+    ThermalBatchReceiptTotals, validate_thermal_aggregate_conservation,
+};
 use crate::*;
 
 pub const MAX_RUNTIME_TICKS: u64 = 1_000_000;
@@ -984,7 +987,9 @@ impl RuntimeState {
             thermal_reservoirs,
             thermal_receipts,
             thermal_conservation_receipts,
+            thermal_receipt_totals,
         ) = import_thermal_snapshot(data.thermal, config.chunk_extent, &active_chunks)?;
+
         let pattern_history = PhysicalPatternHistory::import_snapshot(data.pattern_history);
         let subjective_count = data.actors_subjective.actors.len();
         let subjective_by_actor = data
@@ -1083,11 +1088,14 @@ impl RuntimeState {
             last_mana_changes: counters.last_mana_changes,
             failure: None,
         };
-        state.validate_snapshot_references()?;
+        state.validate_snapshot_references(&thermal_receipt_totals)?;
         Ok(state)
     }
 
-    fn validate_snapshot_references(&self) -> Result<(), RuntimeError> {
+    fn validate_snapshot_references(
+        &self,
+        thermal_receipt_totals: &BTreeMap<TraceId, ThermalBatchReceiptTotals>,
+    ) -> Result<(), RuntimeError> {
         self.validate_experiment_recipe_mana_source_receipts()?;
         validate_trace_exists(&self.traces, self.latest_physical_trace)?;
         if let Some(trace) = self.latest_mana_trace {
@@ -1169,6 +1177,7 @@ impl RuntimeState {
                 }
             }
         }
+        validate_thermal_aggregate_conservation(self, thermal_receipt_totals)?;
         for field in self.mana.fields().values() {
             for trace in field.last_change().iter().flatten().copied() {
                 validate_trace_exists(&self.traces, trace)?;
@@ -2422,6 +2431,7 @@ type ImportedThermal = (
     BTreeMap<ThermalReservoirId, ThermalReservoir>,
     BTreeMap<TraceId, Vec<ThermalCellTransferReceipt>>,
     BTreeMap<TraceId, ThermalConservationReceipt>,
+    BTreeMap<TraceId, ThermalBatchReceiptTotals>,
 );
 
 fn import_thermal_snapshot(
@@ -2589,9 +2599,13 @@ fn import_thermal_snapshot(
     }
 
     let mut receipts = BTreeMap::<TraceId, Vec<ThermalCellTransferReceipt>>::new();
+    let mut receipt_totals = BTreeMap::<TraceId, ThermalBatchReceiptTotals>::new();
     for trace in snapshot.receipt_batches {
         if !conservation_receipts.contains_key(&trace)
             || receipts.insert(trace, Vec::new()).is_some()
+            || receipt_totals
+                .insert(trace, ThermalBatchReceiptTotals::default())
+                .is_some()
         {
             return Err(RuntimeError::InvalidSnapshot(
                 "thermal receipt batch is invalid",
@@ -2664,6 +2678,16 @@ fn import_thermal_snapshot(
                         "thermal receipt material retained energy exceeds capacity",
                     ));
                 }
+                let retained_delta = i128::from(retained_after.get())
+                    .checked_sub(i128::from(retained_before.get()))
+                    .ok_or(RuntimeError::InvalidSnapshot(
+                        "thermal receipt material retained delta overflows",
+                    ))?;
+                if retained_delta != i128::from(material.signed_flux) {
+                    return Err(RuntimeError::InvalidSnapshot(
+                        "thermal receipt material retained delta does not match signed flux",
+                    ));
+                }
                 Ok(causafera_domains::ThermalMaterialTransferRecord {
                     retained_before,
                     retained_after,
@@ -2723,20 +2747,25 @@ fn import_thermal_snapshot(
                 transfer_trace_id: record.transfer_trace_id,
             });
         }
+        let totals = receipt_totals.get_mut(&receipt.conservation_trace).ok_or(
+            RuntimeError::InvalidSnapshot("thermal transfer receipt lacks receipt batch totals"),
+        )?;
+        let built_receipt = ThermalCellTransferReceipt {
+            cell: receipt.cell,
+            pre_state,
+            post_state,
+            cell_change_trace_id: receipt.cell_change_trace_id,
+            faces,
+            reservoirs: reservoir_records,
+            material,
+        };
+        crate::thermal_conservation_validation::accumulate_receipt_totals(&built_receipt, totals)?;
         receipts
             .get_mut(&receipt.conservation_trace)
             .ok_or(RuntimeError::InvalidSnapshot(
                 "thermal transfer receipt lacks receipt batch",
             ))?
-            .push(ThermalCellTransferReceipt {
-                cell: receipt.cell,
-                pre_state,
-                post_state,
-                cell_change_trace_id: receipt.cell_change_trace_id,
-                faces,
-                reservoirs: reservoir_records,
-                material,
-            });
+            .push(built_receipt);
     }
     if receipts.keys().copied().collect::<BTreeSet<_>>()
         != conservation_receipts.keys().copied().collect()
@@ -2810,6 +2839,7 @@ fn import_thermal_snapshot(
         reservoirs,
         receipts,
         conservation_receipts,
+        receipt_totals,
     ))
 }
 
