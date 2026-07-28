@@ -25,8 +25,10 @@ Source authority, in order of what each source actually settles:
 - **Project status** — [roadmap](docs/roadmap/roadmap.md),
   [maturity matrix](docs/ontology/domain-coverage-matrix.md),
   [TODO backlog](docs/development/todo-backlog.md), and [CHANGELOG.md](CHANGELOG.md).
-- **Not authoritative** — generated summaries, agent memory, tool indexes, chat history, session
-  transcripts, and completed plans. They are navigation hints and provenance, not contracts.
+- **Not authoritative** — generated summaries, agent memory, tool indexes, chat history, and session
+  transcripts are non-authoritative navigation hints and provenance, not contracts. Completed and
+  historical plans are not current implementation guidance; they may be consulted for accepted
+  decisions and provenance that have not been explicitly superseded by later canonical sources.
 
 When sources conflict, resolve the conflict explicitly: state which source you followed and why, and
 either fix the stale source or record the discrepancy. Do not silently pick one.

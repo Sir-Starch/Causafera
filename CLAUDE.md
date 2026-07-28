@@ -5,9 +5,10 @@
 [`AGENTS.md`](AGENTS.md) is the canonical agent guidance for this repository. Do not duplicate or
 restate it here. This file covers only Claude Code specifics.
 
-- This repository does not require any external orchestration framework. Do not invoke
-  framework-specific agents, slash commands, or control files unless the current user asks for them
-  in this session.
+- The repository does not require any external orchestration framework. Do not assume
+  framework-specific agents, commands, or control files exist; when the active environment or
+  session provides orchestration tooling, follow that environment's own instructions. Do not
+  duplicate framework instructions in repository documentation.
 - Claude memory, previous-session summaries, and compacted context are navigation hints. They are not
   authoritative; verify against current source, tests, and the canonical documents before acting.
 - `codebase-memory-mcp` is optional. Load it through ToolSearch when a question is genuinely
