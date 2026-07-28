@@ -492,13 +492,8 @@ impl RuntimeBootstrapRecipe {
                 return Err(BootstrapError::MissingStageEffectTrace);
             }
 
-            let result = stage_result_fingerprint(state, &self.plan, stage, &effects)?;
-            let mut event_causes = effects;
-            if let Some(previous) = previous_receipt {
-                event_causes.push(previous);
-            }
-            event_causes.sort_unstable();
-            event_causes.dedup();
+            let result = stage_result_fingerprint(&state.traces, &self.plan, stage, &effects)?;
+            let event_causes = expected_completion_causes(&effects, previous_receipt);
 
             let trace = commit_bootstrap_stage_completion(state, stage.id(), result, event_causes)?;
             let receipt = HistoricalStageReceipt::new(
@@ -676,7 +671,7 @@ impl ThermalReservoirBootstrapStage {
 /// still yields a stage-specific fingerprint, so its completion is a real
 /// transition rather than a repeated sentinel.
 fn stage_result_fingerprint(
-    state: &RuntimeState,
+    traces: &CausalTraceStore,
     plan: &HistoricalBootstrapPlan,
     stage: &HistoricalStage,
     effects: &[TraceId],
@@ -690,8 +685,7 @@ fn stage_result_fingerprint(
     digest.write_bytes(stage.parameters().bytes());
     digest.write(effects.len() as u64);
     for trace in effects {
-        let event = state
-            .traces
+        let event = traces
             .event(*trace)
             .ok_or(BootstrapError::MissingStageEffectTrace)?;
         digest.write(event.kind.raw());
@@ -705,6 +699,88 @@ fn stage_result_fingerprint(
         }
     }
     Ok(digest.finish())
+}
+
+/// Re-derive, from the trace store alone, which events each stage committed.
+///
+/// The store is append-only and bootstrap runs entirely before the first tick,
+/// so the completions partition its prefix: the runtime root, stage one's
+/// effects, completion one, stage two's effects, completion two, and so on. That
+/// is exactly the window the coordinator measured when it built the record, so
+/// replaying it here reproduces the same inputs rather than trusting the
+/// record's account of them.
+///
+/// Every stage-completion event in the store must be one of the record's
+/// receipts, in receipt order. A seventh completion, or a completion the record
+/// does not name, means the store does not describe the run the record claims.
+pub(crate) fn replay_stage_effects(
+    traces: &CausalTraceStore,
+    receipts: &[HistoricalStageReceipt],
+) -> Result<Vec<Vec<TraceId>>, BootstrapError> {
+    let committed = traces
+        .iter()
+        .enumerate()
+        .filter(|(_, event)| event.kind.raw() == BOOTSTRAP_STAGE_COMPLETION_EVENT_KIND)
+        .map(|(index, event)| (index, event.trace_id))
+        .collect::<Vec<_>>();
+    if committed.len() != receipts.len()
+        || committed
+            .iter()
+            .zip(receipts)
+            .any(|((_, trace), receipt)| *trace != receipt.trace())
+    {
+        return Err(BootstrapError::StageCompletionsDoNotMatchRecord);
+    }
+
+    let ordered = traces
+        .iter()
+        .map(|event| event.trace_id)
+        .collect::<Vec<_>>();
+    let mut windows = Vec::with_capacity(receipts.len());
+    // The runtime root precedes stage one and is not one of its effects.
+    let mut cursor = 1_usize;
+    for (index, _) in committed {
+        if index < cursor {
+            return Err(BootstrapError::StageCompletionsDoNotMatchRecord);
+        }
+        windows.push(ordered[cursor..index].to_vec());
+        cursor = index + 1;
+    }
+    Ok(windows)
+}
+
+/// Recompute one stage's result from what the store says it committed.
+///
+/// Used by import, where the persisted result, the persisted completion effect,
+/// and the persisted stage-result state can all have been rewritten together. A
+/// coherent forgery of the three still has to survive this, and surviving it
+/// means forging every stage effect's committed payload as well — at which point
+/// the snapshot is a different history rather than a false account of this one.
+pub(crate) fn recompute_stage_result(
+    traces: &CausalTraceStore,
+    plan: &HistoricalBootstrapPlan,
+    stage: &HistoricalStage,
+    effects: &[TraceId],
+) -> Result<StateFingerprint, BootstrapError> {
+    stage_result_fingerprint(traces, plan, stage, effects)
+}
+
+/// The causes a stage's completion event must carry, exactly.
+///
+/// Both halves matter. The previous receipt is what chains the record; the stage
+/// effects are what stops a receipt summarizing a stage whose detailed ancestry
+/// has been cut out from under it.
+pub(crate) fn expected_completion_causes(
+    effects: &[TraceId],
+    previous_completion: Option<TraceId>,
+) -> Vec<TraceId> {
+    let mut causes = effects.to_vec();
+    if let Some(previous) = previous_completion {
+        causes.push(previous);
+    }
+    causes.sort_unstable();
+    causes.dedup();
+    causes
 }
 
 /// The absent value a stage's bounded result state holds before completion.
@@ -1003,6 +1079,8 @@ pub enum BootstrapError {
     InvalidStageTargets,
     #[error("bootstrap stage effect trace is absent from the causal trace store")]
     MissingStageEffectTrace,
+    #[error("committed stage completions do not match the bootstrap record")]
+    StageCompletionsDoNotMatchRecord,
 }
 
 fn commit_thermal_reservoir_bootstrap_event(

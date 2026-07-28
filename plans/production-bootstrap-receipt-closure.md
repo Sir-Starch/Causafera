@@ -672,6 +672,48 @@ The implementation worker updates only documents whose facts change:
   needed them, and the plan permits removal in exactly that case. `ActorRuntimeConfig` is left in
   place: it is a configuration type, not a fixture constructor, and removing it would be
   opportunistic cleanup.
+- **2026-07-28 (post-audit):** An independent audit found two real defects, both confirmed by
+  proof-of-defect runs before being fixed.
+
+  **Import accepted a coherently forged record.** The pairwise checks — receipt against completion
+  effect, receipt against materialized stage result — all pass for a snapshot that rewrites the
+  three together, and the completion's causes were only required to *contain* the receipt's causes,
+  so every stage-effect trace could be stripped from a completion while the record still validated.
+  That defeats the stated purpose of the design: the receipt could hide exactly the detailed
+  ancestry it exists to carry. Import now re-derives each stage's committed window from the trace
+  store — the store is append-only and bootstrap precedes the first tick, so the completions
+  partition its prefix — recomputes every result fingerprint from what the store says the stage
+  committed, and requires each completion's causes to equal exactly its stage effects plus its
+  predecessor. Getting past this now requires forging every stage effect's payload, which is a
+  different self-consistent history rather than a false account of this one, and that is the
+  boundary `SECURITY.md` already draws.
+
+  **The observer decoders accepted incomplete and self-contradictory summaries.** Fields 28..=35
+  were read individually, so a payload with only the schema field decoded to a zero-filled record,
+  an unknown schema version was accepted as if it were version 1, `complete` and `stage_count` and
+  the receipt count were never cross-checked, repeated scalars silently took the last value, and —
+  worst — receipts arriving without field 28 were parsed and then dropped. They are now one atomic
+  optional group in both Rust and TypeScript: all of it, or none of it and the explicit absent
+  schema. The two decoders are kept rule-identical deliberately; two decoders of one wire contract
+  that disagree on validity are worse than one.
+
+- **2026-07-28 (post-audit, not done):** The audit asked for matching adversarial tests on the
+  TypeScript side. The workspace has no JavaScript test runner, and adding one is not cheap here:
+  `engines` allows Node 20.19, which cannot strip TypeScript, and the package has no build output to
+  test against, so this needs either an engine-floor raise or a transpile step — a workspace
+  infrastructure decision this plan did not scope. The Rust adversarial suite defines the contract
+  and the TypeScript decoder is written to the same rules with a comment pinning it there, but the
+  TypeScript decoder has **no automated adversarial coverage**. Recorded as an open gap rather than
+  smuggled in.
+
+- **2026-07-28 (post-audit, not done):** The audit's MEDIUM note — no overall byte limit on the
+  runtime-summary decoder — is pre-existing behaviour of the whole payload, bounded at the query
+  layer by `MAX_QUERY_PAYLOAD_BYTES`. This plan bounds its own group's counts and leaves the
+  payload-wide limit alone rather than changing an unrelated contract. Its MINOR note — the source
+  fixture audit is text-based and does not prove reachability — is what that test's own doc comment
+  and commit message already say; the reachability claim rests on the entry-point equivalence and
+  ancestry tests, not on the scan.
+
 - **2026-07-28 (wave 5):** No observer-overhead figure is reported. Control and measured poll means
   straddle each other across five runs at the bounded envelope, so the bootstrap-summary encoding
   cost is below this harness's noise. Reporting a number here would be reporting noise; the
@@ -748,6 +790,22 @@ output is committed. None of these numbers is a scale result or a regression thr
 3. `ConcreteHistoricalBootstrapAdapter` was removed, and `RuntimeSnapshot` lost `Copy`. Both are
    recorded in the Decision Log.
 4. No observer-overhead figure is reported (Decision Log, wave 5).
+
+### Post-audit hardening
+
+An independent audit of `a676593` found two real defects; both were reproduced, fixed, and covered by
+regression tests. See the Decision Log for what each one was and why the fix takes the shape it does.
+
+| Defect | Proof | Regression coverage |
+| --- | --- | --- |
+| Import accepted a coherently forged result (completion effect, receipt result and stage-result entry rewritten together) | reproduced: import returned `Ok` | `a_coherently_forged_stage_result_is_rejected`, `a_stage_effect_rewritten_under_an_unchanged_receipt_is_rejected` |
+| Import accepted a completion stripped of its stage-effect causes | reproduced: import returned `Ok` | `a_completion_stripped_of_its_stage_effects_is_rejected`, `a_stage_completion_the_record_does_not_name_is_rejected` |
+| Observer decoders accepted partial, unknown-schema, contradictory and duplicate-field summaries, and dropped receipts arriving without field 28 | inspection of both decoders | six adversarial tests plus a control proving the byte-rewriting helpers are faithful, so none of them passes for the wrong reason |
+
+Two audit findings were deliberately **not** acted on, both recorded in the Decision Log: the
+TypeScript decoder still has no automated adversarial coverage (no JS test runner exists in the
+workspace and adding one is an infrastructure decision this plan did not scope), and the
+payload-wide byte limit on the runtime summary is pre-existing and left alone.
 
 ### Not delivered
 

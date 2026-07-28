@@ -645,6 +645,124 @@ fn a_missing_stage_result_entry_is_rejected() {
     rejects(data);
 }
 
+/// The three internally-consistent halves of a stage's result — the completion
+/// event's committed effect, the receipt's `result`, and the materialized
+/// stage-result entry — can all be rewritten together. Each of the pairwise
+/// checks then passes, so what has to catch it is recomputing the result from
+/// what the trace store says the stage actually committed.
+#[test]
+fn a_coherently_forged_stage_result_is_rejected() {
+    // Given: a valid production snapshot.
+    let mut data = snapshot_of(populated_config(4_143));
+    let forged = causafera_core::StateFingerprint::new([0xAB; 32]);
+    let trace = data.bootstrap.receipts[0].trace;
+
+    // When: the receipt, the materialized stage result, and the completion
+    // event's own effect are rewritten to agree on a forged fingerprint.
+    data.bootstrap.receipts[0].result = forged;
+    data.bootstrap.stage_results[0].result = forged;
+    let event = data
+        .traces
+        .events
+        .iter_mut()
+        .find(|event| event.trace_id == trace)
+        .expect("the completion event is committed");
+    let target = event.effects[0].target();
+    let before = event.effects[0].before();
+    event.effects[0] = causafera_core::CausalEffect::new(target, before, forged)
+        .expect("a forged transition is still a transition");
+
+    // Then: the recomputed result does not match, so import fails closed even
+    // though every pairwise check agrees.
+    rejects(data);
+}
+
+/// A completion whose causes have been cut back to just its predecessor is a
+/// receipt that has hidden its stage's detailed ancestry, which is the one thing
+/// the terminal-receipt design exists to prevent.
+#[test]
+fn a_completion_stripped_of_its_stage_effects_is_rejected() {
+    // Given: a valid production snapshot whose first completion names its
+    // terrain effects alongside nothing else.
+    let mut data = snapshot_of(populated_config(4_144));
+    let trace = data.bootstrap.receipts[0].trace;
+    let event = data
+        .traces
+        .events
+        .iter_mut()
+        .find(|event| event.trace_id == trace)
+        .expect("the completion event is committed");
+    assert!(
+        event.causes.len() > 1,
+        "stage one names its terrain effects"
+    );
+
+    // When: everything but the first cause is dropped.
+    event.causes.truncate(1);
+
+    // Then: import rejects the summarized ancestry.
+    rejects(data);
+}
+
+#[test]
+fn a_stage_effect_rewritten_under_an_unchanged_receipt_is_rejected() {
+    // Given: a valid production snapshot.
+    let mut data = snapshot_of(populated_config(4_145));
+    let completions = data
+        .bootstrap
+        .receipts
+        .iter()
+        .map(|receipt| receipt.trace)
+        .collect::<BTreeSet<_>>();
+
+    // When: one ordinary stage effect's committed payload is rewritten, leaving
+    // the record itself untouched.
+    let effect_event = data
+        .traces
+        .events
+        .iter_mut()
+        // The runtime root is not one of any stage's effects, so skip it.
+        .skip(1)
+        .find(|event| !completions.contains(&event.trace_id) && !event.effects.is_empty())
+        .expect("bootstrap commits ordinary stage effects");
+    let target = effect_event.effects[0].target();
+    let before = effect_event.effects[0].before();
+    effect_event.effects[0] = causafera_core::CausalEffect::new(
+        target,
+        before,
+        causafera_core::StateFingerprint::new([0xCD; 32]),
+    )
+    .expect("a rewritten transition is still a transition");
+
+    // Then: the stage result no longer matches what the stage committed.
+    rejects(data);
+}
+
+#[test]
+fn a_stage_completion_the_record_does_not_name_is_rejected() {
+    // Given: a valid production snapshot.
+    let mut data = snapshot_of(populated_config(4_146));
+    let template = data
+        .traces
+        .events
+        .iter()
+        .find(|event| event.kind.raw() == BOOTSTRAP_STAGE_COMPLETION_EVENT_KIND)
+        .expect("the store carries completions")
+        .clone();
+
+    // When: a seventh completion is appended that no receipt names.
+    let mut extra = template;
+    extra.trace_id = TraceId::new(data.traces.next_trace_id);
+    extra.event_id = causafera_types::EventId::new(data.traces.next_event_id);
+    extra.causes.clear();
+    data.traces.next_trace_id += 1;
+    data.traces.next_event_id += 1;
+    data.traces.events.push(extra);
+
+    // Then: the store no longer describes the run the record claims.
+    rejects(data);
+}
+
 #[test]
 fn a_target_outside_the_active_chunk_set_is_rejected() {
     // Given: a valid production snapshot.

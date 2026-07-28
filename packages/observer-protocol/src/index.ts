@@ -482,7 +482,16 @@ export function decodeRuntimeSummary(input: Uint8Array): RuntimeSummary {
   const bootstrapReceipts: BootstrapReceipt[] = [];
   while (!cursor.empty) {
     const [field, wire] = cursor.key();
-    if (wire === 0) values.set(field, cursor.varint());
+    if (wire === 0) {
+      // The summary's scalars are single-valued. Elsewhere in this payload a
+      // repeated field silently wins with its last value, which is a decision
+      // this group does not inherit: two different stage counts in one payload
+      // is a contradiction, not an update.
+      if (field >= 28 && field <= 34 && values.has(field)) {
+        throw new Error(`duplicate observer bootstrap summary field ${field}`);
+      }
+      values.set(field, cursor.varint());
+    }
     else if (wire === 2 && field === 3) physicalDigest = cursor.bytes();
     else if (wire === 2 && field === 4) historyDigest = cursor.bytes();
     else if (wire === 2 && field === 24) thermalTotalCellEnergy = decodeZigzagI128(cursor.bytes());
@@ -534,15 +543,29 @@ export function decodeRuntimeSummary(input: Uint8Array): RuntimeSummary {
 }
 
 /**
- * The bootstrap summary is additive, so an absent field 28 is a payload written
- * before it existed rather than a record with zero stages.
+ * Decode the bounded bootstrap summary as one atomic optional group.
+ *
+ * Fields 28..=35 are additive, so a payload carrying none of them was written
+ * before the summary existed and decodes to the explicit absent schema — that is
+ * the only tolerated incompleteness. A payload carrying *part* of the group is
+ * not an older peer, it is a contradiction, and every way of being partially
+ * present fails closed here rather than being filled in with zeroes. Kept
+ * deliberately identical to `decode_bootstrap_summary` in
+ * `causafera-observer-wire`: two decoders of one wire contract that disagree on
+ * what is valid are worse than one.
  */
 function decodeBootstrapSummary(
   values: Map<number, bigint>,
   receipts: BootstrapReceipt[],
 ): BootstrapSummary {
-  const schemaVersion = values.get(28);
-  if (schemaVersion === undefined) {
+  const group = [28, 29, 30, 31, 32, 33, 34];
+  const declared = group.some((field) => values.has(field));
+  if (!declared) {
+    if (receipts.length > 0) {
+      // Receipts with no summary to interpret them would otherwise be parsed
+      // and then silently dropped.
+      throw new Error("observer bootstrap receipts carry no summary");
+    }
     return {
       schemaVersion: BOOTSTRAP_SUMMARY_SCHEMA_ABSENT,
       planId: 0n,
@@ -554,23 +577,45 @@ function decodeBootstrapSummary(
       receipts: [],
     };
   }
+  for (const field of group) {
+    if (!values.has(field)) {
+      throw new Error(`incomplete observer bootstrap summary: missing field ${field}`);
+    }
+  }
+
+  const schemaVersion = Number(values.get(28));
+  if (schemaVersion !== BOOTSTRAP_SUMMARY_SCHEMA_V1) {
+    throw new Error(`unsupported observer bootstrap summary schema ${schemaVersion}`);
+  }
+  const stageCount = Number(values.get(31));
+  if (stageCount > MAX_BOOTSTRAP_RECEIPT_SUMMARIES) {
+    throw new Error("observer bootstrap summary exceeds its stage bound");
+  }
+  const completeRaw = values.get(32);
+  if (completeRaw !== 0n && completeRaw !== 1n) {
+    throw new Error("observer bootstrap completeness must be zero or one");
+  }
   for (let index = 1; index < receipts.length; index += 1) {
     if (receipts[index - 1].stage >= receipts[index].stage) {
       throw new Error("observer bootstrap receipts are not in canonical order");
     }
   }
-  const stageCount = Number(values.get(31) ?? 0n);
-  if (stageCount > MAX_BOOTSTRAP_RECEIPT_SUMMARIES) {
-    throw new Error("observer bootstrap summary exceeds its stage bound");
+  if (receipts.length !== stageCount) {
+    throw new Error("observer bootstrap receipt count does not match its stage count");
+  }
+  const complete = completeRaw === 1n;
+  // A record is complete exactly when it closed every stage it declared.
+  if (complete !== stageCount > 0) {
+    throw new Error("observer bootstrap completeness disagrees with its stage count");
   }
   return {
-    schemaVersion: Number(schemaVersion),
-    planId: values.get(29) ?? 0n,
-    worldSeed: values.get(30) ?? 0n,
+    schemaVersion,
+    planId: values.get(29)!,
+    worldSeed: values.get(30)!,
     stageCount,
-    complete: (values.get(32) ?? 0n) !== 0n,
-    configuredPopulation: values.get(33) ?? 0n,
-    configuredPromotionLimit: Number(values.get(34) ?? 0n),
+    complete,
+    configuredPopulation: values.get(33)!,
+    configuredPromotionLimit: Number(values.get(34)!),
     receipts,
   };
 }

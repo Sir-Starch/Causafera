@@ -1414,7 +1414,64 @@ impl RuntimeState {
             }
         }
 
+        self.validate_bootstrap_stage_replay(record)?;
         self.validate_bootstrap_population_conservation(record)?;
+        Ok(())
+    }
+
+    /// Recompute every stage result from the trace store the snapshot carries.
+    ///
+    /// The checks above establish that each receipt agrees with its own
+    /// completion event and with the materialized stage-result state. They do
+    /// not establish that any of the three describes what the run actually
+    /// committed: a snapshot that rewrites the completion's effect, the receipt's
+    /// result, and the stage-result entry together is internally consistent and
+    /// passes all of them. It also does not stop a completion from being stripped
+    /// of the stage effects it named, which is precisely the detailed ancestry the
+    /// receipt is not allowed to hide.
+    ///
+    /// So the stage windows are re-derived from the store and both are recomputed
+    /// from scratch. Getting past this requires forging every stage effect's
+    /// committed payload as well, which is no longer a false account of this run
+    /// but a different, self-consistent history — the boundary `SECURITY.md`
+    /// already draws for untrusted snapshots.
+    fn validate_bootstrap_stage_replay(
+        &self,
+        record: &HistoricalBootstrapRecord,
+    ) -> Result<(), RuntimeError> {
+        let windows = replay_stage_effects(&self.traces, record.receipts()).map_err(|_| {
+            RuntimeError::InvalidSnapshot("committed stage completions do not match the record")
+        })?;
+        let mut previous_completion: Option<TraceId> = None;
+        for ((stage, receipt), effects) in record
+            .plan()
+            .stages()
+            .iter()
+            .zip(record.receipts())
+            .zip(&windows)
+        {
+            let recomputed = recompute_stage_result(&self.traces, record.plan(), stage, effects)
+                .map_err(|_| {
+                    RuntimeError::InvalidSnapshot("bootstrap stage effect trace is unknown")
+                })?;
+            if recomputed != receipt.result() {
+                return Err(RuntimeError::InvalidSnapshot(
+                    "bootstrap stage result does not match what the stage committed",
+                ));
+            }
+            let event = self
+                .traces
+                .event(receipt.trace())
+                .ok_or(RuntimeError::InvalidSnapshot(
+                    "bootstrap receipt references unknown trace",
+                ))?;
+            if event.causes != expected_completion_causes(effects, previous_completion) {
+                return Err(RuntimeError::InvalidSnapshot(
+                    "bootstrap completion does not name exactly its stage effects and predecessor",
+                ));
+            }
+            previous_completion = Some(receipt.trace());
+        }
         Ok(())
     }
 
@@ -3401,7 +3458,10 @@ fn bootstrap_construction_error(error: BootstrapError, context: &'static str) ->
         | BootstrapError::InvalidThermalReservoir
         | BootstrapError::DuplicateThermalReservoir { .. }
         | BootstrapError::InvalidStageTargets
-        | BootstrapError::MissingStageEffectTrace => RuntimeError::InvalidSnapshot(context),
+        | BootstrapError::MissingStageEffectTrace
+        | BootstrapError::StageCompletionsDoNotMatchRecord => {
+            RuntimeError::InvalidSnapshot(context)
+        }
     }
 }
 

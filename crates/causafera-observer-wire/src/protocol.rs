@@ -6,13 +6,14 @@ use causafera_explanation::{
     NumericClaimValue,
 };
 use causafera_observer_api::{
-    FieldRasterKind, FieldRasterRequest, MATERIAL_SURFACE_DELTA_SCHEMA_V3,
-    MATERIAL_SURFACE_DELTA_SCHEMA_V4, MAX_BOOTSTRAP_RECEIPT_DEPENDENCIES,
-    MAX_BOOTSTRAP_RECEIPT_SUMMARIES, MAX_MATERIAL_SURFACE_DELTAS, MAX_THERMAL_DELTAS,
-    MaterialSurfaceDelta, MaterialSurfaceGateDelta, MaterialSurfaceThermalDelta,
-    OBSERVER_PROTOCOL_V1, ObserverBootstrapReceipt, ObserverBootstrapSummary, ObserverChunkSummary,
-    ObserverFieldRaster, ObserverQuery, ObserverResponse, ObserverSnapshot, ObserverWorldSnapshot,
-    QueryKind, QueryStatus, StreamEnvelope, StreamKind, THERMAL_DELTA_SCHEMA_V1, ThermalFieldDelta,
+    BOOTSTRAP_SUMMARY_SCHEMA_V1, FieldRasterKind, FieldRasterRequest,
+    MATERIAL_SURFACE_DELTA_SCHEMA_V3, MATERIAL_SURFACE_DELTA_SCHEMA_V4,
+    MAX_BOOTSTRAP_RECEIPT_DEPENDENCIES, MAX_BOOTSTRAP_RECEIPT_SUMMARIES,
+    MAX_MATERIAL_SURFACE_DELTAS, MAX_THERMAL_DELTAS, MaterialSurfaceDelta,
+    MaterialSurfaceGateDelta, MaterialSurfaceThermalDelta, OBSERVER_PROTOCOL_V1,
+    ObserverBootstrapReceipt, ObserverBootstrapSummary, ObserverChunkSummary, ObserverFieldRaster,
+    ObserverQuery, ObserverResponse, ObserverSnapshot, ObserverWorldSnapshot, QueryKind,
+    QueryStatus, StreamEnvelope, StreamKind, THERMAL_DELTA_SCHEMA_V1, ThermalFieldDelta,
 };
 use causafera_types::{ChunkId, ExperimentId, SimulationTime, TraceId};
 use thiserror::Error;
@@ -352,6 +353,77 @@ pub fn encode_observer_snapshot(snapshot: &ObserverSnapshot) -> Vec<u8> {
     out
 }
 
+/// Decode the bounded bootstrap summary as one atomic optional group.
+///
+/// Fields 28..=35 are additive, so a payload that carries none of them was
+/// written before the summary existed and decodes to the explicit absent schema
+/// — that is the only tolerated incompleteness. A payload that carries *part* of
+/// the group is not an older peer, it is a contradiction, and every way of being
+/// partially present fails closed here rather than being filled in with zeroes:
+/// a schema field with no plan behind it, receipts with no schema to interpret
+/// them, an unknown schema version, a stage count the receipts do not match, or
+/// a completeness flag that disagrees with both.
+fn decode_bootstrap_summary(
+    values: &[u64; 34],
+    present: &[bool; 34],
+    receipts: Vec<ObserverBootstrapReceipt>,
+) -> Result<ObserverBootstrapSummary, WireError> {
+    const GROUP: std::ops::RangeInclusive<usize> = 28..=34;
+    let declared = GROUP.clone().any(|field| present[field - 1]);
+    if !declared {
+        if !receipts.is_empty() {
+            // Receipts with no summary to interpret them would otherwise be
+            // parsed and then silently dropped.
+            return Err(WireError::MissingField(28));
+        }
+        return Ok(ObserverBootstrapSummary::default());
+    }
+    for field in GROUP {
+        if !present[field - 1] {
+            return Err(WireError::MissingField(field as u32));
+        }
+    }
+
+    let schema_version = to_u32(values[27])?;
+    if schema_version != BOOTSTRAP_SUMMARY_SCHEMA_V1 {
+        return Err(WireError::UnexpectedFieldForSchema(schema_version));
+    }
+    let stage_count = to_u32(values[30])?;
+    if stage_count as usize > MAX_BOOTSTRAP_RECEIPT_SUMMARIES {
+        return Err(WireError::PayloadTooLarge);
+    }
+    let complete = match values[31] {
+        0 => false,
+        1 => true,
+        other => return Err(WireError::InvalidBoolean(other)),
+    };
+    if receipts
+        .windows(2)
+        .any(|pair| pair[0].stage >= pair[1].stage)
+    {
+        return Err(WireError::NonCanonicalOrder);
+    }
+    if receipts.len() != stage_count as usize {
+        return Err(WireError::MissingField(35));
+    }
+    // A record is complete exactly when it closed every stage it declared. The
+    // producer writes the two together; a payload where they disagree describes
+    // no state this runtime can be in.
+    if complete != (stage_count > 0) {
+        return Err(WireError::UnexpectedFieldForSchema(schema_version));
+    }
+    Ok(ObserverBootstrapSummary {
+        schema_version,
+        plan_id: values[28],
+        world_seed: values[29],
+        stage_count,
+        complete,
+        configured_population: values[32],
+        configured_promotion_limit: to_u32(values[33])?,
+        receipts,
+    })
+}
+
 fn decode_bootstrap_receipt(bytes: &[u8]) -> Result<ObserverBootstrapReceipt, WireError> {
     let mut c = Cursor::new(bytes);
     let mut values = [0_u64; 4];
@@ -417,6 +489,17 @@ pub fn decode_observer_snapshot(bytes: &[u8]) -> Result<ObserverSnapshot, WireEr
                 }
                 bootstrap_receipts.push(decode_bootstrap_receipt(c.bytes()?)?);
             }
+            (28..=34, WIRE_VARINT) => {
+                // The summary's scalars are single-valued. Elsewhere in this
+                // payload a repeated field silently wins with its last value,
+                // which is a decision this group does not inherit: two different
+                // stage counts in one payload is a contradiction, not an update.
+                if present[field as usize - 1] {
+                    return Err(WireError::DuplicateField(field));
+                }
+                values[field as usize - 1] = c.varint()?;
+                present[field as usize - 1] = true;
+            }
             (1..=34, WIRE_VARINT) => {
                 values[field as usize - 1] = c.varint()?;
                 present[field as usize - 1] = true;
@@ -429,32 +512,7 @@ pub fn decode_observer_snapshot(bytes: &[u8]) -> Result<ObserverSnapshot, WireEr
             return Err(WireError::MissingField(field as u32));
         }
     }
-    // The bootstrap summary is additive, so its absence is a payload written
-    // before it existed, not an empty record. It decodes to the explicit
-    // "absent" schema rather than to a record claiming zero stages.
-    let bootstrap = if present[27] {
-        if bootstrap_receipts
-            .windows(2)
-            .any(|pair| pair[0].stage >= pair[1].stage)
-        {
-            return Err(WireError::NonCanonicalOrder);
-        }
-        ObserverBootstrapSummary {
-            schema_version: to_u32(values[27])?,
-            plan_id: values[28],
-            world_seed: values[29],
-            stage_count: to_u32(values[30])?,
-            complete: values[31] != 0,
-            configured_population: values[32],
-            configured_promotion_limit: to_u32(values[33])?,
-            receipts: bootstrap_receipts,
-        }
-    } else {
-        ObserverBootstrapSummary::default()
-    };
-    if bootstrap.stage_count as usize > MAX_BOOTSTRAP_RECEIPT_SUMMARIES {
-        return Err(WireError::PayloadTooLarge);
-    }
+    let bootstrap = decode_bootstrap_summary(&values, &present, bootstrap_receipts)?;
     Ok(ObserverSnapshot {
         time: SimulationTime::new(values[0]),
         digest_schema_version: to_u32(values[1])?,
