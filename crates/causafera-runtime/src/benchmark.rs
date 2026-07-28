@@ -12,7 +12,8 @@ use crate::benchmark_validation::{
 use crate::{
     EXPERIMENT_RECIPE_MANA_SOURCE_EVENT_KIND, EXPERIMENT_RECIPE_MANA_SOURCE_POLICY_SCHEMA_V1,
     ExperimentDigest, ExperimentRecipeManaSource, ExperimentRecipeManaSourceRecipe,
-    MAX_EXPERIMENT_RECIPE_MANA_SOURCES, Runtime, RuntimeConfig, RuntimeError, assemble_envelope,
+    MAX_EXPERIMENT_RECIPE_MANA_SOURCES, Runtime, RuntimeConfig, RuntimeError, RuntimeSnapshotData,
+    RuntimeState, assemble_envelope,
 };
 
 pub const MATERIAL_SURFACE_LOOP_BENCHMARK_VERSION: u32 = 1;
@@ -342,7 +343,7 @@ fn measure(
     Ok(measurement)
 }
 
-pub(crate) fn production_loop_config(seed: u64) -> RuntimeConfig {
+pub fn production_loop_config(seed: u64) -> RuntimeConfig {
     let mut config = RuntimeConfig::new(seed);
     config.active_chunk_radius = 0;
     config.actor_count = 1;
@@ -351,6 +352,23 @@ pub(crate) fn production_loop_config(seed: u64) -> RuntimeConfig {
     config.mana_parameters.effect_threshold = 1;
     config.mana_parameters.effect_hysteresis = 0;
     config
+}
+
+pub fn measure_import_wall_time(
+    data: &RuntimeSnapshotData,
+    iterations: u32,
+) -> Result<u128, RuntimeError> {
+    if iterations == 0 {
+        return Err(RuntimeError::InvalidSnapshot(
+            "import benchmark iterations must be non-zero",
+        ));
+    }
+    let started = Instant::now();
+    for _ in 0..iterations {
+        let state = RuntimeState::import_snapshot(std::hint::black_box(data.clone()))?;
+        std::hint::black_box(state);
+    }
+    Ok(started.elapsed().as_nanos() / u128::from(iterations))
 }
 
 fn bounded_world_chunks_query(
