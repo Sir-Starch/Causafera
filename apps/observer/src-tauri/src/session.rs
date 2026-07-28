@@ -268,6 +268,36 @@ mod tests {
     }
 
     #[test]
+    fn session_reset_and_headless_runtime_agree_on_the_bootstrap_record() {
+        // Given: a session and a headless runtime over the same configuration.
+        let mut session = ObserverSession::new(12).unwrap();
+        let session_record = session.runtime.export_snapshot().unwrap().bootstrap;
+        let headless = causafera_runtime::Runtime::new(session_config(12))
+            .unwrap()
+            .export_snapshot()
+            .unwrap()
+            .bootstrap;
+
+        // Then: the session is not a separate bootstrap path.
+        assert_eq!(session_record, headless);
+
+        // And: a reset reproduces the same record rather than a new one, and a
+        // different seed produces a different plan identity.
+        session.open_runtime_stream().unwrap();
+        session.advance(3).unwrap();
+        session.reset(12).unwrap();
+        assert_eq!(
+            session.runtime.export_snapshot().unwrap().bootstrap,
+            headless
+        );
+        session.reset(13).unwrap();
+        assert_ne!(
+            session.runtime.export_snapshot().unwrap().bootstrap.plan.id,
+            headless.plan.id
+        );
+    }
+
+    #[test]
     fn session_bootstrap_explanation_is_supported_and_carries_trace_anchors() {
         // Given: a real observer session over a production runtime.
         let session = ObserverSession::new(11).unwrap();

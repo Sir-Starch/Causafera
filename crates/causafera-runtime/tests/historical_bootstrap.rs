@@ -738,3 +738,213 @@ fn the_persisted_configuration_preserves_the_active_chunk_shape() {
     assert_eq!(restored.bootstrap.plan, data.bootstrap.plan);
     RuntimeState::import_snapshot(restored).expect("a faithfully restored snapshot must import");
 }
+
+// ---------------------------------------------------------------------------
+// Production entry points, and the absence of fixture reachability.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn every_headless_entry_point_produces_the_same_record() {
+    // Given: the same configuration reached three ways a caller can construct a
+    // runtime — a validated config, a bare seed, and a resumed snapshot.
+    let direct = snapshot_of(populated_config(4_140));
+    let repeat = snapshot_of(populated_config(4_140));
+
+    let envelope = assemble_envelope(&direct).expect("envelope must assemble");
+    let restored = disassemble_envelope(&envelope).expect("envelope must disassemble");
+    let resumed = Runtime::from_snapshot(restored)
+        .expect("checkpoint must resume")
+        .export_snapshot()
+        .expect("resumed state must export");
+
+    let seeded = Runtime::from_seed(4_140)
+        .expect("a bare seed must bootstrap")
+        .export_snapshot()
+        .expect("seeded state must export");
+    let seeded_direct = snapshot_of(RuntimeConfig::new(4_140));
+
+    // Then: identical configurations produce identical records, and the bare
+    // seed matches its own explicit configuration rather than the populated one.
+    assert_eq!(direct.bootstrap, repeat.bootstrap);
+    assert_eq!(direct.bootstrap, resumed.bootstrap);
+    assert_eq!(seeded.bootstrap, seeded_direct.bootstrap);
+    assert_ne!(direct.bootstrap.plan.id, seeded.bootstrap.plan.id);
+}
+
+#[test]
+fn resuming_a_snapshot_does_not_rebootstrap_it() {
+    // Given: a production runtime advanced past bootstrap.
+    let mut runtime = Runtime::new(populated_config(4_141)).expect("bootstrap must succeed");
+    runtime.run_ticks(3).expect("warm-up must run");
+    let data = runtime.export_snapshot().expect("state must export");
+    let completions = |data: &RuntimeSnapshotData| {
+        data.traces
+            .events
+            .iter()
+            .filter(|event| event.kind.raw() == BOOTSTRAP_STAGE_COMPLETION_EVENT_KIND)
+            .count()
+    };
+    assert_eq!(completions(&data), BOOTSTRAP_STAGE_COUNT);
+
+    // When: it is resumed.
+    let resumed = Runtime::from_snapshot(data.clone())
+        .expect("snapshot must resume")
+        .export_snapshot()
+        .expect("resumed state must export");
+
+    // Then: import is the only resume path — the record is the imported one and
+    // no second set of completions was committed on top of it.
+    assert_eq!(completions(&resumed), BOOTSTRAP_STAGE_COUNT);
+    assert_eq!(resumed.traces.events.len(), data.traces.events.len());
+    assert_eq!(resumed.bootstrap, data.bootstrap);
+}
+
+#[test]
+fn promoted_actor_ancestry_names_the_actor_promotion_receipt() {
+    // Given: a bootstrap that promoted eight actors from the aggregate.
+    let data = snapshot_of(populated_config(4_142));
+    assert_eq!(data.actors_objective.actor_ancestry.len(), 8);
+
+    // The actor promotion stage is stage four.
+    let promotion = data
+        .bootstrap
+        .receipts
+        .iter()
+        .find(|receipt| receipt.stage == HistoricalStageId::new(4))
+        .expect("the record has an actor promotion receipt");
+    let completion = completion_event(&data, promotion.trace);
+
+    // Then: every promoted actor's ancestry is a trace that receipt named, and
+    // the configured population is conserved across aggregates and actors.
+    for (actor, ancestry) in &data.actors_objective.actor_ancestry {
+        assert!(!ancestry.is_empty(), "actor {actor:?} has no ancestry");
+        for trace in ancestry {
+            assert!(
+                completion.causes.contains(trace),
+                "actor {actor:?} ancestry {trace:?} is not named by the promotion receipt"
+            );
+        }
+    }
+    let aggregate_total: u64 = data
+        .population
+        .aggregates
+        .iter()
+        .map(|aggregate| aggregate.count)
+        .sum();
+    assert_eq!(
+        aggregate_total + data.actors_objective.actor_ancestry.len() as u64,
+        512
+    );
+}
+
+/// Production source may not reach a fixture or demo constructor.
+///
+/// This is a source audit, not the positive claim on its own: what makes the
+/// production path fixture-free is that every entry point runs the same
+/// `RuntimeBootstrapRecipe` and that every actor at bootstrap carries ancestry
+/// the actor-promotion receipt named — asserted by the tests above. This test
+/// keeps a fixture constructor from being reintroduced later without anyone
+/// noticing.
+///
+/// Comments are stripped before scanning so prose may still name what was
+/// removed and why. Anything genuinely test-only belongs under a `tests/`
+/// directory, which is not production source and is not scanned.
+#[test]
+fn production_source_reaches_no_fixture_constructor() {
+    const BANNED: [&str; 4] = [
+        "fixture_actors",
+        "fixture_sensors",
+        "fn fixture_",
+        "fn demo_",
+    ];
+    /// Test-only paths permitted to name a fixture constructor. Empty today:
+    /// no test requires one, which is why the constructors were removed rather
+    /// than moved behind `#[cfg(test)]`.
+    const ALLOWLIST: [&str; 0] = [];
+
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(std::path::Path::parent)
+        .expect("the runtime crate sits two levels below the repository root")
+        .to_path_buf();
+
+    let mut scanned = 0_usize;
+    let mut offenders = Vec::new();
+    for directory in ["crates", "apps"] {
+        for path in rust_sources(&root.join(directory)) {
+            let relative = path
+                .strip_prefix(&root)
+                .expect("collected below the root")
+                .to_string_lossy()
+                .replace('\\', "/");
+            // Only production source is in scope; a `tests` directory anywhere in
+            // the path is test support by construction.
+            if relative.split('/').any(|segment| segment == "tests")
+                || ALLOWLIST.contains(&relative.as_str())
+            {
+                continue;
+            }
+            scanned += 1;
+            let source = strip_comments(&std::fs::read_to_string(&path).expect("readable source"));
+            for banned in BANNED {
+                if source.contains(banned) {
+                    offenders.push(format!("{relative}: {banned}"));
+                }
+            }
+        }
+    }
+
+    // The scan must actually have read the production tree; a path mistake that
+    // walked nothing would otherwise pass vacuously.
+    assert!(
+        scanned > 100,
+        "the audit scanned only {scanned} production source files"
+    );
+    assert!(
+        offenders.is_empty(),
+        "production source reaches a fixture constructor: {offenders:?}"
+    );
+}
+
+fn rust_sources(directory: &std::path::Path) -> Vec<std::path::PathBuf> {
+    let mut found = Vec::new();
+    let Ok(entries) = std::fs::read_dir(directory) else {
+        return found;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            if path.file_name().is_some_and(|name| name == "target") {
+                continue;
+            }
+            found.extend(rust_sources(&path));
+        } else if path.extension().is_some_and(|extension| extension == "rs") {
+            found.push(path);
+        }
+    }
+    found
+}
+
+/// Drop `//` line comments and `/* */` block comments.
+///
+/// Deliberately naive about `//` inside string literals: a false positive there
+/// would only hide a fixture call written inside a string, which is not a call.
+fn strip_comments(source: &str) -> String {
+    let mut out = String::with_capacity(source.len());
+    let mut rest = source;
+    while let Some(index) = rest.find("/*") {
+        out.push_str(&rest[..index]);
+        rest = match rest[index + 2..].find("*/") {
+            Some(end) => &rest[index + 2 + end + 2..],
+            None => "",
+        };
+    }
+    out.push_str(rest);
+    out.lines()
+        .map(|line| match line.find("//") {
+            Some(index) => &line[..index],
+            None => line,
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
