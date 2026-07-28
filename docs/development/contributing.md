@@ -49,7 +49,10 @@ Before making any changes, read:
 
 ## Codebase Navigation
 
-Use `codebase-memory-mcp` tools for structural code queries. Prefer graph search over raw grep.
+Use exact text search for identifiers, TODO IDs, filenames, errors, config, and literals. Use LSP,
+call hierarchy, or an available semantic code graph for architecture, relationships, call paths, and
+change-impact analysis. No specific tool is required; `codebase-memory-mcp` is one optional
+implementation (see [`docs/development/codebase-memory.md`](/docs/development/codebase-memory.md)).
 
 ## Testing
 
@@ -92,5 +95,5 @@ AI coding agents are explicitly allowed, including handing an open TODO to an ag
 - `docs/legal/cla-service-setup.md` - Maintainer checklist for enabling CLA acceptance
 - `docs/development/codebase-memory.md` - Codebase knowledge graph usage
 - `docs/development/changelog.md` - Changelog format
-- `AGENTS.md` - Agent guidelines
-- `PLANS.md` - ExecPlan format
+- `AGENTS.md` - Canonical agent guidelines
+- `PLANS.md` - ExecPlan authority and format

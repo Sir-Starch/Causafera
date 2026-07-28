@@ -47,16 +47,16 @@ Decision log
 Progress
 ```
 
-## Plan locations and control-plane adapters
+## Plan authority
 
-- `plans/` contains the authoritative project ExecPlans. These are the sole source of truth for
-  architecture, implementation stages, acceptance criteria, and plan status.
-- `.omo/plans/` contains tool-specific adapters or execution-control plans used by the OmO
-  orchestration tooling (e.g., Momus review paths, `start-work` ledger references). These adapters
-  are non-authoritative and intentionally minimal; they do not supersede, copy, revise, or
-  independently version the canonical ExecPlans.
-- Substantive plan changes must never be made only in `.omo/plans/`. Any accepted review finding
-  must be applied to the canonical file under `plans/`.
+- `plans/` contains the authoritative project ExecPlans. They are the sole source of truth for
+  architecture, scope, implementation stages, acceptance criteria, decisions, and plan status.
+- Tool-specific execution artifacts may exist outside `plans/` to coordinate work in a particular
+  environment. They are non-authoritative adapters and must not duplicate, supersede, independently
+  revise, or independently version a canonical ExecPlan.
+- Substantive plan changes must be made in the canonical file under `plans/`. Findings produced by
+  any review or orchestration tool become project decisions only after they are incorporated into
+  that canonical plan.
 
 ## Execution safety and checkpoints
 
