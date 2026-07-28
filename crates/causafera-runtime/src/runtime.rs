@@ -16,12 +16,14 @@ use causafera_domains::{
 use causafera_explanation::{
     ComparisonContext, ExplanationClaim, ExplanationFrame, ExplanationReport,
     MATERIAL_SURFACE_LOOP_CLAIM_SCHEMA, MaterialSurfaceLocalManaTransitionClaim,
-    MaterialSurfaceLoopClaim, NumericClaimValue, ThermalCarrierConservationClaim,
+    MaterialSurfaceLoopClaim, MaterialSurfaceThermalExchangeClaim, NumericClaimValue,
+    ThermalCarrierConservationClaim,
 };
 use causafera_observer_api::{
-    FieldRasterRequest, MATERIAL_SURFACE_DELTA_SCHEMA_V3, MAX_MATERIAL_SURFACE_DELTAS,
-    MAX_THERMAL_DELTAS, MaterialSurfaceDelta, MaterialSurfaceGateDelta, ObserverChunkSummary,
-    ObserverFieldRaster, ObserverWorldSnapshot, THERMAL_DELTA_SCHEMA_V1, ThermalFieldDelta,
+    FieldRasterRequest, MATERIAL_SURFACE_DELTA_SCHEMA_V4, MAX_MATERIAL_SURFACE_DELTAS,
+    MAX_THERMAL_DELTAS, MaterialSurfaceDelta, MaterialSurfaceGateDelta,
+    MaterialSurfaceThermalDelta, ObserverChunkSummary, ObserverFieldRaster, ObserverWorldSnapshot,
+    THERMAL_DELTA_SCHEMA_V1, ThermalFieldDelta,
 };
 use causafera_resolution::{ChannelWeight, ResolutionError, ResolutionField, ResolutionPolicy};
 use causafera_types::{
@@ -263,6 +265,21 @@ impl Runtime {
             return Err(error);
         }
         state.thermal_conservation_explanation(self.scheduler.current_time())
+    }
+
+    /// The queried surface's most recent retained-heat exchange (`TODO-THERMAL-002`), independent
+    /// of its mana/contact history: an unknown surface ID is rejected, while a real surface with
+    /// no exchange evidence in the bounded transition history yields an `Unknown` claim rather
+    /// than an error.
+    pub fn observer_material_surface_thermal_explanation_for_surface(
+        &self,
+        surface: MaterialSurfaceId,
+    ) -> Result<ExplanationReport, RuntimeError> {
+        let state = self.lock_state()?;
+        if let Some(error) = state.failure.clone() {
+            return Err(error);
+        }
+        state.material_surface_thermal_explanation(self.scheduler.current_time(), surface)
     }
 
     pub fn export_snapshot(&self) -> Result<RuntimeSnapshotData, RuntimeError> {
@@ -1565,6 +1582,28 @@ impl RuntimeState {
                 transition_tick: transition.occurred_at.raw(),
             })
             .collect::<Vec<_>>();
+        let material_surface_thermal_deltas = self
+            .material_surface_thermal_transitions
+            .iter()
+            .rev()
+            .take(MAX_MATERIAL_SURFACE_DELTAS)
+            .copied()
+            .collect::<Vec<_>>()
+            .into_iter()
+            .map(|transition| MaterialSurfaceThermalDelta {
+                chart_id: transition.id.chunk.chart.raw(),
+                chunk_x: transition.id.chunk.chunk.x,
+                chunk_y: transition.id.chunk.chunk.y,
+                chunk_z: transition.id.chunk.chunk.z,
+                cell_ordinal: transition.id.cell_index,
+                before_retained: transition.before_retained,
+                after_retained: transition.after_retained,
+                cell_pre_state: transition.cell_pre_state,
+                signed_flux: transition.signed_flux,
+                thermal_exchange_trace_id: transition.transition_trace,
+                transition_tick: transition.occurred_at.raw(),
+            })
+            .collect::<Vec<_>>();
         let mut thermal_deltas = self
             .thermal_receipts
             .iter()
@@ -1620,13 +1659,15 @@ impl RuntimeState {
             chunks,
             material_surface_delta_schema_version: if material_surface_deltas.is_empty()
                 && material_surface_gate_deltas.is_empty()
+                && material_surface_thermal_deltas.is_empty()
             {
                 0
             } else {
-                MATERIAL_SURFACE_DELTA_SCHEMA_V3
+                MATERIAL_SURFACE_DELTA_SCHEMA_V4
             },
             material_surface_deltas,
             material_surface_gate_deltas,
+            material_surface_thermal_deltas,
             thermal_delta_schema_version: if thermal_deltas.is_empty() {
                 0
             } else {
@@ -1634,6 +1675,47 @@ impl RuntimeState {
             },
             thermal_deltas,
         }
+    }
+
+    fn material_surface_thermal_explanation(
+        &self,
+        time: SimulationTime,
+        surface: MaterialSurfaceId,
+    ) -> Result<ExplanationReport, RuntimeError> {
+        let material_surface = self
+            .material_surfaces
+            .get(&surface)
+            .ok_or(RuntimeError::InvalidSnapshot("unknown material surface"))?;
+        let claim = match self
+            .material_surface_thermal_transitions
+            .iter()
+            .rev()
+            .find(|transition| transition.id == surface)
+        {
+            Some(transition) => MaterialSurfaceThermalExchangeClaim {
+                before_retained: transition.before_retained,
+                after_retained: transition.after_retained,
+                transition_trace: transition.transition_trace,
+                cell_trace: transition.cell_trace,
+            }
+            .to_explanation_claim(),
+            None => MaterialSurfaceThermalExchangeClaim::unknown(
+                material_surface.thermal.retained_energy.get(),
+            ),
+        }
+        .map_err(|_| {
+            RuntimeError::InvalidSnapshot("invalid material surface thermal Explanation claim")
+        })?;
+        let frame = ExplanationFrame::new(time, vec![claim]).map_err(|_| {
+            RuntimeError::InvalidSnapshot("invalid material surface thermal Explanation frame")
+        })?;
+        ExplanationReport::new(
+            ExperimentId::new(self.config.deterministic.world_seed),
+            vec![frame],
+        )
+        .map_err(|_| {
+            RuntimeError::InvalidSnapshot("invalid material surface thermal Explanation report")
+        })
     }
 
     fn thermal_conservation_explanation(

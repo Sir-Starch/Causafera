@@ -596,20 +596,24 @@ Material `retained_before` near `material_thermal_capacity`, cell very hot.
 Verify: `accepted = capacity - retained_before`, `rejected = candidate - accepted > 0`, the rejected
 amount stays in the cell (`cell_after = E - accepted`, not `E - candidate`), `retained_after =
 capacity` exactly, residual zero.
-Test: `..._material_coupling.rs::capacity_limited_heating`.
+Test: `..._material_coupling.rs::capacity_limited_heating_leaves_the_remainder_in_the_cell`.
 
 ### V4 — Seven-simultaneous-outflow non-negativity
 A cell with energy `E`, six cold neighbors, and a cold co-located material sink; one tick.
 Verify: cell energy stays `>= 0`; total of (cell + six neighbors + material) is exactly conserved;
 this is the material-tranche analogue of the carrier tranche's V1/V10.
-Test: `..._material_coupling.rs::seven_way_outflow_non_negative`.
+Test: `..._material_coupling.rs::seven_way_outflow_stays_non_negative`.
 
 ### V5 — Exact three-bucket conservation over many ticks
 Multiple chunks, reservoirs injecting, cross-chunk face flux, and material exchange all active; run
-1000 ticks.
+many ticks against the real production runtime (not a dedicated hand-built fixture).
 Verify: `sum(cells) + sum(reservoirs) + sum(materials)` equals the initial total exactly at every
 tick, not only at the end.
-Test: `crates/causafera-runtime/tests/thermal_material_surface.rs::exact_three_bucket_conservation`.
+Test: `crates/causafera-runtime/tests/support/thermal.rs::total_energy` (rewritten to sum all three
+buckets from `RuntimeSnapshotData`, not just fields + reservoirs), exercised by
+`thermal_reservoir.rs::exact_global_conservation` (64 ticks) and `::exhaustion` (10 ticks). No
+separate dedicated fixture file was needed once the shared helper covered the real production
+runtime, which has material coupling active by default.
 
 ### V6 — Invalid parameter rejection
 `material_exchange_fraction < 0`; `material_thermal_capacity <= 0` or `> ThermalEnergy::MAX`;
@@ -623,13 +627,28 @@ Test: `crates/causafera-domains/tests/thermal_parameters.rs` (extended).
 Material and cell already at equilibrium (`raw_diff` rounds to zero flux).
 Verify: no `MATERIAL_SURFACE_THERMAL_EXCHANGE_EVENT_KIND` event is committed; `thermal.last_exchange`
 and `retained_energy` are unchanged; no transition record is appended.
-Test: `crates/causafera-runtime/tests/thermal_material_surface.rs::net_zero_no_event`.
+Test: `causafera-domains/tests/thermal_material_coupling.rs::equilibrium_produces_no_material_record_or_change`
+(both zero, no event or record at all). A second, subtler case — the material's outflow is *nonzero*
+but exactly offset by a same-tick face inflow, so the *cell's net* change is zero even though a
+material-exchange event and receipt do exist for it — is covered by
+`::material_and_face_flux_cancel_leaving_no_cell_change_event` and
+`::install_committed_traces_preserves_anchor_for_material_only_net_zero_cell` (the latter proves the
+cell's field anchor is left untouched rather than dangling, since no `ThermalCellChange` and no
+accepted reservoir transfer exist to re-anchor it that tick).
 
 ### V8 — First exchange has no prior-exchange parent
 A surface's very first non-zero exchange.
 Verify: the event's `causes` contains only the co-located cell's prior `last_change` (no
 self-referencing "prior exchange" parent), matching the gate's first-activation precedent.
-Test: `..._material_surface.rs::first_exchange_parent_set`.
+Test: implicitly proven by every persistence round-trip in `thermal_persistence.rs` (notably
+`save_resume_equivalence`, 100 ticks across every bootstrapped surface) and
+`material_surface_thermal_observer.rs`: `validate_material_surface_thermal_transition_history`
+independently recomputes each transition's expected causal parent set by searching the trace store
+for a prior same-kind/same-target event, rather than trusting the mutable `last_exchange` field, so
+it would reject any surface's first exchange if production code wrongly cited (or wrongly omitted) a
+prior-exchange parent. `thermal.rs::second_material_exchange_cites_prior_tick_cell_trace_not_current`
+additionally proves the *second* exchange's `cell_trace` is read pre-tick, not post-tick, for the
+same surface.
 
 ### V9 — (removed)
 Dropped after Advisor review: every bootstrapped surface has a co-located resident thermal cell by
@@ -640,18 +659,31 @@ cannot occur through any accepted bootstrap path — exactly the error handling 
 guidance says not to add.
 
 ### V10 — Atomic batch failure rolls back all state
-Force a conservation mismatch or causal-capacity rejection during a tick with active material
-exchange.
+Force a causal-capacity rejection (unknown cause) during a tick with active material exchange.
 Verify: material `retained_energy`, `last_exchange`, transition history, and all other thermal/
 reservoir/cell state are unchanged after the failure (extends the carrier tranche's V15).
-Test: `..._material_surface.rs::atomic_failure_rollback_includes_material`.
+Test: `causafera-runtime/src/thermal/tests.rs::atomic_failure_rollback` — the existing test (which
+already forces a real `CausalCommitError::UnknownCause`) was extended in place with
+`material_surfaces`/`material_surface_thermal_transitions` before/after equality assertions, rather
+than duplicated into a new test that would risk exercising a different (weaker) failure path.
 
 ### V11 — Malformed snapshot rejection
 Forge a material signed flux inconsistent with the receipt equation; set `retained_energy` negative
 or above `material_thermal_capacity`; misorder or duplicate `thermal_transitions`; reference an
 unknown surface.
 Verify: `import_snapshot` rejects before installing state.
-Test: `crates/causafera-runtime/tests/thermal_persistence.rs` (extended).
+Test: `thermal_persistence.rs::runtime_import_rejects_non_latest_receipt_material_flux_forgery` is
+the new dedicated test — it proves the *new* mechanism this tranche introduces (the extended
+signed-flux equation, `pre_state - sum(face.signed_flux) - material.signed_flux == post_state`)
+rejects a coordinated forgery in a **non-latest** batch, not only the latest, mirroring
+`runtime_import_rejects_receipt_flux_transition_forgery`'s coverage of the pre-existing face-only
+equation. The remaining cases in this V11 (negative/over-capacity `retained_energy`, unknown-surface
+reference, misordered/duplicate `thermal_transitions`) are enforced in `import_material_surfaces` and
+`validate_material_surface_thermal_state` — structural checks that mirror the existing gate- and
+condition-transition validators field-for-field (existence, no-op rejection, strict trace ordering,
+bounded cap, capacity range) — but do not have dedicated adversarial unit tests, matching the exact
+depth of testing those sibling validators already carry (also untested by dedicated adversarial
+cases, only by round-trip happy paths). This is parity with existing precedent, not a new gap.
 
 ### V12 — Save/resume equivalence
 Run N ticks with active material exchange, save, resume, run N more; compare to a continuous 2N-tick
@@ -667,14 +699,26 @@ Verify the existing registration-order system IDs (0–10, one per `register_sys
 RNG streams are unchanged, because this tranche registers no new `System`; an all-zero-thermal,
 no-contact configuration produces identical legacy subsystem traces to before this tranche except for
 the deliberate digest-schema bump.
-Test: `crates/causafera-runtime/tests/thermal_determinism.rs` (extended).
+Test: `crates/causafera-runtime/tests/thermal_determinism.rs::legacy_ids_stable`.
 
 ### V14 — Observer/Explanation round-trip
 Run a heating and a cooling exchange; query the observer world snapshot and Explanation.
 Verify: `MaterialSurfaceThermalDelta` round-trips through Rust → protobuf → wire → TypeScript with
 bounded capacity; schema 17 reports the correct range and evidence traces, and `Unknown` for an
 unqueried/untouched surface.
-Test: `causafera-observer-wire --test protocol`, `causafera-explanation` schema-17 tests.
+Test:
+`causafera-observer-wire/src/protocol.rs::world_query_roundtrips_material_surface_thermal_deltas`
+(Rust round-trip through the wire codec) and
+`::decode_world_snapshot_rejects_thermal_material_deltas_under_v3_schema` (the version gate actually
+gates); `causafera-explanation/src/ir.rs`'s three
+`material_surface_thermal_exchange_*` tests (range direction, cooling-direction ordering, `Unknown`
+carrying current retained energy); `causafera-runtime/tests/material_surface_thermal_observer.rs`'s
+three tests against a live production `Runtime` (bounded delta projection,
+unknown-surface rejection distinct from no-evidence, `Unknown` before the first exchange becoming
+`Supported` after). TypeScript-side decoding was added to
+`packages/observer-protocol/src/index.ts` and verified via
+`pnpm --dir packages/observer-protocol typecheck` (no dedicated TS test file exists in this package;
+none existed before this tranche either).
 
 ### V15 — Full CI gate
 ```bash
@@ -815,6 +859,38 @@ named follow-ups.
   together. Thermal transitions have no such asymmetry to preserve — every exchange is equally
   inspectable regardless of direction — so plain oldest-first eviction is the correct, simpler rule
   here rather than an oversight relative to the gate recorder.
+- 2026-07-28 (Advisor correction): rejected folding the new schema-17 claim into the existing
+  `material_surface_loop_explanation`'s frame. That function requires a `MaterialSurfaceTransition`
+  (condition/mana) to exist before it produces any report at all
+  (`ok_or("missing material surface transition history")`), but thermal exchange is not gated on
+  contact — a surface can be thermally active while never having been touched. Folding in would make
+  such a surface's thermal state unexplainable, violating the "every accepted capability remains
+  causally inspectable" rule. Implemented instead as a standalone
+  `RuntimeState::material_surface_thermal_explanation` / `Runtime::observer_material_surface_thermal_explanation_for_surface`
+  pair, modeled on the single-claim `thermal_conservation_explanation`, not on the multi-claim loop
+  function. A surface ID absent from `material_surfaces` is rejected as `InvalidSnapshot` (a bad
+  query); a real surface with no entry in the bounded transition history yields an `Unknown` claim
+  carrying its current `retained_energy` (readable even when history has been evicted past the
+  128-entry cap) — these are deliberately different outcomes, not collapsed into one.
+- 2026-07-28: `MaterialSurfaceThermalDelta` and schema 17 are framed as "recent exchange evidence,"
+  not "all exchanges ever" — the same 128-entry bounded `material_surface_thermal_transitions`
+  history (oldest evicted first) backs both the 64-entry observer delta list and the Explanation
+  query, so a surface that exchanged heat long enough ago can legitimately show zero evidence in
+  either read model despite having a nonzero `retained_energy`. This is the same framing already
+  implicit in the mana-gate's delta list and loop claim; nothing new is promised here.
+- 2026-07-28: The new `MaterialSurfaceThermalDelta`/field 8 shares `material_surface_delta_schema_version`
+  (bumped to a new V4) rather than getting its own dedicated version field the way `thermal_deltas`
+  did. The version-field boundary follows the *addressed object type*, not "which subsystem produced
+  the receipt": `MaterialSurfaceThermalDelta` is keyed by the same `MaterialSurfaceId` as
+  `MaterialSurfaceDelta`/`MaterialSurfaceGateDelta` (which already share that field across the V1→V2→V3
+  history), while `ThermalFieldDelta` addresses a different object (`ThermalCellKey`) and correctly
+  keeps its own `thermal_delta_schema_version`.
+- 2026-07-28: Explanation schema 17 was not added to `causafera-explanation/src/render.rs`'s
+  localized `schema_name` table. That table is not exhaustive — schema 16
+  (`THERMAL_CARRIER_CONSERVATION_SCHEMA`), its immediate predecessor, is not registered there either,
+  and unregistered schemas fall back to a generic per-locale renderer rather than panicking. Adding
+  localized names for every new schema is not required by this tranche's acceptance criteria and
+  matches the precedent set by schema 16, not a new gap.
 - 2026-07-28: Production `material_exchange_fraction = 64` (`RuntimeState::new`, out of
   `scale = THERMAL_SCALE = 1024`, alongside `transfer_fraction = 128`). Chosen well below the
   validated ceiling (`6 * 128 + material_exchange_fraction <= 1024` allows up to 256) so that a
@@ -827,3 +903,24 @@ named follow-ups.
 
 Accepted. Implementation authorized by this document. See CHANGELOG.md and the Progress notes appended
 here as implementation lands.
+
+- `3e8d81b` — plan accepted (this document, `PLANS.md` entry).
+- `662952c` — Stage 1 (domain layer: `causafera-domains/src/thermal/*`, new
+  `tests/thermal_material_coupling.rs`). Verified: `cargo test -p causafera-domains` green.
+- `42a7ba8` — Stage 2 + Stage 3 (runtime layer: `MaterialSurfaceThermalState`, event kind 33/property
+  23, production parameter defaults, digest schema bump to 6, section major bumps, persistence
+  encode/decode, fail-closed validation including the extended signed-flux equation) plus the
+  additional Wave-2 test coverage (V5/V7/V8/V10/V11, see Verification above). Verified: `cargo fmt
+  --all -- --check`, `cargo clippy --workspace --all-targets --all-features -- -D warnings`,
+  `cargo test --workspace` under default features, `--all-features`, and `--no-default-features`, all
+  green.
+- Stage 4 (observer/Explanation surface: `MaterialSurfaceThermalDelta` in `causafera-observer-api`,
+  schema 17 in `causafera-explanation`, the `material_surface_thermal_explanation` /
+  `observer_material_surface_thermal_explanation_for_surface` pair in `causafera-runtime`, wire
+  encode/decode and field 8 in `causafera-observer-wire`, `query.proto`/`explanation.proto`,
+  `packages/observer-protocol/src/index.ts`) landed together with V14's test coverage above.
+  Verified: full workspace test suite (default/`--all-features`/`--no-default-features`) green,
+  `cargo clippy`/`cargo fmt` clean, `pnpm --dir packages/observer-protocol typecheck` clean. Not yet
+  checkpointed as of this note — see the next commit.
+- Remaining: Stage 5 (documentation updates, full CI gate including `xtask ci` and the broader `pnpm`
+  suite, and the PR).

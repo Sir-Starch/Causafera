@@ -2,6 +2,7 @@
 export const OBSERVER_PROTOCOL_V1 = 1;
 export const MAX_MATERIAL_SURFACE_DELTAS = 64;
 export const MATERIAL_SURFACE_DELTA_SCHEMA_V3 = 3;
+export const MATERIAL_SURFACE_DELTA_SCHEMA_V4 = 4;
 export const MAX_THERMAL_DELTAS = 64;
 export const THERMAL_DELTA_SCHEMA_V1 = 1;
 
@@ -116,6 +117,7 @@ export interface WorldChunkSnapshot {
   materialSurfaceDeltaSchemaVersion: number;
   materialSurfaceDeltas: MaterialSurfaceDelta[];
   materialSurfaceGateDeltas: MaterialSurfaceGateDelta[];
+  materialSurfaceThermalDeltas: MaterialSurfaceThermalDelta[];
   thermalDeltaSchemaVersion: number;
   thermalDeltas: ThermalFieldDelta[];
 }
@@ -169,6 +171,26 @@ export interface ThermalFieldDelta {
   reservoirRejectedInjection: bigint;
   netFaceFlux: bigint;
   faceCount: number;
+}
+
+/**
+ * A material surface's retained-heat exchange with its co-located thermal cell
+ * (TODO-THERMAL-002), gated by materialSurfaceDeltaSchemaVersion >= 4 - a distinct
+ * addressed-object family from MaterialSurfaceDelta's condition/mana pair, even
+ * though both are keyed by the same surface.
+ */
+export interface MaterialSurfaceThermalDelta {
+  chartId: bigint;
+  chunkX: number;
+  chunkY: number;
+  chunkZ: number;
+  cellOrdinal: number;
+  beforeRetained: bigint;
+  afterRetained: bigint;
+  cellPreState: bigint;
+  signedFlux: bigint;
+  thermalExchangeTraceId: bigint;
+  transitionTick: bigint;
 }
 
 export interface SpatialChunkSummary {
@@ -473,6 +495,7 @@ export function decodeWorldChunkSnapshot(input: Uint8Array): WorldChunkSnapshot 
   const chunks: SpatialChunkSummary[] = [];
   const materialSurfaceDeltaBytes: Uint8Array[] = [];
   const materialSurfaceGateDeltas: MaterialSurfaceGateDelta[] = [];
+  const materialSurfaceThermalDeltas: MaterialSurfaceThermalDelta[] = [];
   const thermalDeltaBytes: Uint8Array[] = [];
   let materialSurfaceDeltaSchemaVersion = 0;
   let schemaVersionSeen = false;
@@ -520,6 +543,16 @@ export function decodeWorldChunkSnapshot(input: Uint8Array): WorldChunkSnapshot 
       thermalSchemaVersionSeen = true;
     }
     else if (field === 7) throw new Error("duplicate WorldChunkSnapshot field 7");
+    else if (field === 8) {
+      if (materialSurfaceDeltaSchemaVersion < MATERIAL_SURFACE_DELTA_SCHEMA_V4) {
+        throw new Error("MaterialSurfaceThermalDelta field 8 is not allowed for schema version " + materialSurfaceDeltaSchemaVersion);
+      }
+      if (wire !== 2) throw new Error("unexpected wire type for MaterialSurfaceThermalDelta field 8");
+      const delta = cursor.bytes();
+      if (materialSurfaceThermalDeltas.length < MAX_MATERIAL_SURFACE_DELTAS) {
+        materialSurfaceThermalDeltas.push(decodeMaterialSurfaceThermalDelta(delta));
+      }
+    }
     else cursor.skip(wire);
   }
   if (simulationTicks === undefined) throw new Error("missing WorldChunkSnapshot field 1");
@@ -538,6 +571,7 @@ export function decodeWorldChunkSnapshot(input: Uint8Array): WorldChunkSnapshot 
     materialSurfaceDeltaSchemaVersion,
     materialSurfaceDeltas,
     materialSurfaceGateDeltas,
+    materialSurfaceThermalDeltas,
     thermalDeltaSchemaVersion,
     thermalDeltas,
   };
@@ -668,6 +702,24 @@ function decodeMaterialSurfaceGateDelta(input: Uint8Array): MaterialSurfaceGateD
     gateTransitionTraceId: value(11),
     contactTraceId: values.get(12),
     transitionTick: value(13),
+  };
+}
+
+function decodeMaterialSurfaceThermalDelta(input: Uint8Array): MaterialSurfaceThermalDelta {
+  const values = decodeVarintFields(input);
+  const value = requiredValue(values, "MaterialSurfaceThermalDelta");
+  return {
+    chartId: value(1),
+    chunkX: Number(zigzagDecode(value(2))),
+    chunkY: Number(zigzagDecode(value(3))),
+    chunkZ: Number(zigzagDecode(value(4))),
+    cellOrdinal: Number(value(5)),
+    beforeRetained: zigzagDecode(value(6)),
+    afterRetained: zigzagDecode(value(7)),
+    cellPreState: zigzagDecode(value(8)),
+    signedFlux: zigzagDecode(value(9)),
+    thermalExchangeTraceId: value(10),
+    transitionTick: value(11),
   };
 }
 
