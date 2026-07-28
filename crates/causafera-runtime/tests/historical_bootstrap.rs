@@ -1206,14 +1206,31 @@ fn the_bootstrap_benchmark_measures_the_stated_envelope_reproducibly() {
     assert_eq!(first.sensor_count, 1);
     assert_eq!(first.receipt_count, BOOTSTRAP_STAGE_COUNT as u32);
 
-    // And: every figure is a real nonzero measurement, not a placeholder.
-    assert!(first.bootstrap_wall_time_ns > 0);
-    assert!(first.import_wall_time_ns > 0);
+    // And: every figure is a real nonzero measurement, not a placeholder, and
+    // every distribution retained the raw samples its summary was taken from.
+    for distribution in [
+        &first.bootstrap_wall_time,
+        &first.import_wall_time,
+        &first.control_poll_wall_time,
+        &first.observer_poll_wall_time,
+    ] {
+        assert_eq!(
+            distribution.samples_ns.len(),
+            config.iterations as usize,
+            "every measured repetition must be retained as a raw sample"
+        );
+        assert!(distribution.mean_ns > 0);
+        assert!(distribution.median_ns > 0);
+        assert!(distribution.minimum_ns > 0);
+        assert!(distribution.maximum_ns >= distribution.minimum_ns);
+        assert!(distribution.mean_ns >= distribution.minimum_ns);
+        assert!(distribution.mean_ns <= distribution.maximum_ns);
+        assert!(distribution.median_ns >= distribution.minimum_ns);
+        assert!(distribution.median_ns <= distribution.maximum_ns);
+    }
     assert!(first.encoded_snapshot_bytes > 0);
     assert!(first.bootstrap_record_bytes > 0);
     assert!(first.bootstrap_provenance_events > 0);
-    assert!(first.control_poll_wall_time_ns > 0);
-    assert!(first.observer_poll_wall_time_ns > 0);
     assert!(first.observer_summary_bytes > 0);
 
     // And: the authoritative outputs are identical between runs. Two runs is what
@@ -1231,6 +1248,37 @@ fn the_bootstrap_benchmark_measures_the_stated_envelope_reproducibly() {
         second.bootstrap_provenance_events
     );
     assert_eq!(first.observer_summary_bytes, second.observer_summary_bytes);
+}
+
+#[test]
+fn benchmark_summary_statistics_are_computed_over_the_retained_samples() {
+    use causafera_runtime::BenchmarkSamples;
+
+    // Given: a known distribution with an even sample count, so the median is an
+    // average of two values rather than one of them.
+    let samples = vec![10_u128, 20, 30, 40];
+    let summary = BenchmarkSamples::from_samples(samples.clone())
+        .expect("a non-empty distribution summarizes");
+
+    // Then: the summary describes exactly those samples.
+    assert_eq!(summary.samples_ns, samples);
+    assert_eq!(summary.mean_ns, 25);
+    assert_eq!(summary.median_ns, 25);
+    assert_eq!(summary.minimum_ns, 10);
+    assert_eq!(summary.maximum_ns, 40);
+    // Population variance is 125; its integer square root is 11.
+    assert_eq!(summary.stddev_ns, 11);
+
+    // And: an odd count takes the middle sample, and a single sample has no spread.
+    let odd =
+        BenchmarkSamples::from_samples(vec![5, 1, 9]).expect("an odd distribution summarizes");
+    assert_eq!(odd.median_ns, 5);
+    let one = BenchmarkSamples::from_samples(vec![7]).expect("one sample is a distribution");
+    assert_eq!(one.mean_ns, 7);
+    assert_eq!(one.stddev_ns, 0);
+
+    // And: an empty distribution is not a distribution.
+    assert!(BenchmarkSamples::from_samples(Vec::new()).is_err());
 }
 
 #[test]

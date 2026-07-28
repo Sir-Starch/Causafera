@@ -1657,6 +1657,15 @@ impl<'a> Cursor<'a> {
         for shift in (0..=63).step_by(7) {
             let byte = *self.bytes.get(self.at).ok_or(WireError::UnexpectedEof)?;
             self.at += 1;
+            // The tenth byte contributes only bit 63, so anything above one in
+            // its payload describes a value wider than 64 bits. Shifting it in
+            // would drop those bits silently, which is worse than rejecting:
+            // the TypeScript decoder accumulates into a bigint and cannot
+            // truncate, so the two would disagree on whether the payload is
+            // valid rather than merely on what it means.
+            if shift == 63 && byte & 0x7f > 1 {
+                return Err(WireError::InvalidVarint);
+            }
             value |= u64::from(byte & 0x7f) << shift;
             if byte & 0x80 == 0 {
                 return Ok(value);

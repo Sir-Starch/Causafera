@@ -482,7 +482,13 @@ export function decodeRuntimeSummary(input: Uint8Array): RuntimeSummary {
   const bootstrapReceipts: BootstrapReceipt[] = [];
   while (!cursor.empty) {
     const [field, wire] = cursor.key();
-    if (wire === 0) {
+    // Checked before the generic varint branch, or field 35 on a varint wire
+    // would be stored as a scalar and then silently dropped, while Rust rejects
+    // it. Any bootstrap field on a wire type it does not use is malformed.
+    if (field >= 28 && field <= 35 && wire !== bootstrapWireType(field)) {
+      throw new Error(`observer bootstrap field ${field} has the wrong wire type`);
+    }
+    else if (wire === 0) {
       // The summary's scalars are single-valued. Elsewhere in this payload a
       // repeated field silently wins with its last value, which is a decision
       // this group does not inherit: two different stage counts in one payload
@@ -503,13 +509,6 @@ export function decodeRuntimeSummary(input: Uint8Array): RuntimeSummary {
         throw new Error("observer bootstrap summary exceeds its receipt bound");
       }
       bootstrapReceipts.push(decodeBootstrapReceipt(cursor.bytes()));
-    }
-    // A bootstrap field arriving on the wrong wire type is malformed, not
-    // unknown. Skipping it would let a summary whose every scalar is mistyped
-    // fall through to the absent schema, reporting "this reader predates the
-    // summary" about a payload that tried to carry one.
-    else if (field >= 28 && field <= 35) {
-      throw new Error(`observer bootstrap field ${field} has the wrong wire type`);
     }
     else cursor.skip(wire);
   }
@@ -547,6 +546,11 @@ export function decodeRuntimeSummary(input: Uint8Array): RuntimeSummary {
     thermalActiveCellCount: Number(values.get(27) ?? 0n),
     bootstrap: decodeBootstrapSummary(values, bootstrapReceipts),
   };
+}
+
+/** The one wire type each bootstrap field is allowed to arrive on. */
+function bootstrapWireType(field: number): number {
+  return field === 35 ? 2 : 0;
 }
 
 /**
@@ -1170,6 +1174,14 @@ class Cursor {
     for (let shift = 0n; shift <= 63n; shift += 7n) {
       const byte = this.input[this.offset++];
       if (byte === undefined) throw new Error("truncated protobuf varint");
+      // The tenth byte contributes only bit 63. A bigint cannot truncate, so
+      // without this an over-wide varint would be accepted here and silently
+      // truncated by the Rust decoder — the two disagreeing on validity rather
+      // than on meaning. Kept identical to `Cursor::varint` in
+      // `causafera-observer-wire`.
+      if (shift === 63n && (byte & 0x7f) > 1) {
+        throw new Error("protobuf varint exceeds 64 bits");
+      }
       value |= BigInt(byte & 0x7f) << shift;
       if ((byte & 0x80) === 0) return value;
     }
