@@ -1052,6 +1052,40 @@ and its integration tests exercise the production runtime path rather than fixtu
 This does not yet establish fixture elimination or production-bootstrap coverage for every runtime
 capability.
 
+**Delivered by `plans/production-bootstrap-receipt-closure.md` (2026-07-28):** Four of the six
+acceptance criteria are now backed by evidence, and the status stays In Progress because two are not.
+
+- *Production runtime/session code contains no fixture/demo constructors* — met. `fixture_actors`
+  and `fixture_sensors` are removed; no test needed them. A source audit
+  (`production_source_reaches_no_fixture_constructor`) scans every production `.rs` under `crates/`
+  and `apps/` with comments stripped, asserts it actually walked the tree, and was confirmed to fail
+  on an injected `fn demo_`. Its test-only allowlist is explicit and empty.
+- *Aggregate population conservation includes promoted actors* and *actor/body/object state has
+  bootstrap ancestry* — met at bootstrap. Import requires aggregates plus promoted actors to equal
+  the configured bootstrap population, and every promoted actor's ancestry to be a trace the
+  canonical actor-promotion receipt named. Both are asserted only while `advanced_through` is zero:
+  from the first tick the population lifecycle legitimately moves those numbers, so an equality
+  afterwards would be false rather than protective.
+- *Reset, experiment, save/resume, and observer sessions use the same production recipe* — met.
+  Headless `Runtime::new`, a bare seed, a resumed snapshot, the observer session and its reset, and
+  the lab experiment runner all produce the same canonical record for the same configuration, and
+  resuming imports the record rather than re-bootstrapping on top of it.
+- *Tests prove fixtures remain test-only* — met vacuously, since no fixture constructor exists.
+- **Not met:** the criteria are worded for *every* runtime capability. This slice covers the six
+  stages the runtime executes today — terrain, material surface, population, actor promotion,
+  material activity, thermal — and nothing else. `TODO-DEPTH-001` and `TODO-HIST-001` remain open
+  and are not advanced by it.
+
+**Bounded measurement (envelope only, AMD Ryzen 9 7950X3D, release profile):** nine active chunks,
+bootstrap population 512, eight promoted actors, one sensor aperture each. Bootstrap wall time
+3.21-3.39 ms per `Runtime::new` (five samples of an eight-iteration mean); import wall time
+0.20-0.22 ms per `RuntimeState::import_snapshot` including canonical validation; encoded snapshot
+175 965 bytes of which the bootstrap record is 1 676; 53 provenance events committed by bootstrap;
+observer runtime-summary payload 435 bytes. Observer-poll overhead is **not reported**: the control
+and measured means (9.6-10.4 us against 9.9-10.8 us) straddle each other across runs, so the
+encoding cost is below this harness's noise at this envelope and no figure is claimed. These are
+measurements of one machine at one envelope, not a scale result and not a regression threshold.
+
 ## TODO-RUNTIME-002: The World Seed Does Not Vary the Simulation
 **Status:** Completed — see `plans/terrain-carrier-participation.md`
 **Phase:** Detailed Development — Runtime
@@ -1090,6 +1124,18 @@ coupling slice adds local gate deltas to the observer wire protocol with V2 prot
 cover the accepted vertical slices only; broader query, pagination, and overhead requirements remain
 open.
 
+**Delivered by `plans/production-bootstrap-receipt-closure.md` (2026-07-28):** the *bootstrap
+receipts* clause of the acceptance criteria only. The runtime summary now carries a bounded
+projection of the canonical bootstrap record — plan identity, world seed, stage count, validation
+status, configured population/promotion bounds, and at most six receipts with completion time,
+result fingerprint, completion trace, and dependency anchors. The wire fields are additive on the
+existing summary, so `OBSERVER_PROTOCOL_V1` is unchanged and a payload written before them still
+decodes, reporting schema version 0 for "no evidence in this payload". Both decoders bound the lists
+before growing them and reject non-canonical order. Causal event slices, typed domain time series,
+resolution transitions, pagination/capacity, and the observer-overhead measurement across all four
+load levels remain open; the one overhead figure taken here was below measurement noise and is not
+reported as a result.
+
 ## TODO-EXPLAIN-003: Domain-Aware Causal Explanation
 **Status:** In Progress
 **Phase:** Detailed Development — Explanation
@@ -1109,6 +1155,14 @@ insufficiency behavior, and trace-backed evidence for the actor/material/mana sl
 claims added in the mana-material-surface coupling slice provide additional typed values and causal
 attribution. These do not complete the domain-aware Explanation requirement for all future vertical
 slices.
+
+**Delivered by `plans/production-bootstrap-receipt-closure.md` (2026-07-28):** typed claim schemas 18
+and 19 for the canonical bootstrap record — stage completeness anchored to the receipts' completion
+traces, and the bounded canonical window they span. An incomplete or unevidenced record answers with
+the existing unknown state at zero confidence rather than erroring, which is the insufficiency
+behaviour the criteria ask for. Neither claim renders a process name, infers a purpose, or reports a
+fingerprint as a numeric value. Comparison frames, counterfactual context, and alternatives are not
+part of this slice and remain open.
 
 ## TODO-PERF-001: Benchmark Framework
 **Status:** Completed

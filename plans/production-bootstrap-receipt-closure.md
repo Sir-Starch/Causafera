@@ -1,6 +1,6 @@
 # Canonical Production Bootstrap Receipt Closure
 
-**Status:** Accepted — implementation not started
+**Status:** Implemented — waves 1-5 green, final verification recorded below
 
 **Accepted:** 2026-07-28
 
@@ -279,7 +279,7 @@ and the current diff. Before changing behaviour, add or enable the named RED tes
 start the next wave until the current wave's focused tests and diagnostics pass and its checkpoint
 commit is created with explicit paths only.
 
-- [ ] 1. Establish the canonical bootstrap recipe and terminal receipt RED/green contract
+- [x] 1. Establish the canonical bootstrap recipe and terminal receipt RED/green contract
 
   **Files:** `crates/causafera-world/src/historical.rs`,
   `crates/causafera-runtime/src/bootstrap.rs`, `crates/causafera-runtime/src/runtime.rs`,
@@ -317,7 +317,7 @@ commit is created with explicit paths only.
 
   **Checkpoint:** `feat(runtime): canonicalize production bootstrap receipts`.
 
-- [ ] 2. Persist and fail-closed validate the complete bootstrap record
+- [x] 2. Persist and fail-closed validate the complete bootstrap record
 
   **Files:** `crates/causafera-runtime/src/snapshots.rs`,
   `crates/causafera-runtime/src/snapshot_sections.rs`,
@@ -357,7 +357,7 @@ commit is created with explicit paths only.
 
   **Checkpoint:** `feat(persistence): persist canonical bootstrap records`.
 
-- [ ] 3. Expose bounded bootstrap evidence through observer and Explanation
+- [x] 3. Expose bounded bootstrap evidence through observer and Explanation
 
   **Files:** `crates/causafera-runtime/src/snapshots.rs`,
   `crates/causafera-runtime/src/runtime.rs`, `crates/causafera-observer-api/src/query.rs`,
@@ -397,7 +397,7 @@ commit is created with explicit paths only.
 
   **Checkpoint:** `feat(observer): expose bounded bootstrap evidence`.
 
-- [ ] 4. Converge production entry points and remove fixture reachability
+- [x] 4. Converge production entry points and remove fixture reachability
 
   **Files:** `crates/causafera-runtime/src/actors/state.rs`,
   `crates/causafera-runtime/src/runtime.rs`, `crates/causafera-runtime/src/bootstrap.rs`,
@@ -437,7 +437,7 @@ commit is created with explicit paths only.
 
   **Checkpoint:** `test(runtime): prove fixture-free bootstrap entry points`.
 
-- [ ] 5. Record bounded performance evidence and synchronize documentation
+- [x] 5. Record bounded performance evidence and synchronize documentation
 
   **Files:** `crates/causafera-runtime/src/benchmark.rs` or the existing benchmark test surface,
   `crates/causafera-runtime/tests/historical_bootstrap.rs`,
@@ -492,18 +492,18 @@ record it in the Decision Log rather than expanding this plan silently.
 
 The following final checks run only after tasks 1–5 are green and all checkpoint commits exist.
 
-- [ ] F1. Run focused Rust unit/integration tests for canonical plan construction, receipt validation,
+- [x] F1. Run focused Rust unit/integration tests for canonical plan construction, receipt validation,
   snapshot roundtrip/corruption, observer protocol, Explanation, fixture-free entry points, and
   save/resume equivalence. Record exact commands and results in `Progress`.
-- [ ] F2. Run `cargo fmt --all -- --check` and
+- [x] F2. Run `cargo fmt --all -- --check` and
   `cargo clippy --workspace --all-targets --all-features -- -D warnings`; resolve only regressions
   introduced by this plan.
-- [ ] F3. Run `cargo test --workspace --all-features` and
+- [x] F3. Run `cargo test --workspace --all-features` and
   `cargo test --workspace --no-default-features`; report any pre-existing failure separately.
-- [ ] F4. Run `cargo run -p xtask -- ci`, `pnpm lint`, `pnpm typecheck`, `pnpm build`,
+- [x] F4. Run `cargo run -p xtask -- ci`, `pnpm lint`, `pnpm typecheck`, `pnpm build`,
   `node tools/audit/check-entry-points.mjs`, `node tools/audit/run-source-tests.mjs`, and
   `git diff --check`.
-- [ ] F5. Manual QA Gate: run the real observer-session test
+- [x] F5. Manual QA Gate: run the real observer-session test
   `cargo test -p causafera-observer --bin causafera-observer session_negotiates_and_streams_real_runtime_snapshots -- --exact --nocapture`
   and the new receipt-specific session test
   `cargo test -p causafera-observer --bin causafera-observer session_exposes_six_bootstrap_receipts -- --exact --nocapture`.
@@ -620,10 +620,145 @@ The implementation worker updates only documents whose facts change:
 - **2026-07-28:** Chose a runtime adapter around the canonical world plan, a bounded real completion
   state effect per stage, population/bootstrap section major 2, digest schema 7, and additive observer
   fields unless the current protocol cannot represent them safely.
+- **2026-07-28 (wave 1):** Moved the snapshot plumbing for the record — the expanded
+  `BootstrapReceiptSnapshot` and the `SECTION_POPULATION_BOOTSTRAP` major bump — into wave 1 rather
+  than wave 2. `assemble_envelope` computes its header digests by importing the snapshot it is
+  assembling, so leaving export writing an empty record through wave 1 would have left every
+  save/resume test RED at the wave-1 checkpoint. Wave 2 kept the fail-closed import validation and
+  the corruption matrix, which is where its acceptance criteria actually live.
+- **2026-07-28 (wave 1):** Removed `ConcreteHistoricalBootstrapAdapter`. It wrapped the renamed plan
+  type in an enum with no callers anywhere in the workspace, and the recipe can no longer implement
+  `HistoricalBootstrapAdapter`: the coordinator returns a validated record, not a flat trace list.
+  Keeping it would have meant retaining a second bootstrap entry point that produces no receipts,
+  which this plan exists to eliminate.
+- **2026-07-28 (wave 1):** The stage coordinator reads what a stage committed from the trace store
+  rather than from the adapter's returned `Vec<TraceId>`. `ActorPromotionStage` commits two events
+  per promotion — the actor transition and the aggregate transition — and reported only
+  `latest_physical_trace`, so its receipt would have omitted half its own ancestry. The adapter's
+  reported traces are still checked to be a subset of what it committed, so a stale trace from an
+  earlier stage fails closed.
+- **2026-07-28 (wave 2, discovered prerequisite):** `active_chunk_shape` was never written to the
+  runtime recipe section. An `Area` chart therefore resumed as a `Line` chart: the state sections
+  restored all nine chunks while the restored configuration described three, and nothing compared
+  the two. This is a defect that predates the plan; it surfaced because import now re-derives the
+  canonical plan from the persisted configuration, and the plan's targets come from the active chunk
+  set. Fixed here rather than recorded and deferred, because "identical across runtime, observer
+  session, reset, experiment, replay, and save/resume entry points for the same seed and recipe" is
+  this plan's stated goal and is false without it. `RUNTIME_RECIPE_SECTION_MAJOR` moves 5 to 6.
+- **2026-07-28 (wave 2):** Import compares the persisted plan against the plan the persisted
+  configuration reproduces, rather than validating each field separately. One comparison covers plan
+  identity, world seed, stage spans, the dependency chain, parameter fingerprints, and the sorted
+  active-chunk targets, and it cannot drift from what production builds because it calls the same
+  constructor.
+- **2026-07-28 (wave 2):** Population conservation and promoted-actor ancestry are asserted only
+  while `advanced_through` is zero. From the first tick, `lifecycle_births_and_deaths`,
+  `lifecycle_movement`, and `lifecycle_actor_resolution` legitimately add, remove, move, promote and
+  demote, so an equality against the configured bootstrap population afterwards would be a false
+  assertion rather than a protective one.
+- **2026-07-28 (wave 3):** Kept `OBSERVER_PROTOCOL_V1`. The bootstrap summary is representable as
+  additive fields 28+ without ambiguity, unknown fields are already skipped by both decoders, and an
+  absent field 28 decodes to an explicit "absent" schema version rather than to a record claiming
+  zero stages. Making the new fields required would have been a breaking change wearing an additive
+  disguise.
+- **2026-07-28 (wave 3):** The Explanation claims do not report result fingerprints as numeric
+  values. A fingerprint is an equality identity, not a magnitude (INV-038); the completion trace
+  anchors are how a reader reaches the committed effect that carries the result. Claim schemas 18/19
+  were left unregistered in the Explanation renderer, which already keeps an unregistered schema's
+  identity in every locale, rather than inventing UI labels for them in this plan.
+- **2026-07-28 (wave 3):** `RuntimeSnapshot` lost `Copy` because the summary carries a receipt list.
+  Three call sites in `causafera-lab` moved from `copied()` to `cloned()`.
+- **2026-07-28 (wave 4):** Removed `fixture_actors`/`fixture_sensors` outright rather than moving
+  them behind `#[cfg(test)]`. The preflight inventory found no production caller and no test that
+  needed them, and the plan permits removal in exactly that case. `ActorRuntimeConfig` is left in
+  place: it is a configuration type, not a fixture constructor, and removing it would be
+  opportunistic cleanup.
+- **2026-07-28 (wave 5):** No observer-overhead figure is reported. Control and measured poll means
+  straddle each other across five runs at the bounded envelope, so the bootstrap-summary encoding
+  cost is below this harness's noise. Reporting a number here would be reporting noise; the
+  repository has already recorded one physically-impossible negative overhead from single-run
+  measurement and that mistake is not repeated.
 
 ## Progress
 
-**Accepted; implementation not started.**
+**Implemented.** Waves 1-5 are green and each has a checkpoint commit. Branch
+`agent/production-bootstrap-receipt-closure`, from clean `main` HEAD `730e306`.
+
+| Wave | Commit | Focused verification |
+| --- | --- | --- |
+| registration | `1a7424f` | — |
+| 1 | `d3f6d97` | `cargo test -p causafera-runtime --test historical_bootstrap` (12 passed), `cargo test -p causafera-world` (11 passed), `cargo test --workspace` green |
+| 2 | `afc03f0` | `cargo test -p causafera-runtime` (all targets green, 27 bootstrap tests) |
+| 3 | `7ec9daa` | `cargo test -p causafera-observer-wire --test protocol` (10 passed), `cargo test -p causafera-observer --bin causafera-observer` (11 passed), `pnpm lint`/`typecheck`/`build` green |
+| 4 | `6791154` | `cargo test -p causafera-runtime --test historical_bootstrap` (31 passed), `cargo test -p causafera-lab --lib` (6 passed, 3 ignored benchmarks), `cargo test -p causafera-observer --bin causafera-observer` (12 passed) |
+| 5 | this commit | `cargo test -p causafera-runtime --test historical_bootstrap` (33 passed), `cargo run -p xtask -- ci`, `git diff --check` |
+
+### Final verification
+
+- **F1.** `cargo test -p causafera-runtime --test historical_bootstrap` — 33 passed, 0 failed.
+  `cargo test -p causafera-observer-wire --test protocol` — 10 passed. `cargo test -p causafera-explanation`
+  — 17 passed. `cargo test -p causafera-observer --bin causafera-observer` — 12 passed.
+  `cargo test -p causafera-lab --lib` — 6 passed, 3 ignored (expensive benchmarks, ignored before this plan).
+- **F2.** `cargo fmt --all -- --check` — clean. `cargo clippy --workspace --all-targets --all-features -- -D warnings`
+  — clean.
+- **F3.** `cargo test --workspace --all-features` — green. `cargo test --workspace --no-default-features` — green.
+  No pre-existing failure was observed at any point.
+- **F4.** `cargo run -p xtask -- ci`, `pnpm lint`, `pnpm typecheck`, `pnpm build`,
+  `node tools/audit/check-entry-points.mjs`, `node tools/audit/run-source-tests.mjs`, `git diff --check`
+  — all green.
+- **F5. Manual QA gate.** The two observer commands as written in the checklist select nothing:
+  with `--exact` the filter must be the module-qualified
+  `session::tests::session_negotiates_and_streams_real_runtime_snapshots`, and the bare name reports
+  `0 passed; 12 filtered out`. Run with the qualified names,
+  `session_negotiates_and_streams_real_runtime_snapshots` and
+  `session_exposes_six_bootstrap_receipts` both pass against a real `ObserverSession`; the receipt test
+  asserts six strictly ordered receipts, each chained to the previous completion trace, every
+  completion trace resolving in the session's own trace store, and the existing population/actor
+  conservation. `thermal_persistence save_resume_equivalence` and
+  `historical_bootstrap production_bootstrap_save_resume_preserves_record` both pass; the latter
+  asserts an uninterrupted run and a resumed run agree on the canonical record and on both digests.
+
+### Bounded measurement
+
+Envelope only: nine active chunks (`Area`, radius 1), bootstrap population 512, eight promoted
+actors, one sensor aperture each. AMD Ryzen 9 7950X3D, release profile, five samples of an
+eight-iteration mean.
+
+| Metric | Measured |
+| --- | --- |
+| bootstrap wall time per `Runtime::new` | 3.21-3.39 ms |
+| import wall time per `RuntimeState::import_snapshot` | 0.20-0.22 ms |
+| encoded snapshot bytes | 175 965 |
+| canonical bootstrap record bytes | 1 676 |
+| bootstrap provenance events | 53 |
+| observer runtime-summary payload bytes | 435 |
+| observer poll, control (no encoding) | 9.64-10.42 us |
+| observer poll, with summary encoding | 9.91-10.85 us |
+
+The observer-encoding overhead is **not reported as a figure**: the two poll means straddle each
+other across runs, so the cost is below this harness's noise at this envelope. No generated benchmark
+output is committed. None of these numbers is a scale result or a regression threshold.
+
+### Deviations from the accepted plan
+
+1. Wave 1 carried the snapshot plumbing and the section-major bump that the plan had placed in wave 2,
+   so no checkpoint was RED. Wave 2 kept the fail-closed validation and the corruption matrix.
+2. `RUNTIME_RECIPE_SECTION_MAJOR` moved 5 to 6, which the plan did not anticipate. See the Decision Log
+   entry: `active_chunk_shape` was never persisted, and the canonical plan is derived from the active
+   chunk set, so save/resume equivalence was false without it.
+3. `ConcreteHistoricalBootstrapAdapter` was removed, and `RuntimeSnapshot` lost `Copy`. Both are
+   recorded in the Decision Log.
+4. No observer-overhead figure is reported (Decision Log, wave 5).
+
+### Not delivered
+
+- Deep-history synthesis of any kind. Six stages is the complete implementation surface.
+- `TODO-DEPTH-001`, `TODO-HIST-001`, `TODO-PERSIST-001`, `TODO-ANALYTICS-001` are untouched.
+- `TODO-OBSERVER-003`'s causal event slices, domain time series, pagination, and four-level overhead
+  measurement remain open; only its bootstrap-receipts clause is delivered.
+- `TODO-EXPLAIN-003`'s comparison frames, counterfactual context, and alternatives remain open.
+- Explanation claim schemas 18/19 have no registered locale names; they render by identity.
+
+### Planning evidence
 
 Planning evidence was gathered from the clean `main` HEAD `730e306`, the canonical plan index,
 roadmap, backlog, maturity matrix, code knowledge graph, runtime bootstrap, world historical contract,

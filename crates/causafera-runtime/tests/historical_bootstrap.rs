@@ -948,3 +948,75 @@ fn strip_comments(source: &str) -> String {
         .collect::<Vec<_>>()
         .join("\n")
 }
+
+// ---------------------------------------------------------------------------
+// Bounded performance evidence.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn the_bootstrap_benchmark_measures_the_stated_envelope_reproducibly() {
+    use causafera_runtime::{BootstrapClosureBenchmarkConfig, run_bootstrap_closure_benchmark};
+
+    // Given: the accepted bounded envelope — nine active chunks, bootstrap
+    // population 512, eight promoted actors, one sensor aperture each.
+    let config = BootstrapClosureBenchmarkConfig::default();
+
+    // When: the benchmark runs twice at the same seed.
+    let first = run_bootstrap_closure_benchmark(config).expect("benchmark must complete");
+    let second = run_bootstrap_closure_benchmark(config).expect("benchmark must complete");
+
+    // Then: it measured the envelope it claims to describe.
+    assert_eq!(first.active_chunk_count, 9);
+    assert_eq!(first.bootstrap_population, 512);
+    assert_eq!(first.promoted_actor_count, 8);
+    assert_eq!(first.sensor_count, 1);
+    assert_eq!(first.receipt_count, BOOTSTRAP_STAGE_COUNT as u32);
+
+    // And: every figure is a real nonzero measurement, not a placeholder.
+    assert!(first.bootstrap_wall_time_ns > 0);
+    assert!(first.import_wall_time_ns > 0);
+    assert!(first.encoded_snapshot_bytes > 0);
+    assert!(first.bootstrap_record_bytes > 0);
+    assert!(first.bootstrap_provenance_events > 0);
+    assert!(first.control_poll_wall_time_ns > 0);
+    assert!(first.observer_poll_wall_time_ns > 0);
+    assert!(first.observer_summary_bytes > 0);
+
+    // And: the authoritative outputs are identical between runs. Wall times are
+    // deliberately not compared — they are measurements of a machine, and this
+    // benchmark establishes no threshold.
+    assert_eq!(first.plan_id, second.plan_id);
+    assert_eq!(first.physical_state_digest, second.physical_state_digest);
+    assert_eq!(first.history_digest, second.history_digest);
+    assert_eq!(first.encoded_snapshot_bytes, second.encoded_snapshot_bytes);
+    assert_eq!(first.bootstrap_record_bytes, second.bootstrap_record_bytes);
+    assert_eq!(
+        first.bootstrap_provenance_events,
+        second.bootstrap_provenance_events
+    );
+    assert_eq!(first.observer_summary_bytes, second.observer_summary_bytes);
+}
+
+#[test]
+fn the_bootstrap_benchmark_rejects_an_empty_measurement_window() {
+    use causafera_runtime::{BootstrapClosureBenchmarkConfig, run_bootstrap_closure_benchmark};
+
+    // Given: a configuration that would measure nothing.
+    for config in [
+        BootstrapClosureBenchmarkConfig {
+            iterations: 0,
+            ..BootstrapClosureBenchmarkConfig::default()
+        },
+        BootstrapClosureBenchmarkConfig {
+            import_iterations: 0,
+            ..BootstrapClosureBenchmarkConfig::default()
+        },
+        BootstrapClosureBenchmarkConfig {
+            observer_polls: 0,
+            ..BootstrapClosureBenchmarkConfig::default()
+        },
+    ] {
+        // Then: it is rejected rather than reporting an empty envelope.
+        assert!(run_bootstrap_closure_benchmark(config).is_err());
+    }
+}

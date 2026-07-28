@@ -144,12 +144,19 @@ The first complete runtime snapshot includes separate bounded sections for:
    - self-model associations (strengths, supporting percepts).
    - **Constraint:** no authoritative entity/place/body/chart/frame/trace IDs beyond explicitly external inaccessible bookkeeping.
 
-9. **Population aggregates and bootstrap** (`0x0009`)
+9. **Population aggregates and bootstrap** (`0x0009`, major V2)
    - per-chart population counts, births, deaths;
    - material inflow/outflow;
    - causal ancestry trace lists;
    - aggregate actor pool membership;
-   - historical bootstrap stage receipts (opaque).
+   - the canonical historical bootstrap plan: opaque plan ID, world seed, and per stage the opaque
+     stage ID, opaque process schema ID, canonical start/end, detail ordinal, sorted target chunk
+     IDs, sorted dependencies, sorted external causes, and parameter fingerprint;
+   - the bounded per-stage result state, one fingerprint per stage;
+   - one terminal receipt per stage: stage, completion time, result fingerprint, completion trace,
+     and sorted causes.
+   - **Constraint:** every list is canonically sorted and every count bounded before allocation; the
+     decoder rejects unsorted, duplicated, truncated, or trailing bytes rather than repairing them.
 
 10. **Causal trace store** (`0x000A`)
     - next event ID, next trace ID counters;
@@ -311,6 +318,7 @@ Failure leaves the prior completed snapshot intact. Temporary-file cleanup is be
 | actor_objects | 0x0007 | physical objects |
 | population_aggregates | 0x0009 | conserved quantities |
 | aggregate_actor_pool | 0x0009 | membership |
+| canonical bootstrap plan, stage results, and receipts | 0x0009 | causal initialization identity and ancestry |
 | executed experiment-recipe mana source receipts | 0x000D | bounded source execution state and replay guard |
 | thermal fields, reservoirs, receipts, and current boundary records | 0x000E | conserved energy state, causal anchors, and active-region boundary evidence |
 
@@ -340,18 +348,40 @@ Failure leaves the prior completed snapshot intact. Temporary-file cleanup is be
 - New major version for incompatible container or authoritative semantic changes;
 - Unsupported major versions fail closed; no guesswork loading.
 
-For the active actor/material/mana slice, the runtime accepts authoritative digest schema V6,
-runtime-recipe/configuration major V5, mana-field major V2, physical-counters major V3,
-material-surface major V3, experiment-recipe mana source receipts major V1, and thermal-carrier
-major V2. Any other required digest schema or section major, including recipe major V4 or an
-unsupported receipts major, is rejected deterministically rather than being coerced into the
-current causal state.
+For the active actor/material/mana slice, the runtime accepts authoritative digest schema V7,
+runtime-recipe/configuration major V6, mana-field major V2, physical-counters major V3,
+material-surface major V3, population/bootstrap major V2, experiment-recipe mana source receipts
+major V1, and thermal-carrier major V2. Any other required digest schema or section major, including
+recipe major V5 or population/bootstrap major V1, is rejected deterministically rather than being
+coerced into the current causal state.
 
 Recipe major rose from V4 to V5 when `RuntimeConfig` gained `terrain_participation`, which decides
 whether the terrain carrier reaches the tick loop. A V4 snapshot carries every other field of V5 but
 not that contract, so accepting it would mean resuming a world whose participation had been silently
 defaulted — a different world from the one that was saved. It is therefore rejected rather than
 migrated. See `plans/terrain-carrier-participation.md`.
+
+Recipe major rose from V5 to V6 when `active_chunk_shape` started being written at all. It never
+was, so an `Area` chart resumed as a `Line` chart: the state sections restored all nine chunks while
+the restored configuration described three, and nothing compared the two. The canonical bootstrap
+plan is derived from the active chunk set, so a V5 snapshot would reconstruct a different plan than
+it was saved with. See `plans/production-bootstrap-receipt-closure.md`.
+
+Population/bootstrap major rose from V1 to V2 when the bootstrap payload changed from two fields per
+receipt — stage and trace — to the complete canonical plan, the bounded per-stage result state, and
+the terminal receipts. A V1 snapshot carries no plan and no result, so nothing in it can be validated
+against the canonical contract; it is rejected rather than defaulted into an authoritative production
+record. Digest schema rose from V6 to V7 in the same change because that record is now an input to
+`physical_state_digest`.
+
+Import does not take the persisted plan on its word. It re-derives the plan from the persisted
+configuration and requires an exact match, which covers plan identity, world seed, stage spans, the
+dependency chain, parameter fingerprints, and the sorted active-chunk targets in one comparison. It
+then requires every receipt's completion trace to exist in the persisted trace store, to be a
+Lifecycle stage-completion event, and to carry the effect that transitions that stage's bounded
+result state to the receipt's result. At bootstrap time it additionally requires the configured
+population to be conserved across aggregates and promoted actors, and every promoted actor's
+ancestry to be a trace the actor-promotion receipt named.
 
 ## Security considerations
 

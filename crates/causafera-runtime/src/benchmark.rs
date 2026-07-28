@@ -473,3 +473,167 @@ fn linux_status_memory_kib(field: &str) -> Option<u64> {
         None
     }
 }
+
+pub const BOOTSTRAP_CLOSURE_BENCHMARK_VERSION: u32 = 1;
+
+/// The bounded envelope the observer session already runs: nine active chunks,
+/// bootstrap population 512, eight promoted actors, one sensor aperture each.
+///
+/// This is the workload the measurements below describe and the only workload
+/// they describe. Nothing here supports a claim about a larger world.
+pub fn bootstrap_closure_config(seed: u64) -> RuntimeConfig {
+    let mut config = RuntimeConfig::new(seed);
+    config.active_chunk_radius = 1;
+    config.active_chunk_shape = crate::ActiveChunkShape::Area;
+    config.bootstrap_population = 512;
+    config.actor_count = 8;
+    config.sensor_count = 1;
+    config
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct BootstrapClosureBenchmarkConfig {
+    pub seed: u64,
+    /// Repeated bootstrap constructions the wall-time mean is taken over.
+    pub iterations: u32,
+    pub import_iterations: u32,
+    /// Repeated observer polls the overhead control is taken over.
+    pub observer_polls: u32,
+}
+
+impl Default for BootstrapClosureBenchmarkConfig {
+    fn default() -> Self {
+        Self {
+            seed: 2_026,
+            iterations: 8,
+            import_iterations: 8,
+            observer_polls: 8,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct BootstrapClosureBenchmarkReport {
+    pub version: u32,
+    pub config: BootstrapClosureBenchmarkConfig,
+    /// The measured envelope, restated from the constructed runtime rather than
+    /// from the configuration, so a report cannot describe a workload it did not
+    /// actually run.
+    pub active_chunk_count: u32,
+    pub bootstrap_population: u64,
+    pub promoted_actor_count: u64,
+    pub sensor_count: u8,
+    pub receipt_count: u32,
+    /// Mean wall time of one complete `Runtime::new`, bootstrap included.
+    pub bootstrap_wall_time_ns: u128,
+    /// Mean wall time of one `RuntimeState::import_snapshot`, canonical record
+    /// validation included.
+    pub import_wall_time_ns: u128,
+    pub encoded_snapshot_bytes: u64,
+    /// What the canonical record itself costs inside the population/bootstrap
+    /// section, measured as the difference against an absent record.
+    pub bootstrap_record_bytes: u64,
+    /// Trace events the six stages committed, completions included.
+    pub bootstrap_provenance_events: u64,
+    /// Mean wall time of one authoritative summary read with no observer
+    /// encoding — the control.
+    pub control_poll_wall_time_ns: u128,
+    /// The same read plus the bounded runtime-summary encoding.
+    pub observer_poll_wall_time_ns: u128,
+    pub observer_summary_bytes: u64,
+    pub plan_id: u64,
+    pub physical_state_digest: crate::PhysicalStateDigest,
+    pub history_digest: crate::HistoryDigest,
+}
+
+/// Measure the bounded production bootstrap envelope.
+///
+/// Every figure is a measurement of the stated envelope on the machine that ran
+/// it. None of them is a scale result, a throughput claim, or a regression
+/// threshold; the repository has no reference hardware and this benchmark does
+/// not establish one.
+pub fn run_bootstrap_closure_benchmark(
+    config: BootstrapClosureBenchmarkConfig,
+) -> Result<BootstrapClosureBenchmarkReport, RuntimeError> {
+    if config.iterations == 0 || config.import_iterations == 0 || config.observer_polls == 0 {
+        return Err(RuntimeError::InvalidSnapshot(
+            "bootstrap benchmark iterations must be non-zero",
+        ));
+    }
+    let runtime_config = bootstrap_closure_config(config.seed);
+
+    let started = Instant::now();
+    for _ in 0..config.iterations {
+        let runtime = Runtime::new(std::hint::black_box(runtime_config.clone()))?;
+        std::hint::black_box(&runtime);
+    }
+    let bootstrap_wall_time_ns = started.elapsed().as_nanos() / u128::from(config.iterations);
+
+    let runtime = Runtime::new(runtime_config)?;
+    let data = runtime.export_snapshot()?;
+    let summary = runtime.snapshot()?;
+
+    let envelope = assemble_envelope(&data)
+        .map_err(|_| RuntimeError::InvalidSnapshot("bootstrap benchmark envelope must assemble"))?;
+    let encoded_snapshot_bytes = envelope
+        .sections
+        .values()
+        .map(|section| section.bytes.len() as u64)
+        .sum();
+    let with_record =
+        crate::encode_population_section(&data.population, &data.bootstrap).len() as u64;
+    let without_record = crate::encode_population_section(
+        &data.population,
+        &crate::BootstrapReceiptSnapshot::absent(),
+    )
+    .len() as u64;
+    let bootstrap_record_bytes = with_record.saturating_sub(without_record);
+    let bootstrap_provenance_events = data.traces.events.len() as u64;
+
+    let started = Instant::now();
+    for _ in 0..config.import_iterations {
+        let state = RuntimeState::import_snapshot(std::hint::black_box(data.clone()))?;
+        std::hint::black_box(state);
+    }
+    let import_wall_time_ns = started.elapsed().as_nanos() / u128::from(config.import_iterations);
+
+    let started = Instant::now();
+    for _ in 0..config.observer_polls {
+        std::hint::black_box(runtime.snapshot()?);
+    }
+    let control_poll_wall_time_ns =
+        started.elapsed().as_nanos() / u128::from(config.observer_polls);
+
+    let mut observer_summary_bytes = 0_u64;
+    let started = Instant::now();
+    for _ in 0..config.observer_polls {
+        let polled = runtime.snapshot()?;
+        let encoded =
+            causafera_observer_wire::encode_observer_snapshot(&polled.observer_snapshot());
+        observer_summary_bytes = encoded.len() as u64;
+        std::hint::black_box(encoded);
+    }
+    let observer_poll_wall_time_ns =
+        started.elapsed().as_nanos() / u128::from(config.observer_polls);
+
+    Ok(BootstrapClosureBenchmarkReport {
+        version: BOOTSTRAP_CLOSURE_BENCHMARK_VERSION,
+        config,
+        active_chunk_count: summary.active_chunk_count,
+        bootstrap_population: summary.population_total + u64::from(summary.actor_count),
+        promoted_actor_count: u64::from(summary.actor_count),
+        sensor_count: data.recipe.config.sensor_count,
+        receipt_count: data.bootstrap.receipts.len() as u32,
+        bootstrap_wall_time_ns,
+        import_wall_time_ns,
+        encoded_snapshot_bytes,
+        bootstrap_record_bytes,
+        bootstrap_provenance_events,
+        control_poll_wall_time_ns,
+        observer_poll_wall_time_ns,
+        observer_summary_bytes,
+        plan_id: data.bootstrap.plan.id.raw(),
+        physical_state_digest: summary.physical_state_digest,
+        history_digest: summary.history_digest,
+    })
+}

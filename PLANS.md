@@ -86,7 +86,7 @@ Progress
 
 This section lists only accepted or in-progress work with genuinely unfinished implementation stages, acceptance criteria, or close-out work.
 
-- [`plans/production-bootstrap-receipt-closure.md`](plans/production-bootstrap-receipt-closure.md) — accepted sequential plan to bind the six runtime bootstrap stages to the canonical historical DAG/receipt contract, persist and inspect the record, and prove fixture-free production entry points.
+- No canonical ExecPlans are currently active. For current project priorities, use the [roadmap](docs/roadmap/roadmap.md), [maturity matrix](docs/ontology/domain-coverage-matrix.md), and [TODO backlog](docs/development/todo-backlog.md).
 
 ## Blocked and Paused Work
 
@@ -105,6 +105,7 @@ This section lists proposals that have not yet been accepted.
 
 These plans have been accepted and implemented. They are preserved as implementation and decision records rather than current guidance.
 
+- [`plans/production-bootstrap-receipt-closure.md`](plans/production-bootstrap-receipt-closure.md) — completed and implemented; binds the six runtime bootstrap stages to the canonical `causafera-world` historical DAG/receipt contract, emits one terminal receipt per stage anchored to a real bounded stage-result transition, persists and fail-closed validates the record, exposes bounded observer/Explanation evidence, and removes the last fixture actor constructors. Moves `CURRENT_DIGEST_SCHEMA_VERSION` 6→7, population/bootstrap section major 1→2, and `RUNTIME_RECIPE_SECTION_MAJOR` 5→6; advances `TODO-RUNTIME-001`, `TODO-OBSERVER-003`, and `TODO-EXPLAIN-003` without closing any of them.
 - [`plans/thermal-conservation-aggregate-validation.md`](plans/thermal-conservation-aggregate-validation.md) — completed and implemented; cross-validates every `ThermalConservationReceipt`'s aggregate literals against materialized state and per-receipt data on snapshot import, closes `TODO-THERMAL-006`, and leaves `THERMAL_SECTION_MAJOR`, `MATERIAL_SURFACE_SECTION_MAJOR`, and `CURRENT_DIGEST_SCHEMA_VERSION` unchanged.
 - [`plans/conserved-thermal-energy-carrier.md`](plans/conserved-thermal-energy-carrier.md) — completed and implemented; bounded conserved thermal storage and same-chart transfer tranche.
 - [`plans/local-mana-material-surface-coupling.md`](plans/local-mana-material-surface-coupling.md) — completed and implemented; bounded local mana-cell to material-surface coupling slice replacing the global mana-total gate with per-surface local hysteresis.
