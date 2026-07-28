@@ -128,6 +128,7 @@ impl ActorActionSystem {
                             last_transition: before_surface.last_transition,
                             last_contact_trace: before_surface.last_contact_trace,
                             gate: before_surface.gate,
+                            thermal: before_surface.thermal,
                         };
                         let actor_cause = state
                             .actor_ancestry

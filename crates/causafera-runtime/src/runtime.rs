@@ -16,12 +16,14 @@ use causafera_domains::{
 use causafera_explanation::{
     ComparisonContext, ExplanationClaim, ExplanationFrame, ExplanationReport,
     MATERIAL_SURFACE_LOOP_CLAIM_SCHEMA, MaterialSurfaceLocalManaTransitionClaim,
-    MaterialSurfaceLoopClaim, NumericClaimValue, ThermalCarrierConservationClaim,
+    MaterialSurfaceLoopClaim, MaterialSurfaceThermalExchangeClaim, NumericClaimValue,
+    ThermalCarrierConservationClaim,
 };
 use causafera_observer_api::{
-    FieldRasterRequest, MATERIAL_SURFACE_DELTA_SCHEMA_V3, MAX_MATERIAL_SURFACE_DELTAS,
-    MAX_THERMAL_DELTAS, MaterialSurfaceDelta, MaterialSurfaceGateDelta, ObserverChunkSummary,
-    ObserverFieldRaster, ObserverWorldSnapshot, THERMAL_DELTA_SCHEMA_V1, ThermalFieldDelta,
+    FieldRasterRequest, MATERIAL_SURFACE_DELTA_SCHEMA_V4, MAX_MATERIAL_SURFACE_DELTAS,
+    MAX_THERMAL_DELTAS, MaterialSurfaceDelta, MaterialSurfaceGateDelta,
+    MaterialSurfaceThermalDelta, ObserverChunkSummary, ObserverFieldRaster, ObserverWorldSnapshot,
+    THERMAL_DELTA_SCHEMA_V1, ThermalFieldDelta,
 };
 use causafera_resolution::{ChannelWeight, ResolutionError, ResolutionField, ResolutionPolicy};
 use causafera_types::{
@@ -39,7 +41,7 @@ pub const MANA_PATTERN_HISTORY_TICKS: u64 = 8;
 pub const MAX_EXPERIMENT_RECIPE_MANA_SOURCES: usize = 16;
 pub const EXPERIMENT_RECIPE_MANA_SOURCE_POLICY_SCHEMA_V1: u64 = 1;
 
-pub const CURRENT_DIGEST_SCHEMA_VERSION: DigestSchemaVersion = DigestSchemaVersion::new(5);
+pub const CURRENT_DIGEST_SCHEMA_VERSION: DigestSchemaVersion = DigestSchemaVersion::new(6);
 
 const PHYSICAL_SYSTEM_ID: u64 = 10;
 pub const EXPERIMENT_RECIPE_MANA_SOURCE_SYSTEM_ID: u64 = 19;
@@ -68,6 +70,7 @@ pub const EXPERIMENT_RECIPE_MANA_SOURCE_EVENT_KIND: u64 = 17;
 pub const THERMAL_RESERVOIR_TRANSFER_EVENT_KIND: u64 = 30;
 pub const THERMAL_CELL_CHANGE_EVENT_KIND: u64 = 31;
 pub const THERMAL_CONSERVATION_EVENT_KIND: u64 = 32;
+pub const MATERIAL_SURFACE_THERMAL_EXCHANGE_EVENT_KIND: u64 = 33;
 pub const THERMAL_FIELD_BOOTSTRAP_EVENT_KIND: u64 = 28;
 pub const THERMAL_RESERVOIR_BOOTSTRAP_EVENT_KIND: u64 = 29;
 const RUNTIME_OBJECT_KIND: u64 = 1;
@@ -97,6 +100,7 @@ pub const EXPERIMENT_RECIPE_MANA_SOURCE_PROPERTY: u64 = 13;
 pub const THERMAL_RESERVOIR_BUDGET_PROPERTY: u64 = 20;
 pub const THERMAL_ENERGY_PROPERTY: u64 = 21;
 pub const THERMAL_BATCH_SEQUENCE_PROPERTY: u64 = 22;
+pub const MATERIAL_SURFACE_THERMAL_RETAINED_PROPERTY: u64 = 23;
 pub(crate) const RESOLUTION_CHANNEL: u64 = 1;
 const PHYSICAL_DIGEST_DOMAIN: u64 = 0x5048_5953_4943_414C;
 pub(crate) const HISTORY_DIGEST_DOMAIN: u64 = 0x4849_5354_4F52_595F;
@@ -261,6 +265,21 @@ impl Runtime {
             return Err(error);
         }
         state.thermal_conservation_explanation(self.scheduler.current_time())
+    }
+
+    /// The queried surface's most recent retained-heat exchange (`TODO-THERMAL-002`), independent
+    /// of its mana/contact history: an unknown surface ID is rejected, while a real surface with
+    /// no exchange evidence in the bounded transition history yields an `Unknown` claim rather
+    /// than an error.
+    pub fn observer_material_surface_thermal_explanation_for_surface(
+        &self,
+        surface: MaterialSurfaceId,
+    ) -> Result<ExplanationReport, RuntimeError> {
+        let state = self.lock_state()?;
+        if let Some(error) = state.failure.clone() {
+            return Err(error);
+        }
+        state.material_surface_thermal_explanation(self.scheduler.current_time(), surface)
     }
 
     pub fn export_snapshot(&self) -> Result<RuntimeSnapshotData, RuntimeError> {
@@ -489,6 +508,7 @@ pub struct RuntimeState {
     pub(crate) pending_material_surface_changes: BTreeSet<MaterialSurfaceId>,
     pub(crate) material_surface_transitions: Vec<MaterialSurfaceTransition>,
     pub(crate) material_surface_gate_transitions: Vec<MaterialSurfaceGateTransition>,
+    pub(crate) material_surface_thermal_transitions: Vec<MaterialSurfaceThermalTransition>,
     pub(crate) latest_physical_trace: TraceId,
     pub(crate) latest_mana_trace: Option<TraceId>,
     pub executed_experiment_recipe_mana_sources: Vec<ExperimentRecipeManaSourceReceipt>,
@@ -570,6 +590,8 @@ impl RuntimeState {
             128,
             causafera_domains::THERMAL_SCALE,
             causafera_domains::THERMAL_SCALE,
+            64,
+            causafera_domains::THERMAL_SCALE,
         )?;
         let thermal_fields = ThermalFieldSet::new(
             active_chunk_keys
@@ -644,6 +666,7 @@ impl RuntimeState {
             pending_material_surface_changes: BTreeSet::new(),
             material_surface_transitions: Vec::new(),
             material_surface_gate_transitions: Vec::new(),
+            material_surface_thermal_transitions: Vec::new(),
             latest_physical_trace: root_trace,
             latest_mana_trace: None,
             executed_experiment_recipe_mana_sources: Vec::new(),
@@ -804,6 +827,14 @@ impl RuntimeState {
                                         transfer_trace_id: record.transfer_trace_id,
                                     })
                                     .collect(),
+                                material: receipt.material.map(|material| {
+                                    ThermalMaterialTransferRecordSnapshot {
+                                        retained_before: material.retained_before.get(),
+                                        retained_after: material.retained_after.get(),
+                                        signed_flux: material.signed_flux,
+                                        rejected: material.rejected.get(),
+                                    }
+                                }),
                             })
                     })
                     .collect(),
@@ -817,6 +848,8 @@ impl RuntimeState {
                         total_cell_energy_after: receipt.total_cell_energy_after,
                         total_reservoir_budget_before: receipt.total_reservoir_budget_before,
                         total_reservoir_budget_after: receipt.total_reservoir_budget_after,
+                        total_material_retained_before: receipt.total_material_retained_before,
+                        total_material_retained_after: receipt.total_material_retained_after,
                         residual: receipt.residual,
                     })
                     .collect(),
@@ -872,6 +905,7 @@ impl RuntimeState {
                     .collect(),
                 transitions: self.material_surface_transitions.clone(),
                 gate_transitions: self.material_surface_gate_transitions.clone(),
+                thermal_transitions: self.material_surface_thermal_transitions.clone(),
             },
             actors_objective: ActorObjectiveStateSnapshot {
                 actors: self
@@ -993,6 +1027,7 @@ impl RuntimeState {
             pending_material_surface_changes,
             material_surface_transitions,
             material_surface_gate_transitions,
+            material_surface_thermal_transitions,
         ) = import_material_surfaces(data.material_surfaces, config.chunk_extent)?;
         let counters = data.physical_counters;
         let state = Self {
@@ -1024,6 +1059,7 @@ impl RuntimeState {
             pending_material_surface_changes,
             material_surface_transitions,
             material_surface_gate_transitions,
+            material_surface_thermal_transitions,
             latest_physical_trace: counters.latest_physical_trace,
             latest_mana_trace: counters.latest_mana_trace,
             executed_experiment_recipe_mana_sources: imported_receipts,
@@ -1068,6 +1104,12 @@ impl RuntimeState {
             validate_material_surface_last_transition(&self.traces, *id, *surface)?;
             validate_material_surface_last_contact_trace(&self.traces, *id, *surface)?;
             validate_material_surface_gate_state(&self.traces, *id, *surface)?;
+            validate_material_surface_thermal_state(
+                &self.traces,
+                *id,
+                *surface,
+                self.thermal_parameters.material_thermal_capacity,
+            )?;
             if !self.active_chunks.contains_key(&id.chunk) {
                 return Err(RuntimeError::InvalidSnapshot(
                     "material surface outside active chunks",
@@ -1096,6 +1138,36 @@ impl RuntimeState {
                 &self.material_surface_transitions,
                 transition,
             )?;
+        }
+        validate_material_surface_thermal_transition_history(
+            &self.traces,
+            &self.material_surfaces,
+            &self.material_surface_thermal_transitions,
+        )?;
+        for transition in &self.material_surface_thermal_transitions {
+            validate_material_surface_thermal_transition(&self.traces, transition)?;
+        }
+        if let Some(latest_receipts) = self
+            .thermal_receipts
+            .get(&self.thermal_fields.conservation_last_change())
+        {
+            for receipt in latest_receipts {
+                let Some(material) = &receipt.material else {
+                    continue;
+                };
+                let surface_id =
+                    MaterialSurfaceId::new(receipt.cell.chunk, receipt.cell.cell_index);
+                let surface = self.material_surfaces.get(&surface_id).ok_or(
+                    RuntimeError::InvalidSnapshot(
+                        "thermal receipt material term references unknown surface",
+                    ),
+                )?;
+                if surface.thermal.retained_energy != material.retained_after {
+                    return Err(RuntimeError::InvalidSnapshot(
+                        "material surface retained energy does not match latest thermal receipt",
+                    ));
+                }
+            }
         }
         for field in self.mana.fields().values() {
             for trace in field.last_change().iter().flatten().copied() {
@@ -1510,6 +1582,28 @@ impl RuntimeState {
                 transition_tick: transition.occurred_at.raw(),
             })
             .collect::<Vec<_>>();
+        let material_surface_thermal_deltas = self
+            .material_surface_thermal_transitions
+            .iter()
+            .rev()
+            .take(MAX_MATERIAL_SURFACE_DELTAS)
+            .copied()
+            .collect::<Vec<_>>()
+            .into_iter()
+            .map(|transition| MaterialSurfaceThermalDelta {
+                chart_id: transition.id.chunk.chart.raw(),
+                chunk_x: transition.id.chunk.chunk.x,
+                chunk_y: transition.id.chunk.chunk.y,
+                chunk_z: transition.id.chunk.chunk.z,
+                cell_ordinal: transition.id.cell_index,
+                before_retained: transition.before_retained,
+                after_retained: transition.after_retained,
+                cell_pre_state: transition.cell_pre_state,
+                signed_flux: transition.signed_flux,
+                thermal_exchange_trace_id: transition.transition_trace,
+                transition_tick: transition.occurred_at.raw(),
+            })
+            .collect::<Vec<_>>();
         let mut thermal_deltas = self
             .thermal_receipts
             .iter()
@@ -1565,13 +1659,15 @@ impl RuntimeState {
             chunks,
             material_surface_delta_schema_version: if material_surface_deltas.is_empty()
                 && material_surface_gate_deltas.is_empty()
+                && material_surface_thermal_deltas.is_empty()
             {
                 0
             } else {
-                MATERIAL_SURFACE_DELTA_SCHEMA_V3
+                MATERIAL_SURFACE_DELTA_SCHEMA_V4
             },
             material_surface_deltas,
             material_surface_gate_deltas,
+            material_surface_thermal_deltas,
             thermal_delta_schema_version: if thermal_deltas.is_empty() {
                 0
             } else {
@@ -1579,6 +1675,47 @@ impl RuntimeState {
             },
             thermal_deltas,
         }
+    }
+
+    fn material_surface_thermal_explanation(
+        &self,
+        time: SimulationTime,
+        surface: MaterialSurfaceId,
+    ) -> Result<ExplanationReport, RuntimeError> {
+        let material_surface = self
+            .material_surfaces
+            .get(&surface)
+            .ok_or(RuntimeError::InvalidSnapshot("unknown material surface"))?;
+        let claim = match self
+            .material_surface_thermal_transitions
+            .iter()
+            .rev()
+            .find(|transition| transition.id == surface)
+        {
+            Some(transition) => MaterialSurfaceThermalExchangeClaim {
+                before_retained: transition.before_retained,
+                after_retained: transition.after_retained,
+                transition_trace: transition.transition_trace,
+                cell_trace: transition.cell_trace,
+            }
+            .to_explanation_claim(),
+            None => MaterialSurfaceThermalExchangeClaim::unknown(
+                material_surface.thermal.retained_energy.get(),
+            ),
+        }
+        .map_err(|_| {
+            RuntimeError::InvalidSnapshot("invalid material surface thermal Explanation claim")
+        })?;
+        let frame = ExplanationFrame::new(time, vec![claim]).map_err(|_| {
+            RuntimeError::InvalidSnapshot("invalid material surface thermal Explanation frame")
+        })?;
+        ExplanationReport::new(
+            ExperimentId::new(self.config.deterministic.world_seed),
+            vec![frame],
+        )
+        .map_err(|_| {
+            RuntimeError::InvalidSnapshot("invalid material surface thermal Explanation report")
+        })
     }
 
     fn thermal_conservation_explanation(
@@ -1799,6 +1936,8 @@ impl RuntimeState {
             write_optional_trace(&mut digest, surface.last_contact_trace);
             digest.write(u64::from(surface.gate.active));
             write_optional_trace(&mut digest, surface.gate.last_transition);
+            digest.write(surface.thermal.retained_energy.get() as u64);
+            write_optional_trace(&mut digest, surface.thermal.last_exchange);
         }
         digest.write(self.pending_material_surface_changes.len() as u64);
         for id in &self.pending_material_surface_changes {
@@ -1830,6 +1969,18 @@ impl RuntimeState {
             write_optional_trace(&mut digest, transition.contact_trace);
             digest.write(transition.transition_trace.raw());
         }
+        digest.write(self.material_surface_thermal_transitions.len() as u64);
+        for transition in &self.material_surface_thermal_transitions {
+            write_chart_chunk(&mut digest, transition.id.chunk);
+            digest.write(u64::from(transition.id.cell_index));
+            digest.write(transition.occurred_at.raw());
+            digest.write(transition.before_retained as u64);
+            digest.write(transition.after_retained as u64);
+            digest.write(transition.cell_pre_state as u64);
+            digest.write(transition.signed_flux as u64);
+            digest.write(transition.cell_trace.raw());
+            digest.write(transition.transition_trace.raw());
+        }
         digest.write(self.pattern_history.len() as u64);
         for sample in self.pattern_history.samples() {
             write_chart_chunk(&mut digest, sample.chunk);
@@ -1855,6 +2006,8 @@ impl RuntimeState {
         digest.write(self.thermal_parameters.transfer_fraction as u64);
         digest.write(self.thermal_parameters.heat_capacity as u64);
         digest.write(self.thermal_parameters.scale as u64);
+        digest.write(self.thermal_parameters.material_exchange_fraction as u64);
+        digest.write(self.thermal_parameters.material_thermal_capacity as u64);
         digest.write(self.thermal_fields.batch_sequence());
         digest.write(self.thermal_fields.conservation_last_change().raw());
         digest.write(self.thermal_active_region.active_chunks().len() as u64);
@@ -1920,6 +2073,15 @@ impl RuntimeState {
                     digest.write(reservoir.rejected_injection.get() as u64);
                     write_optional_trace(&mut digest, reservoir.transfer_trace_id);
                 }
+                if let Some(material) = &receipt.material {
+                    digest.write(1);
+                    digest.write(material.retained_before.get() as u64);
+                    digest.write(material.retained_after.get() as u64);
+                    digest.write(material.signed_flux as u64);
+                    digest.write(material.rejected.get() as u64);
+                } else {
+                    digest.write(0);
+                }
             }
         }
         digest.write(self.thermal_conservation_receipts.len() as u64);
@@ -1930,6 +2092,8 @@ impl RuntimeState {
             write_i128(&mut digest, receipt.total_cell_energy_after);
             write_i128(&mut digest, receipt.total_reservoir_budget_before);
             write_i128(&mut digest, receipt.total_reservoir_budget_after);
+            write_i128(&mut digest, receipt.total_material_retained_before);
+            write_i128(&mut digest, receipt.total_material_retained_after);
             write_i128(&mut digest, receipt.residual);
         }
         digest.write(self.thermal_boundary_records.len() as u64);
@@ -2062,6 +2226,8 @@ impl RuntimeState {
             digest.write(u64::from(id.cell_index));
             digest.write(u64::from(surface.gate.active));
             write_optional_trace(digest, surface.gate.last_transition);
+            digest.write(surface.thermal.retained_energy.get() as u64);
+            write_optional_trace(digest, surface.thermal.last_exchange);
         }
         digest.write(self.material_surface_gate_transitions.len() as u64);
         for transition in &self.material_surface_gate_transitions {
@@ -2074,6 +2240,18 @@ impl RuntimeState {
             digest.write(transition.local_mana_after as u64);
             digest.write(transition.local_mana_trace.raw());
             write_optional_trace(digest, transition.contact_trace);
+            digest.write(transition.transition_trace.raw());
+        }
+        digest.write(self.material_surface_thermal_transitions.len() as u64);
+        for transition in &self.material_surface_thermal_transitions {
+            write_chart_chunk(digest, transition.id.chunk);
+            digest.write(u64::from(transition.id.cell_index));
+            digest.write(transition.occurred_at.raw());
+            digest.write(transition.before_retained as u64);
+            digest.write(transition.after_retained as u64);
+            digest.write(transition.cell_pre_state as u64);
+            digest.write(transition.signed_flux as u64);
+            digest.write(transition.cell_trace.raw());
             digest.write(transition.transition_trace.raw());
         }
     }
@@ -2390,6 +2568,8 @@ fn import_thermal_snapshot(
                     total_cell_energy_after: receipt.total_cell_energy_after,
                     total_reservoir_budget_before: receipt.total_reservoir_budget_before,
                     total_reservoir_budget_after: receipt.total_reservoir_budget_after,
+                    total_material_retained_before: receipt.total_material_retained_before,
+                    total_material_retained_after: receipt.total_material_retained_after,
                     residual: receipt.residual,
                 },
             )
@@ -2462,12 +2642,46 @@ fn import_thermal_snapshot(
                 })
             })
             .collect::<Result<Vec<_>, RuntimeError>>()?;
-        let signed_flux_sum = faces.iter().try_fold(0_i128, |sum, face| {
-            sum.checked_add(i128::from(face.signed_flux))
-                .ok_or(RuntimeError::InvalidSnapshot(
-                    "thermal receipt signed flux total overflows",
-                ))
-        })?;
+        let material = receipt
+            .material
+            .map(|material| {
+                let retained_before =
+                    ThermalEnergy::new(material.retained_before).map_err(|_| {
+                        RuntimeError::InvalidSnapshot(
+                            "thermal receipt has negative material retained energy",
+                        )
+                    })?;
+                let retained_after = ThermalEnergy::new(material.retained_after).map_err(|_| {
+                    RuntimeError::InvalidSnapshot(
+                        "thermal receipt has negative material retained energy",
+                    )
+                })?;
+                let rejected = ThermalEnergy::new(material.rejected).map_err(|_| {
+                    RuntimeError::InvalidSnapshot("thermal receipt has negative material rejection")
+                })?;
+                if retained_after.get() > snapshot.parameters.material_thermal_capacity {
+                    return Err(RuntimeError::InvalidSnapshot(
+                        "thermal receipt material retained energy exceeds capacity",
+                    ));
+                }
+                Ok(causafera_domains::ThermalMaterialTransferRecord {
+                    retained_before,
+                    retained_after,
+                    signed_flux: material.signed_flux,
+                    rejected,
+                })
+            })
+            .transpose()?;
+        let signed_flux_sum = faces
+            .iter()
+            .map(|face| face.signed_flux)
+            .chain(material.map(|material| material.signed_flux))
+            .try_fold(0_i128, |sum, flux| {
+                sum.checked_add(i128::from(flux))
+                    .ok_or(RuntimeError::InvalidSnapshot(
+                        "thermal receipt signed flux total overflows",
+                    ))
+            })?;
         let expected_post_state = i128::from(pre_state.get())
             .checked_sub(signed_flux_sum)
             .ok_or(RuntimeError::InvalidSnapshot(
@@ -2521,6 +2735,7 @@ fn import_thermal_snapshot(
                 cell_change_trace_id: receipt.cell_change_trace_id,
                 faces,
                 reservoirs: reservoir_records,
+                material,
             });
     }
     if receipts.keys().copied().collect::<BTreeSet<_>>()
@@ -2725,6 +2940,7 @@ type ImportedMaterialSurfaces = (
     BTreeSet<MaterialSurfaceId>,
     Vec<MaterialSurfaceTransition>,
     Vec<MaterialSurfaceGateTransition>,
+    Vec<MaterialSurfaceThermalTransition>,
 );
 
 fn import_material_surfaces(
@@ -2822,11 +3038,36 @@ fn import_material_surfaces(
             .or_insert(transition.transition_trace);
         previous_gate_trace = Some(transition.transition_trace);
     }
+    if snapshot.thermal_transitions.len() > MAX_MATERIAL_SURFACE_TRANSITIONS {
+        return Err(RuntimeError::InvalidSnapshot(
+            "too many material surface thermal transitions",
+        ));
+    }
+    let mut previous_thermal_trace = None;
+    for transition in &snapshot.thermal_transitions {
+        if !transition.id.is_within_extent(chunk_extent) || !surfaces.contains_key(&transition.id) {
+            return Err(RuntimeError::InvalidSnapshot(
+                "material surface thermal transition references invalid surface",
+            ));
+        }
+        if transition.before_retained == transition.after_retained {
+            return Err(RuntimeError::InvalidSnapshot(
+                "material surface thermal transition has no state change",
+            ));
+        }
+        if previous_thermal_trace.is_some_and(|previous| previous >= transition.transition_trace) {
+            return Err(RuntimeError::InvalidSnapshot(
+                "material surface thermal transitions must be strictly trace ordered",
+            ));
+        }
+        previous_thermal_trace = Some(transition.transition_trace);
+    }
     Ok((
         surfaces,
         pending_changes,
         snapshot.transitions,
         snapshot.gate_transitions,
+        snapshot.thermal_transitions,
     ))
 }
 
@@ -3885,6 +4126,10 @@ mod tests {
                 active: false,
                 last_transition: None,
             },
+            thermal: MaterialSurfaceThermalState {
+                retained_energy: ThermalEnergy::ZERO,
+                last_exchange: None,
+            },
         };
 
         let contact = CausalEventProposal::new(
@@ -3973,6 +4218,10 @@ mod tests {
             gate: MaterialSurfaceManaGate {
                 active: false,
                 last_transition: Some(falling_trace),
+            },
+            thermal: MaterialSurfaceThermalState {
+                retained_energy: ThermalEnergy::ZERO,
+                last_exchange: None,
             },
         };
         let mut surfaces = BTreeMap::new();

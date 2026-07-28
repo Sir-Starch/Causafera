@@ -99,6 +99,10 @@ Progress
 - [`plans/mana-seam-saturation-ceiling.md`](plans/mana-seam-saturation-ceiling.md) — accepted and
   implemented; a cell fed across a chunk seam is now bounded by `maximum_intensity` the same way a
   cell fed from inside its own chunk already was, closing `TODO-MANA-006`.
+- [`plans/thermal-material-surface-coupling.md`](plans/thermal-material-surface-coupling.md) —
+  accepted and implemented; a bounded, conserved retained-heat exchange between a material surface
+  and its co-located thermal cell, integrated into the existing atomic thermal batch, closing
+  `TODO-THERMAL-002`.
 
 ## Draft Plans
 

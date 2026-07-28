@@ -216,7 +216,7 @@ fn observer_source_evidence_is_bounded_and_redacted() {
     assert!(delta.mana_transition_trace.is_some());
     assert_eq!(delta.mana_before, Some(0));
     assert_eq!(delta.mana_after, Some(3));
-    assert_eq!(world.material_surface_delta_schema_version, 3);
+    assert_eq!(world.material_surface_delta_schema_version, 4);
     assert_eq!(delta.local_mana_before, Some(0));
     assert_eq!(delta.local_mana_after, Some(3));
     assert!(delta.local_mana_transition_trace_id.is_some());

@@ -58,8 +58,14 @@ typed before/after condition, mana total, transition tick, and optional contact,
 mana-transition trace anchors. Optional in-world mana before/after values are present only when a
 bounded source receipt supports them. V3 adds optional matching-cell local mana before/after values
 and the local mana transition trace. A separate bounded `MaterialSurfaceGateDelta` exposes
-gate-only falling transitions without inventing a condition change. Neither projection contains a city, biome, species, occupation,
-spell, or other semantic classification.
+gate-only falling transitions without inventing a condition change. A third and independent bounded
+projection, `MaterialSurfaceThermalDelta` (V4), exposes a surface's retained-heat exchange with its
+co-located thermal cell — before/after retained energy, the cell's frozen pre-state, the signed
+flux, and the exchange trace — without a temperature figure, expansion, damage, or phase-change
+label; that response is not modeled yet (`TODO-THERMAL-002`). It shares its schema-version field with
+the other two, since all three address the same `MaterialSurfaceId`, unlike the cell-addressed
+`ThermalFieldDelta`, which keeps its own separate version field. Neither this nor the other two
+projections contain a city, biome, species, occupation, spell, or other semantic classification.
 
 `MaterialSurfaceDelta` is an inspection projection, not the material state or a mutation API. Its
 schema version and capacity remain explicit in the existing `world_chunks` response; the projection

@@ -8,6 +8,14 @@ pub struct ThermalParameters {
     pub transfer_fraction: i64,
     pub heat_capacity: i64,
     pub scale: i64,
+    /// Fraction (out of `scale`) of the signed cell/material energy difference exchanged each tick.
+    /// `0` disables material exchange for every surface: the flux formula computes
+    /// `floor(magnitude * 0 / scale) == 0` unconditionally, so no special-cased "disabled" branch
+    /// is needed anywhere the fraction is read.
+    pub material_exchange_fraction: i64,
+    /// Upper bound on a single material surface's retained energy, in the same fixed-point unit as
+    /// `ThermalEnergy`. Independent of `ThermalEnergy::MAX`, which bounds a *cell*.
+    pub material_thermal_capacity: i64,
 }
 
 impl ThermalParameters {
@@ -15,21 +23,39 @@ impl ThermalParameters {
         transfer_fraction: i64,
         heat_capacity: i64,
         scale: i64,
+        material_exchange_fraction: i64,
+        material_thermal_capacity: i64,
     ) -> Result<Self, ThermalError> {
         let parameters = Self {
             transfer_fraction,
             heat_capacity,
             scale,
+            material_exchange_fraction,
+            material_thermal_capacity,
         };
         parameters.validate()
     }
 
     pub const fn validate(self) -> Result<Self, ThermalError> {
+        // `material_thermal_capacity` is `i64` and `ThermalEnergy::MAX == i64::MAX`, so an
+        // upper-bound comparison against `ThermalEnergy::MAX` would never reject anything; only
+        // non-positivity is a real constraint here.
         if self.scale <= 0
             || self.heat_capacity <= 0
             || self.transfer_fraction <= 0
-            || self.transfer_fraction > self.scale / 6
+            || self.material_exchange_fraction < 0
+            || self.material_thermal_capacity <= 0
         {
+            return Err(ThermalError::InvalidParameters);
+        }
+        let Some(six_faces) = self.transfer_fraction.checked_mul(6) else {
+            return Err(ThermalError::InvalidParameters);
+        };
+        let Some(worst_case_outflow) = six_faces.checked_add(self.material_exchange_fraction)
+        else {
+            return Err(ThermalError::InvalidParameters);
+        };
+        if worst_case_outflow > self.scale {
             Err(ThermalError::InvalidParameters)
         } else {
             Ok(self)
@@ -116,6 +142,29 @@ pub struct ThermalReservoirTransferRecord {
     pub transfer_trace_id: Option<TraceId>,
 }
 
+/// A material surface's thermal state, keyed by its co-located `ThermalCellKey`. The domain layer
+/// is deliberately ignorant of `MaterialSurfaceId`/contact history; the runtime maps its own
+/// surfaces onto this shape.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ThermalMaterialSite {
+    pub retained_before: ThermalEnergy,
+    /// The surface's prior thermal-exchange trace, if any. `None` before its first non-zero
+    /// exchange. Threaded through so a cell-change event can cite it as a parent.
+    pub last_exchange: Option<TraceId>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ThermalMaterialTransferRecord {
+    pub retained_before: ThermalEnergy,
+    pub retained_after: ThermalEnergy,
+    /// Positive: flowed cell -> material. Negative: flowed material -> cell. Same sign convention
+    /// as `ThermalFaceRecord::signed_flux`.
+    pub signed_flux: i64,
+    /// Non-zero only when heating was capped by `material_thermal_capacity`; the rejected amount
+    /// stays in the cell rather than being destroyed.
+    pub rejected: ThermalEnergy,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ThermalCellChange {
     pub cell: ThermalCellKey,
@@ -124,6 +173,7 @@ pub struct ThermalCellChange {
     pub parent_traces: Vec<TraceId>,
     pub incident_faces: Vec<ThermalFaceRecord>,
     pub reservoirs: Vec<ThermalReservoirTransferRecord>,
+    pub material: Option<ThermalMaterialTransferRecord>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -134,6 +184,7 @@ pub struct ThermalCellTransferReceipt {
     pub cell_change_trace_id: Option<TraceId>,
     pub faces: Vec<ThermalFaceRecord>,
     pub reservoirs: Vec<ThermalReservoirTransferRecord>,
+    pub material: Option<ThermalMaterialTransferRecord>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -143,6 +194,8 @@ pub struct ThermalConservationReceipt {
     pub total_cell_energy_after: i128,
     pub total_reservoir_budget_before: i128,
     pub total_reservoir_budget_after: i128,
+    pub total_material_retained_before: i128,
+    pub total_material_retained_after: i128,
     pub residual: i128,
 }
 

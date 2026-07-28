@@ -13,7 +13,7 @@ fn legacy_ids_stable() {
         .expect("initial runtime state must export");
 
     // Then: legacy registrations remain untouched and thermal systems are appended as 9 and 10.
-    assert_eq!(CURRENT_DIGEST_SCHEMA_VERSION.raw(), 5);
+    assert_eq!(CURRENT_DIGEST_SCHEMA_VERSION.raw(), 6);
     assert_eq!(snapshot.recipe.system_registrations.len(), 11);
     assert_eq!(
         snapshot

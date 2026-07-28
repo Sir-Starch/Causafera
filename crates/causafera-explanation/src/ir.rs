@@ -31,6 +31,8 @@ pub const MATERIAL_SURFACE_LOOP_LOCAL_MANA_TRANSITION_SCHEMA: ExplanationClaimSc
     ExplanationClaimSchemaId::new(15);
 pub const THERMAL_CARRIER_CONSERVATION_SCHEMA: ExplanationClaimSchemaId =
     ExplanationClaimSchemaId::new(16);
+pub const MATERIAL_SURFACE_THERMAL_EXCHANGE_SCHEMA: ExplanationClaimSchemaId =
+    ExplanationClaimSchemaId::new(17);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -354,6 +356,45 @@ impl ThermalCarrierConservationClaim {
     }
 }
 
+/// A material surface's retained-heat exchange with its co-located thermal cell
+/// (`TODO-THERMAL-002`), scoped by `MaterialSurfaceId` and independent of the surface's
+/// mana/contact history: thermal exchange runs every tick regardless of whether an actor has
+/// ever touched the surface.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct MaterialSurfaceThermalExchangeClaim {
+    pub before_retained: i64,
+    pub after_retained: i64,
+    pub transition_trace: TraceId,
+    pub cell_trace: TraceId,
+}
+
+impl MaterialSurfaceThermalExchangeClaim {
+    pub fn to_explanation_claim(self) -> Result<ExplanationClaim, ExplanationIrError> {
+        ExplanationClaim::new(
+            MATERIAL_SURFACE_THERMAL_EXCHANGE_SCHEMA,
+            NumericClaimValue::range(
+                self.before_retained.min(self.after_retained),
+                self.before_retained.max(self.after_retained),
+            )?,
+            ClaimConfidence::ONE,
+            vec![self.transition_trace, self.cell_trace],
+            ComparisonContext::None,
+            ClaimEvidenceState::Supported,
+        )
+    }
+
+    /// The claim for a surface with no exchange evidence in the bounded transition history,
+    /// carrying its current retained energy as the honest "here is the state, here is why there
+    /// is no transition evidence" value.
+    pub fn unknown(retained_energy: i64) -> Result<ExplanationClaim, ExplanationIrError> {
+        ExplanationClaim::unknown(
+            MATERIAL_SURFACE_THERMAL_EXCHANGE_SCHEMA,
+            NumericClaimValue::scalar(retained_energy),
+            ComparisonContext::None,
+        )
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum FrameAssessment {
     Supported,
@@ -593,6 +634,8 @@ mod tests {
             total_cell_energy_after: 160,
             total_reservoir_budget_before: 80,
             total_reservoir_budget_after: 20,
+            total_material_retained_before: 0,
+            total_material_retained_after: 0,
             residual: 0,
         };
         let claim = ThermalCarrierConservationClaim {
@@ -615,5 +658,61 @@ mod tests {
             actual.evidence_traces,
             vec![TraceId::new(29), TraceId::new(30), TraceId::new(31)]
         );
+    }
+
+    #[test]
+    fn material_surface_thermal_exchange_claim_reports_a_retained_energy_range() {
+        // Given: a surface whose retained energy rose during one committed exchange.
+        let claim = MaterialSurfaceThermalExchangeClaim {
+            before_retained: 20,
+            after_retained: 24,
+            transition_trace: TraceId::new(41),
+            cell_trace: TraceId::new(40),
+        };
+
+        // When: the transition is converted into a non-authoritative explanation claim.
+        let actual = claim.to_explanation_claim().unwrap();
+
+        // Then: the range is ordered independent of exchange direction and evidence is preserved.
+        assert_eq!(actual.schema, MATERIAL_SURFACE_THERMAL_EXCHANGE_SCHEMA);
+        assert_eq!(
+            actual.value,
+            NumericClaimValue::Range { start: 20, end: 24 }
+        );
+        assert_eq!(actual.evidence_state, ClaimEvidenceState::Supported);
+        assert_eq!(
+            actual.evidence_traces,
+            vec![TraceId::new(40), TraceId::new(41)]
+        );
+    }
+
+    #[test]
+    fn material_surface_thermal_exchange_claim_orders_a_cooling_range() {
+        // Given: a surface whose retained energy fell during one committed exchange.
+        let claim = MaterialSurfaceThermalExchangeClaim {
+            before_retained: 24,
+            after_retained: 20,
+            transition_trace: TraceId::new(41),
+            cell_trace: TraceId::new(40),
+        };
+
+        // Then: the range is still ordered start <= end regardless of the exchange direction.
+        assert_eq!(
+            claim.to_explanation_claim().unwrap().value,
+            NumericClaimValue::Range { start: 20, end: 24 }
+        );
+    }
+
+    #[test]
+    fn material_surface_thermal_exchange_unknown_carries_current_retained_energy() {
+        // Given: a surface with no exchange evidence in the bounded transition history.
+        let claim = MaterialSurfaceThermalExchangeClaim::unknown(7).unwrap();
+
+        // Then: the claim is `Unknown` but still reports the surface's current retained energy.
+        assert_eq!(claim.schema, MATERIAL_SURFACE_THERMAL_EXCHANGE_SCHEMA);
+        assert_eq!(claim.value, NumericClaimValue::scalar(7));
+        assert_eq!(claim.evidence_state, ClaimEvidenceState::Unknown);
+        assert_eq!(claim.confidence, ClaimConfidence::ZERO);
+        assert!(claim.evidence_traces.is_empty());
     }
 }
