@@ -263,13 +263,14 @@ memory for a strictly weaker guarantee than what the totals chain already delive
 
 ### Known residual limitation (documented, not chased)
 
-A uniform offset `+Δ` applied to `C_b^-` and `C_b^+` for **every** `b` is self-consistent under
-I1-I6: every difference identity (I1, I2, I3, I5) is preserved because `Δ` appears on both sides,
-I4 is preserved because `Δ` cancels, and I6 is not violated because I6 constrains only `C_N^+`,
-which would be caught — unless the forger also shifts the materialized final field, which I6 does
-detect. The genuinely unclosed case is that `C_1^-`, the bootstrap total, has no independent anchor
-in the snapshot: nothing in the persisted state records what the world's total energy was before the
-first batch. A snapshot that consistently misreports that origin is not detectable by this scheme.
+A uniform offset applied only to every batch's `C_b^-` and `C_b^+` is rejected by I6 because the
+terminal `C_N^+` no longer equals the materialized final field. The genuinely unclosed case requires
+a coordinated forgery: shift the materialized final field by `+Δ` and apply the same `+Δ` to
+`C_b^-` and `C_b^+` for every `b`. I6 then matches the shifted field, every difference identity is
+preserved, I4 cancels the offset, and I5 preserves chain continuity. `C_1^-`, the bootstrap total,
+has no independent persisted anchor, so nothing records the original total before the first batch.
+A snapshot that consistently shifts both final state and the full aggregate chain is not detectable
+by this scheme.
 
 This falls squarely inside the pre-alpha untrusted-snapshot carve-out in `SECURITY.md:20-24` and is
 **not** in scope. It must be named in the `TODO-THERMAL-006` Resolution paragraph.
@@ -395,8 +396,8 @@ no state, emits no event, produces no trace, and adds no field to `RuntimeState`
 6. **Non-latest-batch per-cell bounds checking.** Already closed
    (`runtime_import_rejects_non_latest_receipt_cell_index_out_of_bounds`,
    `crates/causafera-runtime/tests/thermal_persistence.rs:252-273`).
-7. **Closing the `SECURITY.md:20-24` untrusted-snapshot carve-out**, including the uniform-offset
-   residual limitation described above.
+7. **Closing the `SECURITY.md:20-24` untrusted-snapshot carve-out**, including the coordinated
+   final-state-plus-chain limitation described above.
 8. **Any change that reorders or alters digest input**, adds a snapshot field, or changes any section
    major or digest schema version.
 9. **Any semantic or derived-temperature concept.** Energy remains the authoritative unit.
@@ -474,8 +475,9 @@ No production source is modified in this stage.
    not the actual per-cell energy total. The initial energies live only in `ThermalField::energy`
    and `ThermalField::last_change_before`; no persisted scalar records the bootstrap total cell
    energy. Anchoring `C_1^-` would require a new event, a new persisted field, or a new effect
-   encoding — more than "a few lines against already-committed state". Therefore the uniform-offset
-   residual limitation remains scoped to `SECURITY.md:20-24` and is not closed by this plan.
+   encoding — more than "a few lines against already-committed state". Therefore the coordinated
+   final-state-plus-chain limitation remains scoped to `SECURITY.md:20-24` and is not closed by this
+   plan.
 
 **GATE (Stage 1):** all six identities hold on the fixture; the RISK-2 fixture assertion passes; the
 RISK-3 and RISK-4 assertions pass; the `C_1^-` escalation is decided and recorded.
@@ -595,15 +597,16 @@ this plan.
 1. **Measure import wall time** with the harness described in the Benchmark plan section. Add
    `measure_import_wall_time` to `crates/causafera-runtime/src/benchmark.rs` and create
    `crates/causafera-runtime/examples/thermal_import_benchmark.rs`. Run
-   `cargo run -p causafera-runtime --example thermal_import_benchmark --release` once on the
-   pre-change code and once on the post-change code, using the same seed and tick count. Record
-   the workload description, the snapshot's `N`, `V`, and `Σ|receipts|`, the machine, the toolchain,
-   the exact command, and both measurements **in the Benchmark plan section of this file**. INV-018
-   forbids estimates: if the measurement cannot be taken, say so and do not report a number.
-2. **Close `TODO-THERMAL-006`** in `docs/development/todo-backlog.md:468-481` with a Resolution
+   `cargo run -p causafera-runtime --example thermal_import_benchmark --release` on the pre-change
+   code and the post-change code, using the same harness, seed, tick count, 10 repetitions and 100
+   imports per repetition. Record the workload description, the snapshot's `N`, `V`, and
+   `Σ|receipts|`, hardware, toolchain, exact command, and mean/median/stddev for both measurements
+   **in the Benchmark plan section of this file**. INV-018 forbids estimates: if the measurement
+   cannot be taken, say so and do not report a number.
+2. **Close `TODO-THERMAL-006`** in `docs/development/todo-backlog.md:468-483` with a Resolution
    paragraph that names: the six identities, the terminal-anchor-plus-induction structure, the
-   measured import-time delta, and the residual uniform-offset limitation with its explicit
-   `SECURITY.md:20-24` scoping.
+    measured import-time delta, and the coordinated final-state-plus-chain limitation with its
+    explicit `SECURITY.md:20-24` scoping.
 3. **`CHANGELOG.md`** — aggregate conservation cross-validation on import; state explicitly that no
    section major and no digest schema version changed.
 4. **`docs/ontology/causal-carriers.md`** — note in the implemented-carrier-boundaries discussion
@@ -644,7 +647,8 @@ comments and `assert!(matches!(imported, Err(RuntimeError::InvalidSnapshot(_))))
 
 ### V1 — Fixture preconditions (RISK-2 gate)
 `N >= 3`; at least one reservoir with residual budget; at least one surface with non-zero retained
-energy; at least one cell in no receipt of any batch.
+energy; at least one cell that is in **no** transfer receipt of **any** batch **and** has **no**
+thermal boundary record (i.e., it is genuinely unbound by today's validation surface).
 Test: `::fixture_satisfies_aggregate_validation_preconditions`.
 
 ### V2 — Face flux sums to zero per batch (RISK-3)
@@ -677,17 +681,19 @@ already cross-validated against `Σ accepted_injection` in today's import path
 (`runtime.rs:2748-2771`). Forging them is already rejected, so they do not prove a new gap. Stage 2
 records this as a confirming observation rather than as a RED failing control.
 
-### V6 — Untouched-cell tampering (negative control 2)
-Mutate the energy of a cell appearing in **no** receipt of **any** batch, leaving every receipt and
-every aggregate literal alone. Must reject via I6.
+### V6 — Unbound-cell tampering (negative control 2)
+Mutate the energy of a cell that is in **no** transfer receipt of **any** batch **and** has **no**
+thermal boundary record, leaving every receipt and every aggregate literal alone. Must reject via
+I6. The active-region boundary is already bound by `import_thermal_boundary_records`
+(`runtime.rs:2816-2894`), so the reported gap concerns only genuinely interior, unbound cells.
 **This is the test that proves the reported gap is closed. Without it the plan is unverified.**
 Test: `::runtime_import_rejects_untouched_cell_energy_tampering`.
 
 ### V7 — Coordinated forgery (negative control 3)
-Tamper an untouched cell **and** adjust `C_N^+` to match, so I6 is satisfied. Must still reject, via
-I2 (batch `N`'s "before" no longer reconciles with `R_N`) or I5 (the chain to batch `N-1` breaks) —
-not via I6. Assert the rejection message identifies I2 or I5, so the test cannot pass for the wrong
-reason.
+Tamper an unbound cell (no receipt, no boundary record) **and** adjust `C_N^+` to match, so I6 is
+satisfied. Must still reject, via I2 (batch `N`'s "before" no longer reconciles with `R_N`) or I5
+(the chain to batch `N-1` breaks) — not via I6. Assert the rejection message identifies I2 or I5,
+so the test cannot pass for the wrong reason.
 Test: `::runtime_import_rejects_coordinated_untouched_cell_and_terminal_total_forgery`.
 
 ### V8 — Historical-batch tampering (negative control 4)
@@ -747,21 +753,20 @@ node tools/audit/run-source-tests.mjs
   `production_loop_config(seed)` (`crates/causafera-runtime/src/benchmark.rs:345`) plus
   `runtime.run_ticks(k)` for the largest `k` that keeps the benchmark acceptably fast.
 - **Method:** a small, additive harness in the runtime crate. Add
-  `pub fn measure_import_wall_time(data: &RuntimeSnapshotData, iterations: u32) -> u128`
-  to `crates/causafera-runtime/src/benchmark.rs`, which calls `RuntimeState::import_snapshot` in a
-  loop with `std::hint::black_box` on both input and result, and returns the elapsed nanoseconds
-  divided by `iterations`. Add a binary example
+  `pub fn measure_import_wall_time(data: &RuntimeSnapshotData, iterations: u32) -> Result<u128,
+  RuntimeError>` to `crates/causafera-runtime/src/benchmark.rs`, which rejects zero iterations,
+  calls `RuntimeState::import_snapshot` in a loop with `std::hint::black_box` on both input and
+  result, and returns elapsed nanoseconds divided by `iterations`. Add a binary example
   `crates/causafera-runtime/examples/thermal_import_benchmark.rs` that:
   1. Builds a `Runtime` from `production_loop_config(seed)`.
   2. Warms up with `WARMUP_TICKS` ticks.
   3. Runs `MEASUREMENT_TICKS` ticks and exports a snapshot.
-  4. Calls `measure_import_wall_time(&snapshot, IMPORT_ITERATIONS)` and prints a single JSON line
-     with keys `mean_import_ns`, `batch_count`, `total_cells`, `total_transfer_receipts`,
-     `measurement_ticks`, `seed`, and `toolchain`.
-  Warm-up, iteration count, and seed follow `docs/performance/benchmarks.md`; the statistic reported
-  is the mean import wall time per call. Record machine, toolchain version, and the exact command.
-  Run the example once on the pre-change code and once on the post-change code against the same
-  generated snapshot shape; the only difference recorded is the validator's presence.
+  4. Calls `measure_import_wall_time(&snapshot, INNER_ITERATIONS)` 10 times and prints one JSON line
+     with mean, median, sample standard deviation, min, max, repetition and inner-iteration counts,
+     workload dimensions, seed, toolchain, CPU model, and deterministic-mode flag.
+  Warm-up, repetition count, inner iteration count, and seed follow
+  `docs/performance/benchmarks.md`. Run the same example on the pre-change and post-change code
+  against the same generated snapshot shape; the only implementation difference is the validator.
 - **Command (exact):**
   ```bash
   cargo run -p causafera-runtime --example thermal_import_benchmark --release
@@ -777,7 +782,19 @@ node tools/audit/run-source-tests.mjs
 - **No number appears in this section until Stage 5 measures it.** INV-018 makes estimates
   inadmissible.
 
-**Measurements:** _(to be recorded in Stage 5; empty until then)_
+**Measurements:**
+
+- **Machine:** local Linux development host, AMD Ryzen 9 7950X3D 16-Core Processor.
+- **Toolchain:** `rustc 1.97.1 (8bab26f4f 2026-07-14)`.
+- **Command:** `cargo run -p causafera-runtime --example thermal_import_benchmark --release`.
+- **Workload:** `production_loop_config(seed=2026)` with `WARMUP_TICKS=4`,
+  `MEASUREMENT_TICKS=32`, `REPETITIONS=10`, `INNER_ITERATIONS=100`; produced snapshot shape:
+  `batch_count=36`, `total_cells=27`, `total_transfer_receipts=668`.
+- **Pre-change (Wave 1 commit `9ddba30`, same harness):** `{"mean_import_ns":1052697.1,"median_import_ns":942363,"stddev_import_ns":177317.41585795922,"min_import_ns":925985,"max_import_ns":1405032,"repetitions":10,"inner_iterations":100,"batch_count":36,"total_cells":27,"total_transfer_receipts":668,"measurement_ticks":32,"seed":2026,"toolchain":"rustc 1.97.1 (8bab26f4f 2026-07-14)","hardware":"AMD Ryzen 9 7950X3D 16-Core Processor","deterministic_mode":true}`.
+- **Post-change (current working tree, same harness):** `{"mean_import_ns":955733.4,"median_import_ns":949907,"stddev_import_ns":24938.951885665836,"min_import_ns":936455,"max_import_ns":1021484,"repetitions":10,"inner_iterations":100,"batch_count":36,"total_cells":27,"total_transfer_receipts":668,"measurement_ticks":32,"seed":2026,"toolchain":"rustc 1.97.1 (8bab26f4f 2026-07-14)","hardware":"AMD Ryzen 9 7950X3D 16-Core Processor","deterministic_mode":true}`.
+- **Observed delta:** mean `-96963.7 ns` (`-9.21%`); median `+7544 ns` (`+0.80%`). No
+  regression threshold was defined, so these measurements are recorded without a performance
+  pass/fail claim.
 
 ## Determinism impact
 
@@ -908,14 +925,14 @@ enforced. Reading the code is not sufficient evidence for a load-bearing invaria
 | An accidental section-major or digest-schema bump | Stage 4 gate V11 checks `git diff` on the constants and requires `thermal_persistence_literal_version_contract` to be unmodified; digest bytes must be identical. |
 | Growing `runtime.rs` further (INV-042) | The validator is a new named sibling module; `runtime.rs` gains one accumulator fold, one signature parameter, and one call. |
 | Scope creep into `TODO-THERMAL-007`/`008` or receipt compaction | Explicit Non-goals with their concrete blockers named. |
-| The residual uniform-offset limitation being mistaken for full coverage | Named in Proposed architecture, and required to be named in the `TODO-THERMAL-006` Resolution paragraph and in `CHANGELOG.md`. |
+| The coordinated final-state-plus-chain limitation being mistaken for full coverage | Named in Proposed architecture, and required to be named in the `TODO-THERMAL-006` Resolution paragraph and in `CHANGELOG.md`. |
 | Controls passing because a *different* existing check rejected first | V7 and V8 assert the specific rejection message, so each control proves the identity it targets. |
 
 ## Documentation changes
 
-- `docs/development/todo-backlog.md:468-481` — close `TODO-THERMAL-006` with a Resolution paragraph
+- `docs/development/todo-backlog.md:468-483` — close `TODO-THERMAL-006` with a Resolution paragraph
   naming the six identities, the induction structure, the measured import-time delta, and the
-  residual uniform-offset limitation scoped to `SECURITY.md:20-24`.
+  coordinated final-state-plus-chain limitation scoped to `SECURITY.md:20-24`.
 - `CHANGELOG.md` — aggregate conservation cross-validation on snapshot import; explicitly state that
   no section major and no digest schema version changed.
 - `docs/ontology/causal-carriers.md` — note that the thermal carrier's persisted aggregate totals are
@@ -931,7 +948,7 @@ enforced. Reading the code is not sufficient evidence for a load-bearing invaria
 - Close `TODO-THERMAL-006` with the Resolution paragraph described above.
 - Do not modify `TODO-THERMAL-001`, `003`, `004`, `005`, `007`, or `008`. They remain independently
   deferred with their existing scope.
-- Open no new TODO. The residual uniform-offset limitation is documented as scoped inside the
+- Open no new TODO. The coordinated final-state-plus-chain limitation is documented as scoped inside the
   existing `SECURITY.md` carve-out, not as a new work item; the receipt retention/compaction gap is
   already tracked via `TODO-PERF-002` / `TODO-PERF-003` and
   `docs/simulation/long-run-experiments.md:66-89`.
@@ -1006,13 +1023,14 @@ enforced. Reading the code is not sufficient evidence for a load-bearing invaria
   per-receipt data. Storing or reconstructing historical per-cell field state would cost `O(N·V)`
   memory for a strictly weaker guarantee, since the aggregate literals are scalar totals and totals
   are exactly what the chain already determines.
-- **2026-07-28 — Residual uniform-offset limitation accepted, not chased.** A uniform `+Δ` applied to
-  `C_b^-` and `C_b^+` for every `b` is self-consistent under I1-I6 because `C_1^-`, the bootstrap
-  total, has no independent anchor in the snapshot and `Δ` cancels in I4. This sits inside the
-  pre-alpha untrusted-snapshot carve-out at `SECURITY.md:20-24`. Stage 1 evaluates exactly one
-  escalation: if the thermal bootstrap event's committed effects already encode per-cell initial
-  energies, anchoring `C_1^-` against them closes the induction at the bottom — taken only if it is a
-  few lines against existing committed state, otherwise documented and left open.
+- **2026-07-28 — Coordinated final-state-plus-chain limitation accepted, not chased.** A uniform
+  aggregate offset alone is rejected by I6. The undetected case requires shifting the materialized
+  final field and every batch's `C_b^-`/`C_b^+` by the same `+Δ`; all difference and chain identities
+  then remain true because `C_1^-`, the bootstrap total, has no independent persisted anchor. This
+  sits inside the pre-alpha untrusted-snapshot carve-out at `SECURITY.md:20-24`. Stage 1 evaluates
+  exactly one escalation: if the thermal bootstrap event's committed effects already encode per-cell
+  initial energies, anchoring `C_1^-` against them closes the induction at the bottom — taken only if
+  it is a few lines against existing committed state, otherwise documented and left open.
 - **2026-07-28 — `TODO-THERMAL-007` and `008` deliberately not bundled.** `007` requires a user
   decision between expansion, damage accumulation, and phase change — three materially different
   response models, hence three different plans. `008` carries the opposite persistence posture: it
@@ -1065,8 +1083,21 @@ enforced. Reading the code is not sufficient evidence for a load-bearing invaria
   before/after values (`bootstrap.rs:323-333`), not the actual per-cell energy total. The initial
   energies exist only in `ThermalField::energy` and `ThermalField::last_change_before`. Anchoring
   `C_1^-` would require a new persisted scalar, a new event, or a new effect encoding — more than
-  the "few lines against already-committed state" threshold. The uniform-offset residual limitation
-  remains inside the `SECURITY.md:20-24` carve-out.
+  the "few lines against already-committed state" threshold. The coordinated
+  final-state-plus-chain limitation remains inside the `SECURITY.md:20-24` carve-out.
+- **2026-07-28 — Independent verification tightened tests, benchmark evidence, and limitation
+  wording.** V5 now exercises both `+1` and `-1` across all eight literal/batch combinations; V7
+  asserts the I2 rejection and V8 asserts the I5 rejection. Exact integration controls isolate I3
+  and I3a; a direct validator unit control isolates aggregate I4 after I2/I3 pass, while a separate
+  import control covers the persisted non-zero residual field. Validator unit tests and aggregate
+  integration tests were split into cohesive sibling
+  modules so every changed Rust file remains below the 250-pure-LOC ceiling, and the missing-terminal
+  receipt path now fails closed instead of relying on `expect`. The import benchmark runs the same
+  10-by-100 statistical harness on baseline commit `9ddba30` and the post-change tree, records CPU,
+  mean, median, sample standard deviation, min and max, and makes no performance pass/fail claim
+  because no regression threshold was defined. Documentation now states precisely that I6 rejects a
+  uniform aggregate-only offset; the remaining carve-out requires a coordinated shift of final field
+  state and the entire aggregate chain.
 - **2026-07-28 — This plan's V-numbering is local.** The acceptance criterion's "V1-V23 thermal
   contracts" refers to `plans/conserved-thermal-energy-carrier.md:599-766`. This plan restarts at V1
   following the convention of `plans/thermal-material-surface-coupling.md`; V12 requires the carrier
@@ -1074,8 +1105,12 @@ enforced. Reading the code is not sufficient evidence for a load-bearing invaria
 
 ## Progress
 
-Draft. Not yet accepted. Implementation is not authorized by this document until its status changes
-to Accepted.
+Accepted and implemented. The implementation, Rust, frontend, entry-point audit, and documentation
+gates are green. `node tools/audit/run-source-tests.mjs` is environment-blocked: 9 of 14 tests pass,
+while five direct-Rust/LSP cases cannot start because the pinned Rust 1.97.1 toolchain has no
+`rust-analyzer` component. This unavailable check is not reported as passing. Checkpoint commits were
+not created because the active environment policy requires explicit authorization for commits;
+uncommitted state and evidence are recorded below.
 
 ### Commit strategy
 
@@ -1087,18 +1122,18 @@ partially integrated state. Never begin a wave while a completed prior wave exis
 uncommitted working-tree state.
 
 **Wave 1 — Stage 1 (observational harness; tests only, no production change)**
-- Commit hash: `_pending_`
+- Commit hash: `9ddba30`
 - File allowlist:
   - `crates/causafera-runtime/tests/thermal_conservation_aggregates.rs`
 - Verifying commands: `cargo test -p causafera-runtime --test thermal_conservation_aggregates`;
   `cargo fmt --all -- --check`;
   `cargo clippy --workspace --all-targets --all-features -- -D warnings`
 - Gate evidence: V1, V2, V3, V4 pass; `C_1^-` escalation decision recorded in the Decision log.
-- Result: `_pending_`
+- Result: **GREEN**
 
 **Wave 2 — Stage 2 + Stage 3 (RED controls and the implementation that greens them, one atomic
 RED→GREEN checkpoint)**
-- Commit hash: `_pending_`
+- Commit hash: `_not created; commits require explicit authorization in this environment_`
 - File allowlist:
   - `crates/causafera-runtime/src/thermal_conservation_validation.rs` (new)
   - `crates/causafera-runtime/src/lib.rs`
@@ -1109,25 +1144,48 @@ RED→GREEN checkpoint)**
   `cargo test --workspace --all-features`; `cargo test --workspace --no-default-features`;
   `cargo run -p xtask -- ci`; `git diff --check`
 - Stage 2 gate evidence (transcript showing controls 1-4 fail to reject on pre-change code):
-  `_pending_`
-- Stage 3 gate evidence (V5, V6, V7, V8 green): `_pending_`
-- Result: `_pending_`
+  `cargo test -p causafera-runtime --test thermal_conservation_aggregates` reports 4 failures:
+  - `runtime_import_rejects_forged_cell_and_material_aggregate_totals`: `forging cell_energy_before in batch 0 must be rejected`;
+  - `runtime_import_rejects_untouched_cell_energy_tampering`: `tampering an unbound cell energy must be rejected`;
+  - `runtime_import_rejects_coordinated_untouched_cell_and_terminal_total_forgery`: `coordinated untouched-cell + terminal total forgery must be rejected`;
+  - `runtime_import_rejects_historical_batch_material_total_forgery`: `historical batch material total forgery must be rejected`.
+  Reservoir-total forgery is already rejected (`reservoir_aggregate_totals_are_already_rejected` passes),
+  confirming existing I1 enforcement.
+- Stage 3 gate evidence (V5, V6, V7, V8 green): V5 exercises 16 `±1` perturbations across all eight
+  literal/batch combinations; V6 rejects unbound-cell tampering; V7 asserts the exact I2 rejection;
+  V8 asserts the exact I5 rejection. Additional exact integration controls isolate I3 and I3a; a
+  direct validator unit test isolates aggregate I4. The integration target reports 16 passing tests
+  after the modular split, and the validator unit module reports 5.
+- Result: **GREEN**
 
 **Wave 3 — Stage 4 (format and determinism neutrality)**
-- Commit hash: `_pending_`
+- Commit hash: `_not created; commits require explicit authorization in this environment_`
 - File allowlist:
   - `crates/causafera-runtime/tests/thermal_conservation_aggregates.rs`
+  - `crates/causafera-runtime/src/thermal_conservation_validation.rs` (accumulator unit tests)
 - Verifying commands: `cargo test -p causafera-runtime --test thermal_conservation_aggregates`;
+  `cargo test -p causafera-runtime thermal_conservation_validation::tests`;
   `cargo test -p causafera-runtime --test thermal_persistence`;
   `git diff -- crates/causafera-runtime/src/snapshot_sections.rs`;
   `git diff -- crates/causafera-runtime/tests/thermal_persistence.rs`;
-  `cargo test --workspace --all-features`
-- Gate evidence: recorded pre/post `physical_state_digest` and `history_digest` pair (identical);
-  V9, V10, V11 green; version constants provably untouched.
-- Result: `_pending_`
+  `cargo fmt --all -- --check`;
+  `cargo clippy --workspace --all-targets --all-features -- -D warnings`;
+  `cargo test --workspace --all-features`;
+  `cargo test --workspace --no-default-features`;
+  `cargo run -p xtask -- ci`;
+  `git diff --check`
+- Gate evidence: recorded pre/post `physical_state_digest` and `history_digest` pair identical:
+  - `physical_state_digest`: `744fcbbdf76f0ce77a8126a8ece05f3b848dda2d9ba78f79c965f62921037869`
+  - `history_digest`: `d3052aa5863d415cd1d0740c98597776002deaf9d497fd39026cf259fba70ff4`
+  - Values recorded at Wave 1 commit `9ddba30` using a temporary worktree and reproduced identically after the Stage 3 changes.
+  - V9 (`aggregate_validation_verdict_is_input_order_independent`) green; the accumulator-level order-independence is additionally unit-tested in `thermal_conservation_validation::tests::accumulator_is_order_independent`.
+  - V10 (`save_resume_equivalence_under_aggregate_validation`) green.
+  - V11 (`digest_and_section_versions_are_unchanged`) green; `THERMAL_SECTION_MAJOR`, `MATERIAL_SURFACE_SECTION_MAJOR`, and `CURRENT_DIGEST_SCHEMA_VERSION` are unchanged; `thermal_persistence_literal_version_contract` passes.
+  - `git diff -- crates/causafera-runtime/src/snapshot_sections.rs` and `git diff -- crates/causafera-runtime/tests/thermal_persistence.rs` produced no output.
+- Result: **GREEN**
 
 **Wave 4 — Stage 5 (benchmark and documentation)**
-- Commit hash: `_pending_`
+- Commit hash: `_not created; commits require explicit authorization in this environment_`
 - File allowlist:
   - `crates/causafera-runtime/src/benchmark.rs`
   - `crates/causafera-runtime/examples/thermal_import_benchmark.rs`
@@ -1139,6 +1197,10 @@ RED→GREEN checkpoint)**
   - `plans/thermal-conservation-aggregate-validation.md`
 - Verifying commands: full CI gate as listed in Stage 5 and V12.
 - Gate evidence: measured import wall time before/after recorded verbatim in the Benchmark plan
-  section with workload, `N`, `V`, `Σ|receipts|`, machine, toolchain, and command;
-  `TODO-THERMAL-006` Resolution paragraph names the residual uniform-offset limitation.
-- Result: `_pending_`
+  section with workload, `N=36`, `V=27`, `Σ|receipts|=668`, CPU, toolchain, command, and
+  mean/median/sample-standard-deviation over 10 repetitions of 100 imports;
+  `TODO-THERMAL-006` Resolution paragraph names the coordinated final-state-plus-chain limitation.
+  `node tools/audit/check-entry-points.mjs` passes; `node tools/audit/run-source-tests.mjs` reports
+  9/14 pass and five environment-blocked tests because `rustup which rust-analyzer` fails for the
+  pinned toolchain.
+- Result: **GREEN except environment-blocked source-audit cases described above**

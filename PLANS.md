@@ -105,6 +105,7 @@ This section lists proposals that have not yet been accepted.
 
 These plans have been accepted and implemented. They are preserved as implementation and decision records rather than current guidance.
 
+- [`plans/thermal-conservation-aggregate-validation.md`](plans/thermal-conservation-aggregate-validation.md) — completed and implemented; cross-validates every `ThermalConservationReceipt`'s aggregate literals against materialized state and per-receipt data on snapshot import, closes `TODO-THERMAL-006`, and leaves `THERMAL_SECTION_MAJOR`, `MATERIAL_SURFACE_SECTION_MAJOR`, and `CURRENT_DIGEST_SCHEMA_VERSION` unchanged.
 - [`plans/conserved-thermal-energy-carrier.md`](plans/conserved-thermal-energy-carrier.md) — completed and implemented; bounded conserved thermal storage and same-chart transfer tranche.
 - [`plans/local-mana-material-surface-coupling.md`](plans/local-mana-material-surface-coupling.md) — completed and implemented; bounded local mana-cell to material-surface coupling slice replacing the global mana-total gate with per-surface local hysteresis.
 - [`plans/terrain-carrier-participation.md`](plans/terrain-carrier-participation.md) — completed and implemented; the terrain carrier reaches the tick loop as a standing spatial structure (`TODO-RUNTIME-002`).
