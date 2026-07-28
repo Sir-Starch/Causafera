@@ -99,6 +99,14 @@ residual and before/after totals for each batch. Canonically ordered boundary re
 same-chart face whose neighbor lies outside the active region, using the frozen post-injection
 pre-state; they are replaced only after a successful batch commit and persist in section `0x000E`.
 
+On snapshot import those six aggregate totals are cross-validated against materialized state and
+per-receipt data: the latest batch's "after" totals anchor to the imported cell energies, reservoir
+budgets, and material retained energies; per-batch identities pin the "before" totals from transfer
+and injection receipts; and a chain identity propagates those anchors across every batch. A cell or
+material site that never appears in a transfer receipt is therefore no longer unbound. The validation
+uses `i128` checked sums and returns `InvalidSnapshot` on any overflow or imbalance, with no change
+to the persisted format or to the thermal carrier's causal semantics (`TODO-THERMAL-006`).
+
 A material surface's retained thermal energy is a third conserved bucket alongside cells and
 reservoirs (`TODO-THERMAL-002`). Each bootstrapped surface exchanges energy with its co-located
 thermal cell inside the same atomic Physics-phase batch that diffuses cell-to-cell energy, using the
