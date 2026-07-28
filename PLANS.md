@@ -96,6 +96,9 @@ Progress
   configurations the cognition cue cap cannot execute, an incremental `history_digest` whose value
   stays bit-identical, and per-commit CI capture of the harness output (`TODO-PERF-001`). Two
   deliberately-unclosed follow-ups continue as `TODO-PERF-002` and `TODO-PERF-003`.
+- [`plans/mana-seam-saturation-ceiling.md`](plans/mana-seam-saturation-ceiling.md) — accepted and
+  implemented; a cell fed across a chunk seam is now bounded by `maximum_intensity` the same way a
+  cell fed from inside its own chunk already was, closing `TODO-MANA-006`.
 
 ## Draft Plans
 
