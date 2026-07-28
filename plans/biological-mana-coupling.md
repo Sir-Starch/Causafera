@@ -1,6 +1,6 @@
 # Biological Mana Coupling ExecPlan
 
-**Status:** Accepted
+**Status:** Accepted — blocked
 
 ## Goal
 

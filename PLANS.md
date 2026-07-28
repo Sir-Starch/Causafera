@@ -1,6 +1,6 @@
 # Causafera Plans
 
-ExecPlans are structured architectural proposals required before beginning implementation of major simulation subsystems. They align work with the project thesis and invariants in [README.md](README.md). This page lists only work that remains current; it is not a project-status summary.
+ExecPlans are structured architectural proposals required before beginning implementation of major simulation subsystems. They align work with the project thesis and invariants in [README.md](README.md). This document is the authoritative plan index and status map, not a complete project-status summary.
 
 ## ExecPlan Requirements
 
@@ -49,8 +49,10 @@ Progress
 
 ## Plan authority
 
-- `plans/` contains the authoritative project ExecPlans. They are the sole source of truth for
-  architecture, scope, implementation stages, acceptance criteria, decisions, and plan status.
+- `plans/` contains the authoritative project ExecPlans. Invariants, accepted ADRs, RFCs, and
+  plans each have their own authority; a canonical ExecPlan is the source of truth for the scope,
+  implementation stages, acceptance criteria, decisions, progress, and status of the specific work
+  it describes.
 - Tool-specific execution artifacts may exist outside `plans/` to coordinate work in a particular
   environment. They are non-authoritative adapters and must not duplicate, supersede, independently
   revise, or independently version a canonical ExecPlan.
@@ -84,19 +86,20 @@ Progress
 
 This section lists only accepted or in-progress work with genuinely unfinished implementation stages, acceptance criteria, or close-out work.
 
-- [`plans/biological-mana-coupling.md`](plans/biological-mana-coupling.md) — accepted architecture awaiting implementation for physical biological mana coupling and its downstream validation (`TODO-BIO-003`).
+- No canonical ExecPlans are currently active. For current project priorities, use the [roadmap](docs/roadmap/roadmap.md), [maturity matrix](docs/ontology/domain-coverage-matrix.md), and [TODO backlog](docs/development/todo-backlog.md).
+
+## Blocked and Paused Work
+
+This section lists accepted proposals whose implementation is blocked by unbuilt prerequisites, as well as paused audits that are neither active priorities nor completed records. Work listed here is not current implementation guidance and does not block present development.
+
+- [`plans/biological-mana-coupling.md`](plans/biological-mana-coupling.md) — accepted architecture that is not current implementation work; implementation is currently blocked until detailed biology contracts and prerequisites mature (`TODO-BIO-003`).
+- [`plans/detailed-development-maturity-audit.md`](plans/detailed-development-maturity-audit.md) — intentionally paused evidence audit for the frozen `26026fb3862e` baseline. Completed Todos 1–4 remain diagnostic groundwork; unfinished deep audit work does not block current work and is not implementation guidance or a prerequisite (`TODO-DEPTH-001`).
 
 ## Draft Plans
 
 This section lists proposals that have not yet been accepted.
 
 - [`plans/experiment-recipe-mana-source.md`](plans/experiment-recipe-mana-source.md) — Draft bounded production-path experiment-recipe mana source slice; not active and not an operator API.
-
-## Paused Work
-
-This section lists paused plans and audits that are neither active priorities nor completed records. Work listed here does not block current development.
-
-- [`plans/detailed-development-maturity-audit.md`](plans/detailed-development-maturity-audit.md) — intentionally paused evidence audit for the frozen `26026fb3862e` baseline. Completed Todos 1–4 remain diagnostic groundwork; unfinished deep audit work does not block current work and is not implementation guidance or a prerequisite (`TODO-DEPTH-001`).
 
 ## Completed Detailed Development Plans
 
