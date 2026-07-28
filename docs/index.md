@@ -20,7 +20,7 @@ Later documents supersede conflicting initialization-spec sections **only when t
 - **Architecture and concepts** — the [invariants](architecture/invariants.md), [Detailed Development rebaseline](architecture/detailed-development-rebaseline.md), [domain coverage matrix](ontology/domain-coverage-matrix.md), and the subsystem sections below.
 - **Governance and licensing** — [GOVERNANCE.md](../GOVERNANCE.md) is the authoritative statement of decision-making authority; the [CLA](../CLA.md) governs accepted contributions, and [`docs/legal/`](legal/cla-service-setup.md) holds the maintainer-side setup material.
 - **Development and contribution** — [CONTRIBUTING.md](../CONTRIBUTING.md), [development notes](development/), and [CHANGELOG.md](../CHANGELOG.md).
-- **Active plans** — [PLANS.md](../PLANS.md) lists the pending biological mana-coupling plan, the accepted local mana-material-surface coupling slice, and the completed actor/material/mana vertical-slice record.
+- **Agent and plan guidance** — [AGENTS.md](../AGENTS.md) is the canonical guidance for every coding agent; [PLANS.md](../PLANS.md) defines ExecPlan authority, structure, and the current plan list.
 - **Historical records** — completed ExecPlans and public-source-readiness provenance are retained in [historical plans and records](../plans/history/README.md); they are not current implementation guidance.
 - **Audit and maturity material** — [the paused maturity audit](../plans/detailed-development-maturity-audit.md) is historical diagnostic groundwork, not a public project-status claim or an implementation prerequisite.
 
@@ -225,7 +225,7 @@ Later documents supersede conflicting initialization-spec sections **only when t
 
 ## Development
 
-- `docs/development/codebase-memory.md` - Codebase knowledge graph
+- `docs/development/codebase-memory.md` - Optional codebase knowledge graph tooling
 - `docs/development/contributing.md` - Contributing
 - `docs/development/changelog.md` - Changelog
 - `docs/development/maturity-audit-groundwork.md` - Preserved frozen-audit Todos 1–4 groundwork

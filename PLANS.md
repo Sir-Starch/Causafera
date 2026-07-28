@@ -1,6 +1,6 @@
 # Causafera Plans
 
-ExecPlans are structured architectural proposals required before beginning implementation of major simulation subsystems. They align work with the project thesis and invariants in [README.md](README.md). This page lists only work that remains current; it is not a project-status summary.
+ExecPlans are structured architectural proposals required before beginning implementation of major simulation subsystems. They align work with the project thesis and invariants in [README.md](README.md). This document is the authoritative plan index and status map, not a complete project-status summary.
 
 ## ExecPlan Requirements
 
@@ -47,16 +47,20 @@ Decision log
 Progress
 ```
 
-## Plan locations and control-plane adapters
+## Plan authority
 
-- `plans/` contains the authoritative project ExecPlans. These are the sole source of truth for
-  architecture, implementation stages, acceptance criteria, and plan status.
-- `.omo/plans/` contains tool-specific adapters or execution-control plans used by the OmO
-  orchestration tooling (e.g., Momus review paths, `start-work` ledger references). These adapters
-  are non-authoritative and intentionally minimal; they do not supersede, copy, revise, or
-  independently version the canonical ExecPlans.
-- Substantive plan changes must never be made only in `.omo/plans/`. Any accepted review finding
-  must be applied to the canonical file under `plans/`.
+- `plans/` contains the authoritative project ExecPlans. Invariants, accepted ADRs, RFCs, and
+  plans each have their own authority; a canonical ExecPlan is the source of truth for the scope,
+  implementation stages, acceptance criteria, decisions, progress, and status of the specific work
+  it describes.
+- Tool-specific execution artifacts may exist outside `plans/` to coordinate work in a particular
+  environment. They are non-authoritative adapters and must not duplicate, supersede, independently
+  revise, or independently version a canonical ExecPlan.
+- Substantive plan changes must be made in the canonical file under `plans/`. Findings produced by
+  any review or orchestration tool become project decisions only after they are incorporated into
+  that canonical plan.
+- When a pull request completes the implementation of a plan, it must also remove the plan from
+  Active Plans and place it under Completed Detailed Development Plans.
 
 ## Execution safety and checkpoints
 
@@ -78,49 +82,43 @@ Progress
   secrets or temporary artifacts are included, and stage files by explicit path. A broad `git add .`
   is not an acceptable checkpoint procedure.
 
-## Active Planning
+## Active Plans
 
-- [`plans/conserved-thermal-energy-carrier.md`](plans/conserved-thermal-energy-carrier.md) — Accepted
-  bounded conserved thermal storage and same-chart transfer tranche; implementation branch created from
-  this acceptance commit.
-- [`plans/biological-mana-coupling.md`](plans/biological-mana-coupling.md) — accepted architecture with pending implementation stages for physical biological mana coupling and its downstream validation.
-- [`plans/local-mana-material-surface-coupling.md`](plans/local-mana-material-surface-coupling.md) — accepted bounded local mana-cell to material-surface coupling slice; replaces the global mana-total gate with per-surface local hysteresis.
-- [`plans/terrain-carrier-participation.md`](plans/terrain-carrier-participation.md) — accepted and implemented; the terrain carrier reaches the tick loop as a standing spatial structure, so the world seed varies the simulation (`TODO-RUNTIME-002`).
-- [`plans/observer-locale-coverage.md`](plans/observer-locale-coverage.md) — accepted and implemented; the observer presents itself in five locales across UI chrome, locale-keyed metadata and the authoritative Explanation renderer, with INV-007 covered across the whole set (`TODO-UI-006`).
-- [`plans/terrain-chunk-boundary-continuity.md`](plans/terrain-chunk-boundary-continuity.md) — accepted and implemented; terrain elevation, roughness and material are generated from a cell's position in its chart rather than its chunk, so adjacent chunks meet at their shared edge (`TODO-GEO-005`).
-- [`plans/terrain-structure-cross-chunk-neighbours.md`](plans/terrain-structure-cross-chunk-neighbours.md) — accepted and implemented; the standing terrain carrier's mana-facing structure magnitude reads real neighbouring chunks' terrain across a chunk boundary instead of truncating at it (`TODO-GEO-006`).
-- [`plans/mana-gate-calibration.md`](plans/mana-gate-calibration.md) — accepted and implemented; the local mana effect gate's threshold and hysteresis are recalibrated against the population it actually reads, which discriminates worlds at every candidate lattice rather than latching (`TODO-MANA-007`).
-- [`plans/coherent-surface-material-regions.md`](plans/coherent-surface-material-regions.md) — accepted and implemented; surface material is generated as spatially coherent regions instead of per-cell noise, closing the constant floor this left in the terrain carrier's mana-facing structure magnitude (`TODO-GEO-004`).
-- [`plans/performance-baseline-and-digest-cost.md`](plans/performance-baseline-and-digest-cost.md) —
-  accepted and implemented; a checked-in statistical benchmark harness, construction-time rejection of
-  configurations the cognition cue cap cannot execute, an incremental `history_digest` whose value
-  stays bit-identical, and per-commit CI capture of the harness output (`TODO-PERF-001`). Two
-  deliberately-unclosed follow-ups continue as `TODO-PERF-002` and `TODO-PERF-003`.
-- [`plans/mana-seam-saturation-ceiling.md`](plans/mana-seam-saturation-ceiling.md) — accepted and
-  implemented; a cell fed across a chunk seam is now bounded by `maximum_intensity` the same way a
-  cell fed from inside its own chunk already was, closing `TODO-MANA-006`.
-- [`plans/thermal-material-surface-coupling.md`](plans/thermal-material-surface-coupling.md) —
-  accepted and implemented; a bounded, conserved retained-heat exchange between a material surface
-  and its co-located thermal cell, integrated into the existing atomic thermal batch, closing
-  `TODO-THERMAL-002`.
+This section lists only accepted or in-progress work with genuinely unfinished implementation stages, acceptance criteria, or close-out work.
+
+- No canonical ExecPlans are currently active. For current project priorities, use the [roadmap](docs/roadmap/roadmap.md), [maturity matrix](docs/ontology/domain-coverage-matrix.md), and [TODO backlog](docs/development/todo-backlog.md).
+
+## Blocked and Paused Work
+
+This section lists accepted proposals whose implementation is blocked by unbuilt prerequisites, as well as paused audits that are neither active priorities nor completed records. Work listed here is not current implementation guidance and does not block present development.
+
+- [`plans/biological-mana-coupling.md`](plans/biological-mana-coupling.md) — accepted architecture that is not current implementation work; implementation is currently blocked until detailed biology contracts and prerequisites mature (`TODO-BIO-003`).
+- [`plans/detailed-development-maturity-audit.md`](plans/detailed-development-maturity-audit.md) — intentionally paused evidence audit for the frozen `26026fb3862e` baseline. Completed Todos 1–4 remain diagnostic groundwork; unfinished deep audit work does not block current work and is not implementation guidance or a prerequisite (`TODO-DEPTH-001`).
 
 ## Draft Plans
 
-- [`plans/experiment-recipe-mana-source.md`](plans/experiment-recipe-mana-source.md) — Draft
-  bounded production-path experiment-recipe mana source slice; not active and not an operator API.
-- [`plans/observer-field-raster-map.md`](plans/observer-field-raster-map.md) — Draft bounded
-  per-chunk raster projection of the terrain and mana fields, plus a config-gated two-dimensional
-  active chunk shape, so the chart instrument renders measured relief and a measured mana field
-  instead of one aggregate per chunk.
+This section lists proposals that have not yet been accepted.
 
-## Paused Audit and Evidence Material
+- [`plans/experiment-recipe-mana-source.md`](plans/experiment-recipe-mana-source.md) — Draft bounded production-path experiment-recipe mana source slice; not active and not an operator API.
 
-- [`plans/detailed-development-maturity-audit.md`](plans/detailed-development-maturity-audit.md) — intentionally paused evidence audit for the frozen `26026fb3862e` baseline. Completed Todos 1–4 remain diagnostic groundwork; unfinished deep audit work is not implementation guidance or a prerequisite.
+## Completed Detailed Development Plans
 
-## Historical Plans and Records
+These plans have been accepted and implemented. They are preserved as implementation and decision records rather than current guidance.
 
-Completed Foundation Era ExecPlans, the completed Detailed Development rebaseline, and the public-source-readiness record live in [historical plans and records](plans/history/README.md). They preserve provenance, not current guidance. For current project state, use the [roadmap](docs/roadmap/roadmap.md), [maturity matrix](docs/ontology/domain-coverage-matrix.md), and active plan above.
+- [`plans/conserved-thermal-energy-carrier.md`](plans/conserved-thermal-energy-carrier.md) — completed and implemented; bounded conserved thermal storage and same-chart transfer tranche.
+- [`plans/local-mana-material-surface-coupling.md`](plans/local-mana-material-surface-coupling.md) — completed and implemented; bounded local mana-cell to material-surface coupling slice replacing the global mana-total gate with per-surface local hysteresis.
+- [`plans/terrain-carrier-participation.md`](plans/terrain-carrier-participation.md) — completed and implemented; the terrain carrier reaches the tick loop as a standing spatial structure (`TODO-RUNTIME-002`).
+- [`plans/observer-locale-coverage.md`](plans/observer-locale-coverage.md) — completed and implemented; the observer presents itself in five locales with INV-007 coverage (`TODO-UI-006`).
+- [`plans/terrain-chunk-boundary-continuity.md`](plans/terrain-chunk-boundary-continuity.md) — completed and implemented; terrain elevation, roughness, and material are generated from chart position so adjacent chunks meet continuously at boundaries (`TODO-GEO-005`).
+- [`plans/terrain-structure-cross-chunk-neighbours.md`](plans/terrain-structure-cross-chunk-neighbours.md) — completed and implemented; the standing terrain carrier reads real neighbouring chunks' terrain across chunk boundaries (`TODO-GEO-006`).
+- [`plans/mana-gate-calibration.md`](plans/mana-gate-calibration.md) — completed and implemented; local mana effect gate recalibration against populated fields (`TODO-MANA-007`).
+- [`plans/coherent-surface-material-regions.md`](plans/coherent-surface-material-regions.md) — completed and implemented; surface material is generated as spatially coherent regions instead of per-cell noise (`TODO-GEO-004`).
+- [`plans/performance-baseline-and-digest-cost.md`](plans/performance-baseline-and-digest-cost.md) — completed and implemented; checked-in statistical benchmark harness, scene-cue config validation, and incremental `history_digest` (`TODO-PERF-001`). Follow-ups continue as `TODO-PERF-002` and `TODO-PERF-003`.
+- [`plans/mana-seam-saturation-ceiling.md`](plans/mana-seam-saturation-ceiling.md) — completed and implemented; cross-seam mana deliveries bounded by `maximum_intensity` (`TODO-MANA-006`).
+- [`plans/thermal-material-surface-coupling.md`](plans/thermal-material-surface-coupling.md) — completed and implemented; bounded, conserved retained-heat exchange between material surfaces and thermal cells (`TODO-THERMAL-002`).
+- [`plans/observer-field-raster-map.md`](plans/observer-field-raster-map.md) — completed and implemented; per-chunk raster projection of terrain and mana fields, plus optional area-shaped active chunk geometry (`TODO-OBS-001`).
+- [`plans/actor-material-mana-loop.md`](plans/actor-material-mana-loop.md) — completed and implemented; first Detailed Development production vertical slice linking material surfaces, contact actions, perception, and mana effects (`TODO-SIM-001`).
 
-- [`plans/actor-material-mana-loop.md`](plans/actor-material-mana-loop.md) — completed and
-  verified first Detailed Development production vertical slice; preserved as its implementation
-  record rather than current planning guidance.
+## Historical Foundation Records
+
+Completed Foundation Era ExecPlans, the completed Detailed Development rebaseline, and the public-source-readiness record live in [historical plans and records](plans/history/README.md). They preserve provenance, not current guidance. For current project state, use the [roadmap](docs/roadmap/roadmap.md), [maturity matrix](docs/ontology/domain-coverage-matrix.md), and active plans above.

@@ -1,9 +1,23 @@
 @AGENTS.md
 
-## Claude Code Tooling
+## Claude Code adapter
 
-For indexed source-code discovery and dependency tracing, use `codebase-memory-mcp` before broad `Grep`, `Glob`, repeated `Read`, or filesystem search through `Bash`.
+[`AGENTS.md`](AGENTS.md) is the canonical agent guidance for this repository. Do not duplicate or
+restate it here. This file covers only Claude Code specifics.
 
-Use filesystem search directly only for documentation, configuration, generated files, binaries, exact text matching, files outside the index, or when MCP results are insufficient.
-
-Use MCP results to guide subsequent file reads. Do not invoke MCP merely as a formality.
+- The repository does not require any external orchestration framework. Do not assume
+  framework-specific agents, commands, or control files exist; when the active environment or
+  session provides orchestration tooling, follow that environment's own instructions. Do not
+  duplicate framework instructions in repository documentation.
+- Claude memory, previous-session summaries, and compacted context are navigation hints. They are not
+  authoritative; verify against current source, tests, and the canonical documents before acting.
+- `codebase-memory-mcp` is optional. Load it through ToolSearch when a question is genuinely
+  structural — architecture, call paths, relationships, or change-impact analysis.
+- Use Grep, Glob, and focused Read for exact identifiers, TODO IDs, filenames, error strings,
+  configuration, documentation, and literals.
+- Do not repeat the same discovery through both MCP and filesystem search without a concrete
+  verification reason.
+- Use plan mode for ambiguous or multi-stage work. Canonical ExecPlans under `plans/` remain the
+  authoritative plan of record; plan mode does not replace them.
+- After a resume or a context compaction, re-read the active plan's current Progress and Decision Log
+  sections and inspect `git status` before continuing.

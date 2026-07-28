@@ -1,6 +1,10 @@
 # Codebase Knowledge Graph
 
-All developers and AI agents working on Causafera must utilize the `codebase-memory-mcp` toolset to maintain and query a semantic knowledge graph of the codebase.
+`codebase-memory-mcp` maintains and queries a semantic knowledge graph of the codebase. It is an
+**optional convenience**, not a repository requirement: any equivalent structural tooling — LSP, call
+hierarchy, another semantic index — satisfies the same need, and exact text search remains the right
+tool for literals. See the code-discovery guidance in [`AGENTS.md`](/AGENTS.md). This page documents
+how to use the graph when it is available.
 
 ## Priority Order
 
@@ -10,20 +14,24 @@ All developers and AI agents working on Causafera must utilize the `codebase-mem
 4. `query_graph` - Run Cypher queries for complex patterns
 5. `get_architecture` - High-level project summary
 
-## Rules
+## Guidelines
 
-- Prefer `codebase-memory-mcp` tools over raw grep, glob, or file search for codebase navigation and structural analysis.
-- Keep the knowledge graph up to date as new crates, modules, structures, traits, and routes are introduced.
-- Use graph tools as the primary method for code discovery and dependency tracing.
+- Prefer a structural tool — this graph, LSP, or call hierarchy — for relationships, call paths, and
+  change-impact analysis.
+- Keep the graph up to date as new crates, modules, structures, traits, and routes are introduced, if
+  you are using it.
+- Keep queries narrow and bounded, and read current source before relying on an index result.
 
-## When to Fall Back
+## When Text Search Is the Right Tool
 
-Use grep/glob only for:
+Use grep/glob for:
 
-- string literals and error messages;
+- identifiers, TODO IDs, filenames, string literals, and error messages;
 - config values;
-- non-code files (Dockerfiles, shell scripts, configs);
-- when graph tools return insufficient results.
+- non-code files (Dockerfiles, shell scripts, configs, documentation);
+- whenever graph results are stale or insufficient.
+
+Do not run the same discovery through both mechanisms unless verifying a concrete uncertainty.
 
 ## Maintenance
 
@@ -36,5 +44,5 @@ Re-index the codebase when:
 
 ## Related Documents
 
-- `AGENTS.md` - Agent guidelines including codebase memory usage
+- `AGENTS.md` - Canonical agent guidelines, including tool-neutral code discovery
 - `docs/development/contributing.md` - Contributing guidelines

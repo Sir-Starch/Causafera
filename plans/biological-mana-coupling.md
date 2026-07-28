@@ -1,5 +1,7 @@
 # Biological Mana Coupling ExecPlan
 
+**Status:** Accepted — blocked
+
 ## Goal
 
 Implement RFC-BIO-003 without intrinsic mana points, semantic magic state, or direct cognition-to-mana access, while preserving ritual interaction as the common mechanism and allowing rare acquired or biological coupling to emerge.
