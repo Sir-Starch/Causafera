@@ -14,6 +14,7 @@ pub use proposal::{ThermalEvolutionProposal, ThermalEvolutionRequest};
 pub use records::{
     THERMAL_SCALE, ThermalBoundaryBehavior, ThermalBoundaryRecord, ThermalCellChange,
     ThermalCellKey, ThermalCellTransferReceipt, ThermalConservationReceipt, ThermalError,
-    ThermalFaceRecord, ThermalInjectionProposal, ThermalParameters, ThermalReservoir,
-    ThermalReservoirId, ThermalReservoirSchedule, ThermalReservoirTransferRecord,
+    ThermalFaceRecord, ThermalInjectionProposal, ThermalMaterialSite,
+    ThermalMaterialTransferRecord, ThermalParameters, ThermalReservoir, ThermalReservoirId,
+    ThermalReservoirSchedule, ThermalReservoirTransferRecord,
 };

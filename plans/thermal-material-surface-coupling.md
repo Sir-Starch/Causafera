@@ -169,16 +169,24 @@ pub struct ThermalParameters {
 
 ```text
 0 < transfer_fraction
-0 < material_exchange_fraction
+0 <= material_exchange_fraction
 0 < material_thermal_capacity <= ThermalEnergy::MAX
 6 * transfer_fraction + material_exchange_fraction <= scale
 ```
 
 A cell now has up to seven simultaneous outflows in the worst case (six faces plus one co-located
-material sink), so the coefficient bound must cover all seven, not just six. At the current runtime
-default (`transfer_fraction = 128, scale = 1024`), `6 * 128 = 768`, leaving up to `256` of headroom for
-`material_exchange_fraction`; the default is chosen and recorded in the Decision log. Both new fields
-are homogeneous across all surfaces, exactly as `heat_capacity` is homogeneous today —
+material sink), so the coefficient bound must cover all seven, not just six. `material_exchange_fraction`
+is allowed to be exactly `0` — not as a special-cased "disabled" branch, but because the flux formula
+(Section 3) computes `floor(magnitude * 0 / scale) = 0` unconditionally in that case, so coupling
+turns itself off for free wherever a world configuration (or an existing test fixture that predates
+this tranche and asserts exact diffusion-only numbers) does not want it. This keeps every existing
+`ThermalParameters` call site mechanically extendable with `material_exchange_fraction: 0` without
+touching its other numeric assertions, while still requiring the coefficient bound to hold globally
+(a single set of parameters cannot know per-tick which cells carry a material site, so the bound must
+be safe for the worst case where every cell does). At the current runtime default
+(`transfer_fraction = 128, scale = 1024`), `6 * 128 = 768`, leaving up to `256` of headroom for a
+non-zero `material_exchange_fraction`; the chosen production default is recorded in the Decision log.
+Both new fields are homogeneous across all surfaces, exactly as `heat_capacity` is homogeneous today —
 `causafera_types::Material`'s per-material `thermal_conductivity`/`specific_heat` (`f64`, unused by the
 runtime) are not pulled in this tranche.
 
@@ -604,8 +612,10 @@ tick, not only at the end.
 Test: `crates/causafera-runtime/tests/thermal_material_surface.rs::exact_three_bucket_conservation`.
 
 ### V6 — Invalid parameter rejection
-`material_exchange_fraction <= 0`; `material_thermal_capacity <= 0` or `> ThermalEnergy::MAX`;
-`6 * transfer_fraction + material_exchange_fraction > scale`.
+`material_exchange_fraction < 0`; `material_thermal_capacity <= 0` or `> ThermalEnergy::MAX`;
+`6 * transfer_fraction + material_exchange_fraction > scale` (including the case where
+`material_exchange_fraction == 0` but `transfer_fraction` alone already exceeds `scale / 6`, to prove
+the widened bound subsumes rather than loosens the original one).
 Verify: `ThermalParameters::validate` rejects; the runtime never installs invalid parameters.
 Test: `crates/causafera-domains/tests/thermal_parameters.rs` (extended).
 

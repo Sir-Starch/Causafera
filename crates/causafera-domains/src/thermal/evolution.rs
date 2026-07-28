@@ -28,8 +28,14 @@ impl ThermalFieldSet {
         let reservoirs = index_reservoirs(request.reservoirs)?;
         let (pre_state, budgets_after, reservoir_records) =
             accept_injections(&committed, &reservoirs, request.injections)?;
-        let (after_energy, faces, boundary_records) =
-            preflight_faces(self, request.active_region, &pre_state, parameters)?;
+        let (after_energy, faces, boundary_records, materials_after, material_records) =
+            preflight_faces(
+                self,
+                request.active_region,
+                &pre_state,
+                parameters,
+                request.materials,
+            )?;
         let after_state = self.with_energy(&after_energy)?;
         let (cell_changes, transfer_receipts) = records_for_cells(
             &committed,
@@ -39,6 +45,8 @@ impl ThermalFieldSet {
             &reservoirs,
             &faces,
             &reservoir_records,
+            request.materials,
+            &material_records,
         )?;
         let conservation_receipt = conservation_receipt(
             request.tick,
@@ -46,6 +54,8 @@ impl ThermalFieldSet {
             &after_energy,
             request.reservoirs,
             &budgets_after,
+            request.materials,
+            &materials_after,
         )?;
         Ok(ThermalEvolutionProposal::new(
             after_state,
@@ -54,6 +64,7 @@ impl ThermalFieldSet {
             transfer_receipts,
             budgets_after,
             boundary_records,
+            materials_after,
         ))
     }
 }
