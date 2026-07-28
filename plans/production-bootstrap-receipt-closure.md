@@ -697,6 +697,39 @@ The implementation worker updates only documents whose facts change:
   schema. The two decoders are kept rule-identical deliberately; two decoders of one wire contract
   that disagree on validity are worse than one.
 
+- **2026-07-28 (second audit):** A re-audit of `cf3f018` confirmed the first two fixes and found
+  three more, all real.
+
+  **Stage parameter fingerprints were incomplete.** `chunk_extent` decides the lattice terrain and
+  thermal fields are built at, and `sensor_count` decides how promoted actors are equipped, but
+  neither reached the corresponding stage's parameters. Probing it showed the consequence is worse
+  than a colliding plan identity: because neither value appears in the per-object committed effects
+  either, stage 1, stage 4 and stage 6 produced **identical result fingerprints** across configs
+  that differ in them. That falsifies this plan's own acceptance criterion that different stage
+  output changes the result fingerprint, which the original test only exercised along `terrain_seed`
+  and `bootstrap_population`. Both values now live on their stage structs, feed the fingerprints, and
+  — for the two stages that read them directly — are used from the struct rather than re-read from
+  the configuration at execution.
+
+  **The canonical stage seed was never handed to adapters.** RFC-HIST-001 states that each stage
+  receives a domain-separated seed contribution; the trait took only `&mut RuntimeState` and the
+  accessor sat unused. The trait now passes it. All six adapters ignore it, because no current stage
+  has stage-local deterministic variation — but the signature is the contract, and a stage that later
+  needs randomness has to take it from here rather than deriving a seed of its own. Implementing an
+  accepted RFC is not speculative generality; leaving it as an unused accessor was the smell.
+
+  **Nested receipt fields were laxer than the summary's.** The top-level group was made strict in the
+  previous pass while fields 1..=4 inside a receipt still allowed duplicates with last-value-wins and
+  silently skipped a known field arriving on the wrong wire type. Both decoders now reject each,
+  which also removes the inconsistency of one message being strict and the message nested inside it
+  not being.
+
+  Digest schema stays 7 and population/bootstrap section major stays 2 even though the plan identity
+  and every stage result moved. Both versions were introduced on this branch and `main` is still at
+  schema 6 and major 1, so no snapshot outside this branch has ever carried either; bumping again
+  would version a contract nothing has seen. The pinned neutrality digests are re-recorded a second
+  time with that reasoning stated.
+
 - **2026-07-28 (post-audit, not done):** The audit asked for matching adversarial tests on the
   TypeScript side. The workspace has no JavaScript test runner, and adding one is not cheap here:
   `engines` allows Node 20.19, which cannot strip TypeScript, and the package has no build output to
@@ -801,6 +834,14 @@ regression tests. See the Decision Log for what each one was and why the fix tak
 | Import accepted a coherently forged result (completion effect, receipt result and stage-result entry rewritten together) | reproduced: import returned `Ok` | `a_coherently_forged_stage_result_is_rejected`, `a_stage_effect_rewritten_under_an_unchanged_receipt_is_rejected` |
 | Import accepted a completion stripped of its stage-effect causes | reproduced: import returned `Ok` | `a_completion_stripped_of_its_stage_effects_is_rejected`, `a_stage_completion_the_record_does_not_name_is_rejected` |
 | Observer decoders accepted partial, unknown-schema, contradictory and duplicate-field summaries, and dropped receipts arriving without field 28 | inspection of both decoders | six adversarial tests plus a control proving the byte-rewriting helpers are faithful, so none of them passes for the wrong reason |
+
+A second audit of `cf3f018` confirmed those fixes and found three more.
+
+| Defect | Proof | Regression coverage |
+| --- | --- | --- |
+| `chunk_extent` and `sensor_count` reached no stage parameter fingerprint, so configs differing only in them shared a plan identity **and** stage 1/4/6 result fingerprints | probed: all three compared equal across differing configs | `configuration_the_stages_execute_under_reaches_their_parameter_fingerprints` |
+| The canonical stage seed RFC-HIST-001 requires each stage to receive was never passed to adapters | the accessor had no callers | `every_stage_receives_a_stable_domain_separated_seed` |
+| Receipt fields 1..=4 allowed duplicates with last-value-wins and skipped a known field on the wrong wire type, while the enclosing group was strict | inspection of both decoders | `a_contradictory_nested_receipt_is_rejected`, with its own faithfulness control |
 
 Two audit findings were deliberately **not** acted on, both recorded in the Decision Log: the
 TypeScript decoder still has no automated adversarial coverage (no JS test runner exists in the

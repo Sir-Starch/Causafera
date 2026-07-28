@@ -496,6 +496,62 @@ mod bootstrap_summary {
         assert!(decoded.bootstrap.receipts.is_empty());
     }
 
+    /// The receipt's own fields get the same treatment as the summary's scalars.
+    /// A duplicate inside a nested message is no less a contradiction for being
+    /// nested, and a known field on the wrong wire type is malformed rather than
+    /// unknown.
+    #[test]
+    fn a_contradictory_nested_receipt_is_rejected() {
+        let snapshot = summary(vec![receipt(1, Vec::new())]);
+        let encoded = encode_observer_snapshot(&snapshot);
+        let nested = receipt_field_bytes(&encoded);
+        // Strip the field-35 key and length prefix to recover the receipt body.
+        let (_, after_key) = read_varint(&nested, 0);
+        let (length, body_start) = read_varint(&nested, after_key);
+        let body = &nested[body_start..body_start + length as usize];
+
+        let rebuild = |body: Vec<u8>| {
+            let mut out = strip_field(&encoded, 35);
+            let mut framed = Vec::new();
+            write_varint(&mut framed, (35_u64 << 3) | 2);
+            write_varint(&mut framed, body.len() as u64);
+            framed.extend_from_slice(&body);
+            out.extend_from_slice(&framed);
+            out
+        };
+
+        // Control: the body round-trips unchanged through the same helpers, so
+        // the rejections below are about the rules and not about mangled bytes.
+        assert_eq!(
+            decode_observer_snapshot(&rebuild(body.to_vec())).expect("control must decode"),
+            snapshot
+        );
+
+        // A duplicated scalar.
+        for field in 1..=2_u32 {
+            let mut duplicated = body.to_vec();
+            append_varint(&mut duplicated, field, 9);
+            assert!(
+                decode_observer_snapshot(&rebuild(duplicated)).is_err(),
+                "a duplicated receipt field {field} must be rejected"
+            );
+        }
+
+        // A duplicated result fingerprint.
+        let mut duplicated_result = body.to_vec();
+        write_varint(&mut duplicated_result, (3_u64 << 3) | 2);
+        write_varint(&mut duplicated_result, 32);
+        duplicated_result.extend_from_slice(&[9_u8; 32]);
+        assert!(decode_observer_snapshot(&rebuild(duplicated_result)).is_err());
+
+        // A known field arriving on the wrong wire type.
+        let mut wrong_wire = body.to_vec();
+        write_varint(&mut wrong_wire, (1_u64 << 3) | 2);
+        write_varint(&mut wrong_wire, 1);
+        wrong_wire.push(0);
+        assert!(decode_observer_snapshot(&rebuild(wrong_wire)).is_err());
+    }
+
     fn append_varint(out: &mut Vec<u8>, field: u32, value: u64) {
         write_varint(out, u64::from(field) << 3);
         write_varint(out, value);

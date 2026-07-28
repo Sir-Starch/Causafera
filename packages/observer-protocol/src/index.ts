@@ -627,12 +627,29 @@ function decodeBootstrapReceipt(input: Uint8Array): BootstrapReceipt {
   const dependencyTraces: bigint[] = [];
   while (!cursor.empty) {
     const [field, wire] = cursor.key();
-    if (wire === 2 && field === 3) result = cursor.bytes();
+    if (wire === 2 && field === 3) {
+      if (result !== undefined) {
+        throw new Error("duplicate observer bootstrap receipt result");
+      }
+      result = cursor.bytes();
+    }
     else if (wire === 0 && field === 5) {
       if (dependencyTraces.length === MAX_BOOTSTRAP_RECEIPT_DEPENDENCIES) {
         throw new Error("observer bootstrap receipt exceeds its dependency bound");
       }
       dependencyTraces.push(cursor.varint());
+    }
+    else if (wire === 0 && field >= 1 && field <= 4) {
+      // A receipt's scalars are single-valued, exactly like the summary's.
+      if (values.has(field)) {
+        throw new Error(`duplicate observer bootstrap receipt field ${field}`);
+      }
+      values.set(field, cursor.varint());
+    }
+    // A known field arriving on the wrong wire type is a malformed receipt, not
+    // an unknown field to skip past.
+    else if (field >= 1 && field <= 5) {
+      throw new Error(`observer bootstrap receipt field ${field} has the wrong wire type`);
     }
     else if (wire === 0) values.set(field, cursor.varint());
     else cursor.skip(wire);

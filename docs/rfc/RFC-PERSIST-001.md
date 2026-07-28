@@ -88,8 +88,9 @@ Sections are strictly ordered by schema ID and unique. Unknown required sections
 
 The first complete runtime snapshot includes separate bounded sections for:
 
-1. **Runtime recipe and configuration** (`0x0001`, current major V5)
+1. **Runtime recipe and configuration** (`0x0001`, current major V6)
    - deterministic configuration (seed, stream parameters);
+   - active chunk radius **and shape**, and the chunk extent;
    - registered system schema IDs and revisions;
    - phase and registration order;
    - domain adapter schema revisions;

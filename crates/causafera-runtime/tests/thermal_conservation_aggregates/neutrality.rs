@@ -17,10 +17,17 @@ fn hex32(bytes: [u8; 32]) -> String {
 // that `history_digest` folds in. Both moves are declared contract changes, not
 // drift, so the gate keeps its teeth by pinning the new values rather than being
 // relaxed to a self-comparison.
+//
+// Re-recorded once more when the stage parameter fingerprints started covering
+// `chunk_extent` and `sensor_count`, which moves the plan identity and every
+// stage result derived from it. Digest schema stays 7 and population/bootstrap
+// section major stays 2: both were introduced on this branch and no released
+// snapshot has ever carried either, so bumping them again would version a
+// contract nothing outside this branch has seen.
 const FIXTURE_PHYSICAL_DIGEST: &str =
-    "66492e72be44a875b72007a62d548ff14e4bc27eb52fc1edf2382dcbde0ac1a4";
+    "9959c05092be0e49af0976a6cc2ce7c3d2c12d35bc86c6a456948ac71b4f359b";
 const FIXTURE_HISTORY_DIGEST: &str =
-    "66c48e763035e033d7eadd64e8ab04f93c5199b7d16db3fcab00deeea1f2854d";
+    "356199334c64beb629e406c7bc83bb4972e03cfdf81efdd32ba79a313698b5b3";
 
 #[test]
 fn aggregate_validation_verdict_is_input_order_independent() {

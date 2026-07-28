@@ -433,17 +433,31 @@ fn decode_bootstrap_receipt(bytes: &[u8]) -> Result<ObserverBootstrapReceipt, Wi
     while !c.is_empty() {
         let (field, wire) = c.key()?;
         match (field, wire) {
-            (3, WIRE_LEN) => result = Some(array32(c.bytes()?)?),
+            (3, WIRE_LEN) => {
+                if result.is_some() {
+                    return Err(WireError::DuplicateField(3));
+                }
+                result = Some(array32(c.bytes()?)?);
+            }
             (5, WIRE_VARINT) => {
                 if dependency_traces.len() == MAX_BOOTSTRAP_RECEIPT_DEPENDENCIES {
                     return Err(WireError::PayloadTooLarge);
                 }
                 dependency_traces.push(TraceId::new(c.varint()?));
             }
+            // A receipt's scalars are single-valued, exactly like the summary's.
+            // Two stages or two result fingerprints in one receipt is a
+            // contradiction, not a later value winning.
             (1..=4, WIRE_VARINT) => {
+                if present[field as usize - 1] {
+                    return Err(WireError::DuplicateField(field));
+                }
                 values[field as usize - 1] = c.varint()?;
                 present[field as usize - 1] = true;
             }
+            // A known field arriving on the wrong wire type is a malformed
+            // receipt, not an unknown field to skip past.
+            (1..=5, _) => return Err(WireError::UnexpectedFieldForSchema(field)),
             _ => c.skip(wire)?,
         }
     }

@@ -74,6 +74,11 @@ const BOOTSTRAP_STAGE_COMPLETION_ORDINAL: u64 = u64::MAX;
 pub struct TerrainBootstrapStage {
     pub stage: HistoricalStageId,
     pub terrain_seed: u64,
+    /// The lattice edge the generated terrain is handed to its carrier at. It
+    /// belongs to this stage's executable configuration, so it belongs in the
+    /// stage's parameter fingerprint: two runs that differ only here are running
+    /// different recipes and must not share a plan identity.
+    pub chunk_extent: u8,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -86,6 +91,13 @@ pub struct PopulationLifecycleStage {
 pub struct ActorPromotionStage {
     pub stage: HistoricalStageId,
     pub max_promotions: u8,
+    /// How many sensor apertures each promoted actor is given.
+    ///
+    /// The value is consumed by `promote_actor_from_aggregate`, which reads it
+    /// from the runtime configuration rather than from here; it is declared on
+    /// the stage because it is part of what this stage executes, and a promotion
+    /// that produces differently-equipped actors is a different stage outcome.
+    pub sensor_count: u8,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -112,6 +124,9 @@ pub struct ThermalReservoirBootstrap {
 pub struct ThermalReservoirBootstrapStage {
     pub stage: HistoricalStageId,
     pub reservoirs: Vec<ThermalReservoirBootstrap>,
+    /// The lattice edge every thermal field is created at, and the bound the
+    /// reservoir cell index is checked against.
+    pub chunk_extent: u8,
 }
 
 /// The executable configuration of the current production bootstrap, bound to
@@ -132,8 +147,21 @@ pub struct RuntimeBootstrapRecipe {
     plan: HistoricalBootstrapPlan,
 }
 
+/// One executable stage of the canonical plan.
+///
+/// `stage_seed` is the domain-separated contribution RFC-HIST-001 requires every
+/// stage to receive, derived only from the world seed, the plan identity, and the
+/// stage's own identity, process and start time. No stage in the current
+/// bootstrap has stage-local deterministic variation, so all six ignore it — but
+/// it is passed rather than left available on the plan, because a stage that
+/// later needs randomness must take it from here instead of deriving a seed of
+/// its own.
 pub trait HistoricalBootstrapAdapter {
-    fn bootstrap(&self, state: &mut RuntimeState) -> Result<Vec<TraceId>, BootstrapError>;
+    fn bootstrap(
+        &self,
+        state: &mut RuntimeState,
+        stage_seed: u64,
+    ) -> Result<Vec<TraceId>, BootstrapError>;
 }
 
 /// The canonical bootstrap record a constructed or imported `RuntimeState` holds.
@@ -330,13 +358,14 @@ impl BootstrapRuntimeState {
 }
 
 impl RuntimeBootstrapRecipe {
-    pub(crate) fn from_runtime_config(config: &RuntimeConfig) -> Result<Self, BootstrapError> {
+    pub fn from_runtime_config(config: &RuntimeConfig) -> Result<Self, BootstrapError> {
         let terrain_seed = match config.carrier_adapter {
             CarrierAdapterConfig::TerrainSeed { terrain_seed } => terrain_seed,
         };
         let physical_geography_init = TerrainBootstrapStage {
             stage: PHYSICAL_GEOGRAPHY_STAGE,
             terrain_seed,
+            chunk_extent: config.chunk_extent,
         };
         let material_surface = MaterialSurfaceBootstrapStage {
             stage: MATERIAL_SURFACE_STAGE,
@@ -349,6 +378,7 @@ impl RuntimeBootstrapRecipe {
         let actor_promotion = ActorPromotionStage {
             stage: ACTOR_PROMOTION_STAGE,
             max_promotions: config.actor_count,
+            sensor_count: config.sensor_count,
         };
         let material_activity = MaterialActivityStage {
             stage: MATERIAL_ACTIVITY_STAGE,
@@ -356,6 +386,7 @@ impl RuntimeBootstrapRecipe {
         };
         let thermal_reservoirs = ThermalReservoirBootstrapStage {
             stage: THERMAL_RESERVOIR_STAGE,
+            chunk_extent: config.chunk_extent,
             reservoirs: vec![ThermalReservoirBootstrap {
                 id: ThermalReservoirId::new(1),
                 target: causafera_domains::ThermalCellKey::new(
@@ -478,8 +509,12 @@ impl RuntimeBootstrapRecipe {
             // reports — actor promotion commits both an actor transition and an
             // aggregate transition per promotion — would otherwise leave part of
             // its ancestry out of its own receipt.
+            let stage_seed = self
+                .plan
+                .stage_seed(stage.id())
+                .ok_or(BootstrapError::StageCompletionsDoNotMatchRecord)?;
             let committed_before = state.traces.len();
-            let reported = adapter.bootstrap(state)?;
+            let reported = adapter.bootstrap(state, stage_seed)?;
             let mut effects = state
                 .traces
                 .iter()
@@ -605,6 +640,7 @@ impl TerrainBootstrapStage {
     fn parameter_fingerprint(&self) -> StateFingerprint {
         let mut digest = parameter_digest(self.stage, PHYSICAL_GEOGRAPHY_PROCESS_SCHEMA);
         digest.write(self.terrain_seed);
+        digest.write(u64::from(self.chunk_extent));
         digest.finish()
     }
 }
@@ -629,6 +665,7 @@ impl ActorPromotionStage {
     fn parameter_fingerprint(&self) -> StateFingerprint {
         let mut digest = parameter_digest(self.stage, ACTOR_PROMOTION_PROCESS_SCHEMA);
         digest.write(u64::from(self.max_promotions));
+        digest.write(u64::from(self.sensor_count));
         digest.finish()
     }
 }
@@ -644,6 +681,7 @@ impl MaterialActivityStage {
 impl ThermalReservoirBootstrapStage {
     fn parameter_fingerprint(&self) -> StateFingerprint {
         let mut digest = parameter_digest(self.stage, THERMAL_RESERVOIR_PROCESS_SCHEMA);
+        digest.write(u64::from(self.chunk_extent));
         let mut reservoirs = self.reservoirs.clone();
         reservoirs.sort_unstable_by_key(|reservoir| reservoir.id);
         digest.write(reservoirs.len() as u64);
@@ -820,7 +858,11 @@ fn commit_bootstrap_stage_completion(
 }
 
 impl HistoricalBootstrapAdapter for TerrainBootstrapStage {
-    fn bootstrap(&self, state: &mut RuntimeState) -> Result<Vec<TraceId>, BootstrapError> {
+    fn bootstrap(
+        &self,
+        state: &mut RuntimeState,
+        _stage_seed: u64,
+    ) -> Result<Vec<TraceId>, BootstrapError> {
         let chunks = state.carrier_adapters.keys().copied().collect::<Vec<_>>();
         let mut traces = Vec::with_capacity(chunks.len());
         // Every chunk's terrain is generated and its trace committed first, so
@@ -850,7 +892,7 @@ impl HistoricalBootstrapAdapter for TerrainBootstrapStage {
             generated.insert(chunk, terrain);
             traces.push(trace);
         }
-        let field_extent = state.config.chunk_extent;
+        let field_extent = self.chunk_extent;
         for (chunk, terrain) in &generated {
             state.carrier_adapters.insert(
                 *chunk,
@@ -862,7 +904,11 @@ impl HistoricalBootstrapAdapter for TerrainBootstrapStage {
 }
 
 impl HistoricalBootstrapAdapter for MaterialSurfaceBootstrapStage {
-    fn bootstrap(&self, state: &mut RuntimeState) -> Result<Vec<TraceId>, BootstrapError> {
+    fn bootstrap(
+        &self,
+        state: &mut RuntimeState,
+        _stage_seed: u64,
+    ) -> Result<Vec<TraceId>, BootstrapError> {
         let chunks = state.active_chunks.keys().copied().collect::<Vec<_>>();
         validate_material_surface_object_ids(
             chunks
@@ -917,7 +963,11 @@ impl HistoricalBootstrapAdapter for MaterialSurfaceBootstrapStage {
 }
 
 impl HistoricalBootstrapAdapter for PopulationLifecycleStage {
-    fn bootstrap(&self, state: &mut RuntimeState) -> Result<Vec<TraceId>, BootstrapError> {
+    fn bootstrap(
+        &self,
+        state: &mut RuntimeState,
+        _stage_seed: u64,
+    ) -> Result<Vec<TraceId>, BootstrapError> {
         if self.initial_population == 0 || !state.population_aggregates.is_empty() {
             return Ok(Vec::new());
         }
@@ -945,7 +995,11 @@ impl HistoricalBootstrapAdapter for PopulationLifecycleStage {
 }
 
 impl HistoricalBootstrapAdapter for ActorPromotionStage {
-    fn bootstrap(&self, state: &mut RuntimeState) -> Result<Vec<TraceId>, BootstrapError> {
+    fn bootstrap(
+        &self,
+        state: &mut RuntimeState,
+        _stage_seed: u64,
+    ) -> Result<Vec<TraceId>, BootstrapError> {
         let mut traces = Vec::new();
         for _ in 0..self.max_promotions {
             let before = state.actor_promotions;
@@ -960,7 +1014,11 @@ impl HistoricalBootstrapAdapter for ActorPromotionStage {
 }
 
 impl HistoricalBootstrapAdapter for MaterialActivityStage {
-    fn bootstrap(&self, state: &mut RuntimeState) -> Result<Vec<TraceId>, BootstrapError> {
+    fn bootstrap(
+        &self,
+        state: &mut RuntimeState,
+        _stage_seed: u64,
+    ) -> Result<Vec<TraceId>, BootstrapError> {
         let chunks = state
             .population_aggregates
             .keys()
@@ -995,7 +1053,11 @@ impl HistoricalBootstrapAdapter for MaterialActivityStage {
 }
 
 impl HistoricalBootstrapAdapter for ThermalReservoirBootstrapStage {
-    fn bootstrap(&self, state: &mut RuntimeState) -> Result<Vec<TraceId>, BootstrapError> {
+    fn bootstrap(
+        &self,
+        state: &mut RuntimeState,
+        _stage_seed: u64,
+    ) -> Result<Vec<TraceId>, BootstrapError> {
         let chunks = state.active_chunks.keys().copied().collect::<Vec<_>>();
         let mut traces = Vec::with_capacity(chunks.len() + self.reservoirs.len());
         let mut fields = Vec::with_capacity(chunks.len());
@@ -1012,8 +1074,7 @@ impl HistoricalBootstrapAdapter for ThermalReservoirBootstrapStage {
                 fingerprint_u64(0x1410, chart_chunk_hash(chunk)),
             )?;
             fields.push(
-                ThermalField::new(chunk, state.config.chunk_extent, trace)
-                    .map_err(RuntimeError::from)?,
+                ThermalField::new(chunk, self.chunk_extent, trace).map_err(RuntimeError::from)?,
             );
             traces.push(trace);
         }
@@ -1032,9 +1093,7 @@ impl HistoricalBootstrapAdapter for ThermalReservoirBootstrapStage {
                     target_chunk: reservoir.target.chunk,
                 });
             }
-            if usize::from(reservoir.target.cell_index)
-                >= usize::from(state.config.chunk_extent).pow(3)
-            {
+            if usize::from(reservoir.target.cell_index) >= usize::from(self.chunk_extent).pow(3) {
                 return Err(BootstrapError::InvalidThermalReservoir);
             }
             if state.thermal_reservoirs.contains_key(&reservoir.id) {

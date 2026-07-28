@@ -355,6 +355,105 @@ fn different_stage_output_changes_that_stages_result_fingerprint() {
     assert_ne!(baseline.bootstrap.plan.id, population.bootstrap.plan.id);
 }
 
+/// A stage's parameter fingerprint has to cover everything the stage actually
+/// executes under, not just the fields its own struct happened to carry first.
+/// `chunk_extent` decides the lattice terrain and thermal fields are built at,
+/// and `sensor_count` decides how promoted actors are equipped; neither is
+/// visible in the committed per-object effects, so if they are missing from the
+/// parameters then two genuinely different recipes share a plan identity *and* a
+/// set of stage results.
+#[test]
+fn configuration_the_stages_execute_under_reaches_their_parameter_fingerprints() {
+    let baseline = snapshot_of(populated_config(4_147));
+
+    // When: only the lattice edge changes.
+    let mut wider = populated_config(4_147);
+    wider.chunk_extent = 4;
+    let wider = snapshot_of(wider);
+
+    // Then: the plan identity moves, and so do the two stages that build on it.
+    assert_ne!(baseline.bootstrap.plan.id, wider.bootstrap.plan.id);
+    assert_ne!(
+        baseline.bootstrap.plan.stages[0].parameters,
+        wider.bootstrap.plan.stages[0].parameters
+    );
+    assert_ne!(
+        baseline.bootstrap.plan.stages[5].parameters,
+        wider.bootstrap.plan.stages[5].parameters
+    );
+    assert_ne!(
+        baseline.bootstrap.receipts[0].result,
+        wider.bootstrap.receipts[0].result
+    );
+    assert_ne!(
+        baseline.bootstrap.receipts[5].result,
+        wider.bootstrap.receipts[5].result
+    );
+
+    // When: only the sensor count changes.
+    let mut equipped = populated_config(4_147);
+    equipped.sensor_count = 2;
+    let equipped = snapshot_of(equipped);
+
+    // Then: the promotion stage's parameters and result move with it.
+    assert_ne!(baseline.bootstrap.plan.id, equipped.bootstrap.plan.id);
+    assert_ne!(
+        baseline.bootstrap.plan.stages[3].parameters,
+        equipped.bootstrap.plan.stages[3].parameters
+    );
+    assert_ne!(
+        baseline.bootstrap.receipts[3].result,
+        equipped.bootstrap.receipts[3].result
+    );
+}
+
+/// RFC-HIST-001 requires every stage to receive a domain-separated seed
+/// contribution. No current stage has stage-local variation, so what is checked
+/// here is the contract itself: the seed exists for all six, is stable, and
+/// separates stages and seeds.
+#[test]
+fn every_stage_receives_a_stable_domain_separated_seed() {
+    let recipe =
+        causafera_runtime::RuntimeBootstrapRecipe::from_runtime_config(&populated_config(4_148))
+            .expect("the recipe must build");
+    let other =
+        causafera_runtime::RuntimeBootstrapRecipe::from_runtime_config(&populated_config(4_149))
+            .expect("the recipe must build");
+
+    let seeds = (1..=BOOTSTRAP_STAGE_COUNT as u64)
+        .map(|stage| {
+            recipe
+                .stage_seed(HistoricalStageId::new(stage))
+                .expect("every planned stage has a seed")
+        })
+        .collect::<Vec<_>>();
+
+    assert_eq!(seeds.len(), BOOTSTRAP_STAGE_COUNT);
+    assert_eq!(
+        seeds.iter().copied().collect::<BTreeSet<_>>().len(),
+        BOOTSTRAP_STAGE_COUNT,
+        "stages must not share a seed contribution"
+    );
+    for (ordinal, seed) in seeds.iter().enumerate() {
+        let stage = HistoricalStageId::new(ordinal as u64 + 1);
+        assert_eq!(
+            recipe.stage_seed(stage),
+            Some(*seed),
+            "seeds must be stable"
+        );
+        assert_ne!(
+            other.stage_seed(stage),
+            Some(*seed),
+            "a different world seed must move every stage seed"
+        );
+    }
+    assert_eq!(
+        recipe.stage_seed(HistoricalStageId::new(BOOTSTRAP_STAGE_COUNT as u64 + 1)),
+        None,
+        "a stage the plan does not declare has no seed"
+    );
+}
+
 #[test]
 fn constructing_the_record_does_not_advance_scheduler_time() {
     // Given: a runtime whose canonical stage timeline runs to six.
