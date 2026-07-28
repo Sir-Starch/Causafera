@@ -17,6 +17,7 @@ pub mod snapshot_sections;
 mod snapshots;
 mod terrain_regions;
 mod thermal;
+mod thermal_conservation_validation;
 mod thermal_events;
 
 pub use actors::*;
