@@ -14,7 +14,8 @@ use causafera_runtime::{
     BOOTSTRAP_STAGE_OBJECT_KIND, BOOTSTRAP_STAGE_RESULT_PROPERTY, MATERIAL_ACTIVITY_PROCESS_SCHEMA,
     MATERIAL_SURFACE_PROCESS_SCHEMA, PHYSICAL_GEOGRAPHY_PROCESS_SCHEMA,
     POPULATION_LIFECYCLE_PROCESS_SCHEMA, Runtime, RuntimeConfig, RuntimeError, RuntimeSnapshotData,
-    RuntimeState, THERMAL_RESERVOIR_PROCESS_SCHEMA, assemble_envelope, disassemble_envelope,
+    RuntimeState, THERMAL_RESERVOIR_PROCESS_SCHEMA, assemble_envelope, decode_population_section,
+    disassemble_envelope, encode_population_section,
 };
 use causafera_types::{HistoricalProcessSchemaId, HistoricalStageId, SimulationTime, TraceId};
 
@@ -466,4 +467,274 @@ fn a_plan_with_a_missing_stage_is_rejected() {
         RuntimeState::import_snapshot(data),
         Err(RuntimeError::InvalidSnapshot(_))
     ));
+}
+
+// ---------------------------------------------------------------------------
+// Persistence: canonical bytes and fail-closed corruption handling.
+// ---------------------------------------------------------------------------
+
+fn rejects(data: RuntimeSnapshotData) {
+    assert!(
+        matches!(
+            RuntimeState::import_snapshot(data),
+            Err(RuntimeError::InvalidSnapshot(_))
+        ),
+        "a corrupted bootstrap record must fail closed"
+    );
+}
+
+#[test]
+fn the_bootstrap_section_roundtrips_and_is_canonical() {
+    // Given: a real production bootstrap record.
+    let data = snapshot_of(populated_config(4_120));
+    let encoded = encode_population_section(&data.population, &data.bootstrap);
+
+    // Then: it decodes back unchanged and re-encodes to the same bytes.
+    let (population, bootstrap) =
+        decode_population_section(&encoded).expect("canonical bytes must decode");
+    assert_eq!(population, data.population);
+    assert_eq!(bootstrap, data.bootstrap);
+    assert_eq!(
+        encode_population_section(&population, &bootstrap),
+        encoded,
+        "re-encoding a decoded record must be byte-identical"
+    );
+}
+
+#[test]
+fn the_bootstrap_section_rejects_truncated_and_trailing_bytes() {
+    // Given: canonical bootstrap section bytes.
+    let data = snapshot_of(populated_config(4_121));
+    let encoded = encode_population_section(&data.population, &data.bootstrap);
+
+    // Then: a payload one byte short and a payload one byte long both fail.
+    let mut truncated = encoded.clone();
+    truncated.pop();
+    assert!(decode_population_section(&truncated).is_err());
+
+    let mut trailing = encoded;
+    trailing.push(0);
+    assert!(decode_population_section(&trailing).is_err());
+}
+
+#[test]
+fn the_bootstrap_section_rejects_unsorted_and_duplicated_entries() {
+    // Given: a real record whose receipts are strictly ordered by stage.
+    let data = snapshot_of(populated_config(4_122));
+
+    // When: two receipts are swapped out of canonical order.
+    let mut unsorted = data.clone();
+    unsorted.bootstrap.receipts.swap(0, 1);
+    assert!(
+        decode_population_section(&encode_population_section(
+            &unsorted.population,
+            &unsorted.bootstrap
+        ))
+        .is_err()
+    );
+
+    // When: a stage identity is duplicated in the plan.
+    let mut duplicated = data.clone();
+    duplicated.bootstrap.plan.stages[1].stage = duplicated.bootstrap.plan.stages[0].stage;
+    assert!(
+        decode_population_section(&encode_population_section(
+            &duplicated.population,
+            &duplicated.bootstrap
+        ))
+        .is_err()
+    );
+
+    // When: a stage's target list is written out of order.
+    let mut targets = data;
+    targets.bootstrap.plan.stages[0].targets.swap(0, 1);
+    assert!(
+        decode_population_section(&encode_population_section(
+            &targets.population,
+            &targets.bootstrap
+        ))
+        .is_err()
+    );
+}
+
+#[test]
+fn an_unsupported_bootstrap_section_major_is_rejected() {
+    // Given: a current envelope, whose bootstrap section is major 2.
+    let data = snapshot_of(populated_config(4_123));
+    let envelope = assemble_envelope(&data).expect("envelope must assemble");
+    assert_eq!(envelope.sections[&0x0009_u64].section_major, 2);
+
+    // Then: the superseded major 1 and any unknown major fail closed rather than
+    // being migrated or defaulted.
+    for major in [0, 1, 3] {
+        let mut tampered = envelope.clone();
+        tampered
+            .sections
+            .get_mut(&0x0009_u64)
+            .expect("bootstrap section is present")
+            .section_major = major;
+        assert!(
+            disassemble_envelope(&tampered).is_err(),
+            "bootstrap section major {major} must be rejected"
+        );
+    }
+}
+
+#[test]
+fn a_forged_completion_trace_is_rejected() {
+    // Given: a valid production snapshot.
+    let mut data = snapshot_of(populated_config(4_124));
+
+    // When: a receipt points at a trace that is not its stage's completion.
+    let other = data.bootstrap.receipts[1].trace;
+    data.bootstrap.receipts[0].trace = other;
+    data.bootstrap.receipts[1].causes = vec![other];
+
+    // Then: import rejects it.
+    rejects(data);
+}
+
+#[test]
+fn a_stale_completion_trace_is_rejected() {
+    // Given: a valid production snapshot.
+    let mut data = snapshot_of(populated_config(4_125));
+
+    // When: a receipt names a trace the store never committed.
+    let stale = TraceId::new(u64::MAX);
+    data.bootstrap.receipts[5].trace = stale;
+
+    // Then: import rejects it.
+    rejects(data);
+}
+
+#[test]
+fn a_forged_stage_result_is_rejected() {
+    // Given: a valid production snapshot.
+    let mut data = snapshot_of(populated_config(4_126));
+
+    // When: a receipt's result no longer matches its committed completion effect.
+    let other = data.bootstrap.receipts[2].result;
+    data.bootstrap.receipts[0].result = other;
+    data.bootstrap.stage_results[0].result = other;
+
+    // Then: import rejects it.
+    rejects(data);
+}
+
+#[test]
+fn a_stage_result_that_disagrees_with_its_receipt_is_rejected() {
+    // Given: a valid production snapshot.
+    let mut data = snapshot_of(populated_config(4_127));
+
+    // When: the materialized stage result no longer matches its receipt.
+    let other = data.bootstrap.stage_results[3].result;
+    data.bootstrap.stage_results[0].result = other;
+
+    // Then: import rejects it.
+    rejects(data);
+}
+
+#[test]
+fn a_missing_stage_result_entry_is_rejected() {
+    // Given: a valid production snapshot.
+    let mut data = snapshot_of(populated_config(4_128));
+
+    // When: the bounded stage-result state no longer covers every receipt.
+    data.bootstrap.stage_results.pop();
+
+    // Then: import rejects it.
+    rejects(data);
+}
+
+#[test]
+fn a_target_outside_the_active_chunk_set_is_rejected() {
+    // Given: a valid production snapshot.
+    let mut data = snapshot_of(populated_config(4_129));
+
+    // When: one stage claims a target the configured active chunk set does not
+    // produce.
+    for stage in &mut data.bootstrap.plan.stages {
+        let last = stage.targets.len() - 1;
+        stage.targets[last] = causafera_types::ChunkId::new(u64::MAX);
+    }
+
+    // Then: the plan no longer matches the persisted configuration.
+    rejects(data);
+}
+
+#[test]
+fn a_forged_plan_identity_or_seed_is_rejected() {
+    // Given: two valid production snapshots.
+    let mut identity = snapshot_of(populated_config(4_130));
+    let mut seed = snapshot_of(populated_config(4_130));
+
+    // When: the opaque plan identity, then the world seed, are rewritten.
+    identity.bootstrap.plan.id = causafera_types::HistoricalBootstrapId::new(1);
+    seed.bootstrap.plan.world_seed = 1;
+
+    // Then: both fail against the plan the persisted configuration reproduces.
+    rejects(identity);
+    rejects(seed);
+}
+
+#[test]
+fn a_forged_stage_parameter_fingerprint_is_rejected() {
+    // Given: a valid production snapshot.
+    let mut data = snapshot_of(populated_config(4_131));
+
+    // When: a stage's parameter fingerprint is swapped for another stage's.
+    data.bootstrap.plan.stages[0].parameters = data.bootstrap.plan.stages[1].parameters;
+
+    // Then: import rejects it.
+    rejects(data);
+}
+
+#[test]
+fn bootstrap_population_that_is_not_conserved_is_rejected() {
+    // Given: a valid bootstrap-time snapshot whose 512 configured residents are
+    // split between 504 aggregate members and 8 promoted actors.
+    let mut data = snapshot_of(populated_config(4_132));
+    let total: u64 = data
+        .population
+        .aggregates
+        .iter()
+        .map(|aggregate| aggregate.count)
+        .sum();
+    assert_eq!(total + data.actors_objective.actors.len() as u64, 512);
+
+    // When: an aggregate loses a member with no corresponding promotion.
+    data.population.aggregates[0].count -= 1;
+
+    // Then: import rejects the unconserved population.
+    rejects(data);
+}
+
+#[test]
+fn promoted_actor_ancestry_outside_the_promotion_receipt_is_rejected() {
+    // Given: a valid bootstrap-time snapshot with promoted actors.
+    let mut data = snapshot_of(populated_config(4_133));
+    assert!(!data.actors_objective.actor_ancestry.is_empty());
+
+    // When: an actor claims ancestry the actor promotion stage never named.
+    let root = data.traces.events[0].trace_id;
+    data.actors_objective.actor_ancestry[0].1 = vec![root];
+
+    // Then: import rejects it.
+    rejects(data);
+}
+
+#[test]
+fn the_persisted_configuration_preserves_the_active_chunk_shape() {
+    // Given: an Area-shaped chart, whose nine chunks the canonical plan targets.
+    let data = snapshot_of(populated_config(4_134));
+    assert_eq!(data.bootstrap.plan.stages[0].targets.len(), 9);
+
+    // When: the snapshot is written and read back.
+    let envelope = assemble_envelope(&data).expect("envelope must assemble");
+    let restored = disassemble_envelope(&envelope).expect("envelope must disassemble");
+
+    // Then: the shape survives, so the resumed configuration reproduces the same
+    // plan rather than a three-chunk Line chart's.
+    assert_eq!(restored.recipe.config, data.recipe.config);
+    assert_eq!(restored.bootstrap.plan, data.bootstrap.plan);
+    RuntimeState::import_snapshot(restored).expect("a faithfully restored snapshot must import");
 }

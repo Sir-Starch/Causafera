@@ -20,23 +20,23 @@ use causafera_types::{
 };
 
 use crate::{
-    ActionKindId, ActionProposal, ActionRejection, ActionValidationResult, ActiveChunkSnapshot,
-    ActorId, ActorObjectiveSnapshot, ActorObjectiveStateSnapshot, ActorPhysicalObject,
-    ActorSubjectiveSnapshot, ActorSubjectiveStateSnapshot, BootstrapPlanSnapshot,
-    BootstrapReceiptRecord, BootstrapReceiptSnapshot, BootstrapStageResultSnapshot,
-    BootstrapStageSnapshot, CarrierAdapterConfig, ExperimentManifestSnapshot,
-    ExperimentRecipeManaSource, ExperimentRecipeManaSourceReceiptSnapshot,
-    ExperimentRecipeManaSourceRecipe, GenericFeature, MAX_EXPERIMENT_RECIPE_MANA_SOURCES,
-    MAX_HISTORICAL_STAGES, MAX_MATERIAL_SURFACE_TRANSITIONS, MAX_STAGE_DEPENDENCIES,
-    MAX_STAGE_EXTERNAL_CAUSES, MAX_STAGE_TARGETS, MaterialSurface, MaterialSurfaceGateTransition,
-    MaterialSurfaceId, MaterialSurfaceManaGate, MaterialSurfaceRecordSnapshot,
-    MaterialSurfaceSnapshot, MaterialSurfaceThermalState, MaterialSurfaceThermalTransition,
-    MaterialSurfaceTransition, MinimalBodyState, PatternHistorySnapshot, PerceivedSelf,
-    PhysicalCountersSnapshot, PopulationAggregate, PopulationAggregateSnapshot, RuntimeConfig,
-    RuntimeRecipeSnapshot, RuntimeSnapshotData, RuntimeState, SensorAperture, SensorKindId,
-    SpatialChunkSnapshot, SubjectiveSceneSnapshot, SubjectiveTarget, SystemRegistrationSnapshot,
-    TerrainCarrierSnapshot, TerrainParticipation, ThermalActiveRegionSnapshot,
-    ThermalBoundaryRecordSnapshot, ThermalCellTransferReceiptSnapshot,
+    ActionKindId, ActionProposal, ActionRejection, ActionValidationResult, ActiveChunkShape,
+    ActiveChunkSnapshot, ActorId, ActorObjectiveSnapshot, ActorObjectiveStateSnapshot,
+    ActorPhysicalObject, ActorSubjectiveSnapshot, ActorSubjectiveStateSnapshot,
+    BootstrapPlanSnapshot, BootstrapReceiptRecord, BootstrapReceiptSnapshot,
+    BootstrapStageResultSnapshot, BootstrapStageSnapshot, CarrierAdapterConfig,
+    ExperimentManifestSnapshot, ExperimentRecipeManaSource,
+    ExperimentRecipeManaSourceReceiptSnapshot, ExperimentRecipeManaSourceRecipe, GenericFeature,
+    MAX_EXPERIMENT_RECIPE_MANA_SOURCES, MAX_HISTORICAL_STAGES, MAX_MATERIAL_SURFACE_TRANSITIONS,
+    MAX_STAGE_DEPENDENCIES, MAX_STAGE_EXTERNAL_CAUSES, MAX_STAGE_TARGETS, MaterialSurface,
+    MaterialSurfaceGateTransition, MaterialSurfaceId, MaterialSurfaceManaGate,
+    MaterialSurfaceRecordSnapshot, MaterialSurfaceSnapshot, MaterialSurfaceThermalState,
+    MaterialSurfaceThermalTransition, MaterialSurfaceTransition, MinimalBodyState,
+    PatternHistorySnapshot, PerceivedSelf, PhysicalCountersSnapshot, PopulationAggregate,
+    PopulationAggregateSnapshot, RuntimeConfig, RuntimeRecipeSnapshot, RuntimeSnapshotData,
+    RuntimeState, SensorAperture, SensorKindId, SpatialChunkSnapshot, SubjectiveSceneSnapshot,
+    SubjectiveTarget, SystemRegistrationSnapshot, TerrainCarrierSnapshot, TerrainParticipation,
+    ThermalActiveRegionSnapshot, ThermalBoundaryRecordSnapshot, ThermalCellTransferReceiptSnapshot,
     ThermalConservationReceiptSnapshot, ThermalFaceRecordSnapshot, ThermalFieldSetSnapshot,
     ThermalFieldSnapshot, ThermalMaterialTransferRecordSnapshot, ThermalReservoirScheduleSnapshot,
     ThermalReservoirSnapshot, ThermalReservoirTransferRecordSnapshot, ThermalSnapshot,
@@ -59,7 +59,14 @@ pub const THERMAL_SECTION_ID: u16 = 0x000E;
 
 /// Bumped to 5 when `RuntimeConfig` gained `terrain_participation`, which
 /// changes how the world evolves and so cannot be defaulted on read.
-const RUNTIME_RECIPE_SECTION_MAJOR: u16 = 5;
+///
+/// Bumped to 6 when `active_chunk_shape` started being written. It never was,
+/// so an `Area` chart resumed as a `Line` chart: the state sections restored all
+/// nine chunks while the restored configuration described three, and nothing
+/// compared the two. The canonical bootstrap plan is derived from the active
+/// chunk set, so this is now load-bearing rather than cosmetic — a resumed
+/// snapshot would otherwise reconstruct a different plan than it was saved with.
+const RUNTIME_RECIPE_SECTION_MAJOR: u16 = 6;
 const MANA_SECTION_MAJOR: u16 = 2;
 const PHYSICAL_COUNTERS_SECTION_MAJOR: u16 = 3;
 /// Bumped to 3 when `MaterialSurface` gained `thermal` (conserved retained-heat exchange,
@@ -1444,6 +1451,10 @@ fn encode_runtime_config(enc: &mut LittleEndianEncoder<'_>, config: &RuntimeConf
     enc.write_u64(config.deterministic.world_seed);
     enc.write_u8(config.chunk_extent);
     enc.write_u8(config.active_chunk_radius);
+    enc.write_u8(match config.active_chunk_shape {
+        ActiveChunkShape::Line => 1,
+        ActiveChunkShape::Area => 2,
+    });
     enc.write_u64(config.chart_id.raw());
     enc.write_u64(config.pattern_schedule.interval_ticks);
     enc.write_u32(config.pattern_schedule.magnitude);
@@ -1496,6 +1507,15 @@ fn decode_runtime_config(
     let mut config = RuntimeConfig::new(dec.read_u64()?);
     config.chunk_extent = dec.read_u8()?;
     config.active_chunk_radius = dec.read_u8()?;
+    config.active_chunk_shape = match dec.read_u8()? {
+        1 => ActiveChunkShape::Line,
+        2 => ActiveChunkShape::Area,
+        other => {
+            return Err(PersistenceError::codec(format!(
+                "unknown active chunk shape {other}"
+            )));
+        }
+    };
     config.chart_id = SpatialChartId::new(dec.read_u64()?);
     config.pattern_schedule.interval_ticks = dec.read_u64()?;
     config.pattern_schedule.magnitude = dec.read_u32()?;
@@ -3386,7 +3406,7 @@ mod tests {
     #[test]
     fn runtime_recipe_section_rejects_every_major_but_the_current_one() {
         // Given: a complete current snapshot envelope, whose recipe section is
-        // V5 since `terrain_participation` joined the configuration.
+        // V6 since `active_chunk_shape` started being written.
         let data = populated_snapshot_data();
         let envelope = assemble_envelope(&data).expect("snapshot envelope must assemble");
         assert_eq!(
@@ -3398,7 +3418,7 @@ mod tests {
         // because it is the one a real older snapshot carries: it has every
         // field of V5 except the participation contract, so accepting it would
         // mean resuming a world with a silently defaulted one.
-        for major in [2, 3, 4, RUNTIME_RECIPE_SECTION_MAJOR + 1] {
+        for major in [2, 3, 4, 5, RUNTIME_RECIPE_SECTION_MAJOR + 1] {
             let mut altered = envelope.clone();
             altered
                 .sections
@@ -3432,7 +3452,7 @@ mod tests {
             .sections
             .get_mut(&u64::from(SECTION_RUNTIME_RECIPE))
             .unwrap()
-            .section_major = 6;
+            .section_major = 7;
         let mut incompatible_material = envelope.clone();
         incompatible_material
             .sections
@@ -3443,7 +3463,7 @@ mod tests {
         // Then: current layout versions are explicit and incompatible authoritative bytes stop.
         assert_eq!(
             envelope.sections[&u64::from(SECTION_RUNTIME_RECIPE)].section_major,
-            5
+            6
         );
         assert_eq!(
             envelope.sections[&u64::from(SECTION_PHYSICAL_COUNTERS)].section_major,

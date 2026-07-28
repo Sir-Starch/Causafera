@@ -1301,6 +1301,167 @@ impl RuntimeState {
                 validate_trace_exists(&self.traces, *trace)?;
             }
         }
+        self.validate_bootstrap_record()?;
+        Ok(())
+    }
+
+    /// Fail-closed validation of the canonical production bootstrap record.
+    ///
+    /// A snapshot carries the plan, the per-stage result state, and the receipts
+    /// as data, so none of it may be believed on sight. Everything here is
+    /// re-derived or re-read from state the same snapshot also carries: the plan
+    /// from the persisted configuration, the results and ancestry from the
+    /// persisted causal trace store.
+    fn validate_bootstrap_record(&self) -> Result<(), RuntimeError> {
+        let record = self
+            .bootstrap
+            .record()
+            .ok_or(RuntimeError::InvalidSnapshot("missing bootstrap record"))?;
+        if record.plan().stages().len() > BOOTSTRAP_STAGE_COUNT {
+            return Err(RuntimeError::InvalidSnapshot(
+                "bootstrap record exceeds the current six-stage envelope",
+            ));
+        }
+
+        // The plan is not read from the snapshot's word: the same configuration
+        // the snapshot persisted must reproduce it exactly. That covers the plan
+        // identity, world seed, stage spans, dependency chain, parameter
+        // fingerprints, and the sorted active-chunk targets in one comparison, so
+        // an inactive or forged target cannot survive.
+        let expected = RuntimeBootstrapRecipe::from_runtime_config(&self.config).map_err(
+            |error| match error {
+                BootstrapError::Runtime(error) => error,
+                _ => RuntimeError::InvalidSnapshot("configuration yields no valid bootstrap plan"),
+            },
+        )?;
+        if expected.plan() != record.plan() {
+            return Err(RuntimeError::InvalidSnapshot(
+                "bootstrap plan does not match the persisted configuration",
+            ));
+        }
+
+        // Every receipt's completion trace must exist and must really be the
+        // stage-result transition it claims, with the materialized stage-result
+        // state agreeing with it.
+        if self.bootstrap.stage_results().len() != record.receipts().len() {
+            return Err(RuntimeError::InvalidSnapshot(
+                "bootstrap stage results do not cover the receipt set",
+            ));
+        }
+        for receipt in record.receipts() {
+            let stored = self
+                .bootstrap
+                .stage_results()
+                .get(&receipt.stage())
+                .copied()
+                .ok_or(RuntimeError::InvalidSnapshot(
+                    "bootstrap stage result is missing for a receipt",
+                ))?;
+            if stored != receipt.result() {
+                return Err(RuntimeError::InvalidSnapshot(
+                    "bootstrap stage result does not match its receipt",
+                ));
+            }
+            let event = self
+                .traces
+                .event(receipt.trace())
+                .ok_or(RuntimeError::InvalidSnapshot(
+                    "bootstrap receipt references unknown trace",
+                ))?;
+            if event.phase != Phase::Lifecycle
+                || event.kind.raw() != BOOTSTRAP_STAGE_COMPLETION_EVENT_KIND
+            {
+                return Err(RuntimeError::InvalidSnapshot(
+                    "bootstrap receipt trace is not a stage completion",
+                ));
+            }
+            let expected_target = CausalTarget::new(
+                StateObjectKindId::new(BOOTSTRAP_STAGE_OBJECT_KIND),
+                receipt.stage().raw(),
+                StatePropertyId::new(BOOTSTRAP_STAGE_RESULT_PROPERTY),
+            );
+            if !event.effects.iter().any(|effect| {
+                effect.target() == expected_target
+                    && effect.before() == bootstrap_stage_absent_result(receipt.stage())
+                    && effect.after() == receipt.result()
+            }) {
+                return Err(RuntimeError::InvalidSnapshot(
+                    "bootstrap completion does not transition its stage result",
+                ));
+            }
+            // A receipt cause the completion event does not itself carry would be
+            // ancestry asserted by the record rather than committed by the run.
+            for cause in receipt.causes() {
+                validate_trace_exists(&self.traces, *cause)?;
+                if !event.causes.contains(cause) {
+                    return Err(RuntimeError::InvalidSnapshot(
+                        "bootstrap receipt cause is absent from its completion event",
+                    ));
+                }
+            }
+        }
+
+        self.validate_bootstrap_population_conservation(record)?;
+        Ok(())
+    }
+
+    /// Population and actor-promotion conservation, as it holds at bootstrap.
+    ///
+    /// Only asserted for a state that has not advanced: from the first tick
+    /// onward the population lifecycle legitimately adds births, removes deaths,
+    /// moves aggregates between chunks, and promotes or demotes actors, so an
+    /// equality against the configured bootstrap population would be false rather
+    /// than protective.
+    fn validate_bootstrap_population_conservation(
+        &self,
+        record: &HistoricalBootstrapRecord,
+    ) -> Result<(), RuntimeError> {
+        if self.advanced_through != SimulationTime::new(0) {
+            return Ok(());
+        }
+        let aggregate_total: u64 = self
+            .population_aggregates
+            .values()
+            .map(|aggregate| aggregate.count)
+            .sum();
+        if aggregate_total.saturating_add(self.actors.len() as u64)
+            != self.config.bootstrap_population
+        {
+            return Err(RuntimeError::InvalidSnapshot(
+                "bootstrap population is not conserved across aggregates and promoted actors",
+            ));
+        }
+
+        // Every actor that exists at bootstrap was promoted by the actor
+        // promotion stage, so its ancestry must be traces that stage's completion
+        // named as its own causes.
+        let promotion = record
+            .receipts()
+            .iter()
+            .find(|receipt| receipt.stage() == ACTOR_PROMOTION_STAGE)
+            .ok_or(RuntimeError::InvalidSnapshot(
+                "bootstrap record has no actor promotion receipt",
+            ))?;
+        let completion =
+            self.traces
+                .event(promotion.trace())
+                .ok_or(RuntimeError::InvalidSnapshot(
+                    "actor promotion receipt references unknown trace",
+                ))?;
+        for ancestry in self.actor_ancestry.values() {
+            if ancestry.is_empty() {
+                return Err(RuntimeError::InvalidSnapshot(
+                    "promoted actor has no causal ancestry",
+                ));
+            }
+            for trace in ancestry {
+                if !completion.causes.contains(trace) {
+                    return Err(RuntimeError::InvalidSnapshot(
+                        "promoted actor ancestry is absent from the actor promotion receipt",
+                    ));
+                }
+            }
+        }
         Ok(())
     }
 
