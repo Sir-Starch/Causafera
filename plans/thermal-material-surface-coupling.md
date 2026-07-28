@@ -914,13 +914,29 @@ here as implementation lands.
   --all -- --check`, `cargo clippy --workspace --all-targets --all-features -- -D warnings`,
   `cargo test --workspace` under default features, `--all-features`, and `--no-default-features`, all
   green.
-- Stage 4 (observer/Explanation surface: `MaterialSurfaceThermalDelta` in `causafera-observer-api`,
-  schema 17 in `causafera-explanation`, the `material_surface_thermal_explanation` /
-  `observer_material_surface_thermal_explanation_for_surface` pair in `causafera-runtime`, wire
-  encode/decode and field 8 in `causafera-observer-wire`, `query.proto`/`explanation.proto`,
-  `packages/observer-protocol/src/index.ts`) landed together with V14's test coverage above.
-  Verified: full workspace test suite (default/`--all-features`/`--no-default-features`) green,
-  `cargo clippy`/`cargo fmt` clean, `pnpm --dir packages/observer-protocol typecheck` clean. Not yet
-  checkpointed as of this note — see the next commit.
-- Remaining: Stage 5 (documentation updates, full CI gate including `xtask ci` and the broader `pnpm`
-  suite, and the PR).
+- `1447c83` — Stage 4 (observer/Explanation surface: `MaterialSurfaceThermalDelta` in
+  `causafera-observer-api`, schema 17 in `causafera-explanation`, the
+  `material_surface_thermal_explanation` / `observer_material_surface_thermal_explanation_for_surface`
+  pair in `causafera-runtime`, wire encode/decode and field 8 in `causafera-observer-wire`,
+  `query.proto`/`explanation.proto`, `packages/observer-protocol/src/index.ts`) landed together with
+  V14's test coverage above. Verified: full workspace test suite
+  (default/`--all-features`/`--no-default-features`) green, `cargo clippy`/`cargo fmt` clean,
+  `pnpm --dir packages/observer-protocol typecheck` clean.
+- Stage 5 (documentation): closed `TODO-THERMAL-002` in `docs/development/todo-backlog.md` and opened
+  its two named follow-ups, `TODO-THERMAL-007` (expansion/damage/phase-change response) and
+  `TODO-THERMAL-008` (heterogeneous per-material thermal properties). Updated `CHANGELOG.md`,
+  `docs/ontology/causal-carriers.md` (third conserved bucket), `docs/ontology/domain-coverage-matrix.md`
+  (Energy/Matter rows and the `TODO-PERF-002`/`003` growth note), `docs/rfc/RFC-PERSIST-001.md`
+  (section-major and digest-schema history, including a stale pre-existing summary paragraph that had
+  not been updated for the thermal carrier's own prior introduction), `docs/observer/protocol.md`, and
+  `docs/observer/frontend-redesign-handoff.md`. `PLANS.md`'s entry was corrected to "accepted and
+  implemented" in place — the file's own convention keeps completed Detailed Development plans listed
+  under "Active Planning" rather than moving them to a separate section; only Foundation Era plans move
+  to `plans/history/`. Per-tick performance cost was **not benchmarked** in this tranche; `CHANGELOG.md`
+  and this plan both say so explicitly rather than omitting the claim.
+- Full CI gate (Stage 5's V15) run and green: `cargo fmt --all -- --check`, `cargo clippy --workspace
+  --all-targets --all-features -- -D warnings`, `cargo test --workspace` under default features,
+  `--all-features`, and `--no-default-features`, `cargo run -p xtask -- ci`, `pnpm install
+  --frozen-lockfile`, `pnpm lint`, `pnpm typecheck`, `pnpm build`, and
+  `pnpm --dir packages/observer-protocol typecheck`.
+- Remaining: the documentation checkpoint commit and the PR.

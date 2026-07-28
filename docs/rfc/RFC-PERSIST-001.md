@@ -166,7 +166,7 @@ The first complete runtime snapshot includes separate bounded sections for:
     - activity counts, memory record;
    - state/history digests, confidence, supporting traces, evidence flag.
 
-12. **Material surfaces** (`0x000C`, current major V2)
+12. **Material surfaces** (`0x000C`, current major V3)
    - chart-qualified surface IDs and bounded condition/contact/last-transition records;
     - sorted pending physics changes, per-surface contact/gate anchors, bounded condition history,
       and bounded local-mana gate transitions;
@@ -175,6 +175,12 @@ The first complete runtime snapshot includes separate bounded sections for:
      Explanation paths;
    - optional trace fields encode presence, so missing contact/mana ancestry is distinct from a
      valid `TraceId(0)`.
+   - V3 adds each surface's `MaterialSurfaceThermalState` (retained energy, optional last-exchange
+     trace) and a separately bounded (at most 128, oldest evicted first) list of
+     `MaterialSurfaceThermalTransition` records — the material-side half of the conserved
+     retained-heat exchange with the co-located thermal cell (`TODO-THERMAL-002`); import checks
+     surface existence, strict trace ordering, and a real state change per record, mirroring the
+     existing condition/gate transition validation.
 
 13. **Experiment recipe mana source receipts** (`0x000D`, current major V1)
     - bounded executed-receipt records (at most 16), sorted by `(executed_tick, source_record_id)`;
@@ -186,7 +192,7 @@ The first complete runtime snapshot includes separate bounded sections for:
       recipe hash, and policy schema before authoritative installation;
     - unsupported major versions fail closed.
 
-14. **Conserved thermal carrier** (`0x000E`, current major V1)
+14. **Conserved thermal carrier** (`0x000E`, current major V2)
     - fixed-point cell energy, causal anchors, active/resident chunk sets, finite reservoirs,
       transfer receipts, and exact per-batch conservation receipts;
     - canonically ordered current-batch boundary records for same-chart faces outside the active
@@ -194,6 +200,14 @@ The first complete runtime snapshot includes separate bounded sections for:
     - import reconstructs the complete expected boundary face set and rejects missing, extra,
       duplicate, unsorted, cross-chart, nonadjacent, wrong-face, or pre-state-mismatched records;
     - incomplete payloads, unsupported major versions, and trailing bytes fail closed.
+    - V2 extends `ThermalParameters` with `material_exchange_fraction`/`material_thermal_capacity`
+      and each transfer receipt with an optional material exchange term (retained energy
+      before/after, signed flux, rejected remainder) — the cell-side half of the conserved
+      retained-heat exchange with a co-located material surface's `0x000C` state
+      (`TODO-THERMAL-002`); the receipt-flux equation import already enforces
+      (`pre_state - sum(face.signed_flux) == post_state`) is extended to
+      `pre_state - sum(face.signed_flux) - material.signed_flux.unwrap_or(0) == post_state`, for
+      every batch, not only the latest.
 
 ### Authoritative / non-authoritative boundary
 
@@ -326,11 +340,12 @@ Failure leaves the prior completed snapshot intact. Temporary-file cleanup is be
 - New major version for incompatible container or authoritative semantic changes;
 - Unsupported major versions fail closed; no guesswork loading.
 
-For the active actor/material/mana slice, the runtime accepts authoritative digest schema V4,
-runtime-recipe/configuration major V5, mana-field major V2, physical-counters major V3, material-surface major V2, and
-experiment-recipe mana source receipts major V1. Any other required digest schema or section major,
-including recipe major V4 or an unsupported receipts major, is rejected deterministically rather
-than being coerced into the current causal state.
+For the active actor/material/mana slice, the runtime accepts authoritative digest schema V6,
+runtime-recipe/configuration major V5, mana-field major V2, physical-counters major V3,
+material-surface major V3, experiment-recipe mana source receipts major V1, and thermal-carrier
+major V2. Any other required digest schema or section major, including recipe major V4 or an
+unsupported receipts major, is rejected deterministically rather than being coerced into the
+current causal state.
 
 Recipe major rose from V4 to V5 when `RuntimeConfig` gained `terrain_participation`, which decides
 whether the terrain carrier reaches the tick loop. A V4 snapshot carries every other field of V5 but
@@ -407,3 +422,10 @@ migrated. See `plans/terrain-carrier-participation.md`.
   adds required receipt section `0x000D` V1, and advances the authoritative digest schema to V3.
   Receipt correspondence and source-event ancestry are validated before installation; unsupported
   required versions fail closed.
+- 2026-07-28: A material surface's retained thermal energy and its co-located thermal cell's
+  material exchange term become digest inputs (`TODO-THERMAL-002`). The material-surface section
+  advances to major V3 (adds `MaterialSurfaceThermalState` and bounded `thermal_transitions`); the
+  thermal-carrier section advances to major V2 (adds `material_exchange_fraction`/
+  `material_thermal_capacity` and each receipt's optional material term); the authoritative digest
+  schema advances to V6. The receipt-flux equation import already enforced is widened to include the
+  material term, for every batch, not only the latest. Unsupported required versions fail closed.
