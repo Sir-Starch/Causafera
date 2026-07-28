@@ -299,7 +299,7 @@ fn measure(
     let mut last_snapshot = None;
     for _ in 0..config.measurement_ticks {
         let snapshot = runtime.tick()?;
-        last_snapshot = Some(snapshot);
+        last_snapshot = Some(snapshot.clone());
         if matches!(mode, MaterialSurfaceLoopBenchmarkMode::WorldChunksQuery) {
             let response_bytes = bounded_world_chunks_query(&runtime, snapshot)?;
             observer_response_bytes = observer_response_bytes

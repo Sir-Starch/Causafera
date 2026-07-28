@@ -5,7 +5,8 @@ use causafera_observer_api::*;
 use causafera_resolution::*;
 use causafera_types::*;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// No longer `Copy`: the bounded bootstrap summary carries a receipt list.
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RuntimeSnapshot {
     pub time: SimulationTime,
     pub physical_state_digest: PhysicalStateDigest,
@@ -41,6 +42,7 @@ pub struct RuntimeSnapshot {
     pub thermal_total_reservoir_budget: i128,
     pub thermal_active_chunk_count: u32,
     pub thermal_active_cell_count: u32,
+    pub bootstrap: ObserverBootstrapSummary,
 }
 
 impl RuntimeSnapshot {
@@ -75,6 +77,7 @@ impl RuntimeSnapshot {
             thermal_total_reservoir_budget: self.thermal_total_reservoir_budget,
             thermal_active_chunk_count: self.thermal_active_chunk_count,
             thermal_active_cell_count: self.thermal_active_cell_count,
+            bootstrap: self.bootstrap.clone(),
         }
     }
 }

@@ -323,7 +323,7 @@ impl ExperimentRunner {
                 checkpoints.push(snapshot);
             }
         }
-        let Some(final_snapshot) = checkpoints.last().copied() else {
+        let Some(final_snapshot) = checkpoints.last().cloned() else {
             return Err(ExperimentError::MissingCheckpoint);
         };
         let observations = checkpoints
@@ -350,10 +350,10 @@ impl ExperimentRunner {
             world_seed: config.world_seed,
             ticks: config.ticks,
             checkpoints,
-            final_snapshot,
             physical_state_digest: final_snapshot.physical_state_digest,
             history_digest: final_snapshot.history_digest,
             experiment_digest: final_snapshot.canonical_state,
+            final_snapshot,
             attractor_evidence,
         })
     }
@@ -389,10 +389,10 @@ fn build_long_run_explanation_report(
     let suppressed_checkpoints = intervention
         .checkpoints
         .iter()
-        .copied()
         .filter(|snapshot| {
             snapshot.time >= suppression_from && snapshot.time <= suppression_through
         })
+        .cloned()
         .collect::<Vec<_>>();
     let intervention_frame = ExperimentAnalytics::analyze_checkpoint_series(
         &analytics_checkpoints(&suppressed_checkpoints),
@@ -431,7 +431,7 @@ fn build_experiment_manifest(
     control: &ReplayVerifiedExperiment,
     intervention: &ReplayVerifiedExperiment,
 ) -> Result<ExperimentManifest, ExperimentError> {
-    let final_snapshot = intervention.result.final_snapshot;
+    let final_snapshot = intervention.result.final_snapshot.clone();
     let supporting_traces = intervention
         .result
         .checkpoints

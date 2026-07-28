@@ -7,6 +7,10 @@ use causafera_domains::{
     THERMAL_SCALE, ThermalEnergy, ThermalField, ThermalFieldSet, ThermalReservoir,
     ThermalReservoirId, ThermalReservoirSchedule,
 };
+use causafera_observer_api::{
+    BOOTSTRAP_SUMMARY_SCHEMA_V1, MAX_BOOTSTRAP_RECEIPT_DEPENDENCIES,
+    MAX_BOOTSTRAP_RECEIPT_SUMMARIES, ObserverBootstrapReceipt, ObserverBootstrapSummary,
+};
 use causafera_types::*;
 use thiserror::Error;
 
@@ -165,6 +169,48 @@ impl BootstrapRuntimeState {
 
     pub const fn is_complete(&self) -> bool {
         self.record.is_some()
+    }
+
+    /// The bounded read-only projection an observer session may receive.
+    ///
+    /// Read models are downstream and non-authoritative: this copies typed
+    /// values and trace anchors out of the record, exposes no runtime handle and
+    /// no authoritative actor or place identity, and renders no process name.
+    pub fn observer_summary(&self, config: &RuntimeConfig) -> ObserverBootstrapSummary {
+        let Some(record) = self.record.as_ref() else {
+            return ObserverBootstrapSummary {
+                schema_version: BOOTSTRAP_SUMMARY_SCHEMA_V1,
+                complete: false,
+                ..ObserverBootstrapSummary::default()
+            };
+        };
+        let plan = record.plan();
+        ObserverBootstrapSummary {
+            schema_version: BOOTSTRAP_SUMMARY_SCHEMA_V1,
+            plan_id: plan.id().raw(),
+            world_seed: plan.world_seed(),
+            stage_count: plan.stages().len() as u32,
+            complete: true,
+            configured_population: config.bootstrap_population,
+            configured_promotion_limit: u32::from(config.actor_count),
+            receipts: record
+                .receipts()
+                .iter()
+                .take(MAX_BOOTSTRAP_RECEIPT_SUMMARIES)
+                .map(|receipt| ObserverBootstrapReceipt {
+                    stage: receipt.stage().raw(),
+                    completed_at: receipt.completed_at(),
+                    result: receipt.result().bytes(),
+                    completion_trace: receipt.trace(),
+                    dependency_traces: receipt
+                        .causes()
+                        .iter()
+                        .take(MAX_BOOTSTRAP_RECEIPT_DEPENDENCIES)
+                        .copied()
+                        .collect(),
+                })
+                .collect(),
+        }
     }
 
     /// The persisted form of this record.

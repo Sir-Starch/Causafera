@@ -7,11 +7,12 @@ use causafera_explanation::{
 };
 use causafera_observer_api::{
     FieldRasterKind, FieldRasterRequest, MATERIAL_SURFACE_DELTA_SCHEMA_V3,
-    MATERIAL_SURFACE_DELTA_SCHEMA_V4, MAX_MATERIAL_SURFACE_DELTAS, MAX_THERMAL_DELTAS,
+    MATERIAL_SURFACE_DELTA_SCHEMA_V4, MAX_BOOTSTRAP_RECEIPT_DEPENDENCIES,
+    MAX_BOOTSTRAP_RECEIPT_SUMMARIES, MAX_MATERIAL_SURFACE_DELTAS, MAX_THERMAL_DELTAS,
     MaterialSurfaceDelta, MaterialSurfaceGateDelta, MaterialSurfaceThermalDelta,
-    OBSERVER_PROTOCOL_V1, ObserverChunkSummary, ObserverFieldRaster, ObserverQuery,
-    ObserverResponse, ObserverSnapshot, ObserverWorldSnapshot, QueryKind, QueryStatus,
-    StreamEnvelope, StreamKind, THERMAL_DELTA_SCHEMA_V1, ThermalFieldDelta,
+    OBSERVER_PROTOCOL_V1, ObserverBootstrapReceipt, ObserverBootstrapSummary, ObserverChunkSummary,
+    ObserverFieldRaster, ObserverQuery, ObserverResponse, ObserverSnapshot, ObserverWorldSnapshot,
+    QueryKind, QueryStatus, StreamEnvelope, StreamKind, THERMAL_DELTA_SCHEMA_V1, ThermalFieldDelta,
 };
 use causafera_types::{ChunkId, ExperimentId, SimulationTime, TraceId};
 use thiserror::Error;
@@ -314,17 +315,92 @@ pub fn encode_observer_snapshot(snapshot: &ObserverSnapshot) -> Vec<u8> {
     );
     field_varint(&mut out, 26, u64::from(snapshot.thermal_active_chunk_count));
     field_varint(&mut out, 27, u64::from(snapshot.thermal_active_cell_count));
+    // Fields 28 onwards are additive. Fields 1..=27 keep the meaning they had, so
+    // a reader written against them decodes this payload unchanged and simply
+    // skips what it does not know.
+    let bootstrap = &snapshot.bootstrap;
+    field_varint(&mut out, 28, u64::from(bootstrap.schema_version));
+    field_varint(&mut out, 29, bootstrap.plan_id);
+    field_varint(&mut out, 30, bootstrap.world_seed);
+    field_varint(&mut out, 31, u64::from(bootstrap.stage_count));
+    field_varint(&mut out, 32, u64::from(bootstrap.complete));
+    field_varint(&mut out, 33, bootstrap.configured_population);
+    field_varint(
+        &mut out,
+        34,
+        u64::from(bootstrap.configured_promotion_limit),
+    );
+    for receipt in bootstrap
+        .receipts
+        .iter()
+        .take(MAX_BOOTSTRAP_RECEIPT_SUMMARIES)
+    {
+        let mut nested = Vec::with_capacity(64);
+        field_varint(&mut nested, 1, receipt.stage);
+        field_varint(&mut nested, 2, receipt.completed_at.raw());
+        field_bytes(&mut nested, 3, &receipt.result);
+        field_varint(&mut nested, 4, receipt.completion_trace.raw());
+        for dependency in receipt
+            .dependency_traces
+            .iter()
+            .take(MAX_BOOTSTRAP_RECEIPT_DEPENDENCIES)
+        {
+            field_varint(&mut nested, 5, dependency.raw());
+        }
+        field_bytes(&mut out, 35, &nested);
+    }
     out
+}
+
+fn decode_bootstrap_receipt(bytes: &[u8]) -> Result<ObserverBootstrapReceipt, WireError> {
+    let mut c = Cursor::new(bytes);
+    let mut values = [0_u64; 4];
+    let mut present = [false; 4];
+    let mut result = None;
+    let mut dependency_traces = Vec::new();
+    while !c.is_empty() {
+        let (field, wire) = c.key()?;
+        match (field, wire) {
+            (3, WIRE_LEN) => result = Some(array32(c.bytes()?)?),
+            (5, WIRE_VARINT) => {
+                if dependency_traces.len() == MAX_BOOTSTRAP_RECEIPT_DEPENDENCIES {
+                    return Err(WireError::PayloadTooLarge);
+                }
+                dependency_traces.push(TraceId::new(c.varint()?));
+            }
+            (1..=4, WIRE_VARINT) => {
+                values[field as usize - 1] = c.varint()?;
+                present[field as usize - 1] = true;
+            }
+            _ => c.skip(wire)?,
+        }
+    }
+    for field in [1_usize, 2, 4] {
+        if !present[field - 1] {
+            return Err(WireError::MissingField(field as u32));
+        }
+    }
+    if dependency_traces.windows(2).any(|pair| pair[0] >= pair[1]) {
+        return Err(WireError::NonCanonicalOrder);
+    }
+    Ok(ObserverBootstrapReceipt {
+        stage: values[0],
+        completed_at: SimulationTime::new(values[1]),
+        result: result.ok_or(WireError::MissingField(3))?,
+        completion_trace: TraceId::new(values[3]),
+        dependency_traces,
+    })
 }
 
 pub fn decode_observer_snapshot(bytes: &[u8]) -> Result<ObserverSnapshot, WireError> {
     let mut c = Cursor::new(bytes);
-    let mut values = [0_u64; 27];
-    let mut present = [false; 27];
+    let mut values = [0_u64; 34];
+    let mut present = [false; 34];
     let mut physical_digest = None;
     let mut history_digest = None;
     let mut thermal_total_cell_energy = 0;
     let mut thermal_total_reservoir_budget = 0;
+    let mut bootstrap_receipts = Vec::new();
     while !c.is_empty() {
         let (field, wire) = c.key()?;
         match (field, wire) {
@@ -332,7 +408,16 @@ pub fn decode_observer_snapshot(bytes: &[u8]) -> Result<ObserverSnapshot, WireEr
             (4, WIRE_LEN) => history_digest = Some(array32(c.bytes()?)?),
             (24, WIRE_LEN) => thermal_total_cell_energy = decode_i128_zigzag(c.bytes()?)?,
             (25, WIRE_LEN) => thermal_total_reservoir_budget = decode_i128_zigzag(c.bytes()?)?,
-            (1..=27, WIRE_VARINT) => {
+            (35, WIRE_LEN) => {
+                // Bounded before allocation: a payload claiming more receipts
+                // than this build's bootstrap can produce is rejected rather
+                // than truncated.
+                if bootstrap_receipts.len() == MAX_BOOTSTRAP_RECEIPT_SUMMARIES {
+                    return Err(WireError::PayloadTooLarge);
+                }
+                bootstrap_receipts.push(decode_bootstrap_receipt(c.bytes()?)?);
+            }
+            (1..=34, WIRE_VARINT) => {
                 values[field as usize - 1] = c.varint()?;
                 present[field as usize - 1] = true;
             }
@@ -343,6 +428,32 @@ pub fn decode_observer_snapshot(bytes: &[u8]) -> Result<ObserverSnapshot, WireEr
         if !present[field - 1] {
             return Err(WireError::MissingField(field as u32));
         }
+    }
+    // The bootstrap summary is additive, so its absence is a payload written
+    // before it existed, not an empty record. It decodes to the explicit
+    // "absent" schema rather than to a record claiming zero stages.
+    let bootstrap = if present[27] {
+        if bootstrap_receipts
+            .windows(2)
+            .any(|pair| pair[0].stage >= pair[1].stage)
+        {
+            return Err(WireError::NonCanonicalOrder);
+        }
+        ObserverBootstrapSummary {
+            schema_version: to_u32(values[27])?,
+            plan_id: values[28],
+            world_seed: values[29],
+            stage_count: to_u32(values[30])?,
+            complete: values[31] != 0,
+            configured_population: values[32],
+            configured_promotion_limit: to_u32(values[33])?,
+            receipts: bootstrap_receipts,
+        }
+    } else {
+        ObserverBootstrapSummary::default()
+    };
+    if bootstrap.stage_count as usize > MAX_BOOTSTRAP_RECEIPT_SUMMARIES {
+        return Err(WireError::PayloadTooLarge);
     }
     Ok(ObserverSnapshot {
         time: SimulationTime::new(values[0]),
@@ -372,6 +483,7 @@ pub fn decode_observer_snapshot(bytes: &[u8]) -> Result<ObserverSnapshot, WireEr
         thermal_total_reservoir_budget,
         thermal_active_chunk_count: to_u32(values[25])?,
         thermal_active_cell_count: to_u32(values[26])?,
+        bootstrap,
     })
 }
 
@@ -1572,6 +1684,10 @@ pub enum WireError {
     DuplicateField(u32),
     #[error("field raster declares {expected} cells but carries {received}")]
     InvalidFieldRasterLattice { expected: usize, received: usize },
+    #[error("bounded observer payload exceeds its declared maximum")]
+    PayloadTooLarge,
+    #[error("bounded observer payload is not in canonical order")]
+    NonCanonicalOrder,
     #[error(transparent)]
     Api(#[from] causafera_observer_api::ObserverApiError),
 }
@@ -1615,6 +1731,31 @@ mod tests {
             thermal_total_reservoir_budget: 200,
             thermal_active_chunk_count: 2,
             thermal_active_cell_count: 54,
+            bootstrap: ObserverBootstrapSummary {
+                schema_version: causafera_observer_api::BOOTSTRAP_SUMMARY_SCHEMA_V1,
+                plan_id: 0xDEAD_BEEF,
+                world_seed: 44,
+                stage_count: 2,
+                complete: true,
+                configured_population: 512,
+                configured_promotion_limit: 8,
+                receipts: vec![
+                    ObserverBootstrapReceipt {
+                        stage: 1,
+                        completed_at: SimulationTime::new(1),
+                        result: [7; 32],
+                        completion_trace: TraceId::new(40),
+                        dependency_traces: Vec::new(),
+                    },
+                    ObserverBootstrapReceipt {
+                        stage: 2,
+                        completed_at: SimulationTime::new(2),
+                        result: [8; 32],
+                        completion_trace: TraceId::new(41),
+                        dependency_traces: vec![TraceId::new(40)],
+                    },
+                ],
+            },
         }
     }
 

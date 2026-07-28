@@ -15,9 +15,9 @@ use causafera_domains::{
 };
 use causafera_explanation::{
     ComparisonContext, ExplanationClaim, ExplanationFrame, ExplanationReport,
-    MATERIAL_SURFACE_LOOP_CLAIM_SCHEMA, MaterialSurfaceLocalManaTransitionClaim,
-    MaterialSurfaceLoopClaim, MaterialSurfaceThermalExchangeClaim, NumericClaimValue,
-    ThermalCarrierConservationClaim,
+    HistoricalBootstrapRecordClaim, MATERIAL_SURFACE_LOOP_CLAIM_SCHEMA,
+    MaterialSurfaceLocalManaTransitionClaim, MaterialSurfaceLoopClaim,
+    MaterialSurfaceThermalExchangeClaim, NumericClaimValue, ThermalCarrierConservationClaim,
 };
 use causafera_observer_api::{
     FieldRasterRequest, MATERIAL_SURFACE_DELTA_SCHEMA_V4, MAX_MATERIAL_SURFACE_DELTAS,
@@ -291,6 +291,19 @@ impl Runtime {
             return Err(error);
         }
         state.material_surface_thermal_explanation(self.scheduler.current_time(), surface)
+    }
+
+    /// Typed evidence that the current initial state was causally initialized.
+    ///
+    /// An incomplete or unevidenced record answers with the existing
+    /// unknown/zero-confidence state rather than erroring, so an observer can
+    /// tell "no evidence" apart from "a failed query".
+    pub fn observer_bootstrap_record_explanation(&self) -> Result<ExplanationReport, RuntimeError> {
+        let state = self.lock_state()?;
+        if let Some(error) = state.failure.clone() {
+            return Err(error);
+        }
+        state.bootstrap_record_explanation(self.scheduler.current_time())
     }
 
     pub fn export_snapshot(&self) -> Result<RuntimeSnapshotData, RuntimeError> {
@@ -1615,6 +1628,7 @@ impl RuntimeState {
             thermal_total_reservoir_budget,
             thermal_active_chunk_count,
             thermal_active_cell_count,
+            bootstrap: self.bootstrap.observer_summary(&self.config),
         }
     }
 
@@ -2075,6 +2089,58 @@ impl RuntimeState {
             vec![frame],
         )
         .map_err(|_| RuntimeError::InvalidSnapshot("invalid material surface Explanation report"))
+    }
+
+    /// The Explanation report for the canonical bootstrap record.
+    ///
+    /// Downstream and read-only: it reads the record and the trace store and
+    /// mutates nothing, and it reports typed stage counts, the canonical window,
+    /// and trace anchors without translating any opaque process schema ID into a
+    /// name or a purpose.
+    fn bootstrap_record_explanation(
+        &self,
+        time: SimulationTime,
+    ) -> Result<ExplanationReport, RuntimeError> {
+        let plan = self.bootstrap.plan();
+        let receipts = self.bootstrap.receipts();
+        let mut completion_traces = Vec::with_capacity(receipts.len());
+        let mut dependency_traces = BTreeSet::new();
+        for receipt in receipts {
+            // A receipt whose completion trace is not in the store is not
+            // evidence, so it is dropped rather than counted.
+            if self.traces.event(receipt.trace()).is_some() {
+                completion_traces.push(receipt.trace());
+            }
+            dependency_traces.extend(receipt.causes().iter().copied());
+        }
+        let claim = HistoricalBootstrapRecordClaim {
+            stage_count: plan.map_or(0, |plan| plan.stages().len() as u32),
+            receipt_count: receipts.len() as u32,
+            observation_start: plan
+                .and_then(|plan| plan.stages().first())
+                .map_or(SimulationTime::new(0), HistoricalStage::starts_at),
+            observation_end: plan
+                .and_then(|plan| plan.stages().last())
+                .map_or(SimulationTime::new(0), HistoricalStage::ends_at),
+            completion_traces,
+            dependency_traces: dependency_traces.into_iter().collect(),
+        };
+        let claims = vec![
+            claim.to_explanation_claim().map_err(|_| {
+                RuntimeError::InvalidSnapshot("invalid bootstrap record Explanation claim")
+            })?,
+            claim.to_window_claim().map_err(|_| {
+                RuntimeError::InvalidSnapshot("invalid bootstrap window Explanation claim")
+            })?,
+        ];
+        let frame = ExplanationFrame::new(time, claims).map_err(|_| {
+            RuntimeError::InvalidSnapshot("invalid bootstrap record Explanation frame")
+        })?;
+        ExplanationReport::new(
+            ExperimentId::new(self.config.deterministic.world_seed),
+            vec![frame],
+        )
+        .map_err(|_| RuntimeError::InvalidSnapshot("invalid bootstrap record Explanation report"))
     }
 
     pub(crate) fn bytes_per_chunk(&self) -> u64 {

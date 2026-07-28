@@ -165,8 +165,13 @@ pub enum SessionError {
 
 #[cfg(test)]
 mod tests {
+    use causafera_explanation::{
+        ClaimEvidenceState, HISTORICAL_BOOTSTRAP_RECORD_SCHEMA, HISTORICAL_BOOTSTRAP_WINDOW_SCHEMA,
+        NumericClaimValue,
+    };
     use causafera_observer_api::{
-        FieldRasterKind, FieldRasterRequest, MATERIAL_SURFACE_DELTA_SCHEMA_V4,
+        BOOTSTRAP_SUMMARY_SCHEMA_V1, FieldRasterKind, FieldRasterRequest,
+        MATERIAL_SURFACE_DELTA_SCHEMA_V4, MAX_BOOTSTRAP_RECEIPT_SUMMARIES,
         MAX_MATERIAL_SURFACE_DELTAS, OBSERVER_PROTOCOL_V1, ObserverQuery, QueryKind, QueryStatus,
     };
     use causafera_observer_wire::{
@@ -204,6 +209,94 @@ mod tests {
         assert!(!delta.header.is_snapshot);
         assert_eq!(delta.header.sequence_number, 1);
         assert_eq!(delta.header.simulation_time, SimulationTime::new(4));
+    }
+
+    #[test]
+    fn session_exposes_six_bootstrap_receipts() {
+        // Given: a real observer session over a production runtime.
+        let mut session = ObserverSession::new(9).unwrap();
+        let initial = decode_stream_envelope(&session.open_runtime_stream().unwrap()).unwrap();
+        let summary = decode_observer_snapshot(&initial.payload).unwrap();
+        let bootstrap = &summary.bootstrap;
+
+        // Then: it reports a validated six-stage record, bounded at six.
+        assert_eq!(bootstrap.schema_version, BOOTSTRAP_SUMMARY_SCHEMA_V1);
+        assert!(bootstrap.complete);
+        assert_eq!(bootstrap.stage_count, 6);
+        assert_eq!(bootstrap.receipts.len(), MAX_BOOTSTRAP_RECEIPT_SUMMARIES);
+        assert_eq!(bootstrap.world_seed, 9);
+        assert_eq!(bootstrap.configured_population, DEFAULT_POPULATION);
+        assert_eq!(
+            bootstrap.configured_promotion_limit,
+            u32::from(DEFAULT_ACTORS)
+        );
+
+        // And: the receipts are strictly ordered and chained through the
+        // previous stage's completion trace.
+        let mut previous: Option<causafera_types::TraceId> = None;
+        for (ordinal, receipt) in bootstrap.receipts.iter().enumerate() {
+            assert_eq!(receipt.stage, ordinal as u64 + 1);
+            assert_eq!(
+                receipt.completed_at,
+                SimulationTime::new(ordinal as u64 + 1)
+            );
+            assert_eq!(
+                receipt.dependency_traces,
+                previous.into_iter().collect::<Vec<_>>()
+            );
+            previous = Some(receipt.completion_trace);
+        }
+
+        // And: every completion trace resolves in the session's own trace store.
+        let data = session.runtime.export_snapshot().unwrap();
+        for receipt in &bootstrap.receipts {
+            assert!(
+                data.traces
+                    .events
+                    .iter()
+                    .any(|event| event.trace_id == receipt.completion_trace),
+                "receipt trace {:?} must exist in the session trace store",
+                receipt.completion_trace
+            );
+        }
+
+        // And: the existing population/actor conservation still holds.
+        assert_eq!(
+            summary.population_total + u64::from(summary.actor_count),
+            DEFAULT_POPULATION
+        );
+    }
+
+    #[test]
+    fn session_bootstrap_explanation_is_supported_and_carries_trace_anchors() {
+        // Given: a real observer session over a production runtime.
+        let session = ObserverSession::new(11).unwrap();
+
+        // When: the bootstrap record is explained.
+        let report = session
+            .runtime
+            .observer_bootstrap_record_explanation()
+            .expect("a validated record must explain");
+
+        // Then: it carries typed completeness and window claims backed by the
+        // completion traces, with no rendered process name anywhere in the IR.
+        let claims = &report.frames[0].claims;
+        assert_eq!(claims.len(), 2);
+        assert_eq!(claims[0].schema, HISTORICAL_BOOTSTRAP_RECORD_SCHEMA);
+        assert_eq!(claims[0].evidence_state, ClaimEvidenceState::Supported);
+        assert_eq!(claims[0].value, NumericClaimValue::scalar(6));
+        assert_eq!(claims[1].schema, HISTORICAL_BOOTSTRAP_WINDOW_SCHEMA);
+        assert_eq!(
+            claims[1].value,
+            NumericClaimValue::range(0, 6).expect("a canonical six-stage window")
+        );
+        assert!(claims[0].evidence_traces.len() >= 6);
+        assert!(
+            claims[0]
+                .evidence_traces
+                .windows(2)
+                .all(|pair| pair[0] < pair[1])
+        );
     }
 
     #[test]

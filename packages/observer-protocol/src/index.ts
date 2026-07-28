@@ -67,6 +67,12 @@ export interface FieldRaster {
   generationTraceId: bigint;
 }
 
+export const BOOTSTRAP_SUMMARY_SCHEMA_ABSENT = 0;
+export const BOOTSTRAP_SUMMARY_SCHEMA_V1 = 1;
+/** The current production bootstrap runs six stages; more is a record this build cannot produce. */
+export const MAX_BOOTSTRAP_RECEIPT_SUMMARIES = 6;
+export const MAX_BOOTSTRAP_RECEIPT_DEPENDENCIES = 8;
+
 export enum QueryStatus {
   Ok = 1,
   InvalidRequest = 2,
@@ -109,6 +115,34 @@ export interface RuntimeSummary {
   thermalTotalReservoirBudget: bigint;
   thermalActiveChunkCount: number;
   thermalActiveCellCount: number;
+  bootstrap: BootstrapSummary;
+}
+
+/**
+ * The bounded, read-only projection of the canonical production bootstrap
+ * record. It carries equality and trace anchors only: no runtime state, no
+ * authoritative actor or place identity, and no rendered process names.
+ *
+ * `schemaVersion === BOOTSTRAP_SUMMARY_SCHEMA_ABSENT` means the payload was
+ * written before this summary existed, not that the record is empty.
+ */
+export interface BootstrapSummary {
+  schemaVersion: number;
+  planId: bigint;
+  worldSeed: bigint;
+  stageCount: number;
+  complete: boolean;
+  configuredPopulation: bigint;
+  configuredPromotionLimit: number;
+  receipts: BootstrapReceipt[];
+}
+
+export interface BootstrapReceipt {
+  stage: bigint;
+  completedAt: bigint;
+  result: Uint8Array;
+  completionTrace: bigint;
+  dependencyTraces: bigint[];
 }
 
 export interface WorldChunkSnapshot {
@@ -445,6 +479,7 @@ export function decodeRuntimeSummary(input: Uint8Array): RuntimeSummary {
   let historyDigest: Uint8Array = new Uint8Array();
   let thermalTotalCellEnergy = 0n;
   let thermalTotalReservoirBudget = 0n;
+  const bootstrapReceipts: BootstrapReceipt[] = [];
   while (!cursor.empty) {
     const [field, wire] = cursor.key();
     if (wire === 0) values.set(field, cursor.varint());
@@ -452,6 +487,14 @@ export function decodeRuntimeSummary(input: Uint8Array): RuntimeSummary {
     else if (wire === 2 && field === 4) historyDigest = cursor.bytes();
     else if (wire === 2 && field === 24) thermalTotalCellEnergy = decodeZigzagI128(cursor.bytes());
     else if (wire === 2 && field === 25) thermalTotalReservoirBudget = decodeZigzagI128(cursor.bytes());
+    else if (wire === 2 && field === 35) {
+      // Bounded before the list grows: a payload claiming more receipts than
+      // this build's bootstrap can produce is rejected, not truncated.
+      if (bootstrapReceipts.length === MAX_BOOTSTRAP_RECEIPT_SUMMARIES) {
+        throw new Error("observer bootstrap summary exceeds its receipt bound");
+      }
+      bootstrapReceipts.push(decodeBootstrapReceipt(cursor.bytes()));
+    }
     else cursor.skip(wire);
   }
   if (physicalDigest.length !== 32 || historyDigest.length !== 32) {
@@ -486,6 +529,84 @@ export function decodeRuntimeSummary(input: Uint8Array): RuntimeSummary {
     thermalTotalReservoirBudget,
     thermalActiveChunkCount: Number(values.get(26) ?? 0n),
     thermalActiveCellCount: Number(values.get(27) ?? 0n),
+    bootstrap: decodeBootstrapSummary(values, bootstrapReceipts),
+  };
+}
+
+/**
+ * The bootstrap summary is additive, so an absent field 28 is a payload written
+ * before it existed rather than a record with zero stages.
+ */
+function decodeBootstrapSummary(
+  values: Map<number, bigint>,
+  receipts: BootstrapReceipt[],
+): BootstrapSummary {
+  const schemaVersion = values.get(28);
+  if (schemaVersion === undefined) {
+    return {
+      schemaVersion: BOOTSTRAP_SUMMARY_SCHEMA_ABSENT,
+      planId: 0n,
+      worldSeed: 0n,
+      stageCount: 0,
+      complete: false,
+      configuredPopulation: 0n,
+      configuredPromotionLimit: 0,
+      receipts: [],
+    };
+  }
+  for (let index = 1; index < receipts.length; index += 1) {
+    if (receipts[index - 1].stage >= receipts[index].stage) {
+      throw new Error("observer bootstrap receipts are not in canonical order");
+    }
+  }
+  const stageCount = Number(values.get(31) ?? 0n);
+  if (stageCount > MAX_BOOTSTRAP_RECEIPT_SUMMARIES) {
+    throw new Error("observer bootstrap summary exceeds its stage bound");
+  }
+  return {
+    schemaVersion: Number(schemaVersion),
+    planId: values.get(29) ?? 0n,
+    worldSeed: values.get(30) ?? 0n,
+    stageCount,
+    complete: (values.get(32) ?? 0n) !== 0n,
+    configuredPopulation: values.get(33) ?? 0n,
+    configuredPromotionLimit: Number(values.get(34) ?? 0n),
+    receipts,
+  };
+}
+
+function decodeBootstrapReceipt(input: Uint8Array): BootstrapReceipt {
+  const cursor = new Cursor(input);
+  const values = new Map<number, bigint>();
+  let result: Uint8Array | undefined;
+  const dependencyTraces: bigint[] = [];
+  while (!cursor.empty) {
+    const [field, wire] = cursor.key();
+    if (wire === 2 && field === 3) result = cursor.bytes();
+    else if (wire === 0 && field === 5) {
+      if (dependencyTraces.length === MAX_BOOTSTRAP_RECEIPT_DEPENDENCIES) {
+        throw new Error("observer bootstrap receipt exceeds its dependency bound");
+      }
+      dependencyTraces.push(cursor.varint());
+    }
+    else if (wire === 0) values.set(field, cursor.varint());
+    else cursor.skip(wire);
+  }
+  if (result === undefined || result.length !== 32) {
+    throw new Error("observer bootstrap receipt result must contain 32 bytes");
+  }
+  for (let index = 1; index < dependencyTraces.length; index += 1) {
+    if (dependencyTraces[index - 1] >= dependencyTraces[index]) {
+      throw new Error("observer bootstrap receipt dependencies are not in canonical order");
+    }
+  }
+  const value = requiredValue(values, "BootstrapReceipt");
+  return {
+    stage: value(1),
+    completedAt: value(2),
+    result,
+    completionTrace: value(4),
+    dependencyTraces,
   };
 }
 
