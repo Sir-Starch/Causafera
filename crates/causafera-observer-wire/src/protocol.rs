@@ -526,7 +526,13 @@ pub fn decode_observer_snapshot(bytes: &[u8]) -> Result<ObserverSnapshot, WireEr
             _ => c.skip(wire)?,
         }
     }
-    for field in [1_usize, 2, 5, 6, 7, 8, 9, 10, 11, 12, 23] {
+    // Fields 13..=22 are written by every encoder here and required by the
+    // TypeScript decoder. Defaulting them to zero on this side meant one decoder
+    // accepted a payload the other refused, which is the divergence the wire
+    // contract cannot afford whichever way it points.
+    for field in [
+        1_usize, 2, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
+    ] {
         if !present[field - 1] {
             return Err(WireError::MissingField(field as u32));
         }

@@ -1137,8 +1137,8 @@ existing summary, so `OBSERVER_PROTOCOL_V1` is unchanged and a payload written b
 decodes, reporting schema version 0 for "no evidence in this payload". Both decoders bound the lists
 before growing them and reject non-canonical order. Causal event slices, typed domain time series,
 resolution transitions, pagination/capacity, and the observer-overhead measurement across all four
-load levels remain open; the one overhead figure taken here was below measurement noise and is not
-reported as a result.
+load levels remain open. The one overhead figure taken here — the bootstrap-summary encoding cost,
+roughly 300-350 ns per poll — is reported, and covers one load level, not four.
 
 ## TODO-EXPLAIN-003: Domain-Aware Causal Explanation
 **Status:** In Progress

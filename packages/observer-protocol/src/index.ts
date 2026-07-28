@@ -518,16 +518,16 @@ export function decodeRuntimeSummary(input: Uint8Array): RuntimeSummary {
   const value = requiredValue(values, "RuntimeSummary");
   return {
     simulationTicks: value(1),
-    digestSchemaVersion: Number(value(2)),
+    digestSchemaVersion: requireU32(value(2), 2),
     physicalDigest,
     historyDigest,
     manaTotal: BigInt.asIntN(64, value(5)),
     manaMaximum: BigInt.asIntN(64, value(6)),
-    activeChunkCount: Number(value(7)),
+    activeChunkCount: requireU32(value(7), 7),
     resolutionRelevance: BigInt.asIntN(64, value(8)),
-    resolutionLevel: Number(value(9)),
+    resolutionLevel: requireU32(value(9), 9),
     causalTraceCount: value(10),
-    actorCount: Number(value(11)),
+    actorCount: requireU32(value(11), 11),
     populationTotal: value(12),
     physicalEvents: value(13),
     manaCellChanges: value(14),
@@ -542,8 +542,8 @@ export function decodeRuntimeSummary(input: Uint8Array): RuntimeSummary {
     latestTraceId: value(23),
     thermalTotalCellEnergy,
     thermalTotalReservoirBudget,
-    thermalActiveChunkCount: Number(values.get(26) ?? 0n),
-    thermalActiveCellCount: Number(values.get(27) ?? 0n),
+    thermalActiveChunkCount: requireU32(values.get(26) ?? 0n, 26),
+    thermalActiveCellCount: requireU32(values.get(27) ?? 0n, 27),
     bootstrap: decodeBootstrapSummary(values, bootstrapReceipts),
   };
 }
@@ -627,14 +627,7 @@ function decodeBootstrapSummary(
   if (complete !== stageCount > 0) {
     throw new Error("observer bootstrap completeness disagrees with its stage count");
   }
-  // Kept to the same bound Rust's `to_u32` applies. `Number()` on a bigint
-  // neither rejects nor saturates — it widens, silently and lossily past 2^53 —
-  // so without this the two decoders disagree on which payloads are valid, which
-  // is the one thing a single wire contract cannot afford.
-  const configuredPromotionLimit = values.get(34)!;
-  if (configuredPromotionLimit > 0xffff_ffffn) {
-    throw new Error("observer bootstrap promotion limit exceeds its 32-bit range");
-  }
+  const configuredPromotionLimit = requireU32(values.get(34)!, 34);
   return {
     schemaVersion,
     planId: values.get(29)!,
@@ -642,7 +635,7 @@ function decodeBootstrapSummary(
     stageCount,
     complete,
     configuredPopulation: values.get(33)!,
-    configuredPromotionLimit: Number(configuredPromotionLimit),
+    configuredPromotionLimit,
     receipts,
   };
 }
@@ -1105,6 +1098,19 @@ function decodeVarintFields(input: Uint8Array): Map<number, bigint> {
   return values;
 }
 
+/**
+ * Narrow to 32 bits with the same bound Rust's `to_u32` applies.
+ *
+ * `Number()` on a bigint widens silently and lossily; every field the Rust
+ * decoder narrows must be checked here or the two disagree on validity.
+ */
+function requireU32(value: bigint, field: number): number {
+  if (value > 0xffff_ffffn) {
+    throw new Error(`observer field ${field} overflows its 32-bit range`);
+  }
+  return Number(value);
+}
+
 function requiredValue(values: Map<number, bigint>, name: string): (field: number) => bigint {
   return (field: number): bigint => {
     const found = values.get(field);
@@ -1190,7 +1196,12 @@ class Cursor {
 
   key(): [number, number] {
     const key = this.varint();
-    const field = Number(key >> 3n);
+    const rawField = key >> 3n;
+    // Bounded before widening, matching Rust's `to_u32(key >> 3)`. `Number()` on
+    // a bigint neither rejects nor saturates, so without this a field number
+    // past 2^32 is accepted here and rejected there.
+    if (rawField > 0xffff_ffffn) throw new Error("protobuf field number overflows");
+    const field = Number(rawField);
     if (field === 0) throw new Error("invalid protobuf field number");
     return [field, Number(key & 7n)];
   }
@@ -1229,10 +1240,10 @@ class Cursor {
       this.bytes();
       return;
     }
-    if (wire === 5) {
-      this.advance(4);
-      return;
-    }
+    // Wire type 5 (fixed32) is legal protobuf but no encoder here emits it, and
+    // `Cursor::skip` in `causafera-observer-wire` rejects it. Accepting it would
+    // mean this decoder walks past a field the Rust decoder refuses the whole
+    // message over.
     throw new Error(`unsupported protobuf wire type ${wire}`);
   }
 

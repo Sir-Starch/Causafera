@@ -880,7 +880,7 @@ fn a_stage_completion_the_record_does_not_name_is_rejected() {
 }
 
 #[test]
-fn a_target_outside_the_active_chunk_set_is_rejected() {
+fn a_target_the_configuration_does_not_produce_is_rejected() {
     // Given: a valid production snapshot.
     let mut data = snapshot_of(populated_config(4_129));
 
@@ -891,7 +891,42 @@ fn a_target_outside_the_active_chunk_set_is_rejected() {
         stage.targets[last] = causafera_types::ChunkId::new(u64::MAX);
     }
 
-    // Then: the plan no longer matches the persisted configuration.
+    // Then: the plan no longer matches the persisted configuration. This is the
+    // plan-versus-configuration comparison, not the active-chunk check — see
+    // the test below for that one.
+    rejects(data);
+}
+
+/// The plan-versus-configuration comparison derives both sides from the same
+/// configuration, so on its own it says nothing about whether those chunks are
+/// present in the restored state. This is the separate check.
+#[test]
+fn a_target_that_is_not_an_active_chunk_is_rejected() {
+    // Given: a valid production snapshot whose targets are the active chunks.
+    let mut data = snapshot_of(populated_config(4_151));
+    let active = data
+        .spatial
+        .active_chunks
+        .iter()
+        .map(|chunk| causafera_runtime::bootstrap_chunk_target(chunk.chunk))
+        .collect::<BTreeSet<_>>();
+    assert_eq!(
+        data.bootstrap.plan.stages[0]
+            .targets
+            .iter()
+            .copied()
+            .collect::<BTreeSet<_>>(),
+        active
+    );
+
+    // When: the restored active chunk set no longer contains one of them, with
+    // the plan and the configuration left untouched.
+    data.spatial.active_chunks.retain(|chunk| {
+        causafera_runtime::bootstrap_chunk_target(chunk.chunk)
+            != data.bootstrap.plan.stages[0].targets[0]
+    });
+
+    // Then: import rejects the stage that targets it.
     rejects(data);
 }
 
@@ -919,6 +954,38 @@ fn a_forged_stage_parameter_fingerprint_is_rejected() {
     data.bootstrap.plan.stages[0].parameters = data.bootstrap.plan.stages[1].parameters;
 
     // Then: import rejects it.
+    rejects(data);
+}
+
+/// `advanced_through` is the only gate on the bootstrap-time population and
+/// ancestry checks, and it arrives from the snapshot. `export_snapshot` writes
+/// `completed_time` from it, so the two agree in every honest snapshot — left
+/// unchecked, a snapshot presenting as bootstrap-time while claiming to have
+/// advanced skips both guards and can delete residents and erase promoted
+/// ancestry unnoticed.
+#[test]
+fn a_snapshot_whose_clocks_disagree_is_rejected() {
+    // Given: a valid bootstrap-time snapshot.
+    let mut data = snapshot_of(populated_config(4_152));
+    assert_eq!(data.recipe.completed_time, SimulationTime::new(0));
+
+    // When: it claims to have advanced while still presenting as bootstrap-time,
+    // and uses that to delete residents and erase every promoted ancestry.
+    data.physical_counters.advanced_through = SimulationTime::new(1);
+    data.population.aggregates[0].count -= 100;
+    for (_, ancestry) in data.actors_objective.actor_ancestry.iter_mut() {
+        ancestry.clear();
+    }
+
+    // Then: the disagreement itself is rejected, which re-arms both guards.
+    rejects(data);
+}
+
+/// The clock check must not be satisfiable by moving the other clock either.
+#[test]
+fn a_snapshot_that_moves_only_its_completed_time_is_rejected() {
+    let mut data = snapshot_of(populated_config(4_153));
+    data.recipe.completed_time = SimulationTime::new(1);
     rejects(data);
 }
 

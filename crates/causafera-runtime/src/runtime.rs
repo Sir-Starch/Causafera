@@ -1051,6 +1051,18 @@ impl RuntimeState {
         let bootstrap = BootstrapRuntimeState::import_snapshot(data.bootstrap)
             .map_err(|_| RuntimeError::InvalidSnapshot("invalid canonical bootstrap record"))?;
         let counters = data.physical_counters;
+        // `export_snapshot` writes `completed_time` *from* `advanced_through`, so
+        // the two agree in every honestly produced snapshot and this costs
+        // nothing. Left unchecked it is a fail-open: `advanced_through` is the
+        // only gate on the bootstrap-time population and actor-ancestry checks,
+        // so a snapshot presenting as bootstrap-time (`completed_time` zero)
+        // while claiming to have advanced skips both, and can delete residents
+        // and erase promoted ancestry without import noticing.
+        if counters.advanced_through != data.recipe.completed_time {
+            return Err(RuntimeError::InvalidSnapshot(
+                "snapshot completed time does not match the advanced-through counter",
+            ));
+        }
         let state = Self {
             config,
             traces,
@@ -1351,6 +1363,31 @@ impl RuntimeState {
             return Err(RuntimeError::InvalidSnapshot(
                 "bootstrap plan does not match the persisted configuration",
             ));
+        }
+
+        // Targets are additionally checked against the chunk set the snapshot
+        // actually restored, not only against the one the configuration implies.
+        // The comparison above derives both sides from the same configuration,
+        // so on its own it says nothing about whether those chunks are present
+        // in this state; that they are held today by thermal and duplicate
+        // validation rejecting the alternatives is defence in depth, not the
+        // check `RFC-PERSIST-001` describes.
+        let active = self
+            .active_chunks
+            .keys()
+            .copied()
+            .map(bootstrap_chunk_target)
+            .collect::<BTreeSet<_>>();
+        for stage in record.plan().stages() {
+            if stage
+                .targets()
+                .iter()
+                .any(|target| !active.contains(target))
+            {
+                return Err(RuntimeError::InvalidSnapshot(
+                    "bootstrap stage targets a chunk that is not active",
+                ));
+            }
         }
 
         // Every receipt's completion trace must exist and must really be the

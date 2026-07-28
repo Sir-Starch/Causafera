@@ -585,7 +585,7 @@ fn canonical_stage_targets(config: &RuntimeConfig) -> Result<Vec<ChunkId>, Boots
 ///
 /// Domain-separated from every other derivation that hashes a chunk, so a target
 /// identity can never be mistaken for a mana or population object identity.
-pub(crate) fn bootstrap_chunk_target(chunk: ChartChunkCoord) -> ChunkId {
+pub fn bootstrap_chunk_target(chunk: ChartChunkCoord) -> ChunkId {
     ChunkId::new(mix64(BOOTSTRAP_TARGET_DOMAIN ^ chart_chunk_hash(chunk)))
 }
 

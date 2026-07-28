@@ -758,7 +758,18 @@ The implementation worker updates only documents whose facts change:
 
   **Progress had no rows for the audit commits.** Added, with their focused verification.
 
-- **2026-07-28 (fourth audit):** A fourth audit of `5367351` found four more.
+- **2026-07-28 (fourth audit):** A fifth audit of `ab38ea1` found one fail-open, three further decoder divergences, and a set of
+documentation contradictions this branch had introduced and left standing.
+
+| Defect | Proof | Regression coverage |
+| --- | --- | --- |
+| `advanced_through` arrives from the snapshot and gates both bootstrap-time checks, but was never cross-checked against `recipe.completed_time`; a snapshot presenting as bootstrap-time while claiming to have advanced skipped both | reproduced: 100 residents deleted and every promoted ancestry erased, import returned `Ok` | `a_snapshot_whose_clocks_disagree_is_rejected`, `a_snapshot_that_moves_only_its_completed_time_is_rejected` |
+| TypeScript accepted protobuf wire type 5 and an unbounded field number; Rust rejects both. Rust defaulted fields 13..=22 that TypeScript requires | comparison of both cursors | `tools/audit/test-observer-bootstrap-decoder.mjs` |
+| Nothing compared plan targets against the restored active chunk set; the property held through thermal and duplicate validation rather than through the check `RFC-PERSIST-001` describes | probe | `a_target_that_is_not_an_active_chunk_is_rejected` |
+| Four documents still said no observer-overhead figure is reported while two reported one | inspection | wave-5 Decision Log entry superseded in place; the other three corrected |
+| Progress §F1 recorded 33 and 10 where the suites stood at 43 and 20 | inspection | counts refreshed and marked as re-run per round |
+
+A fourth audit of `5367351` found four more.
 
   **Field 35 on a varint wire diverged.** TypeScript's generic `wire === 0` branch ran before the
   bootstrap wire-type guard, so the field was stored as a scalar and then silently dropped while Rust
@@ -785,14 +796,16 @@ The implementation worker updates only documents whose facts change:
   backlog had closed it and carried the remainder to `TODO-PERF-003`. Corrected in the benchmarks
   document, which was the stale source.
 
-- **2026-07-28 (post-audit, not done):** The audit asked for matching adversarial tests on the
-  TypeScript side. The workspace has no JavaScript test runner, and adding one is not cheap here:
-  `engines` allows Node 20.19, which cannot strip TypeScript, and the package has no build output to
-  test against, so this needs either an engine-floor raise or a transpile step — a workspace
-  infrastructure decision this plan did not scope. The Rust adversarial suite defines the contract
-  and the TypeScript decoder is written to the same rules with a comment pinning it there, but the
-  TypeScript decoder has **no automated adversarial coverage**. Recorded as an open gap rather than
-  smuggled in.
+- **2026-07-28 (fifth audit):** The recorded reason for having no TypeScript adversarial tests was
+  checkably wrong, and the gap is now closed rather than re-justified. The claim had been that the
+  workspace has no JavaScript test runner; it does — `node tools/audit/run-source-tests.mjs` drives
+  `node --test` over `tools/audit/*.mjs` and is in `AGENTS.md`'s validation suite. The TypeScript
+  obstacle was also softer than stated: `packages/observer-protocol` already carries `typescript` as
+  a devDependency, so the module can be compiled and imported in one step.
+  `tools/audit/test-observer-bootstrap-decoder.mjs` now runs seventeen adversarial vectors through
+  the real decoder, built from hand-written bytes rather than from the decoder's own inverse, and is
+  registered in the runner. Confirmed to have teeth: reverting three of the parity guards fails
+  exactly three of them.
 
 - **2026-07-28 (post-audit, not done):** The audit's MEDIUM note — no overall byte limit on the
   runtime-summary decoder — is pre-existing behaviour of the whole payload, bounded at the query
@@ -802,11 +815,17 @@ The implementation worker updates only documents whose facts change:
   and commit message already say; the reachability claim rests on the entry-point equivalence and
   ancestry tests, not on the scan.
 
-- **2026-07-28 (wave 5):** No observer-overhead figure is reported. Control and measured poll means
-  straddle each other across five runs at the bounded envelope, so the bootstrap-summary encoding
-  cost is below this harness's noise. Reporting a number here would be reporting noise; the
-  repository has already recorded one physically-impossible negative overhead from single-run
-  measurement and that mistake is not repeated.
+- **2026-07-28 (wave 5, superseded by the fourth audit):** No observer-overhead figure was reported.
+  Control and measured poll means straddled each other across five runs at the bounded envelope, so
+  the bootstrap-summary encoding cost was judged to be below this harness's noise. **This conclusion
+  was wrong, and wrong in an instructive way:** it was a property of measuring the control and its
+  counterpart as two sequential blocks of eight, not of the system. The fourth audit's methodology
+  fix — four warm-up repetitions, twenty measured, control and counterpart interleaved — collapses
+  the control's spread to tens of nanoseconds and separates the distributions. The overhead is
+  roughly 300-350 ns per poll, about 3-4%, and is now reported. The original caution was right in
+  kind (the repository had once recorded a physically-impossible negative overhead from single-run
+  measurement) and wrong in remedy: the answer to a noisy measurement is a better measurement, not a
+  refusal to report.
 
 ## Progress
 
@@ -831,17 +850,27 @@ hash necessarily follows it and is not itself listed.
 
 ### Final verification
 
-- **F1.** `cargo test -p causafera-runtime --test historical_bootstrap` — 33 passed, 0 failed.
-  `cargo test -p causafera-observer-wire --test protocol` — 10 passed. `cargo test -p causafera-explanation`
-  — 17 passed. `cargo test -p causafera-observer --bin causafera-observer` — 12 passed.
+- **F1.** Re-run after every audit round; the counts below are current, not the wave-5 ones.
+  `cargo test -p causafera-runtime --test historical_bootstrap` — 43 passed, 0 failed.
+  `cargo test -p causafera-observer-wire --test protocol` — 20 passed.
+  `cargo test -p causafera-explanation --lib` — 17 passed.
+  `cargo test -p causafera-observer --bin causafera-observer` — 12 passed.
   `cargo test -p causafera-lab --lib` — 6 passed, 3 ignored (expensive benchmarks, ignored before this plan).
+  `node --test tools/audit/test-observer-bootstrap-decoder.mjs` — 17 passed.
 - **F2.** `cargo fmt --all -- --check` — clean. `cargo clippy --workspace --all-targets --all-features -- -D warnings`
   — clean.
 - **F3.** `cargo test --workspace --all-features` — green. `cargo test --workspace --no-default-features` — green.
   No pre-existing failure was observed at any point.
 - **F4.** `cargo run -p xtask -- ci`, `pnpm lint`, `pnpm typecheck`, `pnpm build`,
-  `node tools/audit/check-entry-points.mjs`, `node tools/audit/run-source-tests.mjs`, `git diff --check`
-  — all green.
+  `node tools/audit/check-entry-points.mjs`, `git diff --check` — all green.
+
+  `node tools/audit/run-source-tests.mjs` is **not reliably green, and was recorded as green here in
+  error.** It reports 30 passed / 1 failed: `tools/audit/test-capture-cargo-dispatch.mjs` creates a
+  worktree at a frozen baseline commit and runs `cargo test -p ontopolis-core`, a crate that does not
+  exist in this tree. The failure is branch-independent — it reproduces with this branch's changes
+  reverted — and it passed on one earlier invocation here, so it is environment- or cache-dependent
+  rather than deterministic. It is recorded rather than fixed: repairing a frozen-baseline audit
+  fixture is unrelated to this plan. The 30 passing include the 17 added by this plan.
 - **F5. Manual QA gate.** The two observer commands as written in the checklist select nothing:
   with `--exact` the filter must be the module-qualified
   `session::tests::session_negotiates_and_streams_real_runtime_snapshots`, and the bare name reports
@@ -906,7 +935,9 @@ threshold, and this machine is not reference hardware.
    chunk set, so save/resume equivalence was false without it.
 3. `ConcreteHistoricalBootstrapAdapter` was removed, and `RuntimeSnapshot` lost `Copy`. Both are
    recorded in the Decision Log.
-4. No observer-overhead figure is reported (Decision Log, wave 5).
+4. The observer-overhead figure was reported as unresolvable through three passes and is now
+   reported as roughly 300-350 ns per poll; see the superseded wave-5 Decision Log entry for why the
+   earlier conclusion was a property of the measurement rather than of the system.
 
 ### Post-audit hardening
 
@@ -924,7 +955,7 @@ A second audit of `cf3f018` confirmed those fixes and found three more.
 | Defect | Proof | Regression coverage |
 | --- | --- | --- |
 | `chunk_extent` and `sensor_count` reached no stage parameter fingerprint, so configs differing only in them shared a plan identity **and** stage 1/4/6 result fingerprints | probed: all three compared equal across differing configs | `configuration_the_stages_execute_under_reaches_their_parameter_fingerprints` |
-| The canonical stage seed RFC-HIST-001 requires each stage to receive was never passed to adapters | the accessor had no callers | `every_stage_receives_a_stable_domain_separated_seed` |
+| The canonical stage seed RFC-HIST-001 requires each stage to receive was never passed to adapters | the accessor had no callers | `every_stage_receives_a_stable_domain_separated_seed` covers the seed's derivation, stability and separation. **It does not cover the wiring**: no adapter consumes the seed, so nothing observable changes if the parameter is dropped again, and the trait signature is a compile-time contract only. Narrowed here rather than claimed. |
 | Receipt fields 1..=4 allowed duplicates with last-value-wins and skipped a known field on the wrong wire type, while the enclosing group was strict | inspection of both decoders | `a_contradictory_nested_receipt_is_rejected`, with its own faithfulness control |
 
 A third audit of `0ea17cb` found five more.
