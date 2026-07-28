@@ -44,7 +44,10 @@ pub const MANA_PATTERN_HISTORY_TICKS: u64 = 8;
 pub const MAX_EXPERIMENT_RECIPE_MANA_SOURCES: usize = 16;
 pub const EXPERIMENT_RECIPE_MANA_SOURCE_POLICY_SCHEMA_V1: u64 = 1;
 
-pub const CURRENT_DIGEST_SCHEMA_VERSION: DigestSchemaVersion = DigestSchemaVersion::new(6);
+/// Bumped to 7 when the canonical production bootstrap record (plan identity,
+/// per-stage result fingerprints, and terminal receipts) became an authoritative
+/// input to `physical_state_digest`.
+pub const CURRENT_DIGEST_SCHEMA_VERSION: DigestSchemaVersion = DigestSchemaVersion::new(7);
 
 const PHYSICAL_SYSTEM_ID: u64 = 10;
 pub const EXPERIMENT_RECIPE_MANA_SOURCE_SYSTEM_ID: u64 = 19;
@@ -74,6 +77,9 @@ pub const THERMAL_RESERVOIR_TRANSFER_EVENT_KIND: u64 = 30;
 pub const THERMAL_CELL_CHANGE_EVENT_KIND: u64 = 31;
 pub const THERMAL_CONSERVATION_EVENT_KIND: u64 = 32;
 pub const MATERIAL_SURFACE_THERMAL_EXCHANGE_EVENT_KIND: u64 = 33;
+/// One stage's single terminal completion. Its effect is the authoritative
+/// transition of that stage's bounded result state, not decorative metadata.
+pub const BOOTSTRAP_STAGE_COMPLETION_EVENT_KIND: u64 = 34;
 pub const THERMAL_FIELD_BOOTSTRAP_EVENT_KIND: u64 = 28;
 pub const THERMAL_RESERVOIR_BOOTSTRAP_EVENT_KIND: u64 = 29;
 const RUNTIME_OBJECT_KIND: u64 = 1;
@@ -88,6 +94,7 @@ pub const EXPERIMENT_RECIPE_MANA_SOURCE_OBJECT_KIND: u64 = 9;
 pub const THERMAL_RESERVOIR_OBJECT_KIND: u64 = 10;
 pub const THERMAL_CELL_OBJECT_KIND: u64 = 11;
 pub const THERMAL_CARRIER_OBJECT_KIND: u64 = 12;
+pub const BOOTSTRAP_STAGE_OBJECT_KIND: u64 = 13;
 const ROOT_PROPERTY: u64 = 1;
 pub(crate) const PHYSICAL_PROPERTY: u64 = 2;
 pub(crate) const MANA_PROPERTY: u64 = 3;
@@ -104,6 +111,7 @@ pub const THERMAL_RESERVOIR_BUDGET_PROPERTY: u64 = 20;
 pub const THERMAL_ENERGY_PROPERTY: u64 = 21;
 pub const THERMAL_BATCH_SEQUENCE_PROPERTY: u64 = 22;
 pub const MATERIAL_SURFACE_THERMAL_RETAINED_PROPERTY: u64 = 23;
+pub const BOOTSTRAP_STAGE_RESULT_PROPERTY: u64 = 24;
 pub(crate) const RESOLUTION_CHANNEL: u64 = 1;
 const PHYSICAL_DIGEST_DOMAIN: u64 = 0x5048_5953_4943_414C;
 pub(crate) const HISTORY_DIGEST_DOMAIN: u64 = 0x4849_5354_4F52_595F;
@@ -504,6 +512,12 @@ pub struct RuntimeState {
     pub(crate) actor_objects: BTreeMap<u64, ActorPhysicalObject>,
     pub(crate) population_aggregates: BTreeMap<ChartChunkCoord, PopulationAggregate>,
     pub(crate) aggregate_actor_pool: BTreeMap<ChartChunkCoord, Vec<ActorId>>,
+    /// The validated canonical bootstrap record this state was initialized from.
+    ///
+    /// Every `RuntimeState` returned by [`RuntimeState::new`] or
+    /// [`RuntimeState::import_snapshot`] carries a complete six-stage record; see
+    /// [`BootstrapRuntimeState`] for the one window in which it is not yet set.
+    pub(crate) bootstrap: BootstrapRuntimeState,
     pub(crate) actor_action_bounds: i64,
     pub(crate) pending_samples: Vec<PhysicalPatternSample>,
     pub(crate) pattern_history: PhysicalPatternHistory,
@@ -659,6 +673,7 @@ impl RuntimeState {
             actor_objects: BTreeMap::new(),
             population_aggregates: BTreeMap::new(),
             aggregate_actor_pool: BTreeMap::new(),
+            bootstrap: BootstrapRuntimeState::default(),
             actor_action_bounds: config.action_bounds,
             pending_samples: Vec::with_capacity(causafera_geography::TERRAIN_CELLS_PER_CHUNK),
             pattern_history: PhysicalPatternHistory::new(
@@ -693,24 +708,12 @@ impl RuntimeState {
             last_mana_changes: 0,
             failure: None,
         };
-        HistoricalBootstrapPlan::for_runtime_config(config)
-            .map_err(|error| match error {
-                BootstrapError::Runtime(error) => error,
-                BootstrapError::ThermalReservoirOutsideActiveRegion { .. }
-                | BootstrapError::InvalidThermalReservoir
-                | BootstrapError::DuplicateThermalReservoir { .. } => {
-                    RuntimeError::InvalidSnapshot("invalid thermal bootstrap plan")
-                }
-            })?
-            .bootstrap(&mut state)
-            .map_err(|error| match error {
-                BootstrapError::Runtime(error) => error,
-                BootstrapError::ThermalReservoirOutsideActiveRegion { .. }
-                | BootstrapError::InvalidThermalReservoir
-                | BootstrapError::DuplicateThermalReservoir { .. } => {
-                    RuntimeError::InvalidSnapshot("invalid thermal bootstrap state")
-                }
-            })?;
+        let recipe = RuntimeBootstrapRecipe::from_runtime_config(config)
+            .map_err(|error| bootstrap_construction_error(error, "invalid bootstrap plan"))?;
+        let bootstrap = recipe
+            .execute(&mut state)
+            .map_err(|error| bootstrap_construction_error(error, "invalid bootstrap state"))?;
+        state.bootstrap = bootstrap;
         Ok(state)
     }
 
@@ -943,9 +946,7 @@ impl RuntimeState {
                     .map(|(chunk, actors)| (*chunk, actors.clone()))
                     .collect(),
             },
-            bootstrap: BootstrapReceiptSnapshot {
-                receipts: Vec::new(),
-            },
+            bootstrap: self.bootstrap.export_snapshot(),
             traces: self.traces.export_snapshot(),
             experiment_recipe_mana_source_receipts: self
                 .executed_experiment_recipe_mana_sources
@@ -1034,6 +1035,8 @@ impl RuntimeState {
             material_surface_gate_transitions,
             material_surface_thermal_transitions,
         ) = import_material_surfaces(data.material_surfaces, config.chunk_extent)?;
+        let bootstrap = BootstrapRuntimeState::import_snapshot(data.bootstrap)
+            .map_err(|_| RuntimeError::InvalidSnapshot("invalid canonical bootstrap record"))?;
         let counters = data.physical_counters;
         let state = Self {
             config,
@@ -1057,6 +1060,7 @@ impl RuntimeState {
             actor_objects,
             population_aggregates,
             aggregate_actor_pool,
+            bootstrap,
             actor_action_bounds: data.actors_objective.actor_action_bounds,
             pending_samples: counters.pending_samples,
             pattern_history,
@@ -2170,6 +2174,7 @@ impl RuntimeState {
                 digest.write(actor.raw());
             }
         }
+        write_bootstrap_record(&mut digest, &self.bootstrap);
         PhysicalStateDigest {
             schema_version: CURRENT_DIGEST_SCHEMA_VERSION,
             fingerprint: digest.finish(),
@@ -3154,6 +3159,23 @@ fn import_aggregate_actor_pool(
         }
     }
     Ok(pool)
+}
+
+/// Collapse a bootstrap failure into the runtime's construction error.
+///
+/// Runtime errors keep their own identity; every canonical-contract or thermal
+/// configuration failure fails closed under `context`, so a runtime is never
+/// handed back without a validated record.
+fn bootstrap_construction_error(error: BootstrapError, context: &'static str) -> RuntimeError {
+    match error {
+        BootstrapError::Runtime(error) => error,
+        BootstrapError::Historical(_)
+        | BootstrapError::ThermalReservoirOutsideActiveRegion { .. }
+        | BootstrapError::InvalidThermalReservoir
+        | BootstrapError::DuplicateThermalReservoir { .. }
+        | BootstrapError::InvalidStageTargets
+        | BootstrapError::MissingStageEffectTrace => RuntimeError::InvalidSnapshot(context),
+    }
 }
 
 fn validate_trace_exists(store: &CausalTraceStore, trace: TraceId) -> Result<(), RuntimeError> {

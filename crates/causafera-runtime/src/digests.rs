@@ -143,6 +143,63 @@ fn off_line_axis(value: i32, rotation: u32) -> u64 {
     lane.rotate_left(rotation) ^ lane.rotate_left(rotation.wrapping_add(22) % 64)
 }
 
+/// Write the canonical production bootstrap record into a state digest.
+///
+/// The record is authoritative equality input: two runs of the same seed and
+/// recipe agree on it, and any change to a stage's parameters, targets, result,
+/// or receipt ancestry moves the digest. The written bytes are an identity, never
+/// a distance — `CURRENT_DIGEST_SCHEMA_VERSION` moved to 7 when this was added.
+pub(crate) fn write_bootstrap_record(
+    digest: &mut CanonicalDigest,
+    bootstrap: &BootstrapRuntimeState,
+) {
+    let Some(record) = bootstrap.record() else {
+        digest.write(0);
+        return;
+    };
+    digest.write(1);
+    let plan = record.plan();
+    digest.write(plan.id().raw());
+    digest.write(plan.world_seed());
+    digest.write(plan.stages().len() as u64);
+    for stage in plan.stages() {
+        digest.write(stage.id().raw());
+        digest.write(stage.process().raw());
+        digest.write(stage.starts_at().raw());
+        digest.write(stage.ends_at().raw());
+        digest.write(u64::from(stage.detail_ordinal()));
+        digest.write(stage.targets().len() as u64);
+        for target in stage.targets() {
+            digest.write(target.raw());
+        }
+        digest.write(stage.dependencies().len() as u64);
+        for dependency in stage.dependencies() {
+            digest.write(dependency.raw());
+        }
+        digest.write(stage.external_causes().len() as u64);
+        for cause in stage.external_causes() {
+            digest.write(cause.raw());
+        }
+        digest.write_bytes(stage.parameters().bytes());
+    }
+    digest.write(record.receipts().len() as u64);
+    for receipt in record.receipts() {
+        digest.write(receipt.stage().raw());
+        digest.write(receipt.completed_at().raw());
+        digest.write_bytes(receipt.result().bytes());
+        digest.write(receipt.trace().raw());
+        digest.write(receipt.causes().len() as u64);
+        for cause in receipt.causes() {
+            digest.write(cause.raw());
+        }
+    }
+    digest.write(bootstrap.stage_results().len() as u64);
+    for (stage, result) in bootstrap.stage_results() {
+        digest.write(stage.raw());
+        digest.write_bytes(result.bytes());
+    }
+}
+
 pub(crate) fn ordered_trace_causes(causes: [TraceId; 2]) -> Vec<TraceId> {
     let mut ordered = causes.to_vec();
     ordered.sort_unstable();

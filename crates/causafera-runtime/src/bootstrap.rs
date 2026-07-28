@@ -1,5 +1,6 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
+use crate::digests::mix64;
 use crate::*;
 use causafera_core::*;
 use causafera_domains::{
@@ -8,6 +9,62 @@ use causafera_domains::{
 };
 use causafera_types::*;
 use thiserror::Error;
+
+pub use causafera_world::{
+    HistoricalBootstrapError, HistoricalBootstrapPlan, HistoricalBootstrapRecord, HistoricalStage,
+    HistoricalStageReceipt, MAX_HISTORICAL_STAGES, MAX_STAGE_DEPENDENCIES,
+    MAX_STAGE_EXTERNAL_CAUSES, MAX_STAGE_TARGETS,
+};
+
+/// The six executable stages the current production bootstrap runs.
+///
+/// This is the complete implementation surface of the canonical plan today. It
+/// is a bound on what the runtime executes, not a claim that historical
+/// synthesis is only ever six steps.
+pub const BOOTSTRAP_STAGE_COUNT: usize = 6;
+
+pub const PHYSICAL_GEOGRAPHY_STAGE: HistoricalStageId = HistoricalStageId::new(1);
+pub const MATERIAL_SURFACE_STAGE: HistoricalStageId = HistoricalStageId::new(2);
+pub const POPULATION_LIFECYCLE_STAGE: HistoricalStageId = HistoricalStageId::new(3);
+pub const ACTOR_PROMOTION_STAGE: HistoricalStageId = HistoricalStageId::new(4);
+pub const MATERIAL_ACTIVITY_STAGE: HistoricalStageId = HistoricalStageId::new(5);
+pub const THERMAL_RESERVOIR_STAGE: HistoricalStageId = HistoricalStageId::new(6);
+
+/// Opaque process identities. They are numeric schema IDs, never human-language
+/// event names, and carry no meaning a downstream reader may translate.
+pub const PHYSICAL_GEOGRAPHY_PROCESS_SCHEMA: HistoricalProcessSchemaId =
+    HistoricalProcessSchemaId::new(0x0B01);
+pub const MATERIAL_SURFACE_PROCESS_SCHEMA: HistoricalProcessSchemaId =
+    HistoricalProcessSchemaId::new(0x0B02);
+pub const POPULATION_LIFECYCLE_PROCESS_SCHEMA: HistoricalProcessSchemaId =
+    HistoricalProcessSchemaId::new(0x0B03);
+pub const ACTOR_PROMOTION_PROCESS_SCHEMA: HistoricalProcessSchemaId =
+    HistoricalProcessSchemaId::new(0x0B04);
+pub const MATERIAL_ACTIVITY_PROCESS_SCHEMA: HistoricalProcessSchemaId =
+    HistoricalProcessSchemaId::new(0x0B05);
+pub const THERMAL_RESERVOIR_PROCESS_SCHEMA: HistoricalProcessSchemaId =
+    HistoricalProcessSchemaId::new(0x0B06);
+
+/// Domain separators. Each keeps one derivation from colliding with another that
+/// happens to hash the same inputs.
+const BOOTSTRAP_PLAN_ID_DOMAIN: u64 = 0x0B10_0000_0000_0001;
+const BOOTSTRAP_TARGET_DOMAIN: u64 = 0x0B10_0000_0000_0002;
+const BOOTSTRAP_PARAMETER_DOMAIN: u64 = 0x0B10_0000_0000_0003;
+const BOOTSTRAP_RESULT_DOMAIN: u64 = 0x0B10_0000_0000_0004;
+
+/// The bounded state a stage completion transitions away from.
+///
+/// A stage that commits no domain effect still commits this transition, so every
+/// stage has one terminal receipt anchored to a real state change rather than to
+/// decorative metadata.
+const BOOTSTRAP_STAGE_RESULT_ABSENT_TAG: u64 = 0x0B11;
+
+/// Operation ordinal reserved for a stage's single completion event.
+///
+/// Per-object stage events number their operations from zero upwards, so the
+/// completion cannot collide with them for any reachable chunk or reservoir
+/// count.
+const BOOTSTRAP_STAGE_COMPLETION_ORDINAL: u64 = u64::MAX;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TerrainBootstrapStage {
@@ -53,90 +110,591 @@ pub struct ThermalReservoirBootstrapStage {
     pub reservoirs: Vec<ThermalReservoirBootstrap>,
 }
 
+/// The executable configuration of the current production bootstrap, bound to
+/// one canonical [`HistoricalBootstrapPlan`].
+///
+/// The canonical plan in `causafera-world` stays the single contract for stage
+/// identity, ordering, targets, and receipt validation. This recipe is the
+/// runtime adapter that executes it: one canonical plan, six executable stage
+/// adapters, and no second bootstrap model.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct HistoricalBootstrapPlan {
+pub struct RuntimeBootstrapRecipe {
     pub physical_geography_init: TerrainBootstrapStage,
     pub material_surface: MaterialSurfaceBootstrapStage,
     pub population_lifecycle: PopulationLifecycleStage,
     pub actor_promotion: ActorPromotionStage,
     pub material_activity: MaterialActivityStage,
     pub thermal_reservoirs: ThermalReservoirBootstrapStage,
+    plan: HistoricalBootstrapPlan,
 }
 
 pub trait HistoricalBootstrapAdapter {
     fn bootstrap(&self, state: &mut RuntimeState) -> Result<Vec<TraceId>, BootstrapError>;
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum ConcreteHistoricalBootstrapAdapter {
-    Plan(HistoricalBootstrapPlan),
+/// The canonical bootstrap record a constructed or imported `RuntimeState` holds.
+///
+/// `record` is `None` only inside [`RuntimeState::new`], between the state struct
+/// being built and the stage coordinator running against it. Every `RuntimeState`
+/// handed to a caller carries a validated record; import rejects a snapshot that
+/// does not, rather than defaulting an empty receipt list into production state.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct BootstrapRuntimeState {
+    record: Option<HistoricalBootstrapRecord>,
+    stage_results: BTreeMap<HistoricalStageId, StateFingerprint>,
 }
 
-impl HistoricalBootstrapAdapter for ConcreteHistoricalBootstrapAdapter {
-    fn bootstrap(&self, state: &mut RuntimeState) -> Result<Vec<TraceId>, BootstrapError> {
-        match self {
-            Self::Plan(plan) => plan.bootstrap(state),
+impl BootstrapRuntimeState {
+    pub const fn record(&self) -> Option<&HistoricalBootstrapRecord> {
+        self.record.as_ref()
+    }
+
+    pub fn plan(&self) -> Option<&HistoricalBootstrapPlan> {
+        self.record.as_ref().map(HistoricalBootstrapRecord::plan)
+    }
+
+    pub fn receipts(&self) -> &[HistoricalStageReceipt] {
+        self.record
+            .as_ref()
+            .map_or(&[], HistoricalBootstrapRecord::receipts)
+    }
+
+    pub const fn stage_results(&self) -> &BTreeMap<HistoricalStageId, StateFingerprint> {
+        &self.stage_results
+    }
+
+    pub const fn is_complete(&self) -> bool {
+        self.record.is_some()
+    }
+
+    /// The persisted form of this record.
+    pub fn export_snapshot(&self) -> BootstrapReceiptSnapshot {
+        let Some(record) = self.record.as_ref() else {
+            return BootstrapReceiptSnapshot::absent();
+        };
+        let plan = record.plan();
+        BootstrapReceiptSnapshot {
+            plan: BootstrapPlanSnapshot {
+                id: plan.id(),
+                world_seed: plan.world_seed(),
+                stages: plan
+                    .stages()
+                    .iter()
+                    .map(|stage| BootstrapStageSnapshot {
+                        stage: stage.id(),
+                        process: stage.process(),
+                        starts_at: stage.starts_at(),
+                        ends_at: stage.ends_at(),
+                        detail_ordinal: stage.detail_ordinal(),
+                        targets: stage.targets().to_vec(),
+                        dependencies: stage.dependencies().to_vec(),
+                        external_causes: stage.external_causes().to_vec(),
+                        parameters: stage.parameters(),
+                    })
+                    .collect(),
+            },
+            stage_results: self
+                .stage_results
+                .iter()
+                .map(|(stage, result)| BootstrapStageResultSnapshot {
+                    stage: *stage,
+                    result: *result,
+                })
+                .collect(),
+            receipts: record
+                .receipts()
+                .iter()
+                .map(|receipt| BootstrapReceiptRecord {
+                    stage: receipt.stage(),
+                    completed_at: receipt.completed_at(),
+                    result: receipt.result(),
+                    trace: receipt.trace(),
+                    causes: receipt.causes().to_vec(),
+                })
+                .collect(),
         }
     }
-}
 
-impl HistoricalBootstrapAdapter for HistoricalBootstrapPlan {
-    fn bootstrap(&self, state: &mut RuntimeState) -> Result<Vec<TraceId>, BootstrapError> {
-        let mut traces = Vec::new();
-        traces.extend(self.physical_geography_init.bootstrap(state)?);
-        traces.extend(self.material_surface.bootstrap(state)?);
-        traces.extend(self.population_lifecycle.bootstrap(state)?);
-        traces.extend(self.actor_promotion.bootstrap(state)?);
-        traces.extend(self.material_activity.bootstrap(state)?);
-        traces.extend(self.thermal_reservoirs.bootstrap(state)?);
-        Ok(traces)
+    /// Rebuild a record from persisted parts, through canonical validation.
+    ///
+    /// The plan is reconstructed with the same constructors production uses, so
+    /// a persisted plan with unsorted targets, a forward dependency, an
+    /// overlapping span, or a receipt set that does not continue the declared
+    /// ancestry fails here rather than becoming authoritative state.
+    pub fn import_snapshot(
+        snapshot: BootstrapReceiptSnapshot,
+    ) -> Result<Self, HistoricalBootstrapError> {
+        let stages = snapshot
+            .plan
+            .stages
+            .into_iter()
+            .map(|stage| {
+                HistoricalStage::new(
+                    stage.stage,
+                    stage.process,
+                    stage.starts_at,
+                    stage.ends_at,
+                    stage.detail_ordinal,
+                    stage.targets,
+                    stage.dependencies,
+                    stage.external_causes,
+                    stage.parameters,
+                )
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let plan =
+            HistoricalBootstrapPlan::new(snapshot.plan.id, snapshot.plan.world_seed, stages)?;
+        let receipts = snapshot
+            .receipts
+            .into_iter()
+            .map(|receipt| {
+                HistoricalStageReceipt::new(
+                    receipt.stage,
+                    receipt.completed_at,
+                    receipt.result,
+                    receipt.trace,
+                    receipt.causes,
+                )
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let mut stage_results = BTreeMap::new();
+        for entry in snapshot.stage_results {
+            if stage_results.insert(entry.stage, entry.result).is_some() {
+                return Err(HistoricalBootstrapError::DuplicateStage(entry.stage));
+            }
+        }
+        Self::from_parts(plan, receipts, stage_results)
+    }
+
+    /// Reassemble a validated record from persisted parts.
+    ///
+    /// Validation runs through the canonical contract, so a plan or receipt set
+    /// that does not satisfy it cannot become runtime state.
+    pub fn from_parts(
+        plan: HistoricalBootstrapPlan,
+        receipts: Vec<HistoricalStageReceipt>,
+        stage_results: BTreeMap<HistoricalStageId, StateFingerprint>,
+    ) -> Result<Self, HistoricalBootstrapError> {
+        let record = plan.validate_receipts(receipts)?;
+        Ok(Self {
+            record: Some(record),
+            stage_results,
+        })
     }
 }
 
-impl HistoricalBootstrapPlan {
-    pub(crate) fn for_runtime_config(config: &RuntimeConfig) -> Result<Self, BootstrapError> {
+impl RuntimeBootstrapRecipe {
+    pub(crate) fn from_runtime_config(config: &RuntimeConfig) -> Result<Self, BootstrapError> {
         let terrain_seed = match config.carrier_adapter {
             CarrierAdapterConfig::TerrainSeed { terrain_seed } => terrain_seed,
         };
-        Ok(Self {
-            physical_geography_init: TerrainBootstrapStage {
-                stage: HistoricalStageId::new(1),
-                terrain_seed,
-            },
-            material_surface: MaterialSurfaceBootstrapStage {
-                stage: HistoricalStageId::new(2),
-                initial_condition: 1,
-            },
-            population_lifecycle: PopulationLifecycleStage {
-                stage: HistoricalStageId::new(3),
-                initial_population: config.bootstrap_population,
-            },
-            actor_promotion: ActorPromotionStage {
-                stage: HistoricalStageId::new(4),
-                max_promotions: config.actor_count,
-            },
-            material_activity: MaterialActivityStage {
-                stage: HistoricalStageId::new(5),
-                flow_units: 1,
-            },
-            thermal_reservoirs: ThermalReservoirBootstrapStage {
-                stage: HistoricalStageId::new(6),
-                reservoirs: vec![ThermalReservoirBootstrap {
-                    id: ThermalReservoirId::new(1),
-                    target: causafera_domains::ThermalCellKey::new(
-                        ChartChunkCoord::new(config.chart_id, ChunkCoord::new(0, 0, 0)),
-                        0,
-                    ),
-                    budget: ThermalEnergy::new(THERMAL_SCALE)
+        let physical_geography_init = TerrainBootstrapStage {
+            stage: PHYSICAL_GEOGRAPHY_STAGE,
+            terrain_seed,
+        };
+        let material_surface = MaterialSurfaceBootstrapStage {
+            stage: MATERIAL_SURFACE_STAGE,
+            initial_condition: 1,
+        };
+        let population_lifecycle = PopulationLifecycleStage {
+            stage: POPULATION_LIFECYCLE_STAGE,
+            initial_population: config.bootstrap_population,
+        };
+        let actor_promotion = ActorPromotionStage {
+            stage: ACTOR_PROMOTION_STAGE,
+            max_promotions: config.actor_count,
+        };
+        let material_activity = MaterialActivityStage {
+            stage: MATERIAL_ACTIVITY_STAGE,
+            flow_units: 1,
+        };
+        let thermal_reservoirs = ThermalReservoirBootstrapStage {
+            stage: THERMAL_RESERVOIR_STAGE,
+            reservoirs: vec![ThermalReservoirBootstrap {
+                id: ThermalReservoirId::new(1),
+                target: causafera_domains::ThermalCellKey::new(
+                    ChartChunkCoord::new(config.chart_id, ChunkCoord::new(0, 0, 0)),
+                    0,
+                ),
+                budget: ThermalEnergy::new(THERMAL_SCALE)
+                    .map_err(|_| BootstrapError::InvalidThermalReservoir)?,
+                schedule: ThermalReservoirSchedule::PerTick(
+                    ThermalEnergy::new(THERMAL_SCALE / 8)
                         .map_err(|_| BootstrapError::InvalidThermalReservoir)?,
-                    schedule: ThermalReservoirSchedule::PerTick(
-                        ThermalEnergy::new(THERMAL_SCALE / 8)
-                            .map_err(|_| BootstrapError::InvalidThermalReservoir)?,
-                    ),
-                }],
-            },
+                ),
+            }],
+        };
+
+        let targets = canonical_stage_targets(config)?;
+        let parameters = [
+            physical_geography_init.parameter_fingerprint(),
+            material_surface.parameter_fingerprint(),
+            population_lifecycle.parameter_fingerprint(),
+            actor_promotion.parameter_fingerprint(),
+            material_activity.parameter_fingerprint(),
+            thermal_reservoirs.parameter_fingerprint(),
+        ];
+        let processes = [
+            PHYSICAL_GEOGRAPHY_PROCESS_SCHEMA,
+            MATERIAL_SURFACE_PROCESS_SCHEMA,
+            POPULATION_LIFECYCLE_PROCESS_SCHEMA,
+            ACTOR_PROMOTION_PROCESS_SCHEMA,
+            MATERIAL_ACTIVITY_PROCESS_SCHEMA,
+            THERMAL_RESERVOIR_PROCESS_SCHEMA,
+        ];
+
+        let mut stages = Vec::with_capacity(BOOTSTRAP_STAGE_COUNT);
+        for ordinal in 0..BOOTSTRAP_STAGE_COUNT {
+            let id = HistoricalStageId::new(ordinal as u64 + 1);
+            // The canonical stage timeline is a bootstrap ordering timeline, not
+            // a request to advance scheduler time: six non-overlapping one-unit
+            // intervals give the canonical DAG the strict precedence it
+            // validates while every runtime stage effect stays on the existing
+            // Lifecycle timestamp convention.
+            let starts_at = SimulationTime::new(ordinal as u64);
+            let ends_at = SimulationTime::new(ordinal as u64 + 1);
+            let dependencies = if ordinal == 0 {
+                Vec::new()
+            } else {
+                vec![HistoricalStageId::new(ordinal as u64)]
+            };
+            stages.push(HistoricalStage::new(
+                id,
+                processes[ordinal],
+                starts_at,
+                ends_at,
+                0,
+                targets.clone(),
+                dependencies,
+                Vec::new(),
+                parameters[ordinal],
+            )?);
+        }
+
+        let plan = HistoricalBootstrapPlan::new(
+            canonical_plan_id(config.deterministic.world_seed, &stages),
+            config.deterministic.world_seed,
+            stages,
+        )?;
+
+        Ok(Self {
+            physical_geography_init,
+            material_surface,
+            population_lifecycle,
+            actor_promotion,
+            material_activity,
+            thermal_reservoirs,
+            plan,
         })
     }
+
+    pub const fn plan(&self) -> &HistoricalBootstrapPlan {
+        &self.plan
+    }
+
+    /// The domain-separated deterministic seed contribution a stage adapter may
+    /// use for stage-local variation. No current stage needs one, so this is the
+    /// canonical accessor rather than an unused local derivation.
+    pub fn stage_seed(&self, stage: HistoricalStageId) -> Option<u64> {
+        self.plan.stage_seed(stage)
+    }
+
+    fn adapters(&self) -> [&dyn HistoricalBootstrapAdapter; BOOTSTRAP_STAGE_COUNT] {
+        [
+            &self.physical_geography_init,
+            &self.material_surface,
+            &self.population_lifecycle,
+            &self.actor_promotion,
+            &self.material_activity,
+            &self.thermal_reservoirs,
+        ]
+    }
+
+    /// Run the six stages and close each one with exactly one terminal receipt.
+    ///
+    /// The completion event is authoritative, not decorative: it transitions the
+    /// bounded bootstrap-stage-result state from its absent sentinel to the
+    /// stage's result fingerprint, and its causes carry both the previous stage's
+    /// receipt and every effect trace this stage committed, so the receipt cannot
+    /// hide the detailed ancestry.
+    pub(crate) fn execute(
+        &self,
+        state: &mut RuntimeState,
+    ) -> Result<BootstrapRuntimeState, BootstrapError> {
+        let adapters = self.adapters();
+        let mut receipts = Vec::with_capacity(BOOTSTRAP_STAGE_COUNT);
+        let mut stage_results = BTreeMap::new();
+        let mut previous_receipt: Option<TraceId> = None;
+
+        for (stage, adapter) in self.plan.stages().iter().zip(adapters) {
+            // What a stage committed is read from the trace store rather than
+            // taken on the adapter's word. A stage that commits more than it
+            // reports — actor promotion commits both an actor transition and an
+            // aggregate transition per promotion — would otherwise leave part of
+            // its ancestry out of its own receipt.
+            let committed_before = state.traces.len();
+            let reported = adapter.bootstrap(state)?;
+            let mut effects = state
+                .traces
+                .iter()
+                .skip(committed_before)
+                .map(|event| event.trace_id)
+                .collect::<Vec<_>>();
+            effects.sort_unstable();
+            effects.dedup();
+            if reported.iter().any(|trace| !effects.contains(trace)) {
+                return Err(BootstrapError::MissingStageEffectTrace);
+            }
+
+            let result = stage_result_fingerprint(state, &self.plan, stage, &effects)?;
+            let mut event_causes = effects;
+            if let Some(previous) = previous_receipt {
+                event_causes.push(previous);
+            }
+            event_causes.sort_unstable();
+            event_causes.dedup();
+
+            let trace = commit_bootstrap_stage_completion(state, stage.id(), result, event_causes)?;
+            let receipt = HistoricalStageReceipt::new(
+                stage.id(),
+                stage.ends_at(),
+                result,
+                trace,
+                previous_receipt.into_iter().collect(),
+            )?;
+            stage_results.insert(stage.id(), result);
+            receipts.push(receipt);
+            previous_receipt = Some(trace);
+        }
+
+        Ok(BootstrapRuntimeState::from_parts(
+            self.plan.clone(),
+            receipts,
+            stage_results,
+        )?)
+    }
+}
+
+/// Bootstrap stage targets, as sorted canonical chunk identities.
+///
+/// This is addressing only. A `ChunkId` derived here names which chunk a stage
+/// acted on; it is never a distance, an extent, an ownership claim, or geometry.
+fn canonical_stage_targets(config: &RuntimeConfig) -> Result<Vec<ChunkId>, BootstrapError> {
+    let active = active_chunk_keys(
+        config.chart_id,
+        config.active_chunk_radius,
+        config.active_chunk_shape,
+    );
+    if active.is_empty() || active.len() > MAX_STAGE_TARGETS {
+        return Err(BootstrapError::InvalidStageTargets);
+    }
+    let unique = active.iter().copied().collect::<BTreeSet<_>>();
+    if unique.len() != active.len() {
+        return Err(BootstrapError::InvalidStageTargets);
+    }
+    let mut targets = unique
+        .into_iter()
+        .map(bootstrap_chunk_target)
+        .collect::<Vec<_>>();
+    targets.sort_unstable();
+    let distinct = targets.len();
+    targets.dedup();
+    if targets.len() != distinct {
+        return Err(BootstrapError::InvalidStageTargets);
+    }
+    Ok(targets)
+}
+
+/// A chunk's canonical bootstrap-target identity.
+///
+/// Domain-separated from every other derivation that hashes a chunk, so a target
+/// identity can never be mistaken for a mana or population object identity.
+pub(crate) fn bootstrap_chunk_target(chunk: ChartChunkCoord) -> ChunkId {
+    ChunkId::new(mix64(BOOTSTRAP_TARGET_DOMAIN ^ chart_chunk_hash(chunk)))
+}
+
+/// The plan's opaque content-addressed identity.
+///
+/// Two runs with the same seed and recipe produce the same plan ID; changing any
+/// stage parameter, target, or dependency changes it. It is an equality identity,
+/// never a distance or an ordering.
+fn canonical_plan_id(world_seed: u64, stages: &[HistoricalStage]) -> HistoricalBootstrapId {
+    let mut digest = CanonicalDigest::new();
+    digest.write(BOOTSTRAP_PLAN_ID_DOMAIN);
+    digest.write(world_seed);
+    digest.write(stages.len() as u64);
+    for stage in stages {
+        digest.write(stage.id().raw());
+        digest.write(stage.process().raw());
+        digest.write(stage.starts_at().raw());
+        digest.write(stage.ends_at().raw());
+        digest.write(u64::from(stage.detail_ordinal()));
+        digest.write(stage.targets().len() as u64);
+        for target in stage.targets() {
+            digest.write(target.raw());
+        }
+        digest.write(stage.dependencies().len() as u64);
+        for dependency in stage.dependencies() {
+            digest.write(dependency.raw());
+        }
+        digest.write(stage.external_causes().len() as u64);
+        for cause in stage.external_causes() {
+            digest.write(cause.raw());
+        }
+        digest.write_bytes(stage.parameters().bytes());
+    }
+    let bytes = digest.finish().bytes();
+    HistoricalBootstrapId::new(u64::from_le_bytes(
+        bytes[..8].try_into().expect("digest yields 32 bytes"),
+    ))
+}
+
+fn parameter_digest(
+    stage: HistoricalStageId,
+    process: HistoricalProcessSchemaId,
+) -> CanonicalDigest {
+    let mut digest = CanonicalDigest::new();
+    digest.write(BOOTSTRAP_PARAMETER_DOMAIN);
+    digest.write(stage.raw());
+    digest.write(process.raw());
+    digest
+}
+
+impl TerrainBootstrapStage {
+    fn parameter_fingerprint(&self) -> StateFingerprint {
+        let mut digest = parameter_digest(self.stage, PHYSICAL_GEOGRAPHY_PROCESS_SCHEMA);
+        digest.write(self.terrain_seed);
+        digest.finish()
+    }
+}
+
+impl MaterialSurfaceBootstrapStage {
+    fn parameter_fingerprint(&self) -> StateFingerprint {
+        let mut digest = parameter_digest(self.stage, MATERIAL_SURFACE_PROCESS_SCHEMA);
+        digest.write(self.initial_condition as u64);
+        digest.finish()
+    }
+}
+
+impl PopulationLifecycleStage {
+    fn parameter_fingerprint(&self) -> StateFingerprint {
+        let mut digest = parameter_digest(self.stage, POPULATION_LIFECYCLE_PROCESS_SCHEMA);
+        digest.write(self.initial_population);
+        digest.finish()
+    }
+}
+
+impl ActorPromotionStage {
+    fn parameter_fingerprint(&self) -> StateFingerprint {
+        let mut digest = parameter_digest(self.stage, ACTOR_PROMOTION_PROCESS_SCHEMA);
+        digest.write(u64::from(self.max_promotions));
+        digest.finish()
+    }
+}
+
+impl MaterialActivityStage {
+    fn parameter_fingerprint(&self) -> StateFingerprint {
+        let mut digest = parameter_digest(self.stage, MATERIAL_ACTIVITY_PROCESS_SCHEMA);
+        digest.write(self.flow_units as u64);
+        digest.finish()
+    }
+}
+
+impl ThermalReservoirBootstrapStage {
+    fn parameter_fingerprint(&self) -> StateFingerprint {
+        let mut digest = parameter_digest(self.stage, THERMAL_RESERVOIR_PROCESS_SCHEMA);
+        let mut reservoirs = self.reservoirs.clone();
+        reservoirs.sort_unstable_by_key(|reservoir| reservoir.id);
+        digest.write(reservoirs.len() as u64);
+        for reservoir in &reservoirs {
+            digest.write(reservoir.id.raw());
+            write_chart_chunk(&mut digest, reservoir.target.chunk);
+            digest.write(u64::from(reservoir.target.cell_index));
+            digest.write(reservoir.budget.get() as u64);
+            match reservoir.schedule {
+                ThermalReservoirSchedule::PerTick(amount) => {
+                    digest.write(1);
+                    digest.write(amount.get() as u64);
+                }
+                ThermalReservoirSchedule::OneShot => digest.write(2),
+            }
+        }
+        digest.finish()
+    }
+}
+
+/// The canonical projection of what one stage committed.
+///
+/// Built from the stage's own committed effects in sorted trace order, never
+/// from digest-byte distance and never from a semantic label. An empty stage
+/// still yields a stage-specific fingerprint, so its completion is a real
+/// transition rather than a repeated sentinel.
+fn stage_result_fingerprint(
+    state: &RuntimeState,
+    plan: &HistoricalBootstrapPlan,
+    stage: &HistoricalStage,
+    effects: &[TraceId],
+) -> Result<StateFingerprint, BootstrapError> {
+    let mut digest = CanonicalDigest::new();
+    digest.write(BOOTSTRAP_RESULT_DOMAIN);
+    digest.write(plan.id().raw());
+    digest.write(plan.world_seed());
+    digest.write(stage.id().raw());
+    digest.write(stage.process().raw());
+    digest.write_bytes(stage.parameters().bytes());
+    digest.write(effects.len() as u64);
+    for trace in effects {
+        let event = state
+            .traces
+            .event(*trace)
+            .ok_or(BootstrapError::MissingStageEffectTrace)?;
+        digest.write(event.kind.raw());
+        digest.write(event.effects.len() as u64);
+        for effect in event.effects {
+            digest.write(effect.target().object_kind().raw());
+            digest.write(effect.target().object_id());
+            digest.write(effect.target().property().raw());
+            digest.write_bytes(effect.before().bytes());
+            digest.write_bytes(effect.after().bytes());
+        }
+    }
+    Ok(digest.finish())
+}
+
+/// The absent value a stage's bounded result state holds before completion.
+pub(crate) fn bootstrap_stage_absent_result(stage: HistoricalStageId) -> StateFingerprint {
+    fingerprint_u64(BOOTSTRAP_STAGE_RESULT_ABSENT_TAG, stage.raw())
+}
+
+fn commit_bootstrap_stage_completion(
+    state: &mut RuntimeState,
+    stage: HistoricalStageId,
+    result: StateFingerprint,
+    causes: Vec<TraceId>,
+) -> Result<TraceId, RuntimeError> {
+    let event = CausalEventProposal::new(
+        EventProposalKey::new(
+            BOOTSTRAP_SYSTEM_ID,
+            stage.raw(),
+            BOOTSTRAP_STAGE_COMPLETION_ORDINAL,
+        ),
+        EventKindId::new(BOOTSTRAP_STAGE_COMPLETION_EVENT_KIND),
+        causes,
+        vec![CausalEffect::new(
+            CausalTarget::new(
+                StateObjectKindId::new(BOOTSTRAP_STAGE_OBJECT_KIND),
+                stage.raw(),
+                StatePropertyId::new(BOOTSTRAP_STAGE_RESULT_PROPERTY),
+            ),
+            bootstrap_stage_absent_result(stage),
+            result,
+        )?],
+    )?;
+    let trace = state
+        .traces
+        .commit_batch(SimulationTime::new(0), Phase::Lifecycle, vec![event])?[0];
+    state.latest_physical_trace = trace;
+    Ok(trace)
 }
 
 impl HistoricalBootstrapAdapter for TerrainBootstrapStage {
@@ -387,12 +945,18 @@ impl HistoricalBootstrapAdapter for ThermalReservoirBootstrapStage {
 pub enum BootstrapError {
     #[error(transparent)]
     Runtime(#[from] RuntimeError),
+    #[error(transparent)]
+    Historical(#[from] HistoricalBootstrapError),
     #[error("thermal reservoir target lies outside the active region: {target_chunk:?}")]
     ThermalReservoirOutsideActiveRegion { target_chunk: ChartChunkCoord },
     #[error("thermal reservoir bootstrap configuration is invalid")]
     InvalidThermalReservoir,
     #[error("thermal reservoir ID is duplicated: {id:?}")]
     DuplicateThermalReservoir { id: ThermalReservoirId },
+    #[error("bootstrap stage targets are empty, duplicated, or out of bounds")]
+    InvalidStageTargets,
+    #[error("bootstrap stage effect trace is absent from the causal trace store")]
+    MissingStageEffectTrace,
 }
 
 fn commit_thermal_reservoir_bootstrap_event(
