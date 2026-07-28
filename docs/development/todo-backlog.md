@@ -466,7 +466,7 @@
 **Out of Scope:** Material response, climate, biology
 
 ## TODO-THERMAL-006: Aggregate Conservation-Total Cross-Validation on Snapshot Import
-**Status:** Pending
+**Status:** Completed
 **Phase:** Detailed Development
 **Priority:** Medium
 **Dependencies:** TODO-THERMAL-000 (completed same-chart slice)
@@ -479,6 +479,8 @@
 **Explanation Implications:** None.
 **Out of Scope:** Non-latest-batch per-cell bounds checking (closed in `3e46bc2`/follow-up commit) and the documented pre-alpha untrusted-snapshot threat-model carve-out (`SECURITY.md`).
 **Context:** Identified during the independent review of `3e46bc2` ("fix(runtime): reconcile thermal receipts and reuse domain geometry"): the per-cell latest-batch binding added there proves touched cells match current field energy, but the conservation receipt's own aggregate summary fields are still trusted literal values from the snapshot with no cross-check against a real recomputed sum, so an untouched cell's energy is never bound to anything.
+
+**Resolution:** Implemented in `plans/thermal-conservation-aggregate-validation.md`. The validation enforces six identities on import: I1 (reservoir budget delta vs. accepted injection, already enforced), I2 (cell energy delta vs. per-receipt transition plus accepted injection), I3 (material retained delta vs. signed material flux), I3a (per-receipt material retained delta vs. signed flux), I4 (residual zero), I5 (chain continuity between consecutive batches), and I6 (terminal anchor against the fully materialized final field, reservoir, and material surface states). The terminal anchor plus downward induction determines all `6N` aggregate literals from final state and per-receipt data without reconstructing historical per-cell energies. The implementation is side-effect free, uses checked `i128` arithmetic, and is order-independent because the receipt fold is keyed by conservation trace. The same statistical harness on an AMD Ryzen 9 7950X3D measured a `production_loop_config(2026)` snapshot with `N=36`, `V=27`, `Σ|receipts|=668` before and after the validator: mean import time `1052697.1 ns` → `955733.4 ns` (`-9.21%`), median `942363 ns` → `949907 ns` (`+0.80%`), with sample standard deviations `177317.4 ns` and `24939.0 ns`; no performance pass/fail claim is made because no regression threshold was defined. A uniform aggregate offset alone is rejected by I6. The remaining limitation requires shifting the materialized final field and every batch's `total_cell_energy_before`/`total_cell_energy_after` by the same `+Δ`; because the bootstrap total `C_1^-` has no independent persisted anchor, that coordinated forgery remains inside the `SECURITY.md` pre-alpha untrusted-snapshot carve-out and was not chased because closing it requires a new persisted scalar, event, or effect encoding.
 
 ## TODO-THERMAL-007: Material Expansion, Damage, and Phase-Change Response
 **Status:** Pending
