@@ -1,0 +1,631 @@
+# Canonical Production Bootstrap Receipt Closure
+
+**Status:** Accepted — implementation not started
+
+**Accepted:** 2026-07-28
+
+**Execution mode:** One Claude Code session, sequential waves, no OMO, no delegated workers.
+
+## Goal
+
+Close the contract gap between the six-stage production bootstrap in
+`causafera-runtime` and the canonical historical DAG/receipt model in
+`causafera-world`.
+
+The result is a bounded, deterministic, causally inspectable production bootstrap record that:
+
+- represents the current six runtime stages through one canonical plan;
+- emits exactly one terminal receipt per stage, including stages with no domain effects;
+- persists and fail-closed validates the plan, receipts, result fingerprints, and trace ancestry;
+- is identical across runtime, observer session, reset, experiment, replay, and save/resume entry
+  points for the same seed and recipe;
+- exposes a bounded observer/Explanation read model for bootstrap receipts and initial conditions;
+- proves that fixture/demo actor constructors are not production initialization paths.
+
+This plan advances only the existing bounded bootstrap contract. It does not claim mature historical
+synthesis, emergence, or world-scale simulation.
+
+## Context
+
+The accepted Detailed Development priority includes production bootstrap without fixtures, alongside
+durable physical causality, valid analytics, and causal inspection. `TODO-RUNTIME-001` remains
+Critical/In Progress. The repository has a real six-stage runtime bootstrap, but it is represented by
+a runtime-local `HistoricalBootstrapPlan` while `causafera-world` has a separate canonical
+`HistoricalBootstrapPlan` with deterministic stage seeds and receipt validation.
+
+The runtime currently exports `BootstrapReceiptSnapshot { receipts: Vec<BootstrapReceiptRecord> }`
+but writes an empty receipt list. The population/bootstrap persistence section currently stores only
+`stage` and `trace` pairs at section major 1. The runtime still contains an unused public
+`fixture_actors` constructor that creates stationary actors and fixture sensors; the absence of
+production callers must become a mechanically checked contract, and the helper must be test-only or
+removed if no tests require it.
+
+## Relevant invariants
+
+- **INV-001–INV-004:** deterministic state and explicit random streams.
+- **INV-012–INV-016:** proposal/reduce/commit mutation boundary and phase ownership.
+- **INV-019:** accepted behaviour remains causally inspectable.
+- **INV-021:** significant state changes retain provenance.
+- **INV-027–INV-031:** subjective observers never receive Ground Truth identity or omniscient state.
+- **INV-038:** digests are equality/divergence identities, never physical or semantic distances.
+- **INV-039:** production state requires causal initialization.
+- **INV-040:** persistence and replay preserve authoritative state and ancestry.
+- **INV-042:** runtime/bootstrap/persistence/observer responsibilities remain modular.
+- **INV-043:** chart/chunk addressing is not physical geometry or ownership.
+
+## Ontology domains affected
+
+- Historical bootstrap and simulation runtime: current narrow M1/M2 path becomes a durable,
+  inspectable contract without claiming M5.
+- Population and actor promotion: bootstrap ancestry and aggregate/promoted conservation become
+  explicit evidence.
+- Provenance and persistence: bootstrap plan/record data becomes authoritative snapshot state.
+- Observer and Explanation: bounded read models expose receipts, result fingerprints, and traces.
+
+No new physical domain is introduced.
+
+## Causal carriers affected
+
+- Existing carriers reused: terrain generation, material-surface creation, population aggregate
+  creation, actor promotion, material activity, and thermal field/reservoir initialization.
+- New bounded information carrier: canonical bootstrap plan and one terminal receipt per stage.
+- Existing causal trace store remains the provenance authority. The receipt record must reference
+  committed traces; it must not become an independent causal history.
+
+## Relevant documents and implementation surfaces
+
+- `PLANS.md`
+- `docs/architecture/invariants.md`
+- `docs/architecture/detailed-development-rebaseline.md`
+- `docs/architecture/determinism.md`
+- `docs/architecture/provenance.md`
+- `docs/architecture/observer.md`
+- `docs/rfc/RFC-PERSIST-001.md`
+- `docs/world/historical-bootstrap.md`
+- `docs/ontology/domain-coverage-matrix.md`
+- `docs/development/todo-backlog.md` (`TODO-RUNTIME-001`, `TODO-OBSERVER-003`, `TODO-EXPLAIN-003`)
+- `crates/causafera-world/src/historical.rs`
+- `crates/causafera-runtime/src/bootstrap.rs`
+- `crates/causafera-runtime/src/runtime.rs`
+- `crates/causafera-runtime/src/snapshots.rs`
+- `crates/causafera-runtime/src/snapshot_sections.rs`
+- `crates/causafera-runtime/src/actors/state.rs`
+- `crates/causafera-runtime/src/population.rs`
+- `crates/causafera-runtime/tests/thermal_bootstrap.rs`
+- `crates/causafera-runtime/tests/material_surface_loop.rs`
+- `crates/causafera-runtime/tests/material_surface_observer.rs`
+- `crates/causafera-observer-api/src/query.rs`
+- `crates/causafera-observer-wire/src/protocol.rs`
+- `packages/observer-protocol/src/index.ts`
+- `crates/causafera-explanation/src/ir.rs`
+- `apps/observer/src-tauri/src/session.rs`
+- `crates/causafera-lab/src/experiment.rs`
+
+## Current state
+
+1. `causafera-world::HistoricalBootstrapPlan` owns private canonical plan fields, deterministic
+   `stage_seed`, and `validate_receipts`; it is currently reached by tests rather than the runtime
+   production path.
+2. `causafera-runtime::HistoricalBootstrapPlan` owns six executable stage structs and
+   `for_runtime_config`; it runs terrain, material surface, population, actor promotion, material
+   activity, and thermal reservoir stages in a fixed order.
+3. Existing stage effects are committed through `CausalTraceStore` in `Phase::Lifecycle`, usually at
+   simulation time zero, and are chained through `latest_physical_trace`.
+4. `RuntimeState::export_snapshot` currently sets `bootstrap.receipts` to `Vec::new()`.
+5. `encode_population_section`/`decode_population_section` currently encode only stage and trace
+   for bootstrap receipts and do not encode a canonical plan or receipt result/causes.
+6. `RuntimeState::import_snapshot` imports population and other state but does not validate a
+   canonical bootstrap record.
+7. `fixture_actors` has no current graph callers, but remains a production-source constructor and
+   creates authored stationary bodies and fixture sensors.
+8. `ObserverSnapshot` and the versioned observer protocol expose runtime summary, chunks, fields,
+   and Explanation IR, but no bootstrap receipt summary.
+9. Existing actor/material/mana and thermal plans prove the current production path and persistence
+   foundations; this plan must reuse those seams and must not reopen their completed scopes.
+
+## Proposed architecture
+
+### 1. One canonical plan with an explicit runtime adapter
+
+Rename the runtime-local `HistoricalBootstrapPlan` to `RuntimeBootstrapRecipe`. It remains the
+executable configuration for the six current stage adapters. Add a canonical
+`causafera_world::HistoricalBootstrapPlan` field to the recipe rather than maintaining two types
+with the same name.
+
+`RuntimeBootstrapRecipe::from_runtime_config` must construct the canonical plan from the validated
+runtime configuration and the sorted active chunk set. The six stage IDs remain stable numeric
+identities. Process schema IDs remain opaque numeric IDs; they are not human-language event names.
+The stage dependency graph is the current ordered chain:
+
+```text
+stage 1 → stage 2 → stage 3 → stage 4 → stage 5 → stage 6
+```
+
+The adapter must:
+
+- derive the canonical world seed from `RuntimeConfig::deterministic.world_seed`;
+- derive sorted typed `ChunkId` targets from the active `ChartChunkCoord` set using a
+  domain-separated deterministic addressing function; this is identity/addressing only and never
+  a metric or geometry value;
+- derive each stage parameter fingerprint from the complete canonical encoding of that stage's
+  executable configuration, including all current fixed values and configured values;
+- use the canonical `HistoricalBootstrapPlan::stage_seed` for any stage-local deterministic
+  variation;
+- preserve the current runtime stage order and all existing stage effects;
+- reject duplicate, unsorted, inactive, or out-of-bound targets before any authoritative mutation.
+
+The canonical historical stage timeline is a deterministic bootstrap ordering timeline, not a
+request to advance `RuntimeState::advanced_through`. Use six non-overlapping one-unit intervals
+`[0,1]`, `[1,2]`, …, `[5,6]` for canonical metadata, while preserving the existing runtime
+Lifecycle trace timestamp convention until a separate accepted time contract changes it. Tests must
+assert that constructing the recipe does not advance scheduler time.
+
+### 2. Exactly one terminal receipt per stage
+
+Add a runtime-owned `BootstrapRuntimeState` containing the canonical plan, sorted stage receipts,
+and bounded stage-result fingerprints. Store it in `RuntimeState` and include it in the physical
+state digest as authoritative equality input. Bump `CURRENT_DIGEST_SCHEMA_VERSION` because the
+digest definition changes; never compare digest bytes as a distance.
+
+Each executable stage returns its committed effect traces as it does today. The stage coordinator
+then performs one deterministic terminal completion commit:
+
+- sort and deduplicate the stage effect traces;
+- compute a `StateFingerprint` from the canonical, sorted stage output projection, not from digest
+  byte distance and not from a semantic label;
+- commit a real bounded bootstrap-stage-result state effect from the stage's absent/sentinel value
+  to that result fingerprint;
+- make the completion event's causes include the previous stage receipt traces and all effect traces
+  produced by this stage;
+- create one `HistoricalStageReceipt` whose `trace` is the completion trace, `result` is the stage
+  result fingerprint, `completed_at` is the canonical stage end, and `causes` is exactly the sorted
+  dependency receipt list required by `HistoricalBootstrapPlan::validate_receipts`;
+- make an empty stage produce a completion receipt through the same real stage-result state effect;
+- validate the complete record before exposing the constructed runtime.
+
+The completion event is not decorative metadata: its effect is the authoritative transition of the
+bounded bootstrap-stage-result state, and its trace must exist in the causal trace store. Existing
+per-object stage effects remain and are included as causes, so the receipt cannot hide the detailed
+ancestry.
+
+### 3. Versioned persistence
+
+Expand `BootstrapReceiptSnapshot` into a versioned representation of the canonical plan, stage
+results, and receipts. It must preserve, in canonical order:
+
+- plan ID and world seed;
+- every stage ID, process schema ID, canonical start/end, detail ordinal, target list, dependency
+  list, external causes, and parameter fingerprint;
+- every receipt stage, completion time, result fingerprint, completion trace, and sorted causes;
+- bounded stage-result entries and the maximum six-stage current envelope.
+
+Bump the `SECTION_POPULATION_BOOTSTRAP` section major from 1 to 2. Keep the section ID stable and
+reject every unsupported major, truncated payload, trailing bytes, duplicate ID, unsorted list,
+missing stage, invalid target, forged trace, forged result, forged cause, and incomplete receipt
+set. Do not silently default old empty bootstrap receipts into an authoritative production state.
+
+`RuntimeState::import_snapshot` must reconstruct the canonical plan, call canonical receipt
+validation, verify all receipt/completion traces exist in the imported trace store, verify completion
+effects match stored stage results, verify target chunks are active, and verify population aggregate
+counts plus promoted actor ancestry before returning authoritative state.
+
+### 4. Bounded observer and Explanation projection
+
+Extend the existing runtime summary projection with a bounded bootstrap summary rather than adding a
+UI panel or exposing runtime storage. The summary contains at most six records and exposes only:
+
+- opaque plan ID and world-seed identity needed for equality/replay inspection;
+- stage ID, completion time, result fingerprint, completion trace, and dependency trace anchors;
+- completeness/validation status and bounded promotion/population counts.
+
+Use the existing versioned path:
+
+`RuntimeState → RuntimeSnapshot → ObserverSnapshot → observer wire protocol → TypeScript observer protocol`.
+
+Add optional/repeated fields after the existing runtime-summary fields so old fields retain their
+meaning. Update the Rust encoder/decoder, protocol fixtures, TypeScript encoder/decoder types, and
+protocol version/compatibility documentation deliberately. If the current protocol version cannot
+represent the additive fields without ambiguity, introduce the next protocol version and update all
+in-repository clients in the same wave; never overload an existing field with a new meaning.
+
+Add one typed Explanation IR claim for a validated bootstrap record. The claim reports the bounded
+observation window, stage count/completeness, result identity, and supporting trace anchors. Missing
+or insufficient evidence must produce the existing unsupported/insufficient state with zero
+confidence; the claim must not render historical process names, intention, purpose, or semantic
+causes.
+
+### 5. Fixture-free production entry points
+
+Audit every production construction path that can create `Runtime` or resume `RuntimeState`:
+
+- `Runtime::new` and runtime bootstrap construction;
+- observer `session_config`/session reset and reconnect;
+- `causafera-lab` experiment runners and replay setup;
+- snapshot import/save-resume paths;
+- production binaries and non-test examples.
+
+All paths must use the same `RuntimeBootstrapRecipe` and produce byte-identical canonical plan and
+receipt data for the same seed/config. Move `fixture_actors`/`fixture_sensors` into test-only support
+or remove them if no tests require them. Tests may retain fixtures only when the test explicitly
+needs an isolated primitive; no fixture helper may be reachable from production bootstrap.
+
+## Primitive vs emergent review
+
+Authoritative primitives are typed stage IDs, process schema IDs, stage parameters, seed
+contributions, target addresses, causal traces, result fingerprints, population counts, actor
+ancestry, and versioned snapshot fields.
+
+Emergent or observer-only interpretations include historical narratives, named events, intentions,
+roles, settlements, language, social meaning, and claims of mature world history. None may be added
+to the bootstrap record or used as a causal input.
+
+## Non-goals and Must-NOT-Have
+
+- No new geology, hydrology, climate, ecology, biology, language, economy, settlements,
+  institutions, authored lore, or deep-history synthesis.
+- No fixture/demo residents, authored history tables, timer-driven bootstrap, or random high-level
+  history generation.
+- No semantic event enums or human-language strings as authoritative process identity.
+- No replacement of the canonical `causafera-world` contract with a third parallel bootstrap model.
+- No digest-byte similarity, recovery tolerance, or physical-distance metric.
+- No direct Ground Truth exposure to cognition or observer-controlled mutation.
+- No broad observer graph dump, UI redesign, LLM surface, or new operator API.
+- No opportunistic cleanup of unrelated runtime, thermal, mana, or terrain code.
+
+## Implementation stages
+
+Each numbered item is one sequential Claude Code wave. Start every wave by inspecting `git status`
+and the current diff. Before changing behaviour, add or enable the named RED test/scenario. Do not
+start the next wave until the current wave's focused tests and diagnostics pass and its checkpoint
+commit is created with explicit paths only.
+
+- [ ] 1. Establish the canonical bootstrap recipe and terminal receipt RED/green contract
+
+  **Files:** `crates/causafera-world/src/historical.rs`,
+  `crates/causafera-runtime/src/bootstrap.rs`, `crates/causafera-runtime/src/runtime.rs`,
+  `crates/causafera-runtime/tests/historical_bootstrap.rs` (new), and the nearest runtime module
+  exports.
+
+  **Implementation:**
+
+  - Add failing tests for six canonical stages, stable dependencies/targets/parameter fingerprints,
+    exactly one receipt per stage, empty-stage completion, canonical validation, and unchanged
+    scheduler time.
+  - Add the smallest public accessors/snapshot constructors needed in `causafera-world` to convert
+    the canonical plan and record without exposing mutable internals.
+  - Rename the runtime-local plan to `RuntimeBootstrapRecipe`, add the explicit canonical plan
+    adapter, and preserve the six existing executable stage structs and their effect owners.
+  - Add `BootstrapRuntimeState` to `RuntimeState` and a stage coordinator that commits one real
+    completion transition per stage, including no-op stages.
+  - Ensure stage receipt causes and event causes are sorted, deduplicated, bounded, and deterministic.
+  - Bump `CURRENT_DIGEST_SCHEMA_VERSION` and include the canonical bootstrap state in
+    `physical_state_digest`; add the full-rescan/equality assertions required by the existing digest
+    tests.
+
+  **Acceptance:** `Runtime::new` produces a validated six-receipt record for the default observer
+  recipe; same seed/config produces byte-identical plan/receipts, ancestry, physical digest, and
+  history digest; different stage output changes the result fingerprint; zero-population/empty-stage
+  configurations still produce a valid completion receipt; scheduler time remains unchanged.
+
+  **Focused QA:**
+
+  `cargo test -p causafera-runtime --test historical_bootstrap -- --nocapture`
+
+  `cargo test -p causafera-runtime bootstrap --lib -- --nocapture`
+
+  `cargo test -p causafera-world historical --lib -- --nocapture`
+
+  **Checkpoint:** `feat(runtime): canonicalize production bootstrap receipts`.
+
+- [ ] 2. Persist and fail-closed validate the complete bootstrap record
+
+  **Files:** `crates/causafera-runtime/src/snapshots.rs`,
+  `crates/causafera-runtime/src/snapshot_sections.rs`,
+  `crates/causafera-runtime/src/runtime.rs`,
+  `crates/causafera-runtime/tests/historical_bootstrap.rs`,
+  `crates/causafera-runtime/tests/thermal_persistence.rs` where shared section-version assertions
+  belong.
+
+  **Implementation:**
+
+  - Replace the stage/trace-only `BootstrapReceiptSnapshot` with the bounded canonical plan,
+    stage-result, and receipt snapshot structures.
+  - Encode/decode the plan and record in canonical sorted order under
+    `SECTION_POPULATION_BOOTSTRAP`; bump its section major from 1 to 2 and keep the section ID.
+  - Wire `RuntimeState::export_snapshot` to export the actual record and
+    `RuntimeState::import_snapshot` to reconstruct and validate it before returning state.
+  - Verify imported receipt traces, completion effects, causes, result fingerprints, targets,
+    stage count, active chunks, actor ancestry, and population aggregate conservation.
+  - Add RED tests before implementation for roundtrip, same-seed save/resume equivalence, missing /
+    duplicate / reordered / forged / truncated / trailing / unsupported-major inputs, stale trace
+    references, wrong result fingerprints, wrong causes, inactive targets, and incomplete records.
+  - Update envelope disassembly and section tests so unsupported authoritative versions reject rather
+    than default or migrate silently.
+
+  **Acceptance:** export/import preserves an equal canonical bootstrap record and equal state/history
+  digests; uninterrupted and save/resume runs agree; every listed corruption case fails closed; old
+  section major 1 is rejected; no empty bootstrap receipt list can be imported as a valid production
+  record.
+
+  **Focused QA:**
+
+  `cargo test -p causafera-runtime --test historical_bootstrap -- --nocapture`
+
+  `cargo test -p causafera-runtime --test thermal_persistence -- --nocapture`
+
+  `cargo test -p causafera-runtime snapshot_sections --lib -- --nocapture`
+
+  **Checkpoint:** `feat(persistence): persist canonical bootstrap records`.
+
+- [ ] 3. Expose bounded bootstrap evidence through observer and Explanation
+
+  **Files:** `crates/causafera-runtime/src/snapshots.rs`,
+  `crates/causafera-runtime/src/runtime.rs`, `crates/causafera-observer-api/src/query.rs`,
+  `crates/causafera-observer-wire/src/protocol.rs`,
+  `crates/causafera-observer-wire/tests/protocol.rs`,
+  `packages/observer-protocol/src/index.ts`,
+  `crates/causafera-explanation/src/ir.rs`,
+  `crates/causafera-runtime/tests/material_surface_observer.rs` or a new focused observer test.
+
+  **Implementation:**
+
+  - Add a bounded bootstrap summary to the existing runtime-summary read model with a hard maximum
+    of six records; do not expose `RuntimeState` or agent Ground Truth identity.
+  - Preserve existing wire field meanings. Use additive fields only, or explicitly bump the observer
+    protocol version and update every in-repository client if additive encoding is not safe.
+  - Extend Rust and TypeScript encode/decode paths with canonical ordering, duplicate rejection,
+    required-field handling, unknown-field policy, and payload-size bounds.
+  - Add a typed Explanation claim backed by the receipt result and completion/dependency traces;
+    return the existing unsupported/insufficient evidence state when the record is incomplete.
+  - Add protocol tests for canonical bytes, roundtrip, missing/duplicate fields, invalid counts,
+    unknown fields, trailing bytes, and forged trace anchors.
+
+  **Acceptance:** a real `Runtime::new` observer session returns at most six receipt summaries;
+  protocol roundtrip is byte-stable; locale or observer polling does not alter authoritative digests;
+  Explanation exposes typed evidence and trace anchors without semantic process labels; invalid
+  records never reach observer output.
+
+  **Focused QA:**
+
+  `cargo test -p causafera-observer-wire --test protocol -- --nocapture`
+
+  `cargo test -p causafera-runtime --test material_surface_observer -- --nocapture`
+
+  `pnpm --dir packages/observer-protocol build`
+
+  `pnpm --dir packages/observer-protocol typecheck`
+
+  **Checkpoint:** `feat(observer): expose bounded bootstrap evidence`.
+
+- [ ] 4. Converge production entry points and remove fixture reachability
+
+  **Files:** `crates/causafera-runtime/src/actors/state.rs`,
+  `crates/causafera-runtime/src/runtime.rs`, `crates/causafera-runtime/src/bootstrap.rs`,
+  `apps/observer/src-tauri/src/session.rs`, `crates/causafera-lab/src/experiment.rs`,
+  production binaries/examples found by the preflight call-site audit,
+  `crates/causafera-runtime/tests/historical_bootstrap.rs`, and any test-only support module.
+
+  **Implementation:**
+
+  - Add failing equivalence tests for observer session construction, headless `Runtime::new`, lab
+    experiment setup, reset/reconnect, replay, and save/resume using the same seed/config.
+  - Route all production construction paths through `RuntimeBootstrapRecipe`; keep snapshot import
+    as the only resume path and never re-bootstrap imported authoritative state.
+  - Prove actor promotion ancestry points to the canonical actor-promotion receipt and that aggregate
+    population plus promoted actor state conserves the configured bootstrap population.
+  - Move `fixture_actors` and `fixture_sensors` under `#[cfg(test)]` or a test-only support module;
+    remove them only if the preflight inventory proves no test requires them. Do not replace them
+    with a different production fixture.
+  - Add a static/source audit test or checked command that fails when production source calls a
+    fixture constructor. The allowlist must name test-only paths explicitly and must not rely on
+    grep output alone for a positive production claim.
+
+  **Acceptance:** no production call path reaches fixture/demo constructors; all production-shaped
+  entry points produce byte-identical canonical bootstrap plan/receipt data for the same seed/config;
+  reset and replay do not duplicate bootstrap traces; imported snapshots resume without rebuilding
+  bootstrap; population and actor ancestry checks pass.
+
+  **Focused QA:**
+
+  `cargo test -p causafera-runtime --test historical_bootstrap -- --nocapture`
+
+  `cargo test -p causafera-runtime --test thermal_bootstrap -- --nocapture`
+
+  `cargo test -p causafera-lab --lib -- --nocapture`
+
+  `rg -n 'fixture_(actors|sensors)' crates apps packages --glob '*.rs' --glob '*.ts' --glob '*.tsx'`
+
+  **Checkpoint:** `test(runtime): prove fixture-free bootstrap entry points`.
+
+- [ ] 5. Record bounded performance evidence and synchronize documentation
+
+  **Files:** `crates/causafera-runtime/src/benchmark.rs` or the existing benchmark test surface,
+  `crates/causafera-runtime/tests/historical_bootstrap.rs`,
+  `docs/architecture/detailed-development-rebaseline.md` only if contract wording changes,
+  `docs/ontology/domain-coverage-matrix.md`, `docs/development/todo-backlog.md`,
+  `docs/architecture/observer.md`, `docs/rfc/RFC-PERSIST-001.md`,
+  `docs/world/historical-bootstrap.md`, `CHANGELOG.md`, and `PLANS.md`.
+
+  **Implementation:**
+
+  - Measure the accepted bounded envelope already used by the observer: nine active chunks,
+    bootstrap population 512, eight promoted actors, and the current sensor configuration.
+  - Capture bootstrap wall time, snapshot bytes, receipt bytes, provenance growth, import time, and
+    bounded observer query overhead with observer polling disabled as the control.
+  - Store reproducible command output under the existing ignored benchmark artifact convention; do
+    not commit machine-specific generated output and do not claim a general scale result.
+  - Update maturity language only to state the exact bounded evidence delivered. Advance
+    `TODO-RUNTIME-001`, `TODO-OBSERVER-003`, and `TODO-EXPLAIN-003` only for criteria proven by this
+    plan. Do not mark `TODO-DEPTH-001`, `TODO-HIST-001`, or broad historical synthesis complete.
+  - Correct only documentation facts changed by this plan. Do not opportunistically rewrite the
+    stale candidate ledger or unrelated roadmap prose in the same wave.
+
+  **Acceptance:** the benchmark reports nonzero reproducible measurements for the stated envelope;
+  repeated same-seed runs produce identical authoritative record/digest outputs; documentation
+  records the bounded envelope and explicit unknowns; no unverified maturity or scale claim is added.
+
+  **Focused QA:**
+
+  `cargo test -p causafera-runtime --test historical_bootstrap -- --nocapture`
+
+  `cargo run -p xtask -- ci`
+
+  `git diff --check`
+
+  **Checkpoint:** `docs(runtime): record bootstrap receipt closure evidence`.
+
+## Dependency matrix
+
+| Task | Depends on | Reason |
+| --- | --- | --- |
+| 1 | Existing runtime/world/provenance contracts | The adapter and receipt semantics must be defined before persistence or protocol work. |
+| 2 | 1 | Snapshot bytes must represent the canonical record produced by task 1. |
+| 3 | 2 | Observer and Explanation must read validated persisted-shaped data, not a second model. |
+| 4 | 1, 2 | Entry-point equivalence and fixture checks require the canonical recipe and import contract. |
+| 5 | 1–4 | Measurements and documentation must describe the complete delivered surface. |
+
+The paused maturity audit and broad `TODO-DEPTH-001` are not reopened. If implementation discovers a
+missing prerequisite that changes the topology or requires a new authoritative domain, stop and
+record it in the Decision Log rather than expanding this plan silently.
+
+## Verification and final verification wave
+
+The following final checks run only after tasks 1–5 are green and all checkpoint commits exist.
+
+- [ ] F1. Run focused Rust unit/integration tests for canonical plan construction, receipt validation,
+  snapshot roundtrip/corruption, observer protocol, Explanation, fixture-free entry points, and
+  save/resume equivalence. Record exact commands and results in `Progress`.
+- [ ] F2. Run `cargo fmt --all -- --check` and
+  `cargo clippy --workspace --all-targets --all-features -- -D warnings`; resolve only regressions
+  introduced by this plan.
+- [ ] F3. Run `cargo test --workspace --all-features` and
+  `cargo test --workspace --no-default-features`; report any pre-existing failure separately.
+- [ ] F4. Run `cargo run -p xtask -- ci`, `pnpm lint`, `pnpm typecheck`, `pnpm build`,
+  `node tools/audit/check-entry-points.mjs`, `node tools/audit/run-source-tests.mjs`, and
+  `git diff --check`.
+- [ ] F5. Manual QA Gate: run the real observer-session test
+  `cargo test -p causafera-observer --bin causafera-observer session_negotiates_and_streams_real_runtime_snapshots -- --exact --nocapture`
+  and the new receipt-specific session test
+  `cargo test -p causafera-observer --bin causafera-observer session_exposes_six_bootstrap_receipts -- --exact --nocapture`.
+  The receipt-specific test must assert six strictly ordered receipts, canonical completion traces
+  resolving in the session's trace store, and the existing population/actor conservation assertion.
+  Then run the direct persistence scenario
+  `cargo test -p causafera-runtime --test thermal_persistence save_resume_equivalence -- --exact --nocapture`
+  and the new bootstrap equivalence scenario
+  `cargo test -p causafera-runtime --test historical_bootstrap production_bootstrap_save_resume_preserves_record -- --exact --nocapture`.
+  These tests must assert uninterrupted versus resumed plan/receipt equality and equal canonical
+  state/history digests. Capture the exact command output as evidence; a passing compile alone is
+  not sufficient.
+
+## Determinism impact
+
+- No new nondeterministic source is permitted.
+- Active chunks, targets, stage effects, receipt causes, and snapshot records use sorted canonical
+  order.
+- Stage parameters and result fingerprints use canonical encodings and explicit domain-separated
+  seeds.
+- Same seed/config must produce equal plan, receipts, ancestry, state digest, history digest, and
+  snapshot envelope bytes.
+- Observer query cadence, locale, polling, and Explanation rendering cannot mutate or reorder
+  authoritative state.
+
+## Memory and performance impact
+
+- Bootstrap records are bounded to six stages plus bounded per-stage trace causes and targets.
+- Stage effect traces remain in the existing causal store; the receipt record must not duplicate full
+  event payloads.
+- Snapshot and observer payloads enforce explicit count/byte limits before allocation.
+- Benchmark evidence covers bootstrap time, import time, snapshot size, provenance growth, and
+  observer overhead for the stated envelope only.
+
+## Observer impact
+
+The observer receives a read-only bounded summary derived from `RuntimeSnapshot`. It does not receive
+mutable runtime handles, authoritative actor identity for cognition, arbitrary causal graph data, or
+unbounded stage effects. Existing fields retain their meaning. New fields are versioned and tested for
+canonical encoding, decoding, bounds, unknown fields, and locale independence.
+
+## Explanation impact
+
+The new claim identifies that the current initial state has a validated bootstrap record, reports
+typed stage/result values and observation window, and anchors the claim to completion/dependency
+traces. It does not translate opaque process schema IDs into a narrative or infer why a stage exists.
+An incomplete or unsupported record is represented as unknown/insufficient using existing IR
+semantics.
+
+## Persistence impact
+
+`SECTION_POPULATION_BOOTSTRAP` remains the section ID and advances from major 1 to major 2. The new
+major is required because the authoritative payload changes from two fields per receipt to a complete
+canonical plan/record. Old and unsupported majors fail closed. The digest schema advances from 6 to 7
+because the authoritative physical-state digest includes the canonical bootstrap record.
+
+No compatibility shim may interpret an old empty receipt list as a valid current production record.
+
+## Cross-domain effects
+
+This plan connects existing terrain, material, population, actor, activity, and thermal bootstrap
+effects to one inspectable causal record. It does not add new cross-domain dynamics. Population
+conservation and actor promotion ancestry become explicit acceptance evidence, while observer and
+Explanation remain downstream read models.
+
+## Risks and mitigations
+
+- **Duplicate plan models:** rename the runtime recipe and keep `causafera-world` canonical.
+- **Decorative receipts:** require a real completion state effect and verify its trace/effect on import.
+- **No-op stages:** always commit a bounded completion transition so every stage has a receipt.
+- **Fixture false positive:** combine graph/call-site inspection with a checked source/build audit and
+  explicit test-only paths.
+- **Schema drift:** bump section/digest/protocol versions deliberately and reject unsupported data.
+- **Broad-history creep:** keep the six current stages as the complete implementation surface and
+  reject new domain synthesis in review.
+- **Observer leakage:** expose only typed bounded receipt fields and trace anchors; retain the
+  existing observer/cognition separation.
+- **Performance overclaim:** record measurements and envelope; do not convert them into scale claims.
+
+## Documentation changes
+
+The implementation worker updates only documents whose facts change:
+
+- `PLANS.md` registers this accepted plan while it has unfinished stages and moves it to completed
+  records only after all final verification passes.
+- `docs/development/todo-backlog.md` records delivered evidence for the specific runtime/observer/
+  Explanation criteria.
+- `docs/ontology/domain-coverage-matrix.md` records the bounded historical-bootstrap and observer
+  maturity change without broad maturity claims.
+- `docs/architecture/observer.md`, `docs/rfc/RFC-PERSIST-001.md`, and
+  `docs/world/historical-bootstrap.md` record the accepted receipt/read-model/version contracts.
+- `CHANGELOG.md` records the user-visible persistence/observer contract change.
+
+## TODO changes
+
+- Advance only the proven portions of `TODO-RUNTIME-001`, `TODO-OBSERVER-003`, and `TODO-EXPLAIN-003`.
+- Do not close `TODO-DEPTH-001`, `TODO-HIST-001`, `TODO-PERSIST-001`, `TODO-ANALYTICS-001`, or any
+  broad domain-depth TODO based on this bounded slice.
+- If a new follow-up is discovered for stage-history synthesis, receipt-growth management, or
+  deeper observer causal queries, add a separate `Detailed Development — ...` TODO with evidence;
+  do not hide it in this plan.
+
+## Decision log
+
+- **2026-07-28:** User approved the bounded next-plan direction and required sequential Claude Code
+  execution without OMO.
+- **2026-07-28:** Selected canonical production bootstrap receipt closure because the runtime already
+  executes six causal stages, the world crate already validates canonical receipts, and snapshots
+  currently export an empty bootstrap record. This is a narrower and more evidence-backed seam than
+  broad historical synthesis or another generic material coupling slice.
+- **2026-07-28:** Kept the six existing runtime stages as the complete implementation surface. New
+  geology, climate, ecology, language, settlement, institution, economy, and authored history remain
+  explicitly out of scope.
+- **2026-07-28:** Chose a runtime adapter around the canonical world plan, a bounded real completion
+  state effect per stage, population/bootstrap section major 2, digest schema 7, and additive observer
+  fields unless the current protocol cannot represent them safely.
+
+## Progress
+
+**Accepted; implementation not started.**
+
+Planning evidence was gathered from the clean `main` HEAD `730e306`, the canonical plan index,
+roadmap, backlog, maturity matrix, code knowledge graph, runtime bootstrap, world historical contract,
+snapshot section codecs, observer protocol, and existing production-path tests. No product code was
+changed while preparing this plan.

@@ -86,7 +86,7 @@ Progress
 
 This section lists only accepted or in-progress work with genuinely unfinished implementation stages, acceptance criteria, or close-out work.
 
-- No canonical ExecPlans are currently active. For current project priorities, use the [roadmap](docs/roadmap/roadmap.md), [maturity matrix](docs/ontology/domain-coverage-matrix.md), and [TODO backlog](docs/development/todo-backlog.md).
+- [`plans/production-bootstrap-receipt-closure.md`](plans/production-bootstrap-receipt-closure.md) — accepted sequential plan to bind the six runtime bootstrap stages to the canonical historical DAG/receipt contract, persist and inspect the record, and prove fixture-free production entry points.
 
 ## Blocked and Paused Work
 
