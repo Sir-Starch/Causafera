@@ -15,5 +15,9 @@ causafera-cognition = { workspace = true }
 causafera-language = { workspace = true }
 causafera-geography = { workspace = true }
 thiserror = { workspace = true }
+# Canonical state fingerprints for hydrology causal effects. The payloads being
+# hashed are domain data, so the domain computes them; the runtime only maps a
+# carrier and property onto a `CausalTarget`.
+blake3 = "1"
 
 [dev-dependencies]

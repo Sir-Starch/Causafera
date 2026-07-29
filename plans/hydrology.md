@@ -2326,6 +2326,48 @@ its own evidence-backed follow-up TODO rather than being hidden in Progress.
   sufficient condition. Every multiplication in the solver goes through `checked_water_mul`, and the
   bound is pinned by test rather than assumed.
 
+- **2026-07-30 — Stage 3 split: domains emits the logical DAG, the runtime commits it.**
+  `HydrologyEvolutionModel::propose` returns `HydrologyEventPlan` values — a proposal key, a domain
+  event-kind name, causes that may be `Local`, and effects naming a carrier, a property, and two
+  already-computed fingerprints. It does **not** build `CausalEventDagProposal`: object kinds,
+  property IDs, event-kind numbers, and the dense object registry are runtime schema, and a domain
+  that knew them would make the runtime's causal numbering a domain concern. Fingerprints *are*
+  computed in domains, because what is being hashed — a water volume, an ordered list of forcing
+  allocations — is domain data; `blake3` is now a `causafera-domains` dependency for that. The
+  §8 aggregation tree and the conservation event land in Stage 6's `hydrology_events.rs`, where the
+  synthetic-node counter and committed effect targets it hashes actually live; Stage 3 emits the
+  ordered terminal-leaf list the tree is built over. This mirrors the thermal seam, where domains
+  produces state and receipts and `thermal_events.rs` produces proposals.
+- **2026-07-30 — Stage 3 addition: the forcing settlement accounts for the water it delivered.**
+  §8 specifies the settlement event's effect as the cell's `HYDROLOGY_FORCING_PROPERTY`. Implemented
+  exactly that way, a cell that was only rained on — no infiltration, no ET — ends the tick holding
+  more water while its `surface_last_change` still points at a previous tick, because substage 1 is
+  where accepted precipitation and external inflow actually land and no other substage touches that
+  cell. The transfer receipt records the change, but receipts are evicted after eight batches and
+  the bucket anchor is what has to survive (INV-014). The settlement event therefore carries a
+  second effect on the surface property whenever accepted source water is nonzero, and becomes that
+  bucket's current reference and terminal anchor. The forcing-property effect the plan names is
+  unchanged and still always present; this is an addition, not a substitution, and it stays inside
+  the eight-effect cap at two.
+- **2026-07-30 — Stage 3: forcing application and forcing settlement are separate processes.**
+  §8 describes two different events — a record becoming spent, and a cell folding every record that
+  reached it. Giving both the same opaque process ID made them indistinguishable in a receipt and in
+  a proposal-key lookup, so `process::FORCING_APPLICATION` was allocated alongside
+  `process::FORCING_SETTLEMENT`. For the same reason the evapotranspiration *event* uses a neutral
+  `process::EVAPOTRANSPIRATION` rather than borrowing the surface receipt's identity: one event
+  settles whichever of the two buckets it drew from, and naming it after either would misreport the
+  half that did not move. The two ET *receipt* kinds stay distinct as the plan specifies.
+- **2026-07-30 — Stage 3 measurement: water arithmetic cannot overflow the accumulation domain
+  under the plan's bounds.** With at most 131 072 cells of three whole-range `u64` buckets, the
+  world total is bounded by roughly `2^82.6` and every product the solver forms —
+  `weight * total`, `value * numerator` — is bounded by `2^128` in `u128` or `2^96` in `i128`. So no
+  reachable input overflows, and the plan's "negative control for overflow" has no reachable case at
+  this stage. The checked arithmetic is retained as the *proof* of that property rather than as a
+  mechanism that fires: `crates/causafera-types/src/physics.rs` pins the primitive behaviour
+  directly, and the reachable boundary — capacity refusing water and recording it as unaccepted — is
+  covered by `a_forcing_total_that_would_overflow_the_carrier_is_refused`. Recorded rather than
+  papered over with an unreachable test.
+
 ## Progress
 
 - **2026-07-29 — Accepted.** Revision 19 is the authoritative hydrology implementation plan.
@@ -2537,6 +2579,93 @@ its own evidence-backed follow-up TODO rather than being hidden in Progress.
   - `git diff --check` — clean.
   - `cargo test --workspace --all-features` — all 71 suites passed, run to confirm deleting the
     `HydrologyCell` placeholder broke no consumer. It had none, as the plan's Context recorded.
+
+- **2026-07-30 — Stage 3 complete and checkpointed.** The local vertical cycle and exact receipts.
+  Water now moves, and the ledger closes on it.
+
+  Changed:
+
+  - `crates/causafera-core/src/provenance.rs` — `CausalEventProposalKey` with the plan's exact
+    version-1 byte encoding, `CausalEventDagCause`, `CausalEventDagProposal`,
+    `CausalDagBatchLimits`, and `CausalTraceStore::commit_dag_batch`. Local causes are resolved
+    only after unique keys, resolvable external traces, resolvable local references, the substage
+    ordering rule, per-event caps, and store capacity have all passed, and the order is Kahn's
+    algorithm with the ready set ordered by complete key bytes. Nothing touches `self` until every
+    check succeeds. The per-event caps are caller-supplied rather than fixed here, so one domain's
+    event shapes stay one domain's contract.
+  - `crates/causafera-core/src/lib.rs` — **no change needed**; `pub use provenance::*` already
+    exports the additions.
+  - `crates/causafera-domains/Cargo.toml` — `blake3` added; see the Decision log entry on the split.
+  - `crates/causafera-domains/src/lib.rs` — the `hydrology` module registered.
+  - `crates/causafera-domains/src/hydrology/parameters.rs` — substage ordinals, twenty-one opaque
+    process identities, and `HydrologyEvolutionLimits`.
+  - `crates/causafera-domains/src/hydrology/records.rs` — `HydrologyBucket` with the plan's
+    aggregation tag bytes, `HydrologyTransferReceipt`, the cell/edge change records, the
+    forcing-settlement records, and `HydrologyError`.
+  - `crates/causafera-domains/src/hydrology/receipts.rs` — `HydrologyConservationReceipt`,
+    `HydrologyReceiptTotals` as an independent second derivation, and the paired-transfer and
+    boundary-transfer validators.
+  - `crates/causafera-domains/src/hydrology/proposal.rs` — the request, the logical event plan, the
+    proposal, and the four canonical fingerprint encodings.
+  - `crates/causafera-domains/src/hydrology/evolution.rs` — `allocate_largest_remainder` and
+    substages 1–4 and 9.
+  - `crates/causafera-domains/tests/support/mod.rs` — shared fixtures (**not** on the stage
+    allowlist; added because two integration test files need one builder set and duplicating it
+    would let the two drift).
+  - `crates/causafera-domains/tests/hydrology_vertical_cycle.rs` — 23 tests.
+  - `crates/causafera-domains/tests/hydrology_conservation.rs` — 13 tests.
+
+  Evidence:
+
+  - **`commit_dag_batch`** — 11 new tests. A three-substage chain resolves each local cause to a
+    trace committed in the same batch; all six permutations of that batch produce a byte-identical
+    store; independent proposals commit in lexicographic key order across every field of the
+    encoding; a backwards substage edge, a two-node cycle within one substage, and a
+    self-reference are each rejected; six distinct rejection classes each leave a store *with real
+    history in it* byte-identical, and a valid batch afterwards still commits; legacy `commit_batch`
+    issues exactly the identifiers it always did before, between, and after DAG commits; and a
+    DAG-committed store re-imports from its own snapshot unchanged.
+  - **Conservation** — every committed tick is checked five ways, none of them against the solver's
+    own running totals: residual exactly zero; declared pre- and post-state totals equal to the two
+    field sets' own sums; source and sink terms refolded from the per-transfer receipts and compared
+    to the aggregate literals; every internal transfer proven to move the same amount out of one
+    bucket as into the other; and `before + sources == after + sinks` written out longhand. A
+    closed basin over **100 ticks** holds 11 987 mm³ exactly at every tick, with 100 of 100 ticks
+    doing nonzero internal work.
+  - **Process equations** asserted against the plan's formulas, not against output: infiltration
+    bounded separately by availability, by its per-tick limit, and by remaining soil room (each on
+    its own cell); percolation flooring `999/4` to 249 with the quarter-unit staying in soil;
+    saturated soil infiltrating strictly less and retaining strictly more surface water than dry
+    soil under identical forcing; ET drawing surface then soil and never groundwater; unmet demand
+    of 470 against 30 of available water recorded rather than removed.
+  - **Allocation** sums to the record total across five weight shapes and five totals; ties break by
+    ascending key; a positive total with no positive-weight member is refused.
+  - **Ancestry** — infiltration cites the forcing settlement that delivered the water it consumed
+    rather than the surface bucket's pre-tick trace; percolation cites the infiltration that filled
+    the soil; each bucket's terminal anchor is the last event that actually moved it, verified to be
+    three different events in one tick; every event's causes are strictly ordered and deduplicated.
+  - **Bounds and refusals** — a non-resident forcing target rolls back the whole proposal; a record
+    reaching the wrong tick is refused; a batch past the transfer limit is refused, and the same
+    world inside its limit is accepted; a chunk whose chart has no registered metric cannot be
+    evolved.
+  - **Order independence** — two chunks and two records built in both orders produce an identical
+    proposal, with the fixture asserted to have actually moved water.
+
+  Commands run and their actual results:
+
+  - `cargo test -p causafera-core provenance -- --nocapture` — **19 passed**, 0 failed.
+  - `cargo test -p causafera-domains --test hydrology_vertical_cycle -- --nocapture` — **23 passed**.
+  - `cargo test -p causafera-domains --test hydrology_conservation -- --nocapture` — **13 passed**.
+  - `cargo clippy -p causafera-core -p causafera-domains --all-targets --all-features -D warnings`
+    — clean.
+  - `cargo fmt --all -- --check` — clean.
+  - `git diff --check` — clean.
+  - `cargo test --workspace --all-features` — all 73 suites passed.
+
+  Not done in this stage, by design: substages 5–8 (routing, baseflow, conveyance, boundary export)
+  are Stage 4; the §8 aggregation tree and conservation event are Stage 6. `HydrologyEventKind`
+  carries `EdgeTransfer` and `Representation` variants that nothing emits yet, and the proposal
+  carries an always-empty `edge_changes`; both are the seams those stages fill.
 
 Execution must begin by re-reading this Progress section and Decision log, then inspecting
 `git status`. The implementing agent updates both sections whenever scope, contract, verification,
