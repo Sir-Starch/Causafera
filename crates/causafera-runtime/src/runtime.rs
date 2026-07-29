@@ -15,9 +15,9 @@ use causafera_domains::{
 };
 use causafera_explanation::{
     ComparisonContext, ExplanationClaim, ExplanationFrame, ExplanationReport,
-    MATERIAL_SURFACE_LOOP_CLAIM_SCHEMA, MaterialSurfaceLocalManaTransitionClaim,
-    MaterialSurfaceLoopClaim, MaterialSurfaceThermalExchangeClaim, NumericClaimValue,
-    ThermalCarrierConservationClaim,
+    HistoricalBootstrapRecordClaim, MATERIAL_SURFACE_LOOP_CLAIM_SCHEMA,
+    MaterialSurfaceLocalManaTransitionClaim, MaterialSurfaceLoopClaim,
+    MaterialSurfaceThermalExchangeClaim, NumericClaimValue, ThermalCarrierConservationClaim,
 };
 use causafera_observer_api::{
     FieldRasterRequest, MATERIAL_SURFACE_DELTA_SCHEMA_V4, MAX_MATERIAL_SURFACE_DELTAS,
@@ -44,7 +44,10 @@ pub const MANA_PATTERN_HISTORY_TICKS: u64 = 8;
 pub const MAX_EXPERIMENT_RECIPE_MANA_SOURCES: usize = 16;
 pub const EXPERIMENT_RECIPE_MANA_SOURCE_POLICY_SCHEMA_V1: u64 = 1;
 
-pub const CURRENT_DIGEST_SCHEMA_VERSION: DigestSchemaVersion = DigestSchemaVersion::new(6);
+/// Bumped to 7 when the canonical production bootstrap record (plan identity,
+/// per-stage result fingerprints, and terminal receipts) became an authoritative
+/// input to `physical_state_digest`.
+pub const CURRENT_DIGEST_SCHEMA_VERSION: DigestSchemaVersion = DigestSchemaVersion::new(7);
 
 const PHYSICAL_SYSTEM_ID: u64 = 10;
 pub const EXPERIMENT_RECIPE_MANA_SOURCE_SYSTEM_ID: u64 = 19;
@@ -74,6 +77,9 @@ pub const THERMAL_RESERVOIR_TRANSFER_EVENT_KIND: u64 = 30;
 pub const THERMAL_CELL_CHANGE_EVENT_KIND: u64 = 31;
 pub const THERMAL_CONSERVATION_EVENT_KIND: u64 = 32;
 pub const MATERIAL_SURFACE_THERMAL_EXCHANGE_EVENT_KIND: u64 = 33;
+/// One stage's single terminal completion. Its effect is the authoritative
+/// transition of that stage's bounded result state, not decorative metadata.
+pub const BOOTSTRAP_STAGE_COMPLETION_EVENT_KIND: u64 = 34;
 pub const THERMAL_FIELD_BOOTSTRAP_EVENT_KIND: u64 = 28;
 pub const THERMAL_RESERVOIR_BOOTSTRAP_EVENT_KIND: u64 = 29;
 const RUNTIME_OBJECT_KIND: u64 = 1;
@@ -88,6 +94,7 @@ pub const EXPERIMENT_RECIPE_MANA_SOURCE_OBJECT_KIND: u64 = 9;
 pub const THERMAL_RESERVOIR_OBJECT_KIND: u64 = 10;
 pub const THERMAL_CELL_OBJECT_KIND: u64 = 11;
 pub const THERMAL_CARRIER_OBJECT_KIND: u64 = 12;
+pub const BOOTSTRAP_STAGE_OBJECT_KIND: u64 = 13;
 const ROOT_PROPERTY: u64 = 1;
 pub(crate) const PHYSICAL_PROPERTY: u64 = 2;
 pub(crate) const MANA_PROPERTY: u64 = 3;
@@ -104,6 +111,7 @@ pub const THERMAL_RESERVOIR_BUDGET_PROPERTY: u64 = 20;
 pub const THERMAL_ENERGY_PROPERTY: u64 = 21;
 pub const THERMAL_BATCH_SEQUENCE_PROPERTY: u64 = 22;
 pub const MATERIAL_SURFACE_THERMAL_RETAINED_PROPERTY: u64 = 23;
+pub const BOOTSTRAP_STAGE_RESULT_PROPERTY: u64 = 24;
 pub(crate) const RESOLUTION_CHANNEL: u64 = 1;
 const PHYSICAL_DIGEST_DOMAIN: u64 = 0x5048_5953_4943_414C;
 pub(crate) const HISTORY_DIGEST_DOMAIN: u64 = 0x4849_5354_4F52_595F;
@@ -283,6 +291,19 @@ impl Runtime {
             return Err(error);
         }
         state.material_surface_thermal_explanation(self.scheduler.current_time(), surface)
+    }
+
+    /// Typed evidence that the current initial state was causally initialized.
+    ///
+    /// An incomplete or unevidenced record answers with the existing
+    /// unknown/zero-confidence state rather than erroring, so an observer can
+    /// tell "no evidence" apart from "a failed query".
+    pub fn observer_bootstrap_record_explanation(&self) -> Result<ExplanationReport, RuntimeError> {
+        let state = self.lock_state()?;
+        if let Some(error) = state.failure.clone() {
+            return Err(error);
+        }
+        state.bootstrap_record_explanation(self.scheduler.current_time())
     }
 
     pub fn export_snapshot(&self) -> Result<RuntimeSnapshotData, RuntimeError> {
@@ -504,6 +525,12 @@ pub struct RuntimeState {
     pub(crate) actor_objects: BTreeMap<u64, ActorPhysicalObject>,
     pub(crate) population_aggregates: BTreeMap<ChartChunkCoord, PopulationAggregate>,
     pub(crate) aggregate_actor_pool: BTreeMap<ChartChunkCoord, Vec<ActorId>>,
+    /// The validated canonical bootstrap record this state was initialized from.
+    ///
+    /// Every `RuntimeState` returned by [`RuntimeState::new`] or
+    /// [`RuntimeState::import_snapshot`] carries a complete six-stage record; see
+    /// [`BootstrapRuntimeState`] for the one window in which it is not yet set.
+    pub(crate) bootstrap: BootstrapRuntimeState,
     pub(crate) actor_action_bounds: i64,
     pub(crate) pending_samples: Vec<PhysicalPatternSample>,
     pub(crate) pattern_history: PhysicalPatternHistory,
@@ -627,16 +654,7 @@ impl RuntimeState {
                 )
             })
             .collect();
-        let resolution_policy = ResolutionPolicy::new(
-            10_000,
-            900,
-            100,
-            vec![500, 2_000, 5_000],
-            vec![ChannelWeight::new(
-                ResolutionChannelId::new(RESOLUTION_CHANNEL),
-                1_000,
-            )?],
-        )?;
+        let resolution_policy = Self::default_resolution_policy()?;
         let mut state = Self {
             config: config.clone(),
             traces,
@@ -659,6 +677,7 @@ impl RuntimeState {
             actor_objects: BTreeMap::new(),
             population_aggregates: BTreeMap::new(),
             aggregate_actor_pool: BTreeMap::new(),
+            bootstrap: BootstrapRuntimeState::default(),
             actor_action_bounds: config.action_bounds,
             pending_samples: Vec::with_capacity(causafera_geography::TERRAIN_CELLS_PER_CHUNK),
             pattern_history: PhysicalPatternHistory::new(
@@ -693,24 +712,12 @@ impl RuntimeState {
             last_mana_changes: 0,
             failure: None,
         };
-        HistoricalBootstrapPlan::for_runtime_config(config)
-            .map_err(|error| match error {
-                BootstrapError::Runtime(error) => error,
-                BootstrapError::ThermalReservoirOutsideActiveRegion { .. }
-                | BootstrapError::InvalidThermalReservoir
-                | BootstrapError::DuplicateThermalReservoir { .. } => {
-                    RuntimeError::InvalidSnapshot("invalid thermal bootstrap plan")
-                }
-            })?
-            .bootstrap(&mut state)
-            .map_err(|error| match error {
-                BootstrapError::Runtime(error) => error,
-                BootstrapError::ThermalReservoirOutsideActiveRegion { .. }
-                | BootstrapError::InvalidThermalReservoir
-                | BootstrapError::DuplicateThermalReservoir { .. } => {
-                    RuntimeError::InvalidSnapshot("invalid thermal bootstrap state")
-                }
-            })?;
+        let recipe = RuntimeBootstrapRecipe::from_runtime_config(config)
+            .map_err(|error| bootstrap_construction_error(error, "invalid bootstrap plan"))?;
+        let bootstrap = recipe
+            .execute(&mut state)
+            .map_err(|error| bootstrap_construction_error(error, "invalid bootstrap state"))?;
+        state.bootstrap = bootstrap;
         Ok(state)
     }
 
@@ -943,9 +950,7 @@ impl RuntimeState {
                     .map(|(chunk, actors)| (*chunk, actors.clone()))
                     .collect(),
             },
-            bootstrap: BootstrapReceiptSnapshot {
-                receipts: Vec::new(),
-            },
+            bootstrap: self.bootstrap.export_snapshot(),
             traces: self.traces.export_snapshot(),
             experiment_recipe_mana_source_receipts: self
                 .executed_experiment_recipe_mana_sources
@@ -1034,7 +1039,21 @@ impl RuntimeState {
             material_surface_gate_transitions,
             material_surface_thermal_transitions,
         ) = import_material_surfaces(data.material_surfaces, config.chunk_extent)?;
+        let bootstrap = BootstrapRuntimeState::import_snapshot(data.bootstrap)
+            .map_err(|_| RuntimeError::InvalidSnapshot("invalid canonical bootstrap record"))?;
         let counters = data.physical_counters;
+        // `export_snapshot` writes `completed_time` *from* `advanced_through`, so
+        // the two agree in every honestly produced snapshot and this costs
+        // nothing. Left unchecked it is a fail-open: `advanced_through` is the
+        // only gate on the bootstrap-time population and actor-ancestry checks,
+        // so a snapshot presenting as bootstrap-time (`completed_time` zero)
+        // while claiming to have advanced skips both, and can delete residents
+        // and erase promoted ancestry without import noticing.
+        if counters.advanced_through != data.recipe.completed_time {
+            return Err(RuntimeError::InvalidSnapshot(
+                "snapshot completed time does not match the advanced-through counter",
+            ));
+        }
         let state = Self {
             config,
             traces,
@@ -1057,6 +1076,7 @@ impl RuntimeState {
             actor_objects,
             population_aggregates,
             aggregate_actor_pool,
+            bootstrap,
             actor_action_bounds: data.actors_objective.actor_action_bounds,
             pending_samples: counters.pending_samples,
             pattern_history,
@@ -1092,11 +1112,64 @@ impl RuntimeState {
         Ok(state)
     }
 
+    /// The detail-resolution policy this build defines. Named rather than
+    /// inlined so that construction and import compare against one definition
+    /// instead of import comparing against nothing.
+    fn default_resolution_policy() -> Result<ResolutionPolicy, RuntimeError> {
+        Ok(ResolutionPolicy::new(
+            10_000,
+            900,
+            100,
+            vec![500, 2_000, 5_000],
+            vec![ChannelWeight::new(
+                ResolutionChannelId::new(RESOLUTION_CHANNEL),
+                1_000,
+            )?],
+        )?)
+    }
+
     fn validate_snapshot_references(
         &self,
         thermal_receipt_totals: &BTreeMap<TraceId, ThermalBatchReceiptTotals>,
     ) -> Result<(), RuntimeError> {
         self.validate_experiment_recipe_mana_source_receipts()?;
+
+        // Two fields the snapshot supplies that the same snapshot lets us
+        // re-derive, and that silently override what they are derived from.
+        //
+        // `actor_action_bounds` is the sole displacement bound `validate_action`
+        // enforces, and it is built from `config.action_bounds` at construction;
+        // a snapshot could carry `i64::MAX` beside a persisted configuration
+        // saying eight. `ResolutionPolicy` governs detail promotion and
+        // demotion and is a compiled constant, not configuration at all, so a
+        // snapshot could choose its own thresholds. Neither was compared with
+        // anything.
+        if self.actor_action_bounds != self.config.action_bounds {
+            return Err(RuntimeError::InvalidSnapshot(
+                "actor action bounds disagree with the persisted configuration",
+            ));
+        }
+        if self.resolution_policy != Self::default_resolution_policy()? {
+            return Err(RuntimeError::InvalidSnapshot(
+                "resolution policy disagrees with the policy this build defines",
+            ));
+        }
+
+        // The same rollback the trace store's identifier counters were closed
+        // against, on the counter that fix did not cover. `promote_actor` issues
+        // `ActorId::new(state.next_actor_id)` and both `actors` and
+        // `actor_ancestry` are maps, so a rolled-back counter makes the next
+        // promotion silently *replace* a live actor: the aggregate decrements,
+        // the actor set does not grow, and residents disappear with no death
+        // event. The corrupted state then re-exports as a clean save.
+        if let Some(last) = self.actors.keys().next_back()
+            && self.next_actor_id <= last.raw()
+        {
+            return Err(RuntimeError::InvalidSnapshot(
+                "next actor identifier is not above every live actor",
+            ));
+        }
+
         validate_trace_exists(&self.traces, self.latest_physical_trace)?;
         if let Some(trace) = self.latest_mana_trace {
             validate_trace_exists(&self.traces, trace)?;
@@ -1297,6 +1370,575 @@ impl RuntimeState {
                 validate_trace_exists(&self.traces, *trace)?;
             }
         }
+        self.validate_bootstrap_record()?;
+        Ok(())
+    }
+
+    /// Fail-closed validation of the canonical production bootstrap record.
+    ///
+    /// A snapshot carries the plan, the per-stage result state, and the receipts
+    /// as data, so none of it may be believed on sight. Everything here is
+    /// re-derived or re-read from state the same snapshot also carries: the plan
+    /// from the persisted configuration, the results and ancestry from the
+    /// persisted causal trace store.
+    fn validate_bootstrap_record(&self) -> Result<(), RuntimeError> {
+        let record = self
+            .bootstrap
+            .record()
+            .ok_or(RuntimeError::InvalidSnapshot("missing bootstrap record"))?;
+        if record.plan().stages().len() > BOOTSTRAP_STAGE_COUNT {
+            return Err(RuntimeError::InvalidSnapshot(
+                "bootstrap record exceeds the current six-stage envelope",
+            ));
+        }
+
+        // The plan is not read from the snapshot's word: the same configuration
+        // the snapshot persisted must reproduce it exactly. That covers the plan
+        // identity, world seed, stage spans, dependency chain, parameter
+        // fingerprints, and the sorted active-chunk targets in one comparison, so
+        // an inactive or forged target cannot survive.
+        let expected = RuntimeBootstrapRecipe::from_runtime_config(&self.config).map_err(
+            |error| match error {
+                BootstrapError::Runtime(error) => error,
+                _ => RuntimeError::InvalidSnapshot("configuration yields no valid bootstrap plan"),
+            },
+        )?;
+        if expected.plan() != record.plan() {
+            return Err(RuntimeError::InvalidSnapshot(
+                "bootstrap plan does not match the persisted configuration",
+            ));
+        }
+
+        // Targets are additionally checked against the chunk set the snapshot
+        // actually restored, not only against the one the configuration implies.
+        // The comparison above derives both sides from the same configuration,
+        // so on its own it says nothing about whether those chunks are present
+        // in this state; that they are held today by thermal and duplicate
+        // validation rejecting the alternatives is defence in depth, not the
+        // check `RFC-PERSIST-001` describes.
+        let active = self
+            .active_chunks
+            .keys()
+            .copied()
+            .map(bootstrap_chunk_target)
+            .collect::<BTreeSet<_>>();
+        for stage in record.plan().stages() {
+            if stage
+                .targets()
+                .iter()
+                .any(|target| !active.contains(target))
+            {
+                return Err(RuntimeError::InvalidSnapshot(
+                    "bootstrap stage targets a chunk that is not active",
+                ));
+            }
+        }
+
+        // Every receipt's completion trace must exist and must really be the
+        // stage-result transition it claims, with the materialized stage-result
+        // state agreeing with it.
+        if self.bootstrap.stage_results().len() != record.receipts().len() {
+            return Err(RuntimeError::InvalidSnapshot(
+                "bootstrap stage results do not cover the receipt set",
+            ));
+        }
+        for receipt in record.receipts() {
+            let stored = self
+                .bootstrap
+                .stage_results()
+                .get(&receipt.stage())
+                .copied()
+                .ok_or(RuntimeError::InvalidSnapshot(
+                    "bootstrap stage result is missing for a receipt",
+                ))?;
+            if stored != receipt.result() {
+                return Err(RuntimeError::InvalidSnapshot(
+                    "bootstrap stage result does not match its receipt",
+                ));
+            }
+            let event = self
+                .traces
+                .event(receipt.trace())
+                .ok_or(RuntimeError::InvalidSnapshot(
+                    "bootstrap receipt references unknown trace",
+                ))?;
+            if event.phase != Phase::Lifecycle
+                || event.kind.raw() != BOOTSTRAP_STAGE_COMPLETION_EVENT_KIND
+            {
+                return Err(RuntimeError::InvalidSnapshot(
+                    "bootstrap receipt trace is not a stage completion",
+                ));
+            }
+            let expected_target = CausalTarget::new(
+                StateObjectKindId::new(BOOTSTRAP_STAGE_OBJECT_KIND),
+                receipt.stage().raw(),
+                StatePropertyId::new(BOOTSTRAP_STAGE_RESULT_PROPERTY),
+            );
+            if !event.effects.iter().any(|effect| {
+                effect.target() == expected_target
+                    && effect.before() == bootstrap_stage_absent_result(receipt.stage())
+                    && effect.after() == receipt.result()
+            }) {
+                return Err(RuntimeError::InvalidSnapshot(
+                    "bootstrap completion does not transition its stage result",
+                ));
+            }
+            // A receipt cause the completion event does not itself carry would be
+            // ancestry asserted by the record rather than committed by the run.
+            for cause in receipt.causes() {
+                validate_trace_exists(&self.traces, *cause)?;
+                if !event.causes.contains(cause) {
+                    return Err(RuntimeError::InvalidSnapshot(
+                        "bootstrap receipt cause is absent from its completion event",
+                    ));
+                }
+            }
+        }
+
+        self.validate_bootstrap_stage_replay(record)?;
+        self.validate_bootstrap_domain_state(record)?;
+        Ok(())
+    }
+
+    /// Whether the trace store holds nothing beyond the bootstrap prefix.
+    ///
+    /// This, and not `advanced_through`, is what decides whether the
+    /// bootstrap-time checks below run. The counter arrives from the snapshot,
+    /// and so does `recipe.completed_time` that it is required to agree with, so
+    /// a record could turn both checks off by claiming to have advanced while
+    /// every event in the store still sits at simulation time zero. The store's
+    /// shape cannot be adjusted so cheaply: population, promotion and demotion
+    /// all commit events, so a run with nothing after the last completion has a
+    /// population and an actor set that are still exactly what bootstrap left.
+    fn holds_only_the_bootstrap_prefix(&self, record: &HistoricalBootstrapRecord) -> bool {
+        let last_completion = record.receipts().last().map(HistoricalStageReceipt::trace);
+        self.traces
+            .iter()
+            .last()
+            .map(|event| event.trace_id)
+            .zip(last_completion)
+            .is_some_and(|(last, completion)| last == completion)
+    }
+
+    /// The domain state a bootstrap-time snapshot must be in.
+    ///
+    /// Everything above validates the record against the trace store, and the
+    /// store's own shape. None of it looks the other way: population counts,
+    /// actor sets, material surfaces and reservoir budgets are read on the
+    /// snapshot's word, so a state that flatly contradicts the effects the
+    /// stages committed passes. That is what this closes.
+    fn validate_bootstrap_domain_state(
+        &self,
+        record: &HistoricalBootstrapRecord,
+    ) -> Result<(), RuntimeError> {
+        // A counter claiming the run advanced must be backed by a committed
+        // event that actually happened after bootstrap.
+        if self.advanced_through != SimulationTime::new(0)
+            && !self
+                .traces
+                .iter()
+                .any(|event| event.time > SimulationTime::new(0))
+        {
+            return Err(RuntimeError::InvalidSnapshot(
+                "snapshot claims to have advanced with no event committed after bootstrap",
+            ));
+        }
+        if self
+            .traces
+            .iter()
+            .any(|event| event.time > self.advanced_through)
+        {
+            return Err(RuntimeError::InvalidSnapshot(
+                "snapshot holds an event committed past its advanced-through counter",
+            ));
+        }
+
+        // Every stage's committed effects, as the store records them. Used below
+        // to bound what may claim bootstrap provenance.
+        let windows = replay_stage_effects(&self.traces, record.receipts()).map_err(|_| {
+            RuntimeError::InvalidSnapshot("committed stage completions do not match the record")
+        })?;
+
+        // An aggregate must sit in a chunk this state actually holds. Material
+        // surfaces have had this check; population never did, so 512 residents
+        // could be relocated into a chunk with no field, no carrier and no
+        // active entry.
+        for aggregate in self.population_aggregates.values() {
+            if !self.active_chunks.contains_key(&aggregate.chart) {
+                return Err(RuntimeError::InvalidSnapshot(
+                    "population aggregate outside active chunks",
+                ));
+            }
+        }
+
+        // An actor without an ancestry entry, or an ancestry entry without an
+        // actor, is bookkeeping that contradicts the run either way.
+        if self.actor_ancestry.len() != self.actors.len()
+            || self
+                .actor_ancestry
+                .keys()
+                .zip(self.actors.keys())
+                .any(|(ancestry, actor)| ancestry != actor)
+        {
+            return Err(RuntimeError::InvalidSnapshot(
+                "actor ancestry does not cover exactly the promoted actors",
+            ));
+        }
+
+        // Whatever the clock says, these hold at every simulation time, so they
+        // are checked before anything is allowed to narrow the scope.
+        self.validate_persistent_domain_state()?;
+
+        // The two conditions have to pin each other, or either one alone is an
+        // off switch: a trailing event would otherwise disable the checks below
+        // while the clock still reads zero, and a moved clock would disable them
+        // while the store still ends at bootstrap.
+        let prefix_only = self.holds_only_the_bootstrap_prefix(record);
+        if self.advanced_through == SimulationTime::new(0) && !prefix_only {
+            return Err(RuntimeError::InvalidSnapshot(
+                "bootstrap-time snapshot holds events after the last stage completion",
+            ));
+        }
+        if !prefix_only {
+            return Ok(());
+        }
+        if self.advanced_through != SimulationTime::new(0) {
+            return Err(RuntimeError::InvalidSnapshot(
+                "snapshot claims to have advanced but holds only the bootstrap prefix",
+            ));
+        }
+        self.validate_bootstrap_population_conservation(record, &windows)?;
+        self.validate_bootstrap_materialized_state(&windows)?;
+        Ok(())
+    }
+
+    /// Domain state that must hold at every simulation time, not only at
+    /// bootstrap.
+    ///
+    /// The bootstrap-time checks below are scoped to a store that ends at the
+    /// last stage completion, because they compare against what the six stages
+    /// committed and nothing else. That scope was doing more work than it should
+    /// have: everything downstream of it was skipped outright the moment the
+    /// store held anything later, so a single appended event turned off the
+    /// population, actor, surface and reservoir checks together. Whatever else
+    /// an appended event proves, it does not make these stop being true, so they
+    /// are asserted unconditionally and the narrow scope keeps only the
+    /// comparisons that genuinely cannot survive advancement.
+    ///
+    /// Each was measured over 300 ticks across three seeds in a one-off harness
+    /// before being placed here — that harness is not checked in, so treat this
+    /// as provenance for the choice rather than a standing guarantee; the
+    /// checked-in negative control is
+    /// `every_state_the_runtime_produces_survives_import`. Each is phrased in
+    /// the weakest form that holds: surfaces are required
+    /// to *cover* the active chunks rather than to equal them, because thermal
+    /// transfers create further surfaces at non-zero cell indices during a run.
+    fn validate_persistent_domain_state(&self) -> Result<(), RuntimeError> {
+        // Every active chunk keeps the surface its bootstrap stage gave it.
+        // `validate_snapshot_references` already requires the converse, so a
+        // surface can neither escape the active region nor vanish from it.
+        for chunk in self.active_chunks.keys() {
+            if !self
+                .material_surfaces
+                .contains_key(&MaterialSurfaceId::new(*chunk, 0))
+            {
+                return Err(RuntimeError::InvalidSnapshot(
+                    "an active chunk has no material surface",
+                ));
+            }
+        }
+
+        // A reservoir's target is deliberately *not* re-checked here. Import
+        // already resolves every reservoir against its thermal field before this
+        // runs, rejecting a chunk with no field as "target lies outside active
+        // region" and an out-of-range cell as "target cell lies outside field",
+        // and thermal fields exist for exactly the active chunks. A clause here
+        // would be unreachable, and an unreachable guard reads as protection
+        // that is not there.
+
+        // An actor's physical object is what perception reads, so an actor
+        // without one is present to the scheduler and invisible to every other
+        // actor. Deleting the whole map was accepted while the actors remained.
+        if self.actor_objects.len() != self.actors.len()
+            || self
+                .actor_objects
+                .keys()
+                .zip(self.actors.keys())
+                .any(|(object, actor)| *object != actor.raw())
+        {
+            return Err(RuntimeError::InvalidSnapshot(
+                "actor objects do not cover exactly the promoted actors",
+            ));
+        }
+
+        // The pool names actors by identity and feeds `state_digest`, so an
+        // actor that does not exist is digest content no run can produce.
+        for actor in self.aggregate_actor_pool.values().flatten() {
+            if !self.actors.contains_key(actor) {
+                return Err(RuntimeError::InvalidSnapshot(
+                    "aggregate actor pool names an actor that does not exist",
+                ));
+            }
+        }
+
+        // Residents are only ever created by bootstrap or a birth, and only ever
+        // removed by a death; promotion and demotion move one between the
+        // aggregate and the actor set without changing the total. The counters
+        // are snapshot data too, so this binds them to the population rather
+        // than proving either alone — and on an advanced snapshot that is
+        // genuinely all it does. Both sides are supplied by the snapshot, so
+        // subtracting a hundred residents and adding a hundred to
+        // `population_deaths` satisfies it exactly, leaving the committed trace
+        // store byte-identical to an honest run that never lost them. At
+        // bootstrap time `validate_bootstrap_population_conservation` still
+        // catches that, because it compares against the configured population
+        // with no counter term; past the first tick it is out of scope and this
+        // is the only guard left. Anchoring each aggregate to the effect that
+        // last changed it is the fix and is not available here:
+        // `fingerprint_population_aggregate` mixes count, births and deaths with
+        // material flow, which transitions under a different property, so no
+        // single committed effect covers the whole aggregate. Closing it needs a
+        // count-only fingerprint on the aggregate effect — a deliberate change
+        // to the effect payload and the digest — and is recorded as
+        // `TODO-PERSIST-004` rather than approximated.
+        let aggregate_total: u64 = self
+            .population_aggregates
+            .values()
+            .map(|aggregate| aggregate.count)
+            .sum();
+        let live = aggregate_total.saturating_add(self.actors.len() as u64);
+        let expected = self
+            .config
+            .bootstrap_population
+            .checked_add(self.population_births)
+            .and_then(|born| born.checked_sub(self.population_deaths))
+            .ok_or(RuntimeError::InvalidSnapshot(
+                "population birth and death counters are not a reachable history",
+            ))?;
+        if live != expected {
+            return Err(RuntimeError::InvalidSnapshot(
+                "living population does not match the bootstrap population plus births minus deaths",
+            ));
+        }
+        Ok(())
+    }
+
+    /// Material surfaces and thermal reservoirs, against the effects that made
+    /// them.
+    ///
+    /// `validate_material_surface_last_transition` already re-derives a
+    /// surface's condition from its committed effect, which is the right shape;
+    /// it simply never runs for a surface that has been deleted outright, and
+    /// reservoirs had no equivalent at all.
+    fn validate_bootstrap_materialized_state(
+        &self,
+        windows: &[Vec<TraceId>],
+    ) -> Result<(), RuntimeError> {
+        let surfaces = self
+            .active_chunks
+            .keys()
+            .map(|chunk| MaterialSurfaceId::new(*chunk, 0))
+            .collect::<BTreeSet<_>>();
+        if self
+            .material_surfaces
+            .keys()
+            .copied()
+            .collect::<BTreeSet<_>>()
+            != surfaces
+        {
+            return Err(RuntimeError::InvalidSnapshot(
+                "material surfaces do not cover exactly the active chunks",
+            ));
+        }
+
+        // The reservoir stage's window carries the transition each reservoir was
+        // created with; the budget and target are recomputed from it rather than
+        // believed.
+        let reservoir_effects = windows.last().ok_or(RuntimeError::InvalidSnapshot(
+            "bootstrap record has no stages",
+        ))?;
+        for reservoir in self.thermal_reservoirs.values() {
+            if !self.active_chunks.contains_key(&reservoir.target.chunk)
+                || usize::from(reservoir.target.cell_index)
+                    >= usize::from(self.config.chunk_extent).pow(3)
+            {
+                return Err(RuntimeError::InvalidSnapshot(
+                    "thermal reservoir targets a cell outside the active region",
+                ));
+            }
+            let expected =
+                thermal_reservoir_bootstrap_after(reservoir.budget.get(), reservoir.target);
+            let committed = reservoir_effects.iter().any(|trace| {
+                self.traces.event(*trace).is_some_and(|event| {
+                    event.kind.raw() == THERMAL_RESERVOIR_BOOTSTRAP_EVENT_KIND
+                        && event.effects.iter().any(|effect| {
+                            effect.target().object_id() == reservoir.id.raw()
+                                && effect.after() == expected
+                        })
+                })
+            });
+            if !committed {
+                return Err(RuntimeError::InvalidSnapshot(
+                    "thermal reservoir does not match the transition that created it",
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    /// Recompute every stage result from the trace store the snapshot carries.
+    ///
+    /// The checks above establish that each receipt agrees with its own
+    /// completion event and with the materialized stage-result state. They do
+    /// not establish that any of the three describes what the run actually
+    /// committed: a snapshot that rewrites the completion's effect, the receipt's
+    /// result, and the stage-result entry together is internally consistent and
+    /// passes all of them. It also does not stop a completion from being stripped
+    /// of the stage effects it named, which is precisely the detailed ancestry the
+    /// receipt is not allowed to hide.
+    ///
+    /// So the stage windows are re-derived from the store and both are recomputed
+    /// from scratch. Getting past this requires forging every stage effect's
+    /// committed payload as well, which is no longer a false account of this run
+    /// but a different, self-consistent history — the boundary `SECURITY.md`
+    /// already draws for untrusted snapshots.
+    fn validate_bootstrap_stage_replay(
+        &self,
+        record: &HistoricalBootstrapRecord,
+    ) -> Result<(), RuntimeError> {
+        let windows = replay_stage_effects(&self.traces, record.receipts()).map_err(|_| {
+            RuntimeError::InvalidSnapshot("committed stage completions do not match the record")
+        })?;
+        let mut previous_completion: Option<TraceId> = None;
+        for ((stage, receipt), effects) in record
+            .plan()
+            .stages()
+            .iter()
+            .zip(record.receipts())
+            .zip(&windows)
+        {
+            let recomputed = recompute_stage_result(&self.traces, record.plan(), stage, effects)
+                .map_err(|_| {
+                    RuntimeError::InvalidSnapshot("bootstrap stage effect trace is unknown")
+                })?;
+            if recomputed != receipt.result() {
+                return Err(RuntimeError::InvalidSnapshot(
+                    "bootstrap stage result does not match what the stage committed",
+                ));
+            }
+            let event = self
+                .traces
+                .event(receipt.trace())
+                .ok_or(RuntimeError::InvalidSnapshot(
+                    "bootstrap receipt references unknown trace",
+                ))?;
+            if event.causes != expected_completion_causes(effects, previous_completion) {
+                return Err(RuntimeError::InvalidSnapshot(
+                    "bootstrap completion does not name exactly its stage effects and predecessor",
+                ));
+            }
+            previous_completion = Some(receipt.trace());
+        }
+        Ok(())
+    }
+
+    /// Population and actor-promotion conservation, as it holds at bootstrap.
+    ///
+    /// Only asserted for a state that has not advanced: from the first tick
+    /// onward the population lifecycle legitimately adds births, removes deaths,
+    /// moves aggregates between chunks, and promotes or demotes actors, so an
+    /// equality against the configured bootstrap population would be false rather
+    /// than protective.
+    fn validate_bootstrap_population_conservation(
+        &self,
+        record: &HistoricalBootstrapRecord,
+        windows: &[Vec<TraceId>],
+    ) -> Result<(), RuntimeError> {
+        let aggregate_total: u64 = self
+            .population_aggregates
+            .values()
+            .map(|aggregate| aggregate.count)
+            .sum();
+        if aggregate_total.saturating_add(self.actors.len() as u64)
+            != self.config.bootstrap_population
+        {
+            return Err(RuntimeError::InvalidSnapshot(
+                "bootstrap population is not conserved across aggregates and promoted actors",
+            ));
+        }
+
+        // The sum alone is one equation in two unknowns: deleting every actor
+        // and adding the same number to an aggregate balances it exactly. So the
+        // promoted actors are counted against the promotion events the store
+        // committed, which the snapshot cannot move without forging the events.
+        let promotions = windows
+            .get(ACTOR_PROMOTION_STAGE.raw() as usize - 1)
+            .map(|effects| {
+                effects
+                    .iter()
+                    .filter(|trace| {
+                        self.traces.event(**trace).is_some_and(|event| {
+                            event.kind.raw() == ACTOR_PROMOTION_EVENT_KIND
+                                && event.effects.iter().any(|effect| {
+                                    effect.target().property()
+                                        == StatePropertyId::new(ACTOR_PROMOTION_PROPERTY)
+                                })
+                        })
+                    })
+                    .count()
+            })
+            .unwrap_or(0);
+        if self.actors.len() != promotions {
+            return Err(RuntimeError::InvalidSnapshot(
+                "promoted actor count does not match the promotions the run committed",
+            ));
+        }
+
+        // An aggregate's provenance must be bootstrap's, not an event appended
+        // after the last completion — which no stage window covers.
+        let bootstrap_effects = windows.iter().flatten().copied().collect::<BTreeSet<_>>();
+        for aggregate in self.population_aggregates.values() {
+            if aggregate
+                .causal_ancestry
+                .iter()
+                .any(|trace| !bootstrap_effects.contains(trace))
+            {
+                return Err(RuntimeError::InvalidSnapshot(
+                    "population aggregate ancestry is not a bootstrap stage effect",
+                ));
+            }
+        }
+
+        // Every actor that exists at bootstrap was promoted by the actor
+        // promotion stage, so its ancestry must be traces that stage's completion
+        // named as its own causes.
+        let promotion = record
+            .receipts()
+            .iter()
+            .find(|receipt| receipt.stage() == ACTOR_PROMOTION_STAGE)
+            .ok_or(RuntimeError::InvalidSnapshot(
+                "bootstrap record has no actor promotion receipt",
+            ))?;
+        let completion =
+            self.traces
+                .event(promotion.trace())
+                .ok_or(RuntimeError::InvalidSnapshot(
+                    "actor promotion receipt references unknown trace",
+                ))?;
+        for ancestry in self.actor_ancestry.values() {
+            if ancestry.is_empty() {
+                return Err(RuntimeError::InvalidSnapshot(
+                    "promoted actor has no causal ancestry",
+                ));
+            }
+            for trace in ancestry {
+                if !completion.causes.contains(trace) {
+                    return Err(RuntimeError::InvalidSnapshot(
+                        "promoted actor ancestry is absent from the actor promotion receipt",
+                    ));
+                }
+            }
+        }
         Ok(())
     }
 
@@ -1450,6 +2092,7 @@ impl RuntimeState {
             thermal_total_reservoir_budget,
             thermal_active_chunk_count,
             thermal_active_cell_count,
+            bootstrap: self.bootstrap.observer_summary(&self.config),
         }
     }
 
@@ -1912,6 +2555,58 @@ impl RuntimeState {
         .map_err(|_| RuntimeError::InvalidSnapshot("invalid material surface Explanation report"))
     }
 
+    /// The Explanation report for the canonical bootstrap record.
+    ///
+    /// Downstream and read-only: it reads the record and the trace store and
+    /// mutates nothing, and it reports typed stage counts, the canonical window,
+    /// and trace anchors without translating any opaque process schema ID into a
+    /// name or a purpose.
+    fn bootstrap_record_explanation(
+        &self,
+        time: SimulationTime,
+    ) -> Result<ExplanationReport, RuntimeError> {
+        let plan = self.bootstrap.plan();
+        let receipts = self.bootstrap.receipts();
+        let mut completion_traces = Vec::with_capacity(receipts.len());
+        let mut dependency_traces = BTreeSet::new();
+        for receipt in receipts {
+            // A receipt whose completion trace is not in the store is not
+            // evidence, so it is dropped rather than counted.
+            if self.traces.event(receipt.trace()).is_some() {
+                completion_traces.push(receipt.trace());
+            }
+            dependency_traces.extend(receipt.causes().iter().copied());
+        }
+        let claim = HistoricalBootstrapRecordClaim {
+            stage_count: plan.map_or(0, |plan| plan.stages().len() as u32),
+            receipt_count: receipts.len() as u32,
+            observation_start: plan
+                .and_then(|plan| plan.stages().first())
+                .map_or(SimulationTime::new(0), HistoricalStage::starts_at),
+            observation_end: plan
+                .and_then(|plan| plan.stages().last())
+                .map_or(SimulationTime::new(0), HistoricalStage::ends_at),
+            completion_traces,
+            dependency_traces: dependency_traces.into_iter().collect(),
+        };
+        let claims = vec![
+            claim.to_explanation_claim().map_err(|_| {
+                RuntimeError::InvalidSnapshot("invalid bootstrap record Explanation claim")
+            })?,
+            claim.to_window_claim().map_err(|_| {
+                RuntimeError::InvalidSnapshot("invalid bootstrap window Explanation claim")
+            })?,
+        ];
+        let frame = ExplanationFrame::new(time, claims).map_err(|_| {
+            RuntimeError::InvalidSnapshot("invalid bootstrap record Explanation frame")
+        })?;
+        ExplanationReport::new(
+            ExperimentId::new(self.config.deterministic.world_seed),
+            vec![frame],
+        )
+        .map_err(|_| RuntimeError::InvalidSnapshot("invalid bootstrap record Explanation report"))
+    }
+
     pub(crate) fn bytes_per_chunk(&self) -> u64 {
         let Some((_, field)) = self.mana.fields().iter().next() else {
             return 0;
@@ -2170,6 +2865,7 @@ impl RuntimeState {
                 digest.write(actor.raw());
             }
         }
+        write_bootstrap_record(&mut digest, &self.bootstrap);
         PhysicalStateDigest {
             schema_version: CURRENT_DIGEST_SCHEMA_VERSION,
             fingerprint: digest.finish(),
@@ -3154,6 +3850,26 @@ fn import_aggregate_actor_pool(
         }
     }
     Ok(pool)
+}
+
+/// Collapse a bootstrap failure into the runtime's construction error.
+///
+/// Runtime errors keep their own identity; every canonical-contract or thermal
+/// configuration failure fails closed under `context`, so a runtime is never
+/// handed back without a validated record.
+fn bootstrap_construction_error(error: BootstrapError, context: &'static str) -> RuntimeError {
+    match error {
+        BootstrapError::Runtime(error) => error,
+        BootstrapError::Historical(_)
+        | BootstrapError::ThermalReservoirOutsideActiveRegion { .. }
+        | BootstrapError::InvalidThermalReservoir
+        | BootstrapError::DuplicateThermalReservoir { .. }
+        | BootstrapError::InvalidStageTargets
+        | BootstrapError::MissingStageEffectTrace
+        | BootstrapError::StageCompletionsDoNotMatchRecord => {
+            RuntimeError::InvalidSnapshot(context)
+        }
+    }
 }
 
 fn validate_trace_exists(store: &CausalTraceStore, trace: TraceId) -> Result<(), RuntimeError> {

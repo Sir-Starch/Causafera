@@ -223,7 +223,7 @@ fn lifecycle_actor_resolution(
                 .flatten()
         });
     if let Some(chunk) = promote_chunk {
-        promote_actor_from_aggregate(state, time, chunk)?;
+        promote_actor_from_aggregate(state, time, chunk, state.config.sensor_count)?;
     }
     if time.raw().is_multiple_of(13)
         && state.actors.len() > 2
@@ -267,10 +267,19 @@ fn lifecycle_material_activity(
     Ok(())
 }
 
+/// Promote one aggregate member into an individually simulated actor.
+///
+/// `sensor_count` is passed rather than read from the configuration so the
+/// caller that declares it is the caller that spends it: the bootstrap stage
+/// hands its own declared parameter, which is the same value its parameter
+/// fingerprint covers, and the tick loop hands the running configuration's. A
+/// stage whose fingerprint described one equipment and whose effect produced
+/// another would be a receipt about a run that did not happen.
 pub(crate) fn promote_actor_from_aggregate(
     state: &mut RuntimeState,
     time: SimulationTime,
     chunk: ChartChunkCoord,
+    sensor_count: u8,
 ) -> Result<(), RuntimeError> {
     if state.actors.len() >= usize::from(state.config.actor_count) {
         return Ok(());
@@ -293,7 +302,7 @@ pub(crate) fn promote_actor_from_aggregate(
             ),
             crate::ACTOR_BASE_ENERGY,
         ),
-        bootstrap_sensors(state.config.sensor_count),
+        bootstrap_sensors(sensor_count),
     )?;
     let trace = commit_actor_transition(
         state,

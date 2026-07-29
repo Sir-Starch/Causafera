@@ -82,6 +82,76 @@ Concrete domain adapters still perform authoritative changes through READ → PR
 
 This foundation does not generate the output examples above. Old districts, families, language depth, institutions, and ruins remain targets for later domain synthesis; neither their existence nor their plausibility is claimed by Phase 21.
 
+## Implemented production bootstrap record
+
+The runtime's production bootstrap now executes that canonical contract rather than a parallel
+model of its own. `causafera-runtime::RuntimeBootstrapRecipe` is the executable adapter around one
+`causafera_world::HistoricalBootstrapPlan`; there is no second plan type.
+
+The plan the runtime builds today declares exactly six stages, in this fixed dependency chain:
+
+| Stage | Process schema | Canonical span | What the adapter commits |
+| --- | --- | --- | --- |
+| 1 | `0x0B01` | `[0, 1]` | terrain generation per active chunk |
+| 2 | `0x0B02` | `[1, 2]` | one material surface per active chunk |
+| 3 | `0x0B03` | `[2, 3]` | the population aggregate |
+| 4 | `0x0B04` | `[3, 4]` | actor promotion out of that aggregate |
+| 5 | `0x0B05` | `[4, 5]` | material activity on the aggregate |
+| 6 | `0x0B06` | `[5, 6]` | thermal fields and reservoirs |
+
+Process schema IDs are opaque numeric identities. They are not names, and nothing downstream may
+translate them into one.
+
+The canonical spans are a bootstrap **ordering** timeline. They do not advance
+`RuntimeState::advanced_through`, and every stage effect keeps the existing Lifecycle timestamp
+convention at simulation time zero.
+
+Plan identity is content-addressed: it is derived from the world seed and every stage's process,
+span, detail ordinal, targets, dependencies, external causes, and parameter fingerprint. Targets are
+sorted `ChunkId` values derived from the active `ChartChunkCoord` set by a domain-separated
+addressing function — identity only, never a distance, an extent, or an ownership claim.
+
+### One terminal receipt per stage
+
+After a stage's adapter runs, the coordinator reads back **what the trace store actually recorded**
+during that stage rather than what the adapter reported, computes a result fingerprint from the
+canonical projection of those committed effects, and commits one completion event. That event's
+effect is the authoritative transition of the stage's bounded result state from an absent sentinel
+to the result fingerprint; its causes are the previous stage's receipt plus every effect trace the
+stage committed. The receipt's own causes are exactly the dependency ancestry
+`HistoricalBootstrapPlan::validate_receipts` requires.
+
+A stage with no domain effect — an empty population stage, no promotions, no material activity —
+still commits that transition, so it still has a receipt anchored to a real committed effect. The
+record is validated through the canonical contract before the constructed runtime is returned.
+
+### Persistence, digest, and observer
+
+- `SECTION_POPULATION_BOOTSTRAP` carries the complete plan, the bounded per-stage result state, and
+  the receipts at section major 2. Major 1 carried neither a plan nor a result and fails closed.
+- `CURRENT_DIGEST_SCHEMA_VERSION` is 7: the record is authoritative `physical_state_digest` input.
+- Import re-derives the plan from the persisted configuration and requires it to match, then
+  re-derives each stage's committed window from the persisted trace store and recomputes every
+  result from it; a completion's causes must equal exactly its stage effects plus its predecessor.
+  Some domain state is checked on every import at every simulation time — surfaces covering the
+  active chunks, actor objects and ancestry covering the actors, and the living population equalling
+  the configured bootstrap population plus births minus deaths. The rest is scoped to a store that
+  ends at the last stage completion, which is decided by the store's shape and not by the
+  `advanced_through` counter the snapshot supplies: net-zero births and deaths, the promoted-actor
+  count against the promotions the store committed, bootstrap ancestry for every aggregate and
+  promoted actor, and reservoir budgets recomputed from the reservoir stage's window. See
+  [`RFC-PERSIST-001`](../rfc/RFC-PERSIST-001.md) for the full scoping.
+- The observer receives a bounded read-only summary of at most six receipts on the existing runtime
+  summary, and two typed Explanation claims (schemas 18 and 19) for completeness and canonical
+  window. Neither renders a process name.
+
+### What this is not
+
+Six stages is the complete implementation surface today. It is a bound on what the runtime executes,
+not a claim that historical synthesis is only ever six steps and not evidence of deep history. No
+geology, climate, ecology, language, settlement, institution, or economy synthesis is implemented,
+and none of the Bootstrap Outputs above is produced.
+
 ## Performance
 
 Historical bootstrap may be computationally expensive. Strategies:

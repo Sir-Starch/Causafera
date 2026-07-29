@@ -33,6 +33,10 @@ pub const THERMAL_CARRIER_CONSERVATION_SCHEMA: ExplanationClaimSchemaId =
     ExplanationClaimSchemaId::new(16);
 pub const MATERIAL_SURFACE_THERMAL_EXCHANGE_SCHEMA: ExplanationClaimSchemaId =
     ExplanationClaimSchemaId::new(17);
+pub const HISTORICAL_BOOTSTRAP_RECORD_SCHEMA: ExplanationClaimSchemaId =
+    ExplanationClaimSchemaId::new(18);
+pub const HISTORICAL_BOOTSTRAP_WINDOW_SCHEMA: ExplanationClaimSchemaId =
+    ExplanationClaimSchemaId::new(19);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -350,6 +354,84 @@ impl ThermalCarrierConservationClaim {
             NumericClaimValue::scalar(0),
             ClaimConfidence::ONE,
             evidence_traces,
+            ComparisonContext::None,
+            ClaimEvidenceState::Supported,
+        )
+    }
+}
+
+/// That the current initial state has a validated canonical bootstrap record.
+///
+/// The claim reports how many stages the plan declares, how many terminal
+/// receipts closed them, and the bounded canonical window they span; its
+/// evidence is the receipts' completion traces and their declared dependency
+/// anchors. It deliberately does not render the opaque process schema IDs, name
+/// what a stage was for, or infer why it exists — a downstream reader follows
+/// the trace anchors to the committed effects, which is where each stage's
+/// result identity actually lives. A fingerprint is an equality identity, not a
+/// magnitude, so it is never reported as a numeric claim value.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct HistoricalBootstrapRecordClaim {
+    pub stage_count: u32,
+    pub receipt_count: u32,
+    pub observation_start: SimulationTime,
+    pub observation_end: SimulationTime,
+    pub completion_traces: Vec<TraceId>,
+    pub dependency_traces: Vec<TraceId>,
+}
+
+impl HistoricalBootstrapRecordClaim {
+    /// Whether the record is complete enough to support a claim at all.
+    pub const fn is_supported(&self) -> bool {
+        self.stage_count > 0
+            && self.receipt_count == self.stage_count
+            && self.completion_traces.len() == self.receipt_count as usize
+    }
+
+    /// The completeness claim, or the existing unknown state with zero
+    /// confidence when the record is incomplete or unevidenced.
+    pub fn to_explanation_claim(&self) -> Result<ExplanationClaim, ExplanationIrError> {
+        let value = NumericClaimValue::scalar(i64::from(self.receipt_count));
+        if !self.is_supported() {
+            return ExplanationClaim::unknown(
+                HISTORICAL_BOOTSTRAP_RECORD_SCHEMA,
+                value,
+                ComparisonContext::None,
+            );
+        }
+        let mut evidence_traces = self.completion_traces.clone();
+        evidence_traces.extend_from_slice(&self.dependency_traces);
+        evidence_traces.sort_unstable();
+        evidence_traces.dedup();
+        ExplanationClaim::new(
+            HISTORICAL_BOOTSTRAP_RECORD_SCHEMA,
+            value,
+            ClaimConfidence::ONE,
+            evidence_traces,
+            ComparisonContext::None,
+            ClaimEvidenceState::Supported,
+        )
+    }
+
+    /// The bounded canonical window the record spans.
+    pub fn to_window_claim(&self) -> Result<ExplanationClaim, ExplanationIrError> {
+        let start = i64::try_from(self.observation_start.raw())
+            .map_err(|_| ExplanationIrError::ObservationTimeOverflow)?;
+        let end = i64::try_from(self.observation_end.raw())
+            .map_err(|_| ExplanationIrError::ObservationTimeOverflow)?;
+        let value = NumericClaimValue::range(start.min(end), start.max(end))?;
+        if !self.is_supported() {
+            return ExplanationClaim::unknown(
+                HISTORICAL_BOOTSTRAP_WINDOW_SCHEMA,
+                value,
+                ComparisonContext::None,
+            );
+        }
+        ExplanationClaim::new(
+            HISTORICAL_BOOTSTRAP_WINDOW_SCHEMA,
+            value,
+            ClaimConfidence::ONE,
+            self.completion_traces.clone(),
             ComparisonContext::None,
             ClaimEvidenceState::Supported,
         )
@@ -714,5 +796,72 @@ mod tests {
         assert_eq!(claim.evidence_state, ClaimEvidenceState::Unknown);
         assert_eq!(claim.confidence, ClaimConfidence::ZERO);
         assert!(claim.evidence_traces.is_empty());
+    }
+
+    fn bootstrap_claim(
+        stage_count: u32,
+        receipt_count: u32,
+        completion_traces: Vec<TraceId>,
+    ) -> HistoricalBootstrapRecordClaim {
+        HistoricalBootstrapRecordClaim {
+            stage_count,
+            receipt_count,
+            observation_start: SimulationTime::new(0),
+            observation_end: SimulationTime::new(6),
+            completion_traces,
+            dependency_traces: vec![TraceId::new(40), TraceId::new(41)],
+        }
+    }
+
+    #[test]
+    fn a_complete_bootstrap_record_is_supported_and_anchored_to_its_completions() {
+        // Given: six stages closed by six evidenced completion traces.
+        let traces = (0..6).map(TraceId::new).collect::<Vec<_>>();
+        let claim = bootstrap_claim(6, 6, traces.clone())
+            .to_explanation_claim()
+            .unwrap();
+
+        // Then: the claim reports the receipt count and carries both the
+        // completion traces and their declared dependency anchors.
+        assert_eq!(claim.schema, HISTORICAL_BOOTSTRAP_RECORD_SCHEMA);
+        assert_eq!(claim.value, NumericClaimValue::scalar(6));
+        assert_eq!(claim.evidence_state, ClaimEvidenceState::Supported);
+        assert_eq!(claim.confidence, ClaimConfidence::ONE);
+        assert_eq!(claim.evidence_traces.len(), traces.len() + 2);
+    }
+
+    #[test]
+    fn an_incomplete_bootstrap_record_reports_insufficient_evidence() {
+        // Given: a plan with six stages but only five receipts, and a record
+        // whose completion traces could not all be resolved.
+        for claim in [
+            bootstrap_claim(6, 5, (0..5).map(TraceId::new).collect()),
+            bootstrap_claim(6, 6, (0..5).map(TraceId::new).collect()),
+            bootstrap_claim(0, 0, Vec::new()),
+        ] {
+            // Then: both the completeness and window claims fall back to the
+            // existing unknown state with zero confidence and no evidence.
+            let record = claim.to_explanation_claim().unwrap();
+            assert_eq!(record.evidence_state, ClaimEvidenceState::Unknown);
+            assert_eq!(record.confidence, ClaimConfidence::ZERO);
+            assert!(record.evidence_traces.is_empty());
+
+            let window = claim.to_window_claim().unwrap();
+            assert_eq!(window.schema, HISTORICAL_BOOTSTRAP_WINDOW_SCHEMA);
+            assert_eq!(window.evidence_state, ClaimEvidenceState::Unknown);
+            assert_eq!(window.confidence, ClaimConfidence::ZERO);
+        }
+    }
+
+    #[test]
+    fn the_bootstrap_window_is_the_canonical_stage_span() {
+        // Given: a complete six-stage record spanning [0, 6].
+        let claim = bootstrap_claim(6, 6, (0..6).map(TraceId::new).collect());
+
+        // Then: the window claim reports exactly that span, and nothing in the
+        // IR names a process — only opaque counts and trace anchors.
+        let window = claim.to_window_claim().unwrap();
+        assert_eq!(window.value, NumericClaimValue::Range { start: 0, end: 6 });
+        assert_eq!(window.evidence_state, ClaimEvidenceState::Supported);
     }
 }

@@ -6,12 +6,14 @@ use causafera_explanation::{
     NumericClaimValue,
 };
 use causafera_observer_api::{
-    FieldRasterKind, FieldRasterRequest, MATERIAL_SURFACE_DELTA_SCHEMA_V3,
-    MATERIAL_SURFACE_DELTA_SCHEMA_V4, MAX_MATERIAL_SURFACE_DELTAS, MAX_THERMAL_DELTAS,
-    MaterialSurfaceDelta, MaterialSurfaceGateDelta, MaterialSurfaceThermalDelta,
-    OBSERVER_PROTOCOL_V1, ObserverChunkSummary, ObserverFieldRaster, ObserverQuery,
-    ObserverResponse, ObserverSnapshot, ObserverWorldSnapshot, QueryKind, QueryStatus,
-    StreamEnvelope, StreamKind, THERMAL_DELTA_SCHEMA_V1, ThermalFieldDelta,
+    BOOTSTRAP_SUMMARY_SCHEMA_V1, FieldRasterKind, FieldRasterRequest,
+    MATERIAL_SURFACE_DELTA_SCHEMA_V3, MATERIAL_SURFACE_DELTA_SCHEMA_V4,
+    MAX_BOOTSTRAP_RECEIPT_DEPENDENCIES, MAX_BOOTSTRAP_RECEIPT_SUMMARIES,
+    MAX_MATERIAL_SURFACE_DELTAS, MAX_THERMAL_DELTAS, MaterialSurfaceDelta,
+    MaterialSurfaceGateDelta, MaterialSurfaceThermalDelta, OBSERVER_PROTOCOL_V1,
+    ObserverBootstrapReceipt, ObserverBootstrapSummary, ObserverChunkSummary, ObserverFieldRaster,
+    ObserverQuery, ObserverResponse, ObserverSnapshot, ObserverWorldSnapshot, QueryKind,
+    QueryStatus, StreamEnvelope, StreamKind, THERMAL_DELTA_SCHEMA_V1, ThermalFieldDelta,
 };
 use causafera_types::{ChunkId, ExperimentId, SimulationTime, TraceId};
 use thiserror::Error;
@@ -314,17 +316,177 @@ pub fn encode_observer_snapshot(snapshot: &ObserverSnapshot) -> Vec<u8> {
     );
     field_varint(&mut out, 26, u64::from(snapshot.thermal_active_chunk_count));
     field_varint(&mut out, 27, u64::from(snapshot.thermal_active_cell_count));
+    // Fields 28 onwards are additive. Fields 1..=27 keep the meaning they had, so
+    // a reader written against them decodes this payload unchanged and simply
+    // skips what it does not know.
+    let bootstrap = &snapshot.bootstrap;
+    field_varint(&mut out, 28, u64::from(bootstrap.schema_version));
+    field_varint(&mut out, 29, bootstrap.plan_id);
+    field_varint(&mut out, 30, bootstrap.world_seed);
+    field_varint(&mut out, 31, u64::from(bootstrap.stage_count));
+    field_varint(&mut out, 32, u64::from(bootstrap.complete));
+    field_varint(&mut out, 33, bootstrap.configured_population);
+    field_varint(
+        &mut out,
+        34,
+        u64::from(bootstrap.configured_promotion_limit),
+    );
+    for receipt in bootstrap
+        .receipts
+        .iter()
+        .take(MAX_BOOTSTRAP_RECEIPT_SUMMARIES)
+    {
+        let mut nested = Vec::with_capacity(64);
+        field_varint(&mut nested, 1, receipt.stage);
+        field_varint(&mut nested, 2, receipt.completed_at.raw());
+        field_bytes(&mut nested, 3, &receipt.result);
+        field_varint(&mut nested, 4, receipt.completion_trace.raw());
+        for dependency in receipt
+            .dependency_traces
+            .iter()
+            .take(MAX_BOOTSTRAP_RECEIPT_DEPENDENCIES)
+        {
+            field_varint(&mut nested, 5, dependency.raw());
+        }
+        field_bytes(&mut out, 35, &nested);
+    }
     out
+}
+
+/// Decode the bounded bootstrap summary as one atomic optional group.
+///
+/// Fields 28..=35 are additive, so a payload that carries none of them was
+/// written before the summary existed and decodes to the explicit absent schema
+/// — that is the only tolerated incompleteness. A payload that carries *part* of
+/// the group is not an older peer, it is a contradiction, and every way of being
+/// partially present fails closed here rather than being filled in with zeroes:
+/// a schema field with no plan behind it, receipts with no schema to interpret
+/// them, an unknown schema version, a stage count the receipts do not match, or
+/// a completeness flag that disagrees with both.
+fn decode_bootstrap_summary(
+    values: &[u64; 34],
+    present: &[bool; 34],
+    receipts: Vec<ObserverBootstrapReceipt>,
+) -> Result<ObserverBootstrapSummary, WireError> {
+    const GROUP: std::ops::RangeInclusive<usize> = 28..=34;
+    let declared = GROUP.clone().any(|field| present[field - 1]);
+    if !declared {
+        if !receipts.is_empty() {
+            // Receipts with no summary to interpret them would otherwise be
+            // parsed and then silently dropped.
+            return Err(WireError::MissingField(28));
+        }
+        return Ok(ObserverBootstrapSummary::default());
+    }
+    for field in GROUP {
+        if !present[field - 1] {
+            return Err(WireError::MissingField(field as u32));
+        }
+    }
+
+    let schema_version = to_u32(values[27])?;
+    if schema_version != BOOTSTRAP_SUMMARY_SCHEMA_V1 {
+        return Err(WireError::UnexpectedFieldForSchema(schema_version));
+    }
+    let stage_count = to_u32(values[30])?;
+    if stage_count as usize > MAX_BOOTSTRAP_RECEIPT_SUMMARIES {
+        return Err(WireError::PayloadTooLarge);
+    }
+    let complete = match values[31] {
+        0 => false,
+        1 => true,
+        other => return Err(WireError::InvalidBoolean(other)),
+    };
+    if receipts
+        .windows(2)
+        .any(|pair| pair[0].stage >= pair[1].stage)
+    {
+        return Err(WireError::NonCanonicalOrder);
+    }
+    if receipts.len() != stage_count as usize {
+        return Err(WireError::MissingField(35));
+    }
+    // A record is complete exactly when it closed every stage it declared. The
+    // producer writes the two together; a payload where they disagree describes
+    // no state this runtime can be in.
+    if complete != (stage_count > 0) {
+        return Err(WireError::UnexpectedFieldForSchema(schema_version));
+    }
+    Ok(ObserverBootstrapSummary {
+        schema_version,
+        plan_id: values[28],
+        world_seed: values[29],
+        stage_count,
+        complete,
+        configured_population: values[32],
+        configured_promotion_limit: to_u32(values[33])?,
+        receipts,
+    })
+}
+
+fn decode_bootstrap_receipt(bytes: &[u8]) -> Result<ObserverBootstrapReceipt, WireError> {
+    let mut c = Cursor::new(bytes);
+    let mut values = [0_u64; 4];
+    let mut present = [false; 4];
+    let mut result = None;
+    let mut dependency_traces = Vec::new();
+    while !c.is_empty() {
+        let (field, wire) = c.key()?;
+        match (field, wire) {
+            (3, WIRE_LEN) => {
+                if result.is_some() {
+                    return Err(WireError::DuplicateField(3));
+                }
+                result = Some(array32(c.bytes()?)?);
+            }
+            (5, WIRE_VARINT) => {
+                if dependency_traces.len() == MAX_BOOTSTRAP_RECEIPT_DEPENDENCIES {
+                    return Err(WireError::PayloadTooLarge);
+                }
+                dependency_traces.push(TraceId::new(c.varint()?));
+            }
+            // A receipt's scalars are single-valued, exactly like the summary's.
+            // Two stages or two result fingerprints in one receipt is a
+            // contradiction, not a later value winning.
+            (1..=4, WIRE_VARINT) => {
+                if present[field as usize - 1] {
+                    return Err(WireError::DuplicateField(field));
+                }
+                values[field as usize - 1] = c.varint()?;
+                present[field as usize - 1] = true;
+            }
+            // A known field arriving on the wrong wire type is a malformed
+            // receipt, not an unknown field to skip past.
+            (1..=5, _) => return Err(WireError::UnexpectedFieldForSchema(field)),
+            _ => c.skip(wire)?,
+        }
+    }
+    for field in [1_usize, 2, 4] {
+        if !present[field - 1] {
+            return Err(WireError::MissingField(field as u32));
+        }
+    }
+    if dependency_traces.windows(2).any(|pair| pair[0] >= pair[1]) {
+        return Err(WireError::NonCanonicalOrder);
+    }
+    Ok(ObserverBootstrapReceipt {
+        stage: values[0],
+        completed_at: SimulationTime::new(values[1]),
+        result: result.ok_or(WireError::MissingField(3))?,
+        completion_trace: TraceId::new(values[3]),
+        dependency_traces,
+    })
 }
 
 pub fn decode_observer_snapshot(bytes: &[u8]) -> Result<ObserverSnapshot, WireError> {
     let mut c = Cursor::new(bytes);
-    let mut values = [0_u64; 27];
-    let mut present = [false; 27];
+    let mut values = [0_u64; 34];
+    let mut present = [false; 34];
     let mut physical_digest = None;
     let mut history_digest = None;
     let mut thermal_total_cell_energy = 0;
     let mut thermal_total_reservoir_budget = 0;
+    let mut bootstrap_receipts = Vec::new();
     while !c.is_empty() {
         let (field, wire) = c.key()?;
         match (field, wire) {
@@ -332,18 +494,50 @@ pub fn decode_observer_snapshot(bytes: &[u8]) -> Result<ObserverSnapshot, WireEr
             (4, WIRE_LEN) => history_digest = Some(array32(c.bytes()?)?),
             (24, WIRE_LEN) => thermal_total_cell_energy = decode_i128_zigzag(c.bytes()?)?,
             (25, WIRE_LEN) => thermal_total_reservoir_budget = decode_i128_zigzag(c.bytes()?)?,
-            (1..=27, WIRE_VARINT) => {
+            (35, WIRE_LEN) => {
+                // Bounded before allocation: a payload claiming more receipts
+                // than this build's bootstrap can produce is rejected rather
+                // than truncated.
+                if bootstrap_receipts.len() == MAX_BOOTSTRAP_RECEIPT_SUMMARIES {
+                    return Err(WireError::PayloadTooLarge);
+                }
+                bootstrap_receipts.push(decode_bootstrap_receipt(c.bytes()?)?);
+            }
+            (28..=34, WIRE_VARINT) => {
+                // The summary's scalars are single-valued. Elsewhere in this
+                // payload a repeated field silently wins with its last value,
+                // which is a decision this group does not inherit: two different
+                // stage counts in one payload is a contradiction, not an update.
+                if present[field as usize - 1] {
+                    return Err(WireError::DuplicateField(field));
+                }
                 values[field as usize - 1] = c.varint()?;
                 present[field as usize - 1] = true;
             }
+            (1..=34, WIRE_VARINT) => {
+                values[field as usize - 1] = c.varint()?;
+                present[field as usize - 1] = true;
+            }
+            // A bootstrap field arriving on the wrong wire type is malformed,
+            // not unknown. Skipping it would let a summary whose every scalar is
+            // mistyped fall through to the absent schema, reporting "this reader
+            // predates the summary" about a payload that tried to carry one.
+            (28..=35, _) => return Err(WireError::UnexpectedFieldForSchema(field)),
             _ => c.skip(wire)?,
         }
     }
-    for field in [1_usize, 2, 5, 6, 7, 8, 9, 10, 11, 12, 23] {
+    // Fields 13..=22 are written by every encoder here and required by the
+    // TypeScript decoder. Defaulting them to zero on this side meant one decoder
+    // accepted a payload the other refused, which is the divergence the wire
+    // contract cannot afford whichever way it points.
+    for field in [
+        1_usize, 2, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
+    ] {
         if !present[field - 1] {
             return Err(WireError::MissingField(field as u32));
         }
     }
+    let bootstrap = decode_bootstrap_summary(&values, &present, bootstrap_receipts)?;
     Ok(ObserverSnapshot {
         time: SimulationTime::new(values[0]),
         digest_schema_version: to_u32(values[1])?,
@@ -372,6 +566,7 @@ pub fn decode_observer_snapshot(bytes: &[u8]) -> Result<ObserverSnapshot, WireEr
         thermal_total_reservoir_budget,
         thermal_active_chunk_count: to_u32(values[25])?,
         thermal_active_cell_count: to_u32(values[26])?,
+        bootstrap,
     })
 }
 
@@ -681,21 +876,29 @@ pub fn decode_field_raster(bytes: &[u8]) -> Result<ObserverFieldRaster, WireErro
     };
     // A raster whose declared lattice does not match its payload cannot be drawn
     // at real positions, and a renderer must never be left to guess the shape.
-    if raster.values.len() != raster.cell_count() {
+    // `edge` and `depth` come off the wire, so dimensions that cannot describe a
+    // lattice at all are rejected before anything is compared against them.
+    let cell_count = raster
+        .cell_count()
+        .ok_or(WireError::UnrepresentableFieldRasterLattice {
+            edge: raster.edge,
+            depth: raster.depth,
+        })?;
+    if raster.values.len() != cell_count {
         return Err(WireError::InvalidFieldRasterLattice {
-            expected: raster.cell_count(),
+            expected: cell_count,
             received: raster.values.len(),
         });
     }
-    if !raster.auxiliary.is_empty() && raster.auxiliary.len() != raster.cell_count() {
+    if !raster.auxiliary.is_empty() && raster.auxiliary.len() != cell_count {
         return Err(WireError::InvalidFieldRasterLattice {
-            expected: raster.cell_count(),
+            expected: cell_count,
             received: raster.auxiliary.len(),
         });
     }
-    if !raster.cell_traces.is_empty() && raster.cell_traces.len() != raster.cell_count() {
+    if !raster.cell_traces.is_empty() && raster.cell_traces.len() != cell_count {
         return Err(WireError::InvalidFieldRasterLattice {
-            expected: raster.cell_count(),
+            expected: cell_count,
             received: raster.cell_traces.len(),
         });
     }
@@ -1468,6 +1671,15 @@ impl<'a> Cursor<'a> {
         for shift in (0..=63).step_by(7) {
             let byte = *self.bytes.get(self.at).ok_or(WireError::UnexpectedEof)?;
             self.at += 1;
+            // The tenth byte contributes only bit 63, so anything above one in
+            // its payload describes a value wider than 64 bits. Shifting it in
+            // would drop those bits silently, which is worse than rejecting:
+            // the TypeScript decoder accumulates into a bigint and cannot
+            // truncate, so the two would disagree on whether the payload is
+            // valid rather than merely on what it means.
+            if shift == 63 && byte & 0x7f > 1 {
+                return Err(WireError::InvalidVarint);
+            }
             value |= u64::from(byte & 0x7f) << shift;
             if byte & 0x80 == 0 {
                 return Ok(value);
@@ -1572,6 +1784,18 @@ pub enum WireError {
     DuplicateField(u32),
     #[error("field raster declares {expected} cells but carries {received}")]
     InvalidFieldRasterLattice { expected: usize, received: usize },
+    /// Distinct from the above because the count is not merely wrong, it does
+    /// not exist: reporting `expected: usize::MAX` claimed the raster declared
+    /// 18446744073709551615 cells when what it declared cannot be represented
+    /// at all.
+    #[error(
+        "field raster declares a lattice of edge {edge} and depth {depth}, which is not a representable cell count"
+    )]
+    UnrepresentableFieldRasterLattice { edge: u32, depth: u32 },
+    #[error("bounded observer payload exceeds its declared maximum")]
+    PayloadTooLarge,
+    #[error("bounded observer payload is not in canonical order")]
+    NonCanonicalOrder,
     #[error(transparent)]
     Api(#[from] causafera_observer_api::ObserverApiError),
 }
@@ -1615,6 +1839,31 @@ mod tests {
             thermal_total_reservoir_budget: 200,
             thermal_active_chunk_count: 2,
             thermal_active_cell_count: 54,
+            bootstrap: ObserverBootstrapSummary {
+                schema_version: causafera_observer_api::BOOTSTRAP_SUMMARY_SCHEMA_V1,
+                plan_id: 0xDEAD_BEEF,
+                world_seed: 44,
+                stage_count: 2,
+                complete: true,
+                configured_population: 512,
+                configured_promotion_limit: 8,
+                receipts: vec![
+                    ObserverBootstrapReceipt {
+                        stage: 1,
+                        completed_at: SimulationTime::new(1),
+                        result: [7; 32],
+                        completion_trace: TraceId::new(40),
+                        dependency_traces: Vec::new(),
+                    },
+                    ObserverBootstrapReceipt {
+                        stage: 2,
+                        completed_at: SimulationTime::new(2),
+                        result: [8; 32],
+                        completion_trace: TraceId::new(41),
+                        dependency_traces: vec![TraceId::new(40)],
+                    },
+                ],
+            },
         }
     }
 
@@ -1733,6 +1982,85 @@ mod tests {
                 received: 9
             })
         ));
+    }
+
+    /// `cell_count` became a checked `Option` on this branch. Before it did, the
+    /// lattice product was an unchecked multiply, so a declared lattice whose
+    /// `edge² × depth` is exactly 2⁶⁴ wrapped to zero and a release build
+    /// accepted the payload with an empty value band. The overflow branch is the
+    /// whole point of the change and nothing pinned it.
+    #[test]
+    fn field_raster_refuses_a_lattice_whose_cell_count_does_not_fit() {
+        for (edge, depth) in [(1_u32 << 24, 1_u32 << 16), (1 << 26, 1 << 12)] {
+            let mut encoded = raster(Vec::new(), 1, 1);
+            encoded.edge = edge;
+            encoded.depth = depth;
+
+            assert!(
+                matches!(
+                    decode_field_raster(&encode_field_raster(&encoded)),
+                    Err(WireError::UnrepresentableFieldRasterLattice { .. })
+                ),
+                "edge {edge} depth {depth} declares more cells than can be represented"
+            );
+        }
+    }
+
+    /// The tenth continuation byte of a 64-bit varint carries a single usable
+    /// bit. Accepting more silently truncated, so the two decoders could read
+    /// different values from identical bytes; this pins the Rust side of that
+    /// bound, which only the Node suite covered.
+    #[test]
+    fn a_varint_wider_than_sixty_four_bits_is_rejected() {
+        // Nine payload bytes of ones covers every shift from 0 to 56, so a
+        // mutation of the shift-56 byte is visible here too; an earlier revision
+        // zeroed that byte and could not see it.
+        let payload = |tenth: u8| {
+            let mut bytes = vec![0x08_u8];
+            bytes.extend(std::iter::repeat_n(0xFF_u8, 9));
+            bytes.push(tenth);
+            bytes
+        };
+
+        // A tenth byte of 0 or 1 is the only representable continuation. The
+        // decoded VALUE is asserted, not merely the absence of a rejection: a
+        // bound applied at the wrong shift, or one that drops bit 63, still
+        // produces a rejection-free decode of the wrong number, and an earlier
+        // revision of this test could not tell those apart.
+        let complete = |tenth: u8| {
+            let mut raster = raster((0..1).collect(), 1, 1);
+            raster.chart_id = 0;
+            let encoded = encode_field_raster(&raster);
+            // `encode_field_raster` writes field 1 first, as key plus one byte
+            // for a chart id of zero.
+            let mut out = payload(tenth);
+            out.extend_from_slice(&encoded[2..]);
+            out
+        };
+        assert_eq!(
+            decode_field_raster(&complete(0x00))
+                .expect("a representable varint must decode")
+                .chart_id,
+            u64::MAX >> 1,
+            "nine payload bytes of ones fill bits 0 to 62; the tenth byte is zero"
+        );
+        assert_eq!(
+            decode_field_raster(&complete(0x01))
+                .expect("a representable varint must decode")
+                .chart_id,
+            u64::MAX,
+            "the tenth byte's single usable bit is bit 63"
+        );
+
+        for tenth in [0x02_u8, 0x7F, 0x80, 0x81, 0xFF] {
+            assert!(
+                matches!(
+                    decode_field_raster(&payload(tenth)),
+                    Err(WireError::InvalidVarint)
+                ),
+                "tenth varint byte {tenth:#04x} does not fit in 64 bits"
+            );
+        }
     }
 
     #[test]

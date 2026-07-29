@@ -7,6 +7,7 @@ license.workspace = true
 
 [dependencies]
 tauri = { version = "2", features = [] }
+causafera-explanation.workspace = true
 causafera-lab.workspace = true
 causafera-observer-api.workspace = true
 causafera-observer-wire.workspace = true

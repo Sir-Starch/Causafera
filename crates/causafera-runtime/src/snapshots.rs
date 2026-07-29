@@ -5,7 +5,8 @@ use causafera_observer_api::*;
 use causafera_resolution::*;
 use causafera_types::*;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// No longer `Copy`: the bounded bootstrap summary carries a receipt list.
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RuntimeSnapshot {
     pub time: SimulationTime,
     pub physical_state_digest: PhysicalStateDigest,
@@ -41,6 +42,7 @@ pub struct RuntimeSnapshot {
     pub thermal_total_reservoir_budget: i128,
     pub thermal_active_chunk_count: u32,
     pub thermal_active_cell_count: u32,
+    pub bootstrap: ObserverBootstrapSummary,
 }
 
 impl RuntimeSnapshot {
@@ -75,6 +77,7 @@ impl RuntimeSnapshot {
             thermal_total_reservoir_budget: self.thermal_total_reservoir_budget,
             thermal_active_chunk_count: self.thermal_active_chunk_count,
             thermal_active_cell_count: self.thermal_active_cell_count,
+            bootstrap: self.bootstrap.clone(),
         }
     }
 }
@@ -281,15 +284,71 @@ pub struct PopulationAggregateSnapshot {
     pub aggregate_actor_pool: Vec<(ChartChunkCoord, Vec<ActorId>)>,
 }
 
+/// The persisted canonical production bootstrap record.
+///
+/// This is the complete contract, not a stage/trace index: the plan the stages
+/// were executed from, the bounded per-stage result state they left behind, and
+/// one terminal receipt per stage. An empty receipt list is not a valid
+/// production record and import rejects it rather than defaulting it in.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BootstrapReceiptSnapshot {
+    pub plan: BootstrapPlanSnapshot,
+    pub stage_results: Vec<BootstrapStageResultSnapshot>,
     pub receipts: Vec<BootstrapReceiptRecord>,
 }
 
+impl BootstrapReceiptSnapshot {
+    /// The shape a state with no canonical record exports.
+    ///
+    /// Only reachable for a `RuntimeState` that has not completed bootstrap,
+    /// which no constructor or import path hands out. It decodes back to itself
+    /// and is then rejected by import, so it can never become production state.
+    pub fn absent() -> Self {
+        Self {
+            plan: BootstrapPlanSnapshot {
+                id: HistoricalBootstrapId::new(0),
+                world_seed: 0,
+                stages: Vec::new(),
+            },
+            stage_results: Vec::new(),
+            receipts: Vec::new(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BootstrapPlanSnapshot {
+    pub id: HistoricalBootstrapId,
+    pub world_seed: u64,
+    pub stages: Vec<BootstrapStageSnapshot>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BootstrapStageSnapshot {
+    pub stage: HistoricalStageId,
+    pub process: HistoricalProcessSchemaId,
+    pub starts_at: SimulationTime,
+    pub ends_at: SimulationTime,
+    pub detail_ordinal: u8,
+    pub targets: Vec<ChunkId>,
+    pub dependencies: Vec<HistoricalStageId>,
+    pub external_causes: Vec<TraceId>,
+    pub parameters: StateFingerprint,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct BootstrapStageResultSnapshot {
+    pub stage: HistoricalStageId,
+    pub result: StateFingerprint,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BootstrapReceiptRecord {
     pub stage: HistoricalStageId,
+    pub completed_at: SimulationTime,
+    pub result: StateFingerprint,
     pub trace: TraceId,
+    pub causes: Vec<TraceId>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

@@ -6,11 +6,28 @@ fn hex32(bytes: [u8; 32]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
-// Recorded at Wave 1 commit 9ddba30 using the same fixture (seed 2026, 7 ticks).
+// Re-recorded for `CURRENT_DIGEST_SCHEMA_VERSION` 7 using the same fixture
+// (seed 2026, 7 ticks). The originals were recorded at Wave 1 commit 9ddba30
+// against schema 6 and were byte-identical across the thermal-conservation
+// aggregate validation change, which is what this gate existed to prove.
+//
+// `plans/production-bootstrap-receipt-closure.md` moves them deliberately: the
+// canonical bootstrap record is now an authoritative `physical_state_digest`
+// input, and the terminal stage-completion events are new committed trace events
+// that `history_digest` folds in. Both moves are declared contract changes, not
+// drift, so the gate keeps its teeth by pinning the new values rather than being
+// relaxed to a self-comparison.
+//
+// Re-recorded once more when the stage parameter fingerprints started covering
+// `chunk_extent` and `sensor_count`, which moves the plan identity and every
+// stage result derived from it. Digest schema stays 7 and population/bootstrap
+// section major stays 2: both were introduced on this branch and no released
+// snapshot has ever carried either, so bumping them again would version a
+// contract nothing outside this branch has seen.
 const FIXTURE_PHYSICAL_DIGEST: &str =
-    "744fcbbdf76f0ce77a8126a8ece05f3b848dda2d9ba78f79c965f62921037869";
+    "9959c05092be0e49af0976a6cc2ce7c3d2c12d35bc86c6a456948ac71b4f359b";
 const FIXTURE_HISTORY_DIGEST: &str =
-    "d3052aa5863d415cd1d0740c98597776002deaf9d497fd39026cf259fba70ff4";
+    "356199334c64beb629e406c7bc83bb4972e03cfdf81efdd32ba79a313698b5b3";
 
 #[test]
 fn aggregate_validation_verdict_is_input_order_independent() {

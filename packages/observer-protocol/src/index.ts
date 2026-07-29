@@ -67,6 +67,12 @@ export interface FieldRaster {
   generationTraceId: bigint;
 }
 
+export const BOOTSTRAP_SUMMARY_SCHEMA_ABSENT = 0;
+export const BOOTSTRAP_SUMMARY_SCHEMA_V1 = 1;
+/** The current production bootstrap runs six stages; more is a record this build cannot produce. */
+export const MAX_BOOTSTRAP_RECEIPT_SUMMARIES = 6;
+export const MAX_BOOTSTRAP_RECEIPT_DEPENDENCIES = 8;
+
 export enum QueryStatus {
   Ok = 1,
   InvalidRequest = 2,
@@ -109,6 +115,34 @@ export interface RuntimeSummary {
   thermalTotalReservoirBudget: bigint;
   thermalActiveChunkCount: number;
   thermalActiveCellCount: number;
+  bootstrap: BootstrapSummary;
+}
+
+/**
+ * The bounded, read-only projection of the canonical production bootstrap
+ * record. It carries equality and trace anchors only: no runtime state, no
+ * authoritative actor or place identity, and no rendered process names.
+ *
+ * `schemaVersion === BOOTSTRAP_SUMMARY_SCHEMA_ABSENT` means the payload was
+ * written before this summary existed, not that the record is empty.
+ */
+export interface BootstrapSummary {
+  schemaVersion: number;
+  planId: bigint;
+  worldSeed: bigint;
+  stageCount: number;
+  complete: boolean;
+  configuredPopulation: bigint;
+  configuredPromotionLimit: number;
+  receipts: BootstrapReceipt[];
+}
+
+export interface BootstrapReceipt {
+  stage: bigint;
+  completedAt: bigint;
+  result: Uint8Array;
+  completionTrace: bigint;
+  dependencyTraces: bigint[];
 }
 
 export interface WorldChunkSnapshot {
@@ -445,13 +479,37 @@ export function decodeRuntimeSummary(input: Uint8Array): RuntimeSummary {
   let historyDigest: Uint8Array = new Uint8Array();
   let thermalTotalCellEnergy = 0n;
   let thermalTotalReservoirBudget = 0n;
+  const bootstrapReceipts: BootstrapReceipt[] = [];
   while (!cursor.empty) {
     const [field, wire] = cursor.key();
-    if (wire === 0) values.set(field, cursor.varint());
+    // Checked before the generic varint branch, or field 35 on a varint wire
+    // would be stored as a scalar and then silently dropped, while Rust rejects
+    // it. Any bootstrap field on a wire type it does not use is malformed.
+    if (field >= 28 && field <= 35 && wire !== bootstrapWireType(field)) {
+      throw new Error(`observer bootstrap field ${field} has the wrong wire type`);
+    }
+    else if (wire === 0) {
+      // The summary's scalars are single-valued. Elsewhere in this payload a
+      // repeated field silently wins with its last value, which is a decision
+      // this group does not inherit: two different stage counts in one payload
+      // is a contradiction, not an update.
+      if (field >= 28 && field <= 34 && values.has(field)) {
+        throw new Error(`duplicate observer bootstrap summary field ${field}`);
+      }
+      values.set(field, cursor.varint());
+    }
     else if (wire === 2 && field === 3) physicalDigest = cursor.bytes();
     else if (wire === 2 && field === 4) historyDigest = cursor.bytes();
     else if (wire === 2 && field === 24) thermalTotalCellEnergy = decodeZigzagI128(cursor.bytes());
     else if (wire === 2 && field === 25) thermalTotalReservoirBudget = decodeZigzagI128(cursor.bytes());
+    else if (wire === 2 && field === 35) {
+      // Bounded before the list grows: a payload claiming more receipts than
+      // this build's bootstrap can produce is rejected, not truncated.
+      if (bootstrapReceipts.length === MAX_BOOTSTRAP_RECEIPT_SUMMARIES) {
+        throw new Error("observer bootstrap summary exceeds its receipt bound");
+      }
+      bootstrapReceipts.push(decodeBootstrapReceipt(cursor.bytes()));
+    }
     else cursor.skip(wire);
   }
   if (physicalDigest.length !== 32 || historyDigest.length !== 32) {
@@ -460,16 +518,16 @@ export function decodeRuntimeSummary(input: Uint8Array): RuntimeSummary {
   const value = requiredValue(values, "RuntimeSummary");
   return {
     simulationTicks: value(1),
-    digestSchemaVersion: Number(value(2)),
+    digestSchemaVersion: requireU32(value(2), 2),
     physicalDigest,
     historyDigest,
     manaTotal: BigInt.asIntN(64, value(5)),
     manaMaximum: BigInt.asIntN(64, value(6)),
-    activeChunkCount: Number(value(7)),
+    activeChunkCount: requireU32(value(7), 7),
     resolutionRelevance: BigInt.asIntN(64, value(8)),
-    resolutionLevel: Number(value(9)),
+    resolutionLevel: requireU32(value(9), 9),
     causalTraceCount: value(10),
-    actorCount: Number(value(11)),
+    actorCount: requireU32(value(11), 11),
     populationTotal: value(12),
     physicalEvents: value(13),
     manaCellChanges: value(14),
@@ -484,8 +542,153 @@ export function decodeRuntimeSummary(input: Uint8Array): RuntimeSummary {
     latestTraceId: value(23),
     thermalTotalCellEnergy,
     thermalTotalReservoirBudget,
-    thermalActiveChunkCount: Number(values.get(26) ?? 0n),
-    thermalActiveCellCount: Number(values.get(27) ?? 0n),
+    thermalActiveChunkCount: requireU32(values.get(26) ?? 0n, 26),
+    thermalActiveCellCount: requireU32(values.get(27) ?? 0n, 27),
+    bootstrap: decodeBootstrapSummary(values, bootstrapReceipts),
+  };
+}
+
+/** The one wire type each bootstrap field is allowed to arrive on. */
+function bootstrapWireType(field: number): number {
+  return field === 35 ? 2 : 0;
+}
+
+/**
+ * Decode the bounded bootstrap summary as one atomic optional group.
+ *
+ * Fields 28..=35 are additive, so a payload carrying none of them was written
+ * before the summary existed and decodes to the explicit absent schema — that is
+ * the only tolerated incompleteness. A payload carrying *part* of the group is
+ * not an older peer, it is a contradiction, and every way of being partially
+ * present fails closed here rather than being filled in with zeroes. Kept
+ * deliberately identical to `decode_bootstrap_summary` in
+ * `causafera-observer-wire`: two decoders of one wire contract that disagree on
+ * what is valid are worse than one.
+ */
+function decodeBootstrapSummary(
+  values: Map<number, bigint>,
+  receipts: BootstrapReceipt[],
+): BootstrapSummary {
+  const group = [28, 29, 30, 31, 32, 33, 34];
+  const declared = group.some((field) => values.has(field));
+  if (!declared) {
+    if (receipts.length > 0) {
+      // Receipts with no summary to interpret them would otherwise be parsed
+      // and then silently dropped.
+      throw new Error("observer bootstrap receipts carry no summary");
+    }
+    return {
+      schemaVersion: BOOTSTRAP_SUMMARY_SCHEMA_ABSENT,
+      planId: 0n,
+      worldSeed: 0n,
+      stageCount: 0,
+      complete: false,
+      configuredPopulation: 0n,
+      configuredPromotionLimit: 0,
+      receipts: [],
+    };
+  }
+  for (const field of group) {
+    if (!values.has(field)) {
+      throw new Error(`incomplete observer bootstrap summary: missing field ${field}`);
+    }
+  }
+
+  // Compared as a bigint before widening: a value past 2^53 would otherwise be
+  // rounded, and could round onto the accepted version.
+  if (values.get(28)! !== BigInt(BOOTSTRAP_SUMMARY_SCHEMA_V1)) {
+    throw new Error(`unsupported observer bootstrap summary schema ${values.get(28)}`);
+  }
+  const schemaVersion = Number(values.get(28));
+  if (schemaVersion !== BOOTSTRAP_SUMMARY_SCHEMA_V1) {
+    throw new Error(`unsupported observer bootstrap summary schema ${schemaVersion}`);
+  }
+  if (values.get(31)! > BigInt(MAX_BOOTSTRAP_RECEIPT_SUMMARIES)) {
+    throw new Error("observer bootstrap summary exceeds its stage bound");
+  }
+  const stageCount = Number(values.get(31));
+  if (stageCount > MAX_BOOTSTRAP_RECEIPT_SUMMARIES) {
+    throw new Error("observer bootstrap summary exceeds its stage bound");
+  }
+  const completeRaw = values.get(32);
+  if (completeRaw !== 0n && completeRaw !== 1n) {
+    throw new Error("observer bootstrap completeness must be zero or one");
+  }
+  for (let index = 1; index < receipts.length; index += 1) {
+    if (receipts[index - 1].stage >= receipts[index].stage) {
+      throw new Error("observer bootstrap receipts are not in canonical order");
+    }
+  }
+  if (receipts.length !== stageCount) {
+    throw new Error("observer bootstrap receipt count does not match its stage count");
+  }
+  const complete = completeRaw === 1n;
+  // A record is complete exactly when it closed every stage it declared.
+  if (complete !== stageCount > 0) {
+    throw new Error("observer bootstrap completeness disagrees with its stage count");
+  }
+  const configuredPromotionLimit = requireU32(values.get(34)!, 34);
+  return {
+    schemaVersion,
+    planId: values.get(29)!,
+    worldSeed: values.get(30)!,
+    stageCount,
+    complete,
+    configuredPopulation: values.get(33)!,
+    configuredPromotionLimit,
+    receipts,
+  };
+}
+
+function decodeBootstrapReceipt(input: Uint8Array): BootstrapReceipt {
+  const cursor = new Cursor(input);
+  const values = new Map<number, bigint>();
+  let result: Uint8Array | undefined;
+  const dependencyTraces: bigint[] = [];
+  while (!cursor.empty) {
+    const [field, wire] = cursor.key();
+    if (wire === 2 && field === 3) {
+      if (result !== undefined) {
+        throw new Error("duplicate observer bootstrap receipt result");
+      }
+      result = cursor.bytes();
+    }
+    else if (wire === 0 && field === 5) {
+      if (dependencyTraces.length === MAX_BOOTSTRAP_RECEIPT_DEPENDENCIES) {
+        throw new Error("observer bootstrap receipt exceeds its dependency bound");
+      }
+      dependencyTraces.push(cursor.varint());
+    }
+    else if (wire === 0 && field >= 1 && field <= 4) {
+      // A receipt's scalars are single-valued, exactly like the summary's.
+      if (values.has(field)) {
+        throw new Error(`duplicate observer bootstrap receipt field ${field}`);
+      }
+      values.set(field, cursor.varint());
+    }
+    // A known field arriving on the wrong wire type is a malformed receipt, not
+    // an unknown field to skip past.
+    else if (field >= 1 && field <= 5) {
+      throw new Error(`observer bootstrap receipt field ${field} has the wrong wire type`);
+    }
+    else if (wire === 0) values.set(field, cursor.varint());
+    else cursor.skip(wire);
+  }
+  if (result === undefined || result.length !== 32) {
+    throw new Error("observer bootstrap receipt result must contain 32 bytes");
+  }
+  for (let index = 1; index < dependencyTraces.length; index += 1) {
+    if (dependencyTraces[index - 1] >= dependencyTraces[index]) {
+      throw new Error("observer bootstrap receipt dependencies are not in canonical order");
+    }
+  }
+  const value = requiredValue(values, "BootstrapReceipt");
+  return {
+    stage: value(1),
+    completedAt: value(2),
+    result,
+    completionTrace: value(4),
+    dependencyTraces,
   };
 }
 
@@ -895,6 +1098,19 @@ function decodeVarintFields(input: Uint8Array): Map<number, bigint> {
   return values;
 }
 
+/**
+ * Narrow to 32 bits with the same bound Rust's `to_u32` applies.
+ *
+ * `Number()` on a bigint widens silently and lossily; every field the Rust
+ * decoder narrows must be checked here or the two disagree on validity.
+ */
+function requireU32(value: bigint, field: number): number {
+  if (value > 0xffff_ffffn) {
+    throw new Error(`observer field ${field} overflows its 32-bit range`);
+  }
+  return Number(value);
+}
+
 function requiredValue(values: Map<number, bigint>, name: string): (field: number) => bigint {
   return (field: number): bigint => {
     const found = values.get(field);
@@ -964,6 +1180,14 @@ class Cursor {
     for (let shift = 0n; shift <= 63n; shift += 7n) {
       const byte = this.input[this.offset++];
       if (byte === undefined) throw new Error("truncated protobuf varint");
+      // The tenth byte contributes only bit 63. A bigint cannot truncate, so
+      // without this an over-wide varint would be accepted here and silently
+      // truncated by the Rust decoder — the two disagreeing on validity rather
+      // than on meaning. Kept identical to `Cursor::varint` in
+      // `causafera-observer-wire`.
+      if (shift === 63n && (byte & 0x7f) > 1) {
+        throw new Error("protobuf varint exceeds 64 bits");
+      }
       value |= BigInt(byte & 0x7f) << shift;
       if ((byte & 0x80) === 0) return value;
     }
@@ -972,7 +1196,12 @@ class Cursor {
 
   key(): [number, number] {
     const key = this.varint();
-    const field = Number(key >> 3n);
+    const rawField = key >> 3n;
+    // Bounded before widening, matching Rust's `to_u32(key >> 3)`. `Number()` on
+    // a bigint neither rejects nor saturates, so without this a field number
+    // past 2^32 is accepted here and rejected there.
+    if (rawField > 0xffff_ffffn) throw new Error("protobuf field number overflows");
+    const field = Number(rawField);
     if (field === 0) throw new Error("invalid protobuf field number");
     return [field, Number(key & 7n)];
   }
@@ -1011,10 +1240,10 @@ class Cursor {
       this.bytes();
       return;
     }
-    if (wire === 5) {
-      this.advance(4);
-      return;
-    }
+    // Wire type 5 (fixed32) is legal protobuf but no encoder here emits it, and
+    // `Cursor::skip` in `causafera-observer-wire` rejects it. Accepting it would
+    // mean this decoder walks past a field the Rust decoder refuses the whole
+    // message over.
     throw new Error(`unsupported protobuf wire type ${wire}`);
   }
 

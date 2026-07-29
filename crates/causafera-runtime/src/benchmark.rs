@@ -299,7 +299,7 @@ fn measure(
     let mut last_snapshot = None;
     for _ in 0..config.measurement_ticks {
         let snapshot = runtime.tick()?;
-        last_snapshot = Some(snapshot);
+        last_snapshot = Some(snapshot.clone());
         if matches!(mode, MaterialSurfaceLoopBenchmarkMode::WorldChunksQuery) {
             let response_bytes = bounded_world_chunks_query(&runtime, snapshot)?;
             observer_response_bytes = observer_response_bytes
@@ -472,4 +472,259 @@ fn linux_status_memory_kib(field: &str) -> Option<u64> {
         let _ = field;
         None
     }
+}
+
+pub const BOOTSTRAP_CLOSURE_BENCHMARK_VERSION: u32 = 1;
+
+/// The bounded envelope the observer session already runs: nine active chunks,
+/// bootstrap population 512, eight promoted actors, one sensor aperture each.
+///
+/// This is the workload the measurements below describe and the only workload
+/// they describe. Nothing here supports a claim about a larger world.
+pub fn bootstrap_closure_config(seed: u64) -> RuntimeConfig {
+    let mut config = RuntimeConfig::new(seed);
+    config.active_chunk_radius = 1;
+    config.active_chunk_shape = crate::ActiveChunkShape::Area;
+    config.bootstrap_population = 512;
+    config.actor_count = 8;
+    config.sensor_count = 1;
+    config
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct BootstrapClosureBenchmarkConfig {
+    pub seed: u64,
+    /// Unmeasured repetitions run before sampling starts, so a cold process,
+    /// an unwarmed allocator, and first-touch page faults do not land in the
+    /// reported distribution.
+    pub warmup_iterations: u32,
+    /// Measured bootstrap constructions. Each is one sample, not a mean.
+    pub iterations: u32,
+    pub import_iterations: u32,
+    /// Measured observer polls, for the overhead control and its counterpart.
+    pub observer_polls: u32,
+}
+
+impl Default for BootstrapClosureBenchmarkConfig {
+    fn default() -> Self {
+        Self {
+            seed: 2_026,
+            warmup_iterations: 4,
+            iterations: 20,
+            import_iterations: 20,
+            observer_polls: 20,
+        }
+    }
+}
+
+/// One measured distribution, reported the way this repository's benchmark
+/// methodology requires: every raw sample retained alongside the summary, so a
+/// reader can see the spread rather than take a single number's word for it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BenchmarkSamples {
+    pub samples_ns: Vec<u128>,
+    pub mean_ns: u128,
+    pub median_ns: u128,
+    pub stddev_ns: u128,
+    pub minimum_ns: u128,
+    pub maximum_ns: u128,
+}
+
+impl BenchmarkSamples {
+    pub fn from_samples(samples_ns: Vec<u128>) -> Result<Self, RuntimeError> {
+        if samples_ns.is_empty() {
+            return Err(RuntimeError::InvalidSnapshot(
+                "a benchmark distribution needs at least one sample",
+            ));
+        }
+        let count = samples_ns.len() as u128;
+        let mean_ns = samples_ns.iter().sum::<u128>() / count;
+        let mut sorted = samples_ns.clone();
+        sorted.sort_unstable();
+        let median_ns = if sorted.len().is_multiple_of(2) {
+            (sorted[sorted.len() / 2 - 1] + sorted[sorted.len() / 2]) / 2
+        } else {
+            sorted[sorted.len() / 2]
+        };
+        // Population variance over the samples actually taken. Integer maths
+        // throughout: a benchmark that reports in floating point invites a
+        // precision it does not have.
+        let variance = samples_ns
+            .iter()
+            .map(|sample| {
+                let delta = sample.abs_diff(mean_ns);
+                delta * delta
+            })
+            .sum::<u128>()
+            / count;
+        Ok(Self {
+            mean_ns,
+            median_ns,
+            stddev_ns: variance.isqrt(),
+            minimum_ns: sorted[0],
+            maximum_ns: sorted[sorted.len() - 1],
+            samples_ns,
+        })
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BootstrapClosureBenchmarkReport {
+    pub version: u32,
+    pub config: BootstrapClosureBenchmarkConfig,
+    /// The measured envelope, restated from the constructed runtime rather than
+    /// from the configuration, so a report cannot describe a workload it did not
+    /// actually run.
+    pub active_chunk_count: u32,
+    pub bootstrap_population: u64,
+    pub promoted_actor_count: u64,
+    pub sensor_count: u8,
+    pub receipt_count: u32,
+    /// Wall time of one complete `Runtime::new`, bootstrap included.
+    pub bootstrap_wall_time: BenchmarkSamples,
+    /// Wall time of one `RuntimeState::import_snapshot`, canonical record
+    /// validation included.
+    pub import_wall_time: BenchmarkSamples,
+    /// The complete encoded snapshot envelope, header and section directory
+    /// included — the same measurement the other benchmarks in this module
+    /// report, so the figures are comparable.
+    pub encoded_snapshot_bytes: u64,
+    /// What the canonical record itself costs inside the population/bootstrap
+    /// section, measured as the difference against an absent record.
+    pub bootstrap_record_bytes: u64,
+    /// Trace events the six stages committed, completions included.
+    pub bootstrap_provenance_events: u64,
+    /// Wall time of one authoritative summary read with no observer encoding —
+    /// the control.
+    pub control_poll_wall_time: BenchmarkSamples,
+    /// The same read plus the bounded runtime-summary encoding.
+    pub observer_poll_wall_time: BenchmarkSamples,
+    pub observer_summary_bytes: u64,
+    pub plan_id: u64,
+    pub physical_state_digest: crate::PhysicalStateDigest,
+    pub history_digest: crate::HistoryDigest,
+}
+
+/// Measure the bounded production bootstrap envelope.
+///
+/// Every figure is a measurement of the stated envelope on the machine that ran
+/// it. None of them is a scale result, a throughput claim, or a regression
+/// threshold; the repository has no reference hardware and this benchmark does
+/// not establish one.
+pub fn run_bootstrap_closure_benchmark(
+    config: BootstrapClosureBenchmarkConfig,
+) -> Result<BootstrapClosureBenchmarkReport, RuntimeError> {
+    if config.iterations == 0 || config.import_iterations == 0 || config.observer_polls == 0 {
+        return Err(RuntimeError::InvalidSnapshot(
+            "bootstrap benchmark iterations must be non-zero",
+        ));
+    }
+    let runtime_config = bootstrap_closure_config(config.seed);
+
+    for _ in 0..config.warmup_iterations {
+        let runtime = Runtime::new(std::hint::black_box(runtime_config.clone()))?;
+        std::hint::black_box(&runtime);
+    }
+
+    let mut bootstrap_samples = Vec::with_capacity(config.iterations as usize);
+    for _ in 0..config.iterations {
+        let started = Instant::now();
+        let runtime = Runtime::new(std::hint::black_box(runtime_config.clone()))?;
+        bootstrap_samples.push(started.elapsed().as_nanos());
+        std::hint::black_box(&runtime);
+    }
+    let bootstrap_wall_time = BenchmarkSamples::from_samples(bootstrap_samples)?;
+
+    let runtime = Runtime::new(runtime_config)?;
+    let data = runtime.export_snapshot()?;
+    let summary = runtime.snapshot()?;
+
+    // The whole encoded envelope, header and section directory included, so this
+    // figure means the same thing as the one the material-surface and
+    // experiment-recipe benchmarks already report rather than a sections-only
+    // subtotal that quietly understates a file on disk.
+    let encoded_snapshot_bytes = u64::try_from(
+        assemble_envelope(&data)
+            .and_then(|envelope| envelope.encode())
+            .map_err(|_| RuntimeError::InvalidSnapshot("bootstrap benchmark envelope must encode"))?
+            .len(),
+    )
+    .map_err(|_| RuntimeError::InvalidSnapshot("bootstrap benchmark envelope is too large"))?;
+    let with_record =
+        crate::encode_population_section(&data.population, &data.bootstrap).len() as u64;
+    let without_record = crate::encode_population_section(
+        &data.population,
+        &crate::BootstrapReceiptSnapshot::absent(),
+    )
+    .len() as u64;
+    let bootstrap_record_bytes = with_record.saturating_sub(without_record);
+    let bootstrap_provenance_events = data.traces.events.len() as u64;
+
+    for _ in 0..config.warmup_iterations {
+        std::hint::black_box(RuntimeState::import_snapshot(std::hint::black_box(
+            data.clone(),
+        ))?);
+    }
+    let mut import_samples = Vec::with_capacity(config.import_iterations as usize);
+    for _ in 0..config.import_iterations {
+        let started = Instant::now();
+        let state = RuntimeState::import_snapshot(std::hint::black_box(data.clone()))?;
+        import_samples.push(started.elapsed().as_nanos());
+        std::hint::black_box(state);
+    }
+    let import_wall_time = BenchmarkSamples::from_samples(import_samples)?;
+
+    for _ in 0..config.warmup_iterations {
+        std::hint::black_box(runtime.snapshot()?);
+    }
+
+    // The control and its counterpart are interleaved rather than run in two
+    // blocks, so a drift in machine state over the run biases both alike instead
+    // of landing entirely on whichever went second.
+    let mut control_samples = Vec::with_capacity(config.observer_polls as usize);
+    let mut observer_samples = Vec::with_capacity(config.observer_polls as usize);
+    let mut observer_summary_bytes = 0_u64;
+    for _ in 0..config.observer_polls {
+        let started = Instant::now();
+        std::hint::black_box(runtime.snapshot()?);
+        control_samples.push(started.elapsed().as_nanos());
+
+        let started = Instant::now();
+        let polled = runtime.snapshot()?;
+        let encoded =
+            causafera_observer_wire::encode_observer_snapshot(&polled.observer_snapshot());
+        observer_samples.push(started.elapsed().as_nanos());
+        observer_summary_bytes = encoded.len() as u64;
+        std::hint::black_box(encoded);
+    }
+    let control_poll_wall_time = BenchmarkSamples::from_samples(control_samples)?;
+    let observer_poll_wall_time = BenchmarkSamples::from_samples(observer_samples)?;
+
+    Ok(BootstrapClosureBenchmarkReport {
+        version: BOOTSTRAP_CLOSURE_BENCHMARK_VERSION,
+        config,
+        active_chunk_count: summary.active_chunk_count,
+        bootstrap_population: summary.population_total + u64::from(summary.actor_count),
+        promoted_actor_count: u64::from(summary.actor_count),
+        // Read back from a promoted actor, not from the configuration: the
+        // point of this block is that a report cannot describe a workload it
+        // did not run, and echoing the config here defeated it for this field.
+        sensor_count: data
+            .actors_objective
+            .actors
+            .first()
+            .map_or(0, |(_, actor)| actor.sensors.len() as u8),
+        receipt_count: data.bootstrap.receipts.len() as u32,
+        bootstrap_wall_time,
+        import_wall_time,
+        encoded_snapshot_bytes,
+        bootstrap_record_bytes,
+        bootstrap_provenance_events,
+        control_poll_wall_time,
+        observer_poll_wall_time,
+        observer_summary_bytes,
+        plan_id: data.bootstrap.plan.id.raw(),
+        physical_state_digest: summary.physical_state_digest,
+        history_digest: summary.history_digest,
+    })
 }

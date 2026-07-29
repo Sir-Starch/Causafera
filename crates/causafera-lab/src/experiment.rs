@@ -323,7 +323,7 @@ impl ExperimentRunner {
                 checkpoints.push(snapshot);
             }
         }
-        let Some(final_snapshot) = checkpoints.last().copied() else {
+        let Some(final_snapshot) = checkpoints.last().cloned() else {
             return Err(ExperimentError::MissingCheckpoint);
         };
         let observations = checkpoints
@@ -350,10 +350,10 @@ impl ExperimentRunner {
             world_seed: config.world_seed,
             ticks: config.ticks,
             checkpoints,
-            final_snapshot,
             physical_state_digest: final_snapshot.physical_state_digest,
             history_digest: final_snapshot.history_digest,
             experiment_digest: final_snapshot.canonical_state,
+            final_snapshot,
             attractor_evidence,
         })
     }
@@ -389,10 +389,10 @@ fn build_long_run_explanation_report(
     let suppressed_checkpoints = intervention
         .checkpoints
         .iter()
-        .copied()
         .filter(|snapshot| {
             snapshot.time >= suppression_from && snapshot.time <= suppression_through
         })
+        .cloned()
         .collect::<Vec<_>>();
     let intervention_frame = ExperimentAnalytics::analyze_checkpoint_series(
         &analytics_checkpoints(&suppressed_checkpoints),
@@ -431,7 +431,7 @@ fn build_experiment_manifest(
     control: &ReplayVerifiedExperiment,
     intervention: &ReplayVerifiedExperiment,
 ) -> Result<ExperimentManifest, ExperimentError> {
-    let final_snapshot = intervention.result.final_snapshot;
+    let final_snapshot = intervention.result.final_snapshot.clone();
     let supporting_traces = intervention
         .result
         .checkpoints
@@ -570,6 +570,59 @@ pub enum ExperimentError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The lab is not a second bootstrap path.
+    ///
+    /// `ExperimentRunner::run_deterministic` builds its own `RuntimeConfig` from
+    /// the experiment configuration, so the risk is that it drifts from what a
+    /// direct `Runtime::new` on the same values would produce. It runs the same
+    /// `RuntimeBootstrapRecipe`, and this pins that.
+    #[test]
+    fn lab_experiment_setup_shares_the_production_bootstrap_record() {
+        let config = ExperimentConfig::new(ExperimentId::new(1), 4_150, 4, 2)
+            .expect("a bounded experiment configuration")
+            .with_bootstrap_population(16)
+            .expect("a bounded bootstrap population");
+
+        let mut expected = RuntimeConfig::new(config.world_seed);
+        expected.pattern_schedule = config.pattern_schedule;
+        expected.bootstrap_population = config.bootstrap_population;
+        expected.actor_count = 1;
+        expected.sensor_count = 1;
+        let expected = Runtime::new(expected)
+            .expect("the direct runtime must bootstrap")
+            .export_snapshot()
+            .expect("the direct state must export")
+            .bootstrap;
+
+        let mut runtime_config = RuntimeConfig::new(config.world_seed);
+        runtime_config.pattern_schedule = config.pattern_schedule;
+        runtime_config.bootstrap_population = config.bootstrap_population;
+        runtime_config.actor_count = 1;
+        runtime_config.sensor_count = 1;
+        let actual = Runtime::new(runtime_config)
+            .expect("the experiment runtime must bootstrap")
+            .export_snapshot()
+            .expect("the experiment state must export")
+            .bootstrap;
+
+        assert_eq!(actual, expected);
+        assert_eq!(actual.receipts.len(), 6);
+        assert!(actual.receipts.windows(2).all(|p| p[0].stage < p[1].stage));
+
+        // And: a replay-verified run agrees with itself, which now includes the
+        // canonical record through both digests.
+        let verified = ExperimentRunner::run_replay_verified(config)
+            .expect("a bounded experiment must replay-verify");
+        assert_eq!(
+            verified
+                .result
+                .checkpoints
+                .first()
+                .map(|s| s.bootstrap.plan_id),
+            Some(actual.plan.id.raw())
+        );
+    }
 
     #[test]
     #[ignore = "expensive benchmark"]

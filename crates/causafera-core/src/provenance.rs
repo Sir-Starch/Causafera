@@ -405,6 +405,12 @@ pub enum CausalSnapshotError {
     EffectCountExceeded,
     #[error("trace IDs are not strictly monotonic")]
     NonMonotonicTraceIds,
+    #[error("event IDs are not strictly increasing")]
+    NonMonotonicEventIds,
+    #[error("event times are not non-decreasing")]
+    NonMonotonicTimes,
+    #[error("event carries no effects")]
+    NoEffects,
     #[error("cause refers to unknown trace ID: {0}")]
     UnknownCause(TraceId),
 }
@@ -446,13 +452,42 @@ impl CausalTraceStore {
         store.next_trace_id = snapshot.next_trace_id;
 
         let mut last_trace_id: Option<TraceId> = None;
+        let mut last_event_id: Option<EventId> = None;
+        let mut last_time: Option<SimulationTime> = None;
         for event in &snapshot.events {
+            // Import accepted two shapes the commit path forbids, and both made
+            // a forged trailing event cheap. `CausalEventProposal::new` rejects
+            // an empty effect set, so no committed event has ever had one: an
+            // effectless event is pure padding that carries no state transition
+            // and exists only to change how the store's tail reads.
+            if event.effects.is_empty() {
+                return Err(CausalSnapshotError::NoEffects);
+            }
+            // Commits advance a tick at a time, so store order is time order.
+            // Without this, a store whose times run 0…0, 5, 1 imports cleanly
+            // and any bound phrased as `any(time > limit)` misses the event
+            // hiding behind the larger one.
+            if let Some(last) = last_time
+                && event.time < last
+            {
+                return Err(CausalSnapshotError::NonMonotonicTimes);
+            }
+            last_time = Some(event.time);
             if let Some(last) = last_trace_id
                 && event.trace_id <= last
             {
                 return Err(CausalSnapshotError::NonMonotonicTraceIds);
             }
             last_trace_id = Some(event.trace_id);
+            // Event IDs are binary-searched by `event_by_id`, exactly as trace
+            // IDs are by `trace_index`, so they need the same ordering guarantee
+            // and did not have it.
+            if let Some(last) = last_event_id
+                && event.event_id <= last
+            {
+                return Err(CausalSnapshotError::NonMonotonicEventIds);
+            }
+            last_event_id = Some(event.event_id);
 
             store.event_ids.push(event.event_id);
             store.trace_ids.push(event.trace_id);
@@ -489,6 +524,23 @@ impl CausalTraceStore {
             }
         }
 
+        // The counters decide which identifiers the next commit issues. Rolled
+        // back below what the store already holds, `commit_batch` re-issues live
+        // IDs: the arrays stop being sorted, and both `trace_index` and
+        // `event_by_id` binary-search them, so every provenance lookup — receipt
+        // validation and Explanation evidence included — can silently resolve to
+        // the wrong event. The corrupted store only fails to re-import one save
+        // later, which is one save too late.
+        if let Some(last) = last_trace_id
+            && store.next_trace_id <= last.raw()
+        {
+            return Err(CausalSnapshotError::NonMonotonicTraceIds);
+        }
+        if let Some(last) = last_event_id
+            && store.next_event_id <= last.raw()
+        {
+            return Err(CausalSnapshotError::NonMonotonicEventIds);
+        }
         Ok(store)
     }
 }

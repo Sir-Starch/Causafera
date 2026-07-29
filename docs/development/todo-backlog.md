@@ -794,6 +794,47 @@ separately as `TODO-GEO-005`.
 **Out of Scope:** Raising `chunk_extent`, joined charts, a landcover lens
 **Evidence:** The Instrument log folded concurrent per-frame `observer_field_raster` exchanges by summing their individual `durationMs`, and each individual duration already included the wait for every call ahead of it on the session's Tauri mutex — the fold therefore reported a batch's cost roughly as the square of its size rather than its real span (fixed in `apps/observer/src/observer/session.ts`, `recordExchange`). Re-measured against a real desktop session (seed 0, debug build) with the fold bypassed: consecutive per-call completions land 3-5 ms apart regardless of payload — a 113-byte mana raster and a ~3.4 KB terrain raster cost about the same marginal time. Fixed per-call overhead (mutex acquisition, command dispatch) dominates in this range; payload size barely registers. Switching every observer command's response from a `Vec<u8>` return (serialised by Tauri as a JSON array of numbers, four times the wire bytes for the elevation raster) to `tauri::ipc::Response` (raw bytes, confirmed to arrive as an `ArrayBuffer` on the JS side) did not move this measurement at these payload sizes, which is consistent with fixed overhead rather than serialisation cost dominating today — but it removes a real inefficiency that will matter once payloads grow, including under this TODO's own batched response. Batching removes that fixed overhead (n-1) times per frame; it does not remove per-byte cost, which the same measurement shows is not the bottleneck at current sizes
 
+## TODO-OBS-003: Observer Wire Decoder Parity Outside the Runtime Summary
+**Status:** Pending
+**Phase:** Detailed Development — Observer Surface
+**Priority:** High
+**Dependencies:** None
+**Goal:** Make the Rust and TypeScript observer decoders accept and reject exactly the same byte strings, across every shared decoder, not only the runtime summary
+**Acceptance Criteria:** For every shared codec — world chunk snapshot, query response, connect response, stream envelope, field raster, Explanation IR — a hand-built adversarial corpus fed to both decoders produces the same accept/reject verdict and the same decoded values; the corpus lives in version control and runs in CI on both sides; any deliberate asymmetry is documented as such rather than left to be rediscovered
+**Performance Requirements:** None; these are decode-path guards on bounded payloads
+**Determinism Requirements:** Both decoders are read-only and touch no authoritative state; the requirement is that they agree, not that either changes what it reports for valid input
+**Ontology Implications:** None; transport validation only
+**Observer Implications:** A payload one decoder accepts and the other refuses means a Rust client and a TypeScript client disagree about whether a session is speaking the protocol. Today they do disagree, on at least six classes of input
+**Explanation Implications:** The Explanation IR is the sharpest case: the Rust decoder routes through `ExplanationReport::new`/`ExplanationFrame::new`/`ExplanationClaim::new` and enforces non-empty frames and claims, a derived assessment matching the declared one, confidence in `0.0..=1.0` and non-NaN, evidence on a Supported claim, `start <= end` on a range, a non-zero ratio denominator, and a cohort where the comparison kind requires one. The TypeScript decoder enforces none of them and additionally defaults a missing comparison kind to `None` where Rust returns `MissingField(1)`. Rust also normalises — sorting and deduplicating evidence traces, sorting frames and claims, zeroing a non-Supported claim's confidence — so the two produce different objects from identical accepted bytes
+**Out of Scope:** Changing the wire format, adding fields, or altering what a valid payload means. This is about the two readers agreeing on the format that already exists
+**Evidence:** Found by a systematic parity audit during `plans/production-bootstrap-receipt-closure.md` (round six), which compiled `packages/observer-protocol/src/index.ts` with the package's own `tsc` and fed identical bytes to both decoders: 156 hand-built vectors plus 6,300 mutation-fuzz vectors across all seven shared decoders. `decode_observer_snapshot`/`decodeRuntimeSummary` — the runtime summary including the bootstrap group and nested receipts — is **in parity**, 900 mutations with zero divergences, and the divergences that plan did introduce or reach were fixed there. Everything below is pre-existing on `main` and outside that plan's scope. Six root causes: (a) `packages/observer-protocol/src/index.ts:717-723` has no wrong-wire-type arm for world-snapshot field 4, which every neighbouring field has, so `080c2200` decodes there and is `DuplicateField(4)` in Rust (`crates/causafera-observer-wire/src/protocol.rs:679`); (b) no numeric narrowing anywhere in the TypeScript nested decoders — `decodeSpatialChunk`, `decodeMaterialSurfaceDelta`, `decodeMaterialSurfaceGateDelta`, `decodeMaterialSurfaceThermalDelta`, `decodeThermalFieldDelta`, `decodeFieldRaster`, `decodeQueryResponse`, `decodeConnectResponse`, `decodeStreamHeader` all use bare `Number(...)` against Rust's `to_i32`/`to_u32`/`u16::try_from`, and above 2^53 `Number()` also rounds, so the payload is misread rather than merely out of range; a `requireU32` helper already exists at `:1107` and is applied in the runtime summary only; (c) no enum validation in TypeScript — `Number(cursor.varint()) as SomeEnum` is a cast with zero runtime effect, at six sites, against Rust validating each, and Rust validates status inside the decode loop so a bad status followed by a good one still fails while TypeScript keeps the last; (d) no Explanation-IR semantic validation, sixteen distinct payloads Rust rejects and TypeScript accepts; (e) the nested-message helpers disagree on duplicates — Rust `decode_time`/`decode_digest`/`decode_chunk_scope` return on first match and never see the rest, TypeScript scans and keeps the last, which diverges in both directions including a 31-byte digest Rust rejects and TypeScript silently replaces with a valid second one, and is the only observed case where Rust accepts what TypeScript refuses; (f) `decodeDeltaBand` returns a `Float64Array` while the Rust encoder round-trips full `i64` and tests `i64::MIN`/`i64::MAX` explicitly, so any value past 2^53 is silently rounded on arrival — a contract gap rather than a decoder bug. `tools/audit/test-observer-bootstrap-decoder.mjs` is the pattern to follow: it compiles the real module and runs adversarial vectors through it under the existing `node --test` harness, and is confirmed to have teeth
+
+## TODO-PERSIST-004: Snapshot Import Re-derives What It Can Instead of Trusting It
+**Status:** Pending
+**Phase:** Detailed Development — Persistence
+**Priority:** High
+**Dependencies:** None
+**Goal:** Make `RuntimeState::import_snapshot` reject any persisted value that the same snapshot lets it re-derive or check against committed provenance, rather than trusting it because a related trace merely exists
+**Acceptance Criteria:** For each field named in the evidence below, a hand-built forgery is rejected with a specific message and covered by a test with teeth; a negative control sweeps the configuration space at bootstrap and after advancement and shows no legitimate state is refused; anything deliberately left trusted is documented with the reason
+**Performance Requirements:** Import cost re-measured with the repository's benchmark methodology; the current figure is in the Bounded measurement section of `plans/production-bootstrap-receipt-closure.md`
+**Determinism Requirements:** Every re-derivation must be a pure function of persisted configuration or committed provenance, never of wall-clock, iteration order, or process state
+**Ontology Implications:** Geography, thermal state, and mana are authoritative causal domains (INV-036, INV-041). A snapshot that dictates them is authoring world state outside the scheduler's proposal/commit boundary, which is what INV-016 forbids
+**Observer Implications:** Every forged value below survives into the observer read models, so the observer reports a world that no run produced
+**Explanation Implications:** Deleting the material-surface transition histories removes the bounded evidence the material-surface claims read, so Explanation degrades to its insufficiency states over fabricated state rather than reporting the fabrication
+**Out of Scope:** Authenticating snapshots. `SECURITY.md` already draws the boundary at a different, self-consistent history; this is about a snapshot that contradicts the history it carries
+**Evidence:** Found by adversarial audit during `plans/production-bootstrap-receipt-closure.md` (round eight). Each was reproduced against a real exported snapshot, and each **launders**: import it, tick, re-export, and the result re-imports as a clean save. The pattern in every case is that a trace-existence or event-kind check stands in for a re-derivation.
+
+- **Terrain is never re-derived** though it is byte-for-byte re-derivable. `import_carrier_adapters` checks only `field_extent`; bootstrap builds terrain with `deterministic_terrain_chunk(terrain_seed, chunk, trace)`, where `terrain_seed` comes from `config.carrier_adapter` and is persisted in `recipe.config`. Elevations and materials depend only on `terrain_cells(seed, chunk)` — the trace feeds provenance alone — so they are re-derivable from persisted configuration without it. Replacing all 1024 elevations with a flat value and every surface material with one id is accepted.
+- **The living-population identity is one equation with both sides supplied by the snapshot, on any snapshot that has advanced.** `validate_persistent_domain_state` compares the population against `bootstrap_population + births − deaths`, and both counters arrive unvalidated. On an advanced snapshot, subtracting 100 residents and adding 100 to `population_deaths` is accepted, and the committed trace store is then byte-identical to an honest run that never lost them. At bootstrap time the same forgery is already rejected by `validate_bootstrap_population_conservation`, which compares aggregates and promoted actors against `config.bootstrap_population` with no counter term at all; only the advanced-time case is open. Closing it needs the aggregate anchored to committed provenance; an attempt during round eight was reverted because `fingerprint_population_aggregate` mixes count, births, deaths **and** material flow into one fingerprint while material flow is transitioned under a different property, so no single committed effect anchors the whole aggregate. A correct fix needs either a count-only fingerprint on the population-aggregate effect — a deliberate change to the effect payload and the digest — or a replay of the aggregate's effect chain.
+- **Bootstrap-time thermal cell energy is anchored by nothing.** `validate_thermal_aggregate_conservation` returns early while `batch_sequence == 0` and boundary records must be empty, so before the first batch there is no anchor beyond an event-kind check. Adding 1e6 joules to a cell is accepted, and the first conservation receipt after resume adopts the forged total as its baseline. The advanced-time equivalents are correctly rejected.
+- **Mana intensity, active-chunk relevance/level/mana, resolution entries, and reservoir schedules** are all accepted at forged values; only a `last_change` trace's *existence* is checked, never the value against the committed effect.
+- **`actor_objects` values** are unchecked, though positions are derived at promotion from the aggregate's chunk. Round seven closed coverage — every actor has an object — not the contents. This is the object every other actor's perception reads.
+- **Domain clocks roll back freely.** `mana.observed_through` and `resolution.evaluated_through` can both be set to zero on an advanced snapshot. Round seven closed `advanced_through`/`completed_time`; these per-field clocks are compared with neither.
+- **Material-surface transition histories can be cleared**, and **subjective cognition is unbound to its actor** — two actors' subjective snapshots can be swapped, or every `subjective_scene` set to `None`.
+- **Lower severity:** `next_actor_id` may be pushed arbitrarily high (round seven closed rollback only); aggregate `births`/`deaths`/`material_inflow` are forgeable; the observer counters are forgeable; `recipe.seed` may disagree with `config.deterministic.world_seed` because the field is never read; `RuntimeState::import_snapshot` does not check `recipe.system_registrations` while `Runtime::from_snapshot` does.
+
+Round eight closed two of this class inside the bootstrap plan's scope — `actor_action_bounds` contradicting `config.action_bounds`, and `ResolutionPolicy` overriding the compiled constant — because both are one comparison against something the snapshot already carries. The rest is a persistence-wide programme spanning geography, thermal, mana, resolution and cognition, and is opened here rather than absorbed round by round into a bootstrap-receipt plan.
+
 ## TODO-GEO-004: Coherent Surface Material Regions
 **Status:** Completed — see `plans/coherent-surface-material-regions.md`
 **Phase:** Detailed Development — Geography
@@ -1052,6 +1093,52 @@ and its integration tests exercise the production runtime path rather than fixtu
 This does not yet establish fixture elimination or production-bootstrap coverage for every runtime
 capability.
 
+**Delivered by `plans/production-bootstrap-receipt-closure.md` (2026-07-28):** All five
+acceptance criteria are backed by evidence for the six stages the runtime executes today. The status
+stays In Progress because the criteria are worded for *every* runtime capability, and this slice
+covers six stages.
+
+- *Production runtime/session code contains no fixture/demo constructors* — met. `fixture_actors`
+  and `fixture_sensors` are removed; no test needed them. A source audit
+  (`production_source_reaches_no_fixture_constructor`) scans every production `.rs` under `crates/`
+  and `apps/` with comments stripped, asserts it actually walked the tree, and was confirmed to fail
+  on an injected `fn demo_`. Its test-only allowlist is explicit and holds one entry, the name of a
+  `#[cfg(test)]` test in `runtime.rs`.
+- *Aggregate population conservation includes promoted actors* and *actor/body/object state has
+  bootstrap ancestry* — met at bootstrap. Import requires aggregates plus promoted actors to equal
+  the configured bootstrap population, and every promoted actor's ancestry to be a trace the
+  canonical actor-promotion receipt named. Both are scoped to a store that ends at the last stage
+  completion — decided by the store's shape, not by the `advanced_through` counter the snapshot
+  supplies — because from the first tick the population lifecycle legitimately moves those numbers,
+  so an equality afterwards would be false rather than protective. The weaker identity that does
+  survive advancement is asserted at every simulation time: living population equals the configured
+  bootstrap population plus births minus deaths.
+- *Reset, experiment, save/resume, and observer sessions use the same production recipe* — met.
+  Headless `Runtime::new`, a bare seed, a resumed snapshot, the observer session and its reset, and
+  the lab experiment runner all produce the same canonical record for the same configuration, and
+  resuming imports the record rather than re-bootstrapping on top of it.
+- *Tests prove fixtures remain test-only* — met vacuously, since no fixture constructor exists.
+- **Scope caveat, not an unmet criterion:** the criteria are worded for *every* runtime capability.
+  This slice covers the six stages the runtime executes today — terrain, material surface, population, actor promotion,
+  material activity, thermal — and nothing else. `TODO-DEPTH-001` and `TODO-HIST-001` are untouched
+  by this slice; `TODO-HIST-001` has been Completed since Phase 21 and nothing here reopens or
+  extends it.
+
+**Bounded measurement (envelope only, AMD Ryzen 9 7950X3D, `rustc 1.97.1`, release profile):** nine
+active chunks, bootstrap population 512, eight promoted actors, one sensor aperture each. Four
+warm-up repetitions, twenty measured repetitions per distribution, observer control and counterpart
+interleaved, every raw sample retained; medians and population standard deviations below are ranges
+across three consecutive runs. The four deterministic figures are stable: complete encoded snapshot envelope 177 071 bytes of
+which the bootstrap record is 1 676; 53 provenance events committed by bootstrap; observer
+runtime-summary payload 436 bytes. The wall-time figures are **not restated here** — they have gone
+stale in this file twice, once for the timings and once for the overhead, because each audit round
+re-measures and the copy is not propagated. They live in one place, the Bounded measurement section
+of `plans/production-bootstrap-receipt-closure.md`. The overhead is resolvable and reported there; earlier
+passes called it unresolvable, which was a property of sequential-block measurement rather than of
+the system. These are measurements of one machine at
+one envelope, not a scale result and not a regression threshold, and this machine is not reference
+hardware. See `docs/performance/benchmarks.md`.
+
 ## TODO-RUNTIME-002: The World Seed Does Not Vary the Simulation
 **Status:** Completed — see `plans/terrain-carrier-participation.md`
 **Phase:** Detailed Development — Runtime
@@ -1090,6 +1177,19 @@ coupling slice adds local gate deltas to the observer wire protocol with V2 prot
 cover the accepted vertical slices only; broader query, pagination, and overhead requirements remain
 open.
 
+**Delivered by `plans/production-bootstrap-receipt-closure.md` (2026-07-28):** the *bootstrap
+receipts* clause of the acceptance criteria only. The runtime summary now carries a bounded
+projection of the canonical bootstrap record — plan identity, world seed, stage count, validation
+status, configured population/promotion bounds, and at most six receipts with completion time,
+result fingerprint, completion trace, and dependency anchors. The wire fields are additive on the
+existing summary, so `OBSERVER_PROTOCOL_V1` is unchanged and a payload written before them still
+decodes, reporting schema version 0 for "no evidence in this payload". Both decoders bound the lists
+before growing them and reject non-canonical order. Causal event slices, typed domain time series,
+resolution transitions, pagination/capacity, and the observer-overhead measurement across all four
+load levels remain open. The one overhead figure taken here — the bootstrap-summary encoding cost, a few hundred nanoseconds
+per poll, measured in the Bounded measurement section of
+`plans/production-bootstrap-receipt-closure.md` — is reported, and covers one load level, not four.
+
 ## TODO-EXPLAIN-003: Domain-Aware Causal Explanation
 **Status:** In Progress
 **Phase:** Detailed Development — Explanation
@@ -1109,6 +1209,14 @@ insufficiency behavior, and trace-backed evidence for the actor/material/mana sl
 claims added in the mana-material-surface coupling slice provide additional typed values and causal
 attribution. These do not complete the domain-aware Explanation requirement for all future vertical
 slices.
+
+**Delivered by `plans/production-bootstrap-receipt-closure.md` (2026-07-28):** typed claim schemas 18
+and 19 for the canonical bootstrap record — stage completeness anchored to the receipts' completion
+traces, and the bounded canonical window they span. An incomplete or unevidenced record answers with
+the existing unknown state at zero confidence rather than erroring, which is the insufficiency
+behaviour the criteria ask for. Neither claim renders a process name, infers a purpose, or reports a
+fingerprint as a numeric value. Comparison frames, counterfactual context, and alternatives are not
+part of this slice and remain open.
 
 ## TODO-PERF-001: Benchmark Framework
 **Status:** Completed

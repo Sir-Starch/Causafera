@@ -10,6 +10,19 @@ pub const MATERIAL_SURFACE_DELTA_SCHEMA_V4: u32 = 4;
 pub const MAX_MATERIAL_SURFACE_DELTAS: usize = 64;
 pub const THERMAL_DELTA_SCHEMA_V1: u32 = 1;
 pub const MAX_THERMAL_DELTAS: usize = 64;
+/// Schema of the bounded bootstrap summary carried by the runtime summary.
+///
+/// Zero is not a version: it is what a payload written before the summary
+/// existed decodes to, and it means "no bootstrap evidence in this payload"
+/// rather than "an empty bootstrap record".
+pub const BOOTSTRAP_SUMMARY_SCHEMA_ABSENT: u32 = 0;
+pub const BOOTSTRAP_SUMMARY_SCHEMA_V1: u32 = 1;
+/// The current production bootstrap runs six stages, and the summary is capped
+/// there rather than at a generous round number: a payload claiming more is not
+/// a larger world, it is a record this build cannot have produced.
+pub const MAX_BOOTSTRAP_RECEIPT_SUMMARIES: usize = 6;
+/// One receipt names at most its declared dependency ancestry.
+pub const MAX_BOOTSTRAP_RECEIPT_DEPENDENCIES: usize = 8;
 
 /// The coarsest terrain detail level the projection offers.
 ///
@@ -119,8 +132,16 @@ pub struct ObserverFieldRaster {
 }
 
 impl ObserverFieldRaster {
-    pub fn cell_count(&self) -> usize {
-        (self.edge as usize) * (self.edge as usize) * (self.depth as usize)
+    /// The lattice's cell count, or `None` when the declared dimensions cannot
+    /// describe one.
+    ///
+    /// `edge` and `depth` arrive from the wire, so this multiplies attacker-
+    /// chosen values: unchecked it panics in debug and wraps silently in
+    /// release, on a decode path that has not yet applied any bound.
+    pub fn cell_count(&self) -> Option<usize> {
+        (self.edge as usize)
+            .checked_mul(self.edge as usize)?
+            .checked_mul(self.depth as usize)
     }
 }
 
@@ -225,6 +246,41 @@ pub struct ObserverSnapshot {
     pub thermal_total_reservoir_budget: i128,
     pub thermal_active_chunk_count: u32,
     pub thermal_active_cell_count: u32,
+    pub bootstrap: ObserverBootstrapSummary,
+}
+
+/// The bounded, read-only projection of the canonical production bootstrap
+/// record.
+///
+/// It carries equality and trace anchors an observer needs to inspect that the
+/// initial state was causally initialized, and nothing else: no runtime handles,
+/// no authoritative actor or place identity, no stage targets, and no rendered
+/// process names. `schema_version == BOOTSTRAP_SUMMARY_SCHEMA_ABSENT` means the
+/// payload carried no bootstrap evidence at all.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ObserverBootstrapSummary {
+    pub schema_version: u32,
+    /// Opaque content-addressed plan identity. An equality identity for replay
+    /// inspection, never an ordering or a distance.
+    pub plan_id: u64,
+    pub world_seed: u64,
+    pub stage_count: u32,
+    /// Whether the record passed canonical validation at construction or import.
+    pub complete: bool,
+    /// The configured bounds the record's stage parameters were derived from,
+    /// not live counts.
+    pub configured_population: u64,
+    pub configured_promotion_limit: u32,
+    pub receipts: Vec<ObserverBootstrapReceipt>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ObserverBootstrapReceipt {
+    pub stage: u64,
+    pub completed_at: SimulationTime,
+    pub result: [u8; 32],
+    pub completion_trace: TraceId,
+    pub dependency_traces: Vec<TraceId>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

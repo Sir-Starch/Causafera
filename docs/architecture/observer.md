@@ -96,6 +96,30 @@ references. Its current views are a bounded objective chunk projection, aggregat
 numeric timeline, chunk inspector, digest identity, and typed experiment Explanation IR. Session
 buttons only select a seed and bounded scheduler progression; they do not mutate world content.
 
+## Bounded bootstrap read model
+
+The runtime summary carries a bounded projection of the canonical production bootstrap record:
+the opaque plan ID, world seed, stage count, validation status, the configured population and
+promotion bounds, and at most six receipts — each with its stage, completion time, result
+fingerprint, completion trace, and dependency trace anchors.
+
+It is a read model in the strict sense. It carries no runtime handle, no authoritative actor or
+place identity, no stage targets, and no rendered process name; the opaque process schema IDs are
+deliberately absent from it, because a reader that could see them would be one step from naming
+them. Observer polling cadence, locale, and query order do not alter authoritative state or digests.
+
+The wire fields are additive — 28 onwards on the existing runtime summary — so `OBSERVER_PROTOCOL_V1`
+is unchanged and fields 1..=27 keep the meaning they had. A payload written before the summary
+existed decodes with schema version 0, which means "no bootstrap evidence in this payload" rather
+than "an empty record". Both the Rust and TypeScript decoders bound the receipt and dependency lists
+before growing them and reject a non-canonical order.
+
+Explanation exposes two typed claims: schema 18 reports how many stages the plan declares against
+how many receipts closed them, anchored to the completion traces; schema 19 reports the bounded
+canonical window they span. An incomplete or unevidenced record answers with the existing unknown
+state at zero confidence rather than erroring. Neither claim reports a fingerprint as a numeric
+value — a fingerprint is an equality identity, not a magnitude.
+
 ## Detailed Development cadence
 
 Observer development follows simulation and Explanation evidence needs. The immediate priority is

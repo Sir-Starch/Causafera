@@ -1,5 +1,3 @@
-use std::collections::BTreeMap;
-
 use causafera_cognition::{
     AppearanceSignature, AttentionConfig, AttentionState, AttentionWeight, BodySchema,
     BodySchemaPart, BodySchemaSnapshot, CognitiveWeight, SceneContinuitySnapshot,
@@ -13,7 +11,7 @@ use causafera_types::{
 };
 use thiserror::Error;
 
-use super::{ACTOR_BASE_ENERGY, ActionKindId, ActorId, SensorKindId};
+use super::{ActionKindId, SensorKindId};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct MinimalBodyState {
@@ -310,28 +308,11 @@ impl ActorPhysicalObject {
     }
 }
 
-pub fn fixture_actors(
-    config: ActorRuntimeConfig,
-) -> Result<BTreeMap<ActorId, ActorState>, ActorInitError> {
-    let mut actors = BTreeMap::new();
-    for index in 0..config.actor_count {
-        let actor = ActorId::new(u64::from(index) + 1);
-        actors.insert(
-            actor,
-            ActorState::new(
-                MinimalBodyState::stationary(
-                    WorldCoord::new(0, i64::from(index), 0),
-                    ACTOR_BASE_ENERGY,
-                ),
-                fixture_sensors(config.sensor_count),
-            )?,
-        );
-    }
-    Ok(actors)
-}
-
-pub fn fixture_sensors(sensor_count: u8) -> Vec<SensorAperture> {
-    (0..sensor_count)
-        .map(|index| SensorAperture::new(LocalCoord::new(index, 0, 0), 8, SensorKindId::new(1)))
-        .collect()
-}
+// `fixture_actors` and `fixture_sensors` were removed here. They constructed
+// authored stationary bodies at `(0, index, 0)` with fixture sensor apertures —
+// actors that exist without having been promoted from a population aggregate,
+// with no causal ancestry. No production caller and no test required them, which
+// `production_source_reaches_no_fixture_constructor` in
+// `tests/historical_bootstrap.rs` now keeps true mechanically. Production actors
+// come from `promote_actor_from_aggregate`, whose ancestry the canonical
+// actor-promotion receipt names.

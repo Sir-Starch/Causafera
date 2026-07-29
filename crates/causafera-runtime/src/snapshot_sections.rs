@@ -1,5 +1,7 @@
 use causafera_core::phases::Phase;
-use causafera_core::provenance::{CausalEffect, CausalEventSnapshot, CausalTraceSnapshot};
+use causafera_core::provenance::{
+    CausalEffect, CausalEventSnapshot, CausalTraceSnapshot, StateFingerprint,
+};
 use causafera_domains::{ManaFieldSetSnapshot, ManaFieldSnapshot};
 use causafera_persistence::{
     FORMAT_MAJOR_V1, FORMAT_MINOR_V1, LittleEndianDecoder, LittleEndianEncoder, PersistenceError,
@@ -9,29 +11,32 @@ use causafera_resolution::{
     ChannelWeight, ResolutionEntry, ResolutionFieldSnapshot, ResolutionPolicySnapshot,
 };
 use causafera_types::{
-    AngularVelocity, AttentionTargetId, CHUNK_SIZE, ChartChunkCoord, ChunkCoord, Direction3D,
-    EventId, EventKindId, FeatureRelation, FeatureValue, LocalCoord, ManaFieldId,
-    PerceivedObjectId, PerceptId, PhysicalPatternId, ResolutionChannelId, ResolutionFieldId,
-    SelfAssociationId, SimulationTime, SpatialChartId, StateObjectKindId, StatePropertyId,
-    SubjectiveBodyPartId, ThermalEnergy, TraceId, Velocity, WorldCoord,
+    AngularVelocity, AttentionTargetId, CHUNK_SIZE, ChartChunkCoord, ChunkCoord, ChunkId,
+    Direction3D, EventId, EventKindId, FeatureRelation, FeatureValue, HistoricalBootstrapId,
+    HistoricalProcessSchemaId, HistoricalStageId, LocalCoord, ManaFieldId, PerceivedObjectId,
+    PerceptId, PhysicalPatternId, ResolutionChannelId, ResolutionFieldId, SelfAssociationId,
+    SimulationTime, SpatialChartId, StateObjectKindId, StatePropertyId, SubjectiveBodyPartId,
+    ThermalEnergy, TraceId, Velocity, WorldCoord,
 };
 
 use crate::{
-    ActionKindId, ActionProposal, ActionRejection, ActionValidationResult, ActiveChunkSnapshot,
-    ActorId, ActorObjectiveSnapshot, ActorObjectiveStateSnapshot, ActorPhysicalObject,
-    ActorSubjectiveSnapshot, ActorSubjectiveStateSnapshot, BootstrapReceiptRecord,
-    BootstrapReceiptSnapshot, CarrierAdapterConfig, ExperimentManifestSnapshot,
-    ExperimentRecipeManaSource, ExperimentRecipeManaSourceReceiptSnapshot,
-    ExperimentRecipeManaSourceRecipe, GenericFeature, MAX_EXPERIMENT_RECIPE_MANA_SOURCES,
-    MAX_MATERIAL_SURFACE_TRANSITIONS, MaterialSurface, MaterialSurfaceGateTransition,
-    MaterialSurfaceId, MaterialSurfaceManaGate, MaterialSurfaceRecordSnapshot,
-    MaterialSurfaceSnapshot, MaterialSurfaceThermalState, MaterialSurfaceThermalTransition,
-    MaterialSurfaceTransition, MinimalBodyState, PatternHistorySnapshot, PerceivedSelf,
-    PhysicalCountersSnapshot, PopulationAggregate, PopulationAggregateSnapshot, RuntimeConfig,
-    RuntimeRecipeSnapshot, RuntimeSnapshotData, RuntimeState, SensorAperture, SensorKindId,
-    SpatialChunkSnapshot, SubjectiveSceneSnapshot, SubjectiveTarget, SystemRegistrationSnapshot,
-    TerrainCarrierSnapshot, TerrainParticipation, ThermalActiveRegionSnapshot,
-    ThermalBoundaryRecordSnapshot, ThermalCellTransferReceiptSnapshot,
+    ActionKindId, ActionProposal, ActionRejection, ActionValidationResult, ActiveChunkShape,
+    ActiveChunkSnapshot, ActorId, ActorObjectiveSnapshot, ActorObjectiveStateSnapshot,
+    ActorPhysicalObject, ActorSubjectiveSnapshot, ActorSubjectiveStateSnapshot,
+    BootstrapPlanSnapshot, BootstrapReceiptRecord, BootstrapReceiptSnapshot,
+    BootstrapStageResultSnapshot, BootstrapStageSnapshot, CarrierAdapterConfig,
+    ExperimentManifestSnapshot, ExperimentRecipeManaSource,
+    ExperimentRecipeManaSourceReceiptSnapshot, ExperimentRecipeManaSourceRecipe, GenericFeature,
+    MAX_EXPERIMENT_RECIPE_MANA_SOURCES, MAX_HISTORICAL_STAGES, MAX_MATERIAL_SURFACE_TRANSITIONS,
+    MAX_STAGE_DEPENDENCIES, MAX_STAGE_EXTERNAL_CAUSES, MAX_STAGE_TARGETS, MaterialSurface,
+    MaterialSurfaceGateTransition, MaterialSurfaceId, MaterialSurfaceManaGate,
+    MaterialSurfaceRecordSnapshot, MaterialSurfaceSnapshot, MaterialSurfaceThermalState,
+    MaterialSurfaceThermalTransition, MaterialSurfaceTransition, MinimalBodyState,
+    PatternHistorySnapshot, PerceivedSelf, PhysicalCountersSnapshot, PopulationAggregate,
+    PopulationAggregateSnapshot, RuntimeConfig, RuntimeRecipeSnapshot, RuntimeSnapshotData,
+    RuntimeState, SensorAperture, SensorKindId, SpatialChunkSnapshot, SubjectiveSceneSnapshot,
+    SubjectiveTarget, SystemRegistrationSnapshot, TerrainCarrierSnapshot, TerrainParticipation,
+    ThermalActiveRegionSnapshot, ThermalBoundaryRecordSnapshot, ThermalCellTransferReceiptSnapshot,
     ThermalConservationReceiptSnapshot, ThermalFaceRecordSnapshot, ThermalFieldSetSnapshot,
     ThermalFieldSnapshot, ThermalMaterialTransferRecordSnapshot, ThermalReservoirScheduleSnapshot,
     ThermalReservoirSnapshot, ThermalReservoirTransferRecordSnapshot, ThermalSnapshot,
@@ -54,7 +59,14 @@ pub const THERMAL_SECTION_ID: u16 = 0x000E;
 
 /// Bumped to 5 when `RuntimeConfig` gained `terrain_participation`, which
 /// changes how the world evolves and so cannot be defaulted on read.
-const RUNTIME_RECIPE_SECTION_MAJOR: u16 = 5;
+///
+/// Bumped to 6 when `active_chunk_shape` started being written. It never was,
+/// so an `Area` chart resumed as a `Line` chart: the state sections restored all
+/// nine chunks while the restored configuration described three, and nothing
+/// compared the two. The canonical bootstrap plan is derived from the active
+/// chunk set, so this is now load-bearing rather than cosmetic — a resumed
+/// snapshot would otherwise reconstruct a different plan than it was saved with.
+const RUNTIME_RECIPE_SECTION_MAJOR: u16 = 6;
 const MANA_SECTION_MAJOR: u16 = 2;
 const PHYSICAL_COUNTERS_SECTION_MAJOR: u16 = 3;
 /// Bumped to 3 when `MaterialSurface` gained `thermal` (conserved retained-heat exchange,
@@ -65,6 +77,11 @@ pub const EXPERIMENT_RECIPE_MANA_SOURCE_RECEIPTS_SECTION_MAJOR: u16 = 1;
 /// `material_thermal_capacity` and cell receipts/conservation receipts gained the material term
 /// (`TODO-THERMAL-002`).
 pub const THERMAL_SECTION_MAJOR: u16 = 2;
+/// Bumped to 2 when the bootstrap payload changed from two fields per receipt to
+/// the complete canonical plan, per-stage result state, and terminal receipts.
+/// Major 1 carried no plan and no result, so it cannot be read forward: it fails
+/// closed rather than defaulting an empty record into production state.
+pub const POPULATION_BOOTSTRAP_SECTION_MAJOR: u16 = 2;
 const CURRENT_SECTION_MINOR: u16 = 0;
 const MAX_THERMAL_BOUNDARY_RECORDS: usize = 1_000_000;
 
@@ -1192,12 +1209,151 @@ pub fn encode_population_section(
             enc.write_u64(actor.raw());
         }
     }
+    encode_bootstrap_record(&mut enc, bootstrap);
+    buf
+}
+
+/// Encode the canonical bootstrap plan, stage results, and receipts.
+///
+/// Everything is written in the canonical sorted order the runtime holds it in,
+/// so the same seed and recipe produce the same bytes; the decoder re-validates
+/// that order rather than trusting it.
+fn encode_bootstrap_record(
+    enc: &mut LittleEndianEncoder<'_>,
+    bootstrap: &BootstrapReceiptSnapshot,
+) {
+    enc.write_u64(bootstrap.plan.id.raw());
+    enc.write_u64(bootstrap.plan.world_seed);
+    enc.write_u64(bootstrap.plan.stages.len() as u64);
+    for stage in &bootstrap.plan.stages {
+        enc.write_u64(stage.stage.raw());
+        enc.write_u64(stage.process.raw());
+        enc.write_u64(stage.starts_at.raw());
+        enc.write_u64(stage.ends_at.raw());
+        enc.write_u16(u16::from(stage.detail_ordinal));
+        enc.write_u64(stage.targets.len() as u64);
+        for target in &stage.targets {
+            enc.write_u64(target.raw());
+        }
+        enc.write_u64(stage.dependencies.len() as u64);
+        for dependency in &stage.dependencies {
+            enc.write_u64(dependency.raw());
+        }
+        enc.write_u64(stage.external_causes.len() as u64);
+        for cause in &stage.external_causes {
+            enc.write_u64(cause.raw());
+        }
+        enc.write_fixed(&stage.parameters.bytes());
+    }
+    enc.write_u64(bootstrap.stage_results.len() as u64);
+    for entry in &bootstrap.stage_results {
+        enc.write_u64(entry.stage.raw());
+        enc.write_fixed(&entry.result.bytes());
+    }
     enc.write_u64(bootstrap.receipts.len() as u64);
     for receipt in &bootstrap.receipts {
         enc.write_u64(receipt.stage.raw());
+        enc.write_u64(receipt.completed_at.raw());
+        enc.write_fixed(&receipt.result.bytes());
         enc.write_u64(receipt.trace.raw());
+        enc.write_u64(receipt.causes.len() as u64);
+        for cause in &receipt.causes {
+            enc.write_u64(cause.raw());
+        }
     }
-    buf
+}
+
+fn decode_bootstrap_record(
+    dec: &mut LittleEndianDecoder<'_>,
+) -> Result<BootstrapReceiptSnapshot, PersistenceError> {
+    let id = HistoricalBootstrapId::new(dec.read_u64()?);
+    let world_seed = dec.read_u64()?;
+    let stage_count = read_count(dec, MAX_HISTORICAL_STAGES, "bootstrap stage")?;
+    let mut stages = Vec::with_capacity(stage_count);
+    for _ in 0..stage_count {
+        let stage = HistoricalStageId::new(dec.read_u64()?);
+        let process = HistoricalProcessSchemaId::new(dec.read_u64()?);
+        let starts_at = SimulationTime::new(dec.read_u64()?);
+        let ends_at = SimulationTime::new(dec.read_u64()?);
+        let detail_ordinal = u8::try_from(dec.read_u16()?)
+            .map_err(|_| PersistenceError::codec("bootstrap stage detail ordinal out of range"))?;
+        let target_count = read_count(dec, MAX_STAGE_TARGETS, "bootstrap stage target")?;
+        let mut targets = Vec::with_capacity(target_count);
+        for _ in 0..target_count {
+            targets.push(ChunkId::new(dec.read_u64()?));
+        }
+        reject_unsorted_ids(targets.iter().map(|target| target.raw()))?;
+        let dependency_count =
+            read_count(dec, MAX_STAGE_DEPENDENCIES, "bootstrap stage dependency")?;
+        let mut dependencies = Vec::with_capacity(dependency_count);
+        for _ in 0..dependency_count {
+            dependencies.push(HistoricalStageId::new(dec.read_u64()?));
+        }
+        reject_unsorted_ids(dependencies.iter().map(|dependency| dependency.raw()))?;
+        let external_count =
+            read_count(dec, MAX_STAGE_EXTERNAL_CAUSES, "bootstrap external cause")?;
+        let mut external_causes = Vec::with_capacity(external_count);
+        for _ in 0..external_count {
+            external_causes.push(TraceId::new(dec.read_u64()?));
+        }
+        reject_unsorted_ids(external_causes.iter().map(|cause| cause.raw()))?;
+        stages.push(BootstrapStageSnapshot {
+            stage,
+            process,
+            starts_at,
+            ends_at,
+            detail_ordinal,
+            targets,
+            dependencies,
+            external_causes,
+            parameters: StateFingerprint::new(*dec.read_fixed::<32>()?),
+        });
+    }
+    reject_unsorted_ids(stages.iter().map(|stage| stage.stage.raw()))?;
+    let result_count = read_count(dec, MAX_HISTORICAL_STAGES, "bootstrap stage result")?;
+    let mut stage_results = Vec::with_capacity(result_count);
+    for _ in 0..result_count {
+        stage_results.push(BootstrapStageResultSnapshot {
+            stage: HistoricalStageId::new(dec.read_u64()?),
+            result: StateFingerprint::new(*dec.read_fixed::<32>()?),
+        });
+    }
+    reject_unsorted_ids(stage_results.iter().map(|entry| entry.stage.raw()))?;
+    let receipt_count = read_count(dec, MAX_HISTORICAL_STAGES, "bootstrap receipt")?;
+    let mut receipts = Vec::with_capacity(receipt_count);
+    for _ in 0..receipt_count {
+        let stage = HistoricalStageId::new(dec.read_u64()?);
+        let completed_at = SimulationTime::new(dec.read_u64()?);
+        let result = StateFingerprint::new(*dec.read_fixed::<32>()?);
+        let trace = TraceId::new(dec.read_u64()?);
+        let cause_count = read_count(
+            dec,
+            MAX_STAGE_EXTERNAL_CAUSES + MAX_STAGE_DEPENDENCIES,
+            "bootstrap receipt cause",
+        )?;
+        let mut causes = Vec::with_capacity(cause_count);
+        for _ in 0..cause_count {
+            causes.push(TraceId::new(dec.read_u64()?));
+        }
+        reject_unsorted_ids(causes.iter().map(|cause| cause.raw()))?;
+        receipts.push(BootstrapReceiptRecord {
+            stage,
+            completed_at,
+            result,
+            trace,
+            causes,
+        });
+    }
+    reject_unsorted_ids(receipts.iter().map(|receipt| receipt.stage.raw()))?;
+    Ok(BootstrapReceiptSnapshot {
+        plan: BootstrapPlanSnapshot {
+            id,
+            world_seed,
+            stages,
+        },
+        stage_results,
+        receipts,
+    })
 }
 
 pub fn decode_population_section(
@@ -1222,21 +1378,14 @@ pub fn decode_population_section(
         aggregate_actor_pool.push((chunk, actors));
     }
     reject_unsorted_chunks(aggregate_actor_pool.iter().map(|(chunk, _)| *chunk))?;
-    let receipt_count = read_count(&mut dec, 4_096, "bootstrap receipt")?;
-    let mut receipts = Vec::with_capacity(receipt_count);
-    for _ in 0..receipt_count {
-        receipts.push(BootstrapReceiptRecord {
-            stage: causafera_types::HistoricalStageId::new(dec.read_u64()?),
-            trace: TraceId::new(dec.read_u64()?),
-        });
-    }
+    let bootstrap = decode_bootstrap_record(&mut dec)?;
     require_empty(&dec)?;
     Ok((
         PopulationAggregateSnapshot {
             aggregates,
             aggregate_actor_pool,
         },
-        BootstrapReceiptSnapshot { receipts },
+        bootstrap,
     ))
 }
 
@@ -1302,6 +1451,10 @@ fn encode_runtime_config(enc: &mut LittleEndianEncoder<'_>, config: &RuntimeConf
     enc.write_u64(config.deterministic.world_seed);
     enc.write_u8(config.chunk_extent);
     enc.write_u8(config.active_chunk_radius);
+    enc.write_u8(match config.active_chunk_shape {
+        ActiveChunkShape::Line => 1,
+        ActiveChunkShape::Area => 2,
+    });
     enc.write_u64(config.chart_id.raw());
     enc.write_u64(config.pattern_schedule.interval_ticks);
     enc.write_u32(config.pattern_schedule.magnitude);
@@ -1354,6 +1507,15 @@ fn decode_runtime_config(
     let mut config = RuntimeConfig::new(dec.read_u64()?);
     config.chunk_extent = dec.read_u8()?;
     config.active_chunk_radius = dec.read_u8()?;
+    config.active_chunk_shape = match dec.read_u8()? {
+        1 => ActiveChunkShape::Line,
+        2 => ActiveChunkShape::Area,
+        other => {
+            return Err(PersistenceError::codec(format!(
+                "unknown active chunk shape {other}"
+            )));
+        }
+    };
     config.chart_id = SpatialChartId::new(dec.read_u64()?);
     config.pattern_schedule.interval_ticks = dec.read_u64()?;
     config.pattern_schedule.magnitude = dec.read_u32()?;
@@ -2740,8 +2902,8 @@ pub fn assemble_envelope(data: &RuntimeSnapshotData) -> Result<SnapshotEnvelope,
     sections.insert(
         u64::from(SECTION_POPULATION_BOOTSTRAP),
         SectionPayload {
-            section_major: 1,
-            section_minor: 0,
+            section_major: POPULATION_BOOTSTRAP_SECTION_MAJOR,
+            section_minor: CURRENT_SECTION_MINOR,
             flags: 0,
             decoded_size_limit: 0,
             bytes: encode_population_section(&data.population, &data.bootstrap),
@@ -2915,14 +3077,13 @@ pub fn disassemble_envelope(
             .as_slice(),
     )?;
     let (population, bootstrap) = decode_population_section(
-        envelope
-            .sections
-            .get(&u64::from(SECTION_POPULATION_BOOTSTRAP))
-            .ok_or(PersistenceError::MissingRequiredSection {
-                schema_id: u64::from(SECTION_POPULATION_BOOTSTRAP),
-            })?
-            .bytes
-            .as_slice(),
+        required_section(
+            envelope,
+            SECTION_POPULATION_BOOTSTRAP,
+            POPULATION_BOOTSTRAP_SECTION_MAJOR,
+        )?
+        .bytes
+        .as_slice(),
     )?;
     let traces = decode_trace_section(
         envelope
@@ -3245,7 +3406,7 @@ mod tests {
     #[test]
     fn runtime_recipe_section_rejects_every_major_but_the_current_one() {
         // Given: a complete current snapshot envelope, whose recipe section is
-        // V5 since `terrain_participation` joined the configuration.
+        // V6 since `active_chunk_shape` started being written.
         let data = populated_snapshot_data();
         let envelope = assemble_envelope(&data).expect("snapshot envelope must assemble");
         assert_eq!(
@@ -3257,7 +3418,7 @@ mod tests {
         // because it is the one a real older snapshot carries: it has every
         // field of V5 except the participation contract, so accepting it would
         // mean resuming a world with a silently defaulted one.
-        for major in [2, 3, 4, RUNTIME_RECIPE_SECTION_MAJOR + 1] {
+        for major in [2, 3, 4, 5, RUNTIME_RECIPE_SECTION_MAJOR + 1] {
             let mut altered = envelope.clone();
             altered
                 .sections
@@ -3291,7 +3452,7 @@ mod tests {
             .sections
             .get_mut(&u64::from(SECTION_RUNTIME_RECIPE))
             .unwrap()
-            .section_major = 6;
+            .section_major = 7;
         let mut incompatible_material = envelope.clone();
         incompatible_material
             .sections
@@ -3302,7 +3463,7 @@ mod tests {
         // Then: current layout versions are explicit and incompatible authoritative bytes stop.
         assert_eq!(
             envelope.sections[&u64::from(SECTION_RUNTIME_RECIPE)].section_major,
-            5
+            6
         );
         assert_eq!(
             envelope.sections[&u64::from(SECTION_PHYSICAL_COUNTERS)].section_major,
