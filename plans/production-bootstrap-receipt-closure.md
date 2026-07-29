@@ -701,7 +701,11 @@ The implementation worker updates only documents whose facts change:
   worst — receipts arriving without field 28 were parsed and then dropped. They are now one atomic
   optional group in both Rust and TypeScript: all of it, or none of it and the explicit absent
   schema. The two decoders are kept rule-identical deliberately; two decoders of one wire contract
-  that disagree on validity are worse than one.
+  that disagree on validity are worse than one. That claim is bounded to the runtime summary and its
+  bootstrap group, which a later parity audit verified across 900 mutation vectors with zero
+  divergences. The six other shared decoders are **not** in parity, on pre-existing root causes
+  outside this plan's surface; they are recorded with the audit's evidence as `TODO-OBS-003` rather
+  than fixed here.
 
 - **2026-07-28 (second audit):** A re-audit of `cf3f018` confirmed the first two fixes and found
   three more, all real.
