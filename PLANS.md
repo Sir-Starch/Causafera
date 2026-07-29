@@ -86,7 +86,10 @@ Progress
 
 This section lists only accepted or in-progress work with genuinely unfinished implementation stages, acceptance criteria, or close-out work.
 
-- No canonical ExecPlans are currently active. For current project priorities, use the [roadmap](docs/roadmap/roadmap.md), [maturity matrix](docs/ontology/domain-coverage-matrix.md), and [TODO backlog](docs/development/todo-backlog.md).
+- [`plans/hydrology.md`](plans/hydrology.md) — Accepted conserved multi-resolution hydrology:
+  explicit grid metrics and forcing, fixed-point surface/soil/groundwater/conveyance storage,
+  deterministic terrain-aware routing, exact conservation/provenance, persistence, resolution, and
+  bounded observer/Explanation inspection. Implementation has not started.
 
 ## Blocked and Paused Work
 
