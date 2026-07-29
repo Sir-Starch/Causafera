@@ -558,6 +558,7 @@ dependencies = [
 name = "causafera-runtime"
 version = "0.1.0"
 dependencies = [
+ "blake3",
  "causafera-analytics",
  "causafera-biology",
  "causafera-cognition",

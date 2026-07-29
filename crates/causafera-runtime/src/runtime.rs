@@ -121,6 +121,21 @@ const EXPERIMENT_DIGEST_DOMAIN: u64 = 0x4558_5045_5249_4D45;
 pub struct Runtime {
     pub(crate) scheduler: Scheduler,
     pub(crate) state: Arc<Mutex<RuntimeState>>,
+    scheduler_registrations: Vec<SchedulerRegistration>,
+}
+
+/// One system's phase and the stream-keying ID the scheduler actually assigned it.
+///
+/// `runtime_system_registrations` *declares* the same order, but a declaration
+/// cannot catch a registration inserted ahead of the systems it numbers: the
+/// declared list and the live scheduler would simply disagree in silence. Every
+/// system's deterministic RNG stream is keyed on the ID recorded here, so this
+/// is the observed artifact `plans/hydrology.md` R7 protects, captured from
+/// `Scheduler::register_system`'s own return value rather than restated.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct SchedulerRegistration {
+    pub phase: Phase,
+    pub system_id: u64,
 }
 
 impl Runtime {
@@ -128,60 +143,88 @@ impl Runtime {
         let config = config.validate()?;
         let state = Arc::new(Mutex::new(RuntimeState::new(&config)?));
         let mut scheduler = Scheduler::new(config.deterministic.clone());
-        scheduler.register_system(
+        let mut scheduler_registrations = Vec::new();
+        let mut register = |scheduler: &mut Scheduler, phase, system| {
+            scheduler_registrations.push(SchedulerRegistration {
+                phase,
+                system_id: scheduler.register_system(phase, system),
+            });
+        };
+        register(
+            &mut scheduler,
             Phase::Physics,
             Box::new(PhysicalPatternSystem::new(
                 Arc::clone(&state),
                 config.pattern_schedule,
             )),
         );
-        scheduler.register_system(
+        register(
+            &mut scheduler,
             Phase::Mana,
             Box::new(ExperimentRecipeManaSourceSystem::new(Arc::clone(&state))),
         );
-        scheduler.register_system(
+        register(
+            &mut scheduler,
             Phase::Mana,
             Box::new(ManaRuntimeSystem::new(
                 Arc::clone(&state),
                 config.mana_parameters,
             )),
         );
-        scheduler.register_system(
+        register(
+            &mut scheduler,
             Phase::Mana,
             Box::new(ManaEffectsSystem::new(
                 Arc::clone(&state),
                 config.mana_parameters,
             )),
         );
-        scheduler.register_system(
+        register(
+            &mut scheduler,
             Phase::Resolution,
             Box::new(ResolutionRuntimeSystem::new(Arc::clone(&state))),
         );
-        scheduler.register_system(
+        register(
+            &mut scheduler,
             Phase::Perception,
             Box::new(ActorPerceptionSystem::new(Arc::clone(&state))),
         );
-        scheduler.register_system(
+        register(
+            &mut scheduler,
             Phase::Cognition,
             Box::new(ActorCognitionSystem::new(Arc::clone(&state))),
         );
-        scheduler.register_system(
+        register(
+            &mut scheduler,
             Phase::Action,
             Box::new(ActorActionSystem::new(Arc::clone(&state))),
         );
-        scheduler.register_system(
+        register(
+            &mut scheduler,
             Phase::Lifecycle,
             Box::new(PopulationLifecycleSystem::new(Arc::clone(&state))),
         );
-        scheduler.register_system(
+        register(
+            &mut scheduler,
             Phase::Physics,
             Box::new(ThermalReservoirSystem::new(Arc::clone(&state))),
         );
-        scheduler.register_system(
+        register(
+            &mut scheduler,
             Phase::Physics,
             Box::new(ThermalEvolutionSystem::new(Arc::clone(&state))),
         );
-        Ok(Self { scheduler, state })
+        Ok(Self {
+            scheduler,
+            state,
+            scheduler_registrations,
+        })
+    }
+
+    /// The phase and stream-keying ID the scheduler assigned each system, in
+    /// registration order. Read-only evidence; nothing consumes it to execute.
+    pub fn scheduler_registrations(&self) -> &[SchedulerRegistration] {
+        &self.scheduler_registrations
     }
 
     pub fn from_seed(world_seed: u64) -> Result<Self, RuntimeError> {

@@ -89,7 +89,9 @@ This section lists only accepted or in-progress work with genuinely unfinished i
 - [`plans/hydrology.md`](plans/hydrology.md) — Accepted conserved multi-resolution hydrology:
   explicit grid metrics and forcing, fixed-point surface/soil/groundwater/conveyance storage,
   deterministic terrain-aware routing, exact conservation/provenance, persistence, resolution, and
-  bounded observer/Explanation inspection. Implementation has not started.
+  bounded observer/Explanation inspection. Implementation is in progress on
+  `feat/conserved-hydrology`; Stage 1 (contract freeze and pre-hydrology legacy evidence) is
+  complete and checkpointed. `TODO-HYDRO-001` is open; `docs/rfc/RFC-HYDRO-001.md` is Accepted.
 
 ## Blocked and Paused Work
 

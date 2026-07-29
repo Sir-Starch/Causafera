@@ -28,3 +28,7 @@ causafera-observer-wire = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]
+# Test-only. `plans/hydrology.md` Stage 1 pins pre-hydrology section payloads by
+# digest rather than by literal bytes; `causafera-persistence` keeps its own
+# `compute_integrity` private.
+blake3 = "1"

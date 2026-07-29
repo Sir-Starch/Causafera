@@ -2269,6 +2269,42 @@ its own evidence-backed follow-up TODO rather than being hidden in Progress.
   terminal nodes share one persisted counter with a fixed allocation order; Kahn ready-key order,
   exact targets, length-delimited fingerprints, and duplicate terminal membership handling make the
   committed DAG independent of proposal insertion order.
+- **2026-07-29 — Stage 1: every reserved identifier verified unused at the target commit.** As
+  Section 8 requires, all thirty allocations were checked against `29fdf4d`. Live values are system
+  IDs 10–12, 19–21, 30, 42, 60–61; event kinds 1, 3, 4, 6–15, 17, 28–34; object kinds 1–13; and
+  properties 1–4, 6–13, 20–24. Hydrology's system ID 13, event kinds 35–44, object kinds 14–19, and
+  properties 25–40 are all free. Section IDs stop at `0x000E`, `RUNTIME_RECIPE_SECTION_MAJOR` is 6,
+  `CURRENT_DIGEST_SCHEMA_VERSION` is 7, and `MAX_TOTAL_SIZE` is 256 MiB, exactly as the plan's
+  Current state records. No renumbering was needed.
+- **2026-07-29 — Stage 1 deviation: no existing system consumes an RNG stream, so the fixture pins
+  stream *keys* instead.** Stage 1's work list asks the legacy fixture to assert that at least one
+  existing system consumes an RNG stream. Measured at `29fdf4d`, none does: all eleven `System::run`
+  implementations in `causafera-runtime` bind the parameter as `_stream`. Writing that assertion
+  would have made it pass vacuously or not at all. What R7 actually threatens is the stream *key* —
+  a registration inserted anywhere but last renumbers every later system, and
+  `StreamKey { world_seed, time, phase, system_id }` seeds each stream — so
+  `hydrology_legacy_compatibility.rs` pins the assigned IDs and the samples those IDs key, and
+  proves the pinning is sensitive by showing a one-step ID shift changes every sample. The other
+  half of the non-vacuity requirement, that at least one tick changes physical and history state, is
+  asserted unchanged. The plan's Stage 6 legacy expectations are unaffected: appending hydrology
+  last must still leave IDs 0–10 and their sample table identical.
+- **2026-07-29 — Stage 1 deviation: registration IDs are observed, not declared.**
+  `runtime_system_registrations()` declares the phase and order of each system, and snapshot import
+  compares against it, but the declaration would move together with an inserted registration and so
+  cannot detect one. `Runtime` now records `Scheduler::register_system`'s own return values in a
+  read-only `scheduler_registrations()` manifest, and the Stage 1 fixture asserts that the live
+  scheduler, the persisted recipe manifest, and the captured baseline all agree. This touches
+  `crates/causafera-runtime/src/runtime.rs`, which is on Stage 6's allowlist rather than Stage 1's;
+  it was moved forward because Section 10's rule that "hard-coded constants or comments alone do not
+  satisfy this gate" cannot otherwise be met. Nothing consumes the manifest to execute.
+- **2026-07-29 — Stage 1: the frozen decoder oracle is a compiled artefact with a pinned digest.**
+  `tools/audit/fixtures/observer-protocol-v1-pre-hydrology.mjs` is the `tsc` emission of
+  `packages/observer-protocol/src/index.ts` at source SHA-256
+  `79c351d9…0322fa76`, commit `29fdf4d`. Transcribing it by hand was rejected: a paraphrased oracle
+  proves compatibility with the paraphrase. Its own SHA-256 is pinned in the Stage 1 audit test, so
+  an edit is a failure rather than a silent re-freeze, and the test additionally proves at freeze
+  time that the frozen copy and the live decoder agree field-for-field on real payloads and reject
+  the same malformed ones.
 
 ## Progress
 
@@ -2354,6 +2390,68 @@ its own evidence-backed follow-up TODO rather than being hidden in Progress.
   Fields 28–35 preserve the complete six-stage legacy projection, and the sole terminal tree is
   allocated only after every coarse group. Multi-group verification pins the shared counter order.
   Implementation remains unstarted and no checkpoint commit exists.
+
+- **2026-07-29 — Stage 1 complete and checkpointed.** Branch `feat/conserved-hydrology`, from
+  `29fdf4d` on a clean worktree. Checkpoint commit `b0292a0`.
+
+  Changed:
+
+  - `docs/rfc/RFC-HYDRO-001.md` — Proposed → **Accepted**, expanded from a four-line stub to the
+    accepted architecture: units and the checked-`i128` numeric contract, the chart-keyed grid
+    metric, the terrain-aligned 2D lattice and four-face topology, state and conveyance and boundary
+    schemas, the frozen-substage process order, conservation and provenance, ownership by crate, and
+    the downstream surfaces. Both previously unresolved questions are resolved in the RFC's own
+    words: resolution coupling as retained-fine-state-plus-back-allocation, and seasonal variation as
+    explicit tick-indexed forcing with producer-neutral committed origins rather than climate
+    generation. Non-goals and the primitive/emergent split are stated.
+  - `docs/development/todo-backlog.md` — `TODO-HYDRO-001: Conserved Multi-Resolution Hydrology`
+    created, **In Progress**, placed in the geography cluster after `TODO-GEO-006`.
+  - `PLANS.md` — Active Plans entry updated from "Implementation has not started" to the current
+    branch and stage.
+  - `crates/causafera-runtime/src/runtime.rs` — `Runtime` records the scheduler's own assigned
+    system IDs and exposes them read-only as `scheduler_registrations()`. See the Stage 1 deviation
+    entry in the Decision log.
+  - `crates/causafera-runtime/Cargo.toml` — `blake3` added as a **dev**-dependency only, so the
+    fixture can digest section payloads (`causafera-persistence` keeps `compute_integrity` private).
+  - `crates/causafera-runtime/tests/hydrology_legacy_compatibility.rs` — new, seven tests.
+  - `tools/audit/fixtures/observer-protocol-v1-pre-hydrology.mjs` — new, the frozen V1 decoder.
+  - `tools/audit/test-observer-hydrology-legacy-decoder.mjs` — new, six tests.
+
+  Captured pre-hydrology evidence, all measured from the engine at seed `20_260_729`, three
+  `Line` chunks at extent 3, four actors on two sensors, bootstrap population 64, six ticks:
+
+  - live scheduler registration IDs `0..=10` and their phases, cross-checked against the persisted
+    recipe manifest;
+  - the eleven `(world_seed, tick 0, phase, system_id)` stream samples those IDs key, with a
+    sensitivity test proving a one-step ID shift changes every one of them;
+  - all thirteen envelope sections — IDs 1–10, 12, 13, 14 — pinned by `(id, major, minor, flags,
+    decoded size limit, payload length, BLAKE3)`; total payload 196 188 bytes, none empty;
+  - `physical = 2a602728…eef822f3`, `history = fe5641b7…3a9e0f0e`,
+    `experiment = dbdcdb84…0f461320`, all at digest schema 7, and complete envelope
+    `218e6858…8a5012f3`; and
+  - export/import/export byte identity, plus `2N`-tick equivalence against `N` ticks, save, resume,
+    `N` ticks.
+
+  Non-vacuity is asserted, not assumed: a tick moves both the physical and the history digest, the
+  section table has thirteen non-empty rows, and the pinned stream samples are all distinct.
+
+  Commands run and their actual results:
+
+  - `cargo test -p causafera-runtime --test hydrology_legacy_compatibility -- --nocapture` — **7
+    passed**, 0 failed.
+  - `node tools/audit/test-observer-hydrology-legacy-decoder.mjs` — **6 passed**, 0 failed.
+  - `node tools/audit/check-entry-points.mjs` — pass (`audit_entry_points=27 audit_tests=18`).
+  - `git diff --check` — clean.
+  - `cargo fmt --all -- --check` — clean.
+  - `cargo clippy -p causafera-runtime --all-targets --all-features -- -D warnings` — clean.
+  - `cargo test -p causafera-runtime --all-features` — **all suites passed** (111 unit + 19 suites,
+    2 pre-existing ignored), run to confirm the `Runtime::new` registration refactor changed no
+    existing behaviour.
+
+  Not done in this stage, by design: the new audit test is deliberately **not** yet registered in
+  `tools/audit/run-source-tests.mjs` or `check-entry-points.mjs`, because both files are on Stage 7's
+  allowlist and Stage 1's gate invokes the test directly. The frozen oracle currently proves only
+  faithfulness of the freeze; the hydrology-fields-ignored claim it exists for arrives in Stage 7.
 
 Execution must begin by re-reading this Progress section and Decision log, then inspecting
 `git status`. The implementing agent updates both sections whenever scope, contract, verification,
