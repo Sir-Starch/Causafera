@@ -376,6 +376,29 @@ test('an over-wide varint is rejected, as the Rust cursor rejects it', () => {
   const control = decode([...baseSummary(), ...bootstrapGroup(0)]);
   assert.equal(control.bootstrap.schemaVersion, 1);
   assert.equal(control.bootstrap.planId, 0x0123456789abcdefn);
+
+  // And the VALUE, not merely the absence of a rejection. Rejection alone
+  // cannot tell a correct bound from one applied at the wrong shift or one that
+  // drops bit 63 — both read the varint, assemble a different number, and are
+  // still rejected on the vector above. The Rust test pins these same two
+  // values; without this the TypeScript decoder could silently misplace bit 63
+  // and diverge with the whole suite green.
+  const representable = (tenth) => {
+    const group = [
+      ...scalar(28, 1),
+      ...varint(29n << 3n),
+      ...[0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, tenth],
+      ...scalar(30, 4242),
+      ...scalar(31, 0),
+      ...scalar(32, 0),
+      ...scalar(33, 512),
+      ...scalar(34, 8),
+    ];
+    return decode([...baseSummary(), ...group]).bootstrap.planId;
+  };
+  // Nine payload bytes of ones fill bits 0 to 62; the tenth byte carries bit 63.
+  assert.equal(representable(0x00), (1n << 63n) - 1n);
+  assert.equal(representable(0x01), (1n << 64n) - 1n);
 });
 
 test('an unsupported wire type is rejected, as the Rust cursor rejects it', () => {

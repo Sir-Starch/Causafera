@@ -1684,8 +1684,23 @@ impl RuntimeState {
         // Residents are only ever created by bootstrap or a birth, and only ever
         // removed by a death; promotion and demotion move one between the
         // aggregate and the actor set without changing the total. The counters
-        // are snapshot data too, so this binds them to the population and to the
-        // anchored aggregates above rather than proving either alone.
+        // are snapshot data too, so this binds them to the population rather
+        // than proving either alone — and on an advanced snapshot that is
+        // genuinely all it does. Both sides are supplied by the snapshot, so
+        // subtracting a hundred residents and adding a hundred to
+        // `population_deaths` satisfies it exactly, leaving the committed trace
+        // store byte-identical to an honest run that never lost them. At
+        // bootstrap time `validate_bootstrap_population_conservation` still
+        // catches that, because it compares against the configured population
+        // with no counter term; past the first tick it is out of scope and this
+        // is the only guard left. Anchoring each aggregate to the effect that
+        // last changed it is the fix and is not available here:
+        // `fingerprint_population_aggregate` mixes count, births and deaths with
+        // material flow, which transitions under a different property, so no
+        // single committed effect covers the whole aggregate. Closing it needs a
+        // count-only fingerprint on the aggregate effect — a deliberate change
+        // to the effect payload and the digest — and is recorded as
+        // `TODO-PERSIST-004` rather than approximated.
         let aggregate_total: u64 = self
             .population_aggregates
             .values()

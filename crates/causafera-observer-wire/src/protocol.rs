@@ -2012,11 +2012,12 @@ mod tests {
     /// bound, which only the Node suite covered.
     #[test]
     fn a_varint_wider_than_sixty_four_bits_is_rejected() {
+        // Nine payload bytes of ones covers every shift from 0 to 56, so a
+        // mutation of the shift-56 byte is visible here too; an earlier revision
+        // zeroed that byte and could not see it.
         let payload = |tenth: u8| {
             let mut bytes = vec![0x08_u8];
             bytes.extend(std::iter::repeat_n(0xFF_u8, 9));
-            let len = bytes.len();
-            bytes[len - 1] = 0x80;
             bytes.push(tenth);
             bytes
         };
@@ -2040,14 +2041,14 @@ mod tests {
             decode_field_raster(&complete(0x00))
                 .expect("a representable varint must decode")
                 .chart_id,
-            72_057_594_037_927_935,
-            "nine payload bytes of ones, tenth byte zero"
+            u64::MAX >> 1,
+            "nine payload bytes of ones fill bits 0 to 62; the tenth byte is zero"
         );
         assert_eq!(
             decode_field_raster(&complete(0x01))
                 .expect("a representable varint must decode")
                 .chart_id,
-            9_295_429_630_892_703_743,
+            u64::MAX,
             "the tenth byte's single usable bit is bit 63"
         );
 

@@ -933,6 +933,40 @@ relabelled later; the rounds ran in numeric order.)
   whenever a round re-measured, and were corrected in place twice. Those copies are now replaced by
   pointers to the one place the figures live.
 
+- **2026-07-29 (ninth audit):** Scoped to the round-eight diff only — the two new guards, the three
+  changed tests, and the accuracy of the new backlog entry. Nothing else was re-covered, which is the
+  point.
+
+  **The revert left a comment claiming protection that does not exist.** The population-conservation
+  comment was edited to say the identity binds the counters "to the population and to the anchored
+  aggregates above"; the anchoring check had been deleted in the same commit. Corrected, and taken
+  further than a revert to the previous wording: the comment now states plainly that the identity is
+  satisfiable by moving its own counters, why aggregate anchoring is unavailable, and where the work
+  is recorded.
+
+  **A claim of mine was wider than the fact, in both the code comment and the backlog entry.** The
+  population forgery does *not* reproduce at bootstrap time — `validate_bootstrap_population_conservation`
+  compares against the configured population with no counter term, so moving `population_deaths`
+  cannot satisfy it. Only the advanced-time case is open. Both texts corrected.
+
+  **The varint fix was half a fix.** Round eight added decoded-value assertions on the Rust side and
+  left the Node counterpart asserting rejection alone, so the two mutants those assertions exist to
+  kill — bit 63 at the wrong shift, and bit 63 dropped — survived the entire Node suite with it
+  green. That is precisely the divergence the parity work is for, reintroduced by fixing one side of
+  a pair. The Node suite now pins the same two values, and both mutants are killed. The shared vector
+  also zeroed its ninth payload byte, so no mutation of the shift-56 byte was visible and the
+  assertion message misdescribed the vector; it now carries nine payload bytes of ones, giving
+  `u64::MAX >> 1` and `u64::MAX`.
+
+  **Confirmed rather than assumed.** The revert reasoning was independently reproduced with a
+  positive control: across 0/1/2/4/16/64 ticks no live aggregate's fingerprint ever appears as a
+  committed `POPULATION_AGGREGATE_PROPERTY` effect, while the flow-zeroed fingerprint does — the
+  anchoring check would have rejected honest state at every measured time, already at tick zero. The
+  no-false-rejection claim for the two new guards was verified past the grep it rested on:
+  `self.config` is never reassigned, `RuntimeConfig::validate` takes `mut self` but writes no field,
+  the lab runner and the observer session never touch either field, and both snapshot sections
+  encode and decode them unconditionally with no version gate.
+
 - **2026-07-29 (post-audit, not done):** Two audit findings are recorded rather than closed. The
   payload-wide byte limit on the runtime-summary decoder is pre-existing behaviour of the whole
   payload, bounded at the query layer by `MAX_QUERY_PAYLOAD_BYTES`; this plan bounds its own group's
@@ -978,7 +1012,8 @@ relabelled later; the rounds ran in numeric order.)
 | audit 5 | `5793f05` | `cargo test -p causafera-runtime --test historical_bootstrap` (43 passed), `cargo test -p causafera-observer-wire --test protocol` (20 passed), `node --test tools/audit/test-observer-bootstrap-decoder.mjs` (17 passed), `cargo run -p xtask -- ci` |
 | audit 6 | `90ff6fe` | `cargo test -p causafera-runtime --test historical_bootstrap` (49 passed), `cargo test -p causafera-observer-wire --test protocol` (20 passed), `cargo run -p xtask -- ci`, `git diff --check` |
 | audit 7 | `93bca21` | `cargo test -p causafera-runtime --test historical_bootstrap` (57 passed), `cargo test -p causafera-observer-wire` (21 lib + 20 protocol), `node --test tools/audit/test-observer-bootstrap-decoder.mjs` (21 passed), full workspace green in both feature modes, `cargo run -p xtask -- ci` |
-| audit 8 | (this round) | `cargo test -p causafera-runtime --test historical_bootstrap` (58 passed), `cargo test -p causafera-observer-wire` (21 lib + 20 protocol), `node --test tools/audit/test-observer-bootstrap-decoder.mjs` (21 passed), `node tools/audit/run-source-tests.mjs` (35 passed), full workspace green in both feature modes, `cargo run -p xtask -- ci`, `pnpm lint`/`typecheck`/`build` |
+| audit 8 | `d5078dd` | `cargo test -p causafera-runtime --test historical_bootstrap` (58 passed), `cargo test -p causafera-observer-wire` (21 lib + 20 protocol), `node --test tools/audit/test-observer-bootstrap-decoder.mjs` (21 passed), `node tools/audit/run-source-tests.mjs` (35 passed), full workspace green in both feature modes, `cargo run -p xtask -- ci`, `pnpm lint`/`typecheck`/`build` |
+| audit 9 | (this round) | `cargo test -p causafera-runtime --test historical_bootstrap` (58 passed), `cargo test -p causafera-observer-wire` (21 lib + 20 protocol), `node --test tools/audit/test-observer-bootstrap-decoder.mjs` (21 passed), `node tools/audit/run-source-tests.mjs` (35 passed), full workspace green in both feature modes, `cargo run -p xtask -- ci`, `pnpm lint`/`typecheck`/`build` |
 
 Each row names the round's **implementation** commit; the documentation commit that records a row's
 hash necessarily follows it and is not itself listed. Rows are in round order; audits 4 and 5 were
