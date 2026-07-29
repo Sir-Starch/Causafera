@@ -876,21 +876,29 @@ pub fn decode_field_raster(bytes: &[u8]) -> Result<ObserverFieldRaster, WireErro
     };
     // A raster whose declared lattice does not match its payload cannot be drawn
     // at real positions, and a renderer must never be left to guess the shape.
-    if raster.values.len() != raster.cell_count() {
+    // `edge` and `depth` come off the wire, so dimensions that cannot describe a
+    // lattice at all are rejected before anything is compared against them.
+    let cell_count = raster
+        .cell_count()
+        .ok_or(WireError::InvalidFieldRasterLattice {
+            expected: usize::MAX,
+            received: raster.values.len(),
+        })?;
+    if raster.values.len() != cell_count {
         return Err(WireError::InvalidFieldRasterLattice {
-            expected: raster.cell_count(),
+            expected: cell_count,
             received: raster.values.len(),
         });
     }
-    if !raster.auxiliary.is_empty() && raster.auxiliary.len() != raster.cell_count() {
+    if !raster.auxiliary.is_empty() && raster.auxiliary.len() != cell_count {
         return Err(WireError::InvalidFieldRasterLattice {
-            expected: raster.cell_count(),
+            expected: cell_count,
             received: raster.auxiliary.len(),
         });
     }
-    if !raster.cell_traces.is_empty() && raster.cell_traces.len() != raster.cell_count() {
+    if !raster.cell_traces.is_empty() && raster.cell_traces.len() != cell_count {
         return Err(WireError::InvalidFieldRasterLattice {
-            expected: raster.cell_count(),
+            expected: cell_count,
             received: raster.cell_traces.len(),
         });
     }

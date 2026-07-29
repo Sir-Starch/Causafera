@@ -422,6 +422,69 @@ mod tests {
         assert_eq!(record.receipts().len(), 2);
     }
 
+    /// RFC-HIST-001 derives the seed contribution from the world seed, the plan
+    /// identity, the stage identity, the process schema and the start time.
+    /// Each of those must move it on its own, or the "domain-separated" in the
+    /// contract is only a description of the code rather than a property of it:
+    /// a derivation over plan ID and stage ID alone satisfies every
+    /// coarser-grained test, because the plan ID already hashes the world seed.
+    #[test]
+    fn every_declared_input_moves_the_stage_seed_on_its_own() {
+        let build = |world_seed: u64, plan: u64, process: u64, starts: u64| {
+            HistoricalBootstrapPlan::new(
+                HistoricalBootstrapId::new(plan),
+                world_seed,
+                vec![
+                    HistoricalStage::new(
+                        HistoricalStageId::new(1),
+                        HistoricalProcessSchemaId::new(process),
+                        SimulationTime::new(starts),
+                        SimulationTime::new(starts + 10),
+                        0,
+                        vec![ChunkId::new(1)],
+                        vec![],
+                        vec![],
+                        fingerprint(1),
+                    )
+                    .unwrap(),
+                ],
+            )
+            .unwrap()
+            .stage_seed(HistoricalStageId::new(1))
+            .unwrap()
+        };
+
+        let baseline = build(5, 7, 100, 0);
+        assert_ne!(
+            baseline,
+            build(6, 7, 100, 0),
+            "world seed must move the seed"
+        );
+        assert_ne!(baseline, build(5, 8, 100, 0), "plan identity must move it");
+        assert_ne!(baseline, build(5, 7, 101, 0), "process schema must move it");
+        assert_ne!(baseline, build(5, 7, 100, 1), "start time must move it");
+        assert_eq!(baseline, build(5, 7, 100, 0), "and it must be stable");
+    }
+
+    /// Two stages of one plan differ only in stage identity, so this pins that
+    /// input separately from the four above.
+    #[test]
+    fn stages_of_one_plan_do_not_share_a_seed() {
+        let plan = HistoricalBootstrapPlan::new(
+            HistoricalBootstrapId::new(3),
+            11,
+            vec![
+                stage(1, 0, 10, vec![]),
+                stage(2, 10, 20, vec![HistoricalStageId::new(1)]),
+            ],
+        )
+        .unwrap();
+        assert_ne!(
+            plan.stage_seed(HistoricalStageId::new(1)),
+            plan.stage_seed(HistoricalStageId::new(2))
+        );
+    }
+
     #[test]
     fn semantic_high_level_outcomes_cannot_enter_the_contract() {
         let stage = stage(1, 0, 10, vec![]);

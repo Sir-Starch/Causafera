@@ -1052,8 +1052,10 @@ and its integration tests exercise the production runtime path rather than fixtu
 This does not yet establish fixture elimination or production-bootstrap coverage for every runtime
 capability.
 
-**Delivered by `plans/production-bootstrap-receipt-closure.md` (2026-07-28):** Four of the six
-acceptance criteria are now backed by evidence, and the status stays In Progress because two are not.
+**Delivered by `plans/production-bootstrap-receipt-closure.md` (2026-07-28):** All five
+acceptance criteria are backed by evidence for the six stages the runtime executes today. The status
+stays In Progress because the criteria are worded for *every* runtime capability, and this slice
+covers six stages.
 
 - *Production runtime/session code contains no fixture/demo constructors* — met. `fixture_actors`
   and `fixture_sensors` are removed; no test needed them. A source audit
@@ -1071,10 +1073,11 @@ acceptance criteria are now backed by evidence, and the status stays In Progress
   the lab experiment runner all produce the same canonical record for the same configuration, and
   resuming imports the record rather than re-bootstrapping on top of it.
 - *Tests prove fixtures remain test-only* — met vacuously, since no fixture constructor exists.
-- **Not met:** the criteria are worded for *every* runtime capability. This slice covers the six
-  stages the runtime executes today — terrain, material surface, population, actor promotion,
-  material activity, thermal — and nothing else. `TODO-DEPTH-001` and `TODO-HIST-001` remain open
-  and are not advanced by it.
+- **Scope caveat, not an unmet criterion:** the criteria are worded for *every* runtime capability.
+  This slice covers the six stages the runtime executes today — terrain, material surface, population, actor promotion,
+  material activity, thermal — and nothing else. `TODO-DEPTH-001` and `TODO-HIST-001` are untouched
+  by this slice; `TODO-HIST-001` has been Completed since Phase 21 and nothing here reopens or
+  extends it.
 
 **Bounded measurement (envelope only, AMD Ryzen 9 7950X3D, `rustc 1.97.1`, release profile):** nine
 active chunks, bootstrap population 512, eight promoted actors, one sensor aperture each. Four

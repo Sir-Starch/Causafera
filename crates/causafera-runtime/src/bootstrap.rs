@@ -217,7 +217,11 @@ impl BootstrapRuntimeState {
             schema_version: BOOTSTRAP_SUMMARY_SCHEMA_V1,
             plan_id: plan.id().raw(),
             world_seed: plan.world_seed(),
-            stage_count: plan.stages().len() as u32,
+            // Counted from what is actually emitted below, not from the plan:
+            // the receipt list is capped, so a plan larger than the cap would
+            // otherwise declare a stage count its own payload contradicts, and
+            // the decoder would reject a message this encoder produced.
+            stage_count: plan.stages().len().min(MAX_BOOTSTRAP_RECEIPT_SUMMARIES) as u32,
             complete: true,
             configured_population: config.bootstrap_population,
             configured_promotion_limit: u32::from(config.actor_count),
@@ -821,6 +825,22 @@ pub(crate) fn expected_completion_causes(
     causes
 }
 
+/// The transition a reservoir's bootstrap event commits.
+///
+/// Import recomputes this from the imported reservoir and compares it against
+/// the committed effect: the budget and target are otherwise believed on the
+/// snapshot's word, and a reservoir that injects a forged budget into a cell the
+/// run never targeted would be accepted.
+pub(crate) fn thermal_reservoir_bootstrap_after(
+    budget: i64,
+    target: causafera_domains::ThermalCellKey,
+) -> StateFingerprint {
+    fingerprint_u64(
+        0x1411,
+        budget as u64 ^ cell_object_id(target.chunk, target.cell_index),
+    )
+}
+
 /// The absent value a stage's bounded result state holds before completion.
 pub(crate) fn bootstrap_stage_absent_result(stage: HistoricalStageId) -> StateFingerprint {
     fingerprint_u64(BOOTSTRAP_STAGE_RESULT_ABSENT_TAG, stage.raw())
@@ -1159,11 +1179,7 @@ fn commit_thermal_reservoir_bootstrap_event(
                 StatePropertyId::new(THERMAL_RESERVOIR_BUDGET_PROPERTY),
             ),
             fingerprint_u64(0x1411, 0),
-            fingerprint_u64(
-                0x1411,
-                reservoir.budget.get() as u64
-                    ^ cell_object_id(reservoir.target.chunk, reservoir.target.cell_index),
-            ),
+            thermal_reservoir_bootstrap_after(reservoir.budget.get(), reservoir.target),
         )?],
     )?;
     let trace = state

@@ -706,7 +706,14 @@ pub fn run_bootstrap_closure_benchmark(
         active_chunk_count: summary.active_chunk_count,
         bootstrap_population: summary.population_total + u64::from(summary.actor_count),
         promoted_actor_count: u64::from(summary.actor_count),
-        sensor_count: data.recipe.config.sensor_count,
+        // Read back from a promoted actor, not from the configuration: the
+        // point of this block is that a report cannot describe a workload it
+        // did not run, and echoing the config here defeated it for this field.
+        sensor_count: data
+            .actors_objective
+            .actors
+            .first()
+            .map_or(0, |(_, actor)| actor.sensors.len() as u8),
         receipt_count: data.bootstrap.receipts.len() as u32,
         bootstrap_wall_time,
         import_wall_time,

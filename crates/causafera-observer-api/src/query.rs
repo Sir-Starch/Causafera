@@ -132,8 +132,16 @@ pub struct ObserverFieldRaster {
 }
 
 impl ObserverFieldRaster {
-    pub fn cell_count(&self) -> usize {
-        (self.edge as usize) * (self.edge as usize) * (self.depth as usize)
+    /// The lattice's cell count, or `None` when the declared dimensions cannot
+    /// describe one.
+    ///
+    /// `edge` and `depth` arrive from the wire, so this multiplies attacker-
+    /// chosen values: unchecked it panics in debug and wraps silently in
+    /// release, on a decode path that has not yet applied any bound.
+    pub fn cell_count(&self) -> Option<usize> {
+        (self.edge as usize)
+            .checked_mul(self.edge as usize)?
+            .checked_mul(self.depth as usize)
     }
 }
 

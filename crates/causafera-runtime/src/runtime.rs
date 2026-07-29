@@ -1452,7 +1452,178 @@ impl RuntimeState {
         }
 
         self.validate_bootstrap_stage_replay(record)?;
-        self.validate_bootstrap_population_conservation(record)?;
+        self.validate_bootstrap_domain_state(record)?;
+        Ok(())
+    }
+
+    /// Whether the trace store holds nothing beyond the bootstrap prefix.
+    ///
+    /// This, and not `advanced_through`, is what decides whether the
+    /// bootstrap-time checks below run. The counter arrives from the snapshot,
+    /// and so does `recipe.completed_time` that it is required to agree with, so
+    /// a record could turn both checks off by claiming to have advanced while
+    /// every event in the store still sits at simulation time zero. The store's
+    /// shape cannot be adjusted so cheaply: population, promotion and demotion
+    /// all commit events, so a run with nothing after the last completion has a
+    /// population and an actor set that are still exactly what bootstrap left.
+    fn holds_only_the_bootstrap_prefix(&self, record: &HistoricalBootstrapRecord) -> bool {
+        let last_completion = record.receipts().last().map(HistoricalStageReceipt::trace);
+        self.traces
+            .iter()
+            .last()
+            .map(|event| event.trace_id)
+            .zip(last_completion)
+            .is_some_and(|(last, completion)| last == completion)
+    }
+
+    /// The domain state a bootstrap-time snapshot must be in.
+    ///
+    /// Everything above validates the record against the trace store, and the
+    /// store's own shape. None of it looks the other way: population counts,
+    /// actor sets, material surfaces and reservoir budgets are read on the
+    /// snapshot's word, so a state that flatly contradicts the effects the
+    /// stages committed passes. That is what this closes.
+    fn validate_bootstrap_domain_state(
+        &self,
+        record: &HistoricalBootstrapRecord,
+    ) -> Result<(), RuntimeError> {
+        // A counter claiming the run advanced must be backed by a committed
+        // event that actually happened after bootstrap.
+        if self.advanced_through != SimulationTime::new(0)
+            && !self
+                .traces
+                .iter()
+                .any(|event| event.time > SimulationTime::new(0))
+        {
+            return Err(RuntimeError::InvalidSnapshot(
+                "snapshot claims to have advanced with no event committed after bootstrap",
+            ));
+        }
+        if self
+            .traces
+            .iter()
+            .any(|event| event.time > self.advanced_through)
+        {
+            return Err(RuntimeError::InvalidSnapshot(
+                "snapshot holds an event committed past its advanced-through counter",
+            ));
+        }
+
+        // Every stage's committed effects, as the store records them. Used below
+        // to bound what may claim bootstrap provenance.
+        let windows = replay_stage_effects(&self.traces, record.receipts()).map_err(|_| {
+            RuntimeError::InvalidSnapshot("committed stage completions do not match the record")
+        })?;
+
+        // An aggregate must sit in a chunk this state actually holds. Material
+        // surfaces have had this check; population never did, so 512 residents
+        // could be relocated into a chunk with no field, no carrier and no
+        // active entry.
+        for aggregate in self.population_aggregates.values() {
+            if !self.active_chunks.contains_key(&aggregate.chart) {
+                return Err(RuntimeError::InvalidSnapshot(
+                    "population aggregate outside active chunks",
+                ));
+            }
+        }
+
+        // An actor without an ancestry entry, or an ancestry entry without an
+        // actor, is bookkeeping that contradicts the run either way.
+        if self.actor_ancestry.len() != self.actors.len()
+            || self
+                .actor_ancestry
+                .keys()
+                .zip(self.actors.keys())
+                .any(|(ancestry, actor)| ancestry != actor)
+        {
+            return Err(RuntimeError::InvalidSnapshot(
+                "actor ancestry does not cover exactly the promoted actors",
+            ));
+        }
+
+        // The two conditions have to pin each other, or either one alone is an
+        // off switch: a trailing event would otherwise disable the checks below
+        // while the clock still reads zero, and a moved clock would disable them
+        // while the store still ends at bootstrap.
+        let prefix_only = self.holds_only_the_bootstrap_prefix(record);
+        if self.advanced_through == SimulationTime::new(0) && !prefix_only {
+            return Err(RuntimeError::InvalidSnapshot(
+                "bootstrap-time snapshot holds events after the last stage completion",
+            ));
+        }
+        if !prefix_only {
+            return Ok(());
+        }
+        if self.advanced_through != SimulationTime::new(0) {
+            return Err(RuntimeError::InvalidSnapshot(
+                "snapshot claims to have advanced but holds only the bootstrap prefix",
+            ));
+        }
+        self.validate_bootstrap_population_conservation(record, &windows)?;
+        self.validate_bootstrap_materialized_state(&windows)?;
+        Ok(())
+    }
+
+    /// Material surfaces and thermal reservoirs, against the effects that made
+    /// them.
+    ///
+    /// `validate_material_surface_last_transition` already re-derives a
+    /// surface's condition from its committed effect, which is the right shape;
+    /// it simply never runs for a surface that has been deleted outright, and
+    /// reservoirs had no equivalent at all.
+    fn validate_bootstrap_materialized_state(
+        &self,
+        windows: &[Vec<TraceId>],
+    ) -> Result<(), RuntimeError> {
+        let surfaces = self
+            .active_chunks
+            .keys()
+            .map(|chunk| MaterialSurfaceId::new(*chunk, 0))
+            .collect::<BTreeSet<_>>();
+        if self
+            .material_surfaces
+            .keys()
+            .copied()
+            .collect::<BTreeSet<_>>()
+            != surfaces
+        {
+            return Err(RuntimeError::InvalidSnapshot(
+                "material surfaces do not cover exactly the active chunks",
+            ));
+        }
+
+        // The reservoir stage's window carries the transition each reservoir was
+        // created with; the budget and target are recomputed from it rather than
+        // believed.
+        let reservoir_effects = windows.last().ok_or(RuntimeError::InvalidSnapshot(
+            "bootstrap record has no stages",
+        ))?;
+        for reservoir in self.thermal_reservoirs.values() {
+            if !self.active_chunks.contains_key(&reservoir.target.chunk)
+                || usize::from(reservoir.target.cell_index)
+                    >= usize::from(self.config.chunk_extent).pow(3)
+            {
+                return Err(RuntimeError::InvalidSnapshot(
+                    "thermal reservoir targets a cell outside the active region",
+                ));
+            }
+            let expected =
+                thermal_reservoir_bootstrap_after(reservoir.budget.get(), reservoir.target);
+            let committed = reservoir_effects.iter().any(|trace| {
+                self.traces.event(*trace).is_some_and(|event| {
+                    event.kind.raw() == THERMAL_RESERVOIR_BOOTSTRAP_EVENT_KIND
+                        && event.effects.iter().any(|effect| {
+                            effect.target().object_id() == reservoir.id.raw()
+                                && effect.after() == expected
+                        })
+                })
+            });
+            if !committed {
+                return Err(RuntimeError::InvalidSnapshot(
+                    "thermal reservoir does not match the transition that created it",
+                ));
+            }
+        }
         Ok(())
     }
 
@@ -1522,10 +1693,8 @@ impl RuntimeState {
     fn validate_bootstrap_population_conservation(
         &self,
         record: &HistoricalBootstrapRecord,
+        windows: &[Vec<TraceId>],
     ) -> Result<(), RuntimeError> {
-        if self.advanced_through != SimulationTime::new(0) {
-            return Ok(());
-        }
         let aggregate_total: u64 = self
             .population_aggregates
             .values()
@@ -1537,6 +1706,48 @@ impl RuntimeState {
             return Err(RuntimeError::InvalidSnapshot(
                 "bootstrap population is not conserved across aggregates and promoted actors",
             ));
+        }
+
+        // The sum alone is one equation in two unknowns: deleting every actor
+        // and adding the same number to an aggregate balances it exactly. So the
+        // promoted actors are counted against the promotion events the store
+        // committed, which the snapshot cannot move without forging the events.
+        let promotions = windows
+            .get(ACTOR_PROMOTION_STAGE.raw() as usize - 1)
+            .map(|effects| {
+                effects
+                    .iter()
+                    .filter(|trace| {
+                        self.traces.event(**trace).is_some_and(|event| {
+                            event.kind.raw() == ACTOR_PROMOTION_EVENT_KIND
+                                && event.effects.iter().any(|effect| {
+                                    effect.target().property()
+                                        == StatePropertyId::new(ACTOR_PROMOTION_PROPERTY)
+                                })
+                        })
+                    })
+                    .count()
+            })
+            .unwrap_or(0);
+        if self.actors.len() != promotions {
+            return Err(RuntimeError::InvalidSnapshot(
+                "promoted actor count does not match the promotions the run committed",
+            ));
+        }
+
+        // An aggregate's provenance must be bootstrap's, not an event appended
+        // after the last completion — which no stage window covers.
+        let bootstrap_effects = windows.iter().flatten().copied().collect::<BTreeSet<_>>();
+        for aggregate in self.population_aggregates.values() {
+            if aggregate
+                .causal_ancestry
+                .iter()
+                .any(|trace| !bootstrap_effects.contains(trace))
+            {
+                return Err(RuntimeError::InvalidSnapshot(
+                    "population aggregate ancestry is not a bootstrap stage effect",
+                ));
+            }
         }
 
         // Every actor that exists at bootstrap was promoted by the actor

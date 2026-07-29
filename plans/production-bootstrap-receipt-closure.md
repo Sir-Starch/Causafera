@@ -42,16 +42,22 @@ removed if no tests require it.
 
 ## Relevant invariants
 
-- **INV-001–INV-004:** deterministic state and explicit random streams.
-- **INV-012–INV-016:** proposal/reduce/commit mutation boundary and phase ownership.
+- **INV-014:** significant state changes retain provenance.
+- **INV-016:** authoritative mutation stays inside the scheduler's phase boundary.
 - **INV-019:** accepted behaviour remains causally inspectable.
-- **INV-021:** significant state changes retain provenance.
+- **INV-012–INV-013:** Explanation and observer are non-authoritative and cannot feed back.
 - **INV-027–INV-031:** subjective observers never receive Ground Truth identity or omniscient state.
+- **INV-037:** chunk addressing is not physical geometry, adjacency, or ownership.
 - **INV-038:** digests are equality/divergence identities, never physical or semantic distances.
 - **INV-039:** production state requires causal initialization.
-- **INV-040:** persistence and replay preserve authoritative state and ancestry.
 - **INV-042:** runtime/bootstrap/persistence/observer responsibilities remain modular.
-- **INV-043:** chart/chunk addressing is not physical geometry or ownership.
+- **INV-043:** the world is one coherent spatial system, addressed rather than partitioned.
+
+An earlier revision of this list cited INV-001–004 for determinism, INV-012–016 for the mutation
+boundary, INV-021 for provenance and INV-040 for persistence. All four were wrong:
+`docs/architecture/invariants.md` gives those numbers to omniscience, Explanation non-authority, the
+UI-as-observer rule and biological mana interaction respectively. Corrected against the source rather
+than left as plausible-looking citations.
 
 ## Ontology domains affected
 
@@ -758,7 +764,7 @@ The implementation worker updates only documents whose facts change:
 
   **Progress had no rows for the audit commits.** Added, with their focused verification.
 
-- **2026-07-28 (fourth audit):** A fifth audit of `ab38ea1` found one fail-open, three further decoder divergences, and a set of
+- **2026-07-28 (fifth audit):** A fifth audit of `ab38ea1` found one fail-open, three further decoder divergences, and a set of
 documentation contradictions this branch had introduced and left standing.
 
 | Defect | Proof | Regression coverage |
@@ -769,7 +775,8 @@ documentation contradictions this branch had introduced and left standing.
 | Four documents still said no observer-overhead figure is reported while two reported one | inspection | wave-5 Decision Log entry superseded in place; the other three corrected |
 | Progress §F1 recorded 33 and 10 where the suites stood at 43 and 20 | inspection | counts refreshed and marked as re-run per round |
 
-A fourth audit of `5367351` found four more.
+
+- **2026-07-28 (fourth audit):** A fourth audit of `5367351` found four more.
 
   **Field 35 on a varint wire diverged.** TypeScript's generic `wire === 0` branch ran before the
   bootstrap wire-type guard, so the field was stored as a scalar and then silently dropped while Rust
@@ -807,13 +814,14 @@ A fourth audit of `5367351` found four more.
   registered in the runner. Confirmed to have teeth: reverting three of the parity guards fails
   exactly three of them.
 
-- **2026-07-28 (post-audit, not done):** The audit's MEDIUM note — no overall byte limit on the
-  runtime-summary decoder — is pre-existing behaviour of the whole payload, bounded at the query
-  layer by `MAX_QUERY_PAYLOAD_BYTES`. This plan bounds its own group's counts and leaves the
-  payload-wide limit alone rather than changing an unrelated contract. Its MINOR note — the source
-  fixture audit is text-based and does not prove reachability — is what that test's own doc comment
-  and commit message already say; the reachability claim rests on the entry-point equivalence and
-  ancestry tests, not on the scan.
+- **2026-07-28 (post-audit, not done):** One audit finding is recorded rather than closed. The
+  payload-wide byte limit on the runtime-summary decoder is pre-existing behaviour of the whole
+  payload, bounded at the query layer by `MAX_QUERY_PAYLOAD_BYTES`; this plan bounds its own group's
+  counts and leaves the payload-wide limit to whoever owns that contract. The earlier companion
+  finding — no TypeScript adversarial coverage — was closed in the fifth round and is no longer an
+  exception. The source fixture audit remains textual and does not prove reachability, which is what
+  that test's own doc comment says; the reachability claim rests on the entry-point equivalence and
+  ancestry tests.
 
 - **2026-07-28 (wave 5, superseded by the fourth audit):** No observer-overhead figure was reported.
   Control and measured poll means straddled each other across five runs at the bounded envelope, so
@@ -843,6 +851,7 @@ A fourth audit of `5367351` found four more.
 | audit 1 | `cf3f018` | `cargo test -p causafera-runtime --test historical_bootstrap` (37 passed), `cargo test -p causafera-observer-wire --test protocol` (17 passed), full workspace green |
 | audit 2 | `0ea17cb` | `cargo test -p causafera-runtime --test historical_bootstrap` (39 passed), `cargo test -p causafera-observer-wire --test protocol` (18 passed), full workspace green |
 | audit 3 | `5367351` | `cargo test -p causafera-runtime --test historical_bootstrap` (39 passed), `cargo test -p causafera-observer-wire --test protocol` (20 passed), `cargo run -p xtask -- ci`, `git diff --check` |
+| audit 5 | `5793f05` | `cargo test -p causafera-runtime --test historical_bootstrap` (43 passed), `cargo test -p causafera-observer-wire --test protocol` (20 passed), `node --test tools/audit/test-observer-bootstrap-decoder.mjs` (17 passed), `cargo run -p xtask -- ci` |
 | audit 4 | `5d47c0e` | `cargo test -p causafera-runtime --test historical_bootstrap` (40 passed), `cargo test -p causafera-observer-wire --test protocol` (20 passed), `cargo run -p xtask -- ci`, `git diff --check` |
 
 Each row names the round's **implementation** commit; the documentation commit that records a row's
@@ -962,7 +971,7 @@ A third audit of `0ea17cb` found five more.
 
 | Defect | Regression coverage |
 | --- | --- |
-| Rust bounded `configured_promotion_limit` to 32 bits, TypeScript widened it unchecked: one decoder accepted what the other rejected | `a_promotion_limit_past_thirty_two_bits_is_rejected` (Rust side; the TypeScript side remains uncovered — see below) |
+| Rust bounded `configured_promotion_limit` to 32 bits, TypeScript widened it unchecked: one decoder accepted what the other rejected | `a_promotion_limit_past_thirty_two_bits_is_rejected` (Rust side; the TypeScript side is covered by `tools/audit/test-observer-bootstrap-decoder.mjs`) |
 | `sensor_count` was declared on the stage and fingerprinted but not passed to the promotion, so the parameter described a promotion it did not parameterize | `configuration_the_stages_execute_under_reaches_their_parameter_fingerprints` now asserts the promoted actors carry that many apertures |
 | A summary with every scalar on the wrong wire type decoded as "absent" instead of malformed | `a_mistyped_summary_field_is_rejected_rather_than_read_as_absent` |
 | `encoded_snapshot_bytes` summed payload sections while the neighbouring benchmarks measure the whole envelope | figures re-measured against the complete envelope |
@@ -977,10 +986,11 @@ A fourth audit of `5367351` found four more.
 | The bootstrap benchmark ignored the repository's warm-up / mean-median-stddev / raw-sample requirement | `benchmark_summary_statistics_are_computed_over_the_retained_samples`, and the envelope test now asserts every measured repetition is retained |
 | `docs/performance/benchmarks.md` described `TODO-PERF-001` as open after the backlog closed it | the benchmarks document corrected in three places |
 
-Two audit findings were deliberately **not** acted on, both recorded in the Decision Log: the
-TypeScript decoder still has no automated adversarial coverage (no JS test runner exists in the
-workspace and adding one is an infrastructure decision this plan did not scope), and the
-payload-wide byte limit on the runtime summary is pre-existing and left alone.
+One audit finding is deliberately **not** acted on and is recorded in the Decision Log: the
+payload-wide byte limit on the runtime summary is pre-existing and bounded at the query layer. Its
+former companion — no automated TypeScript adversarial coverage — was closed in the fifth round by
+`tools/audit/test-observer-bootstrap-decoder.mjs`, after the reason recorded for skipping it turned
+out to be checkably wrong.
 
 ### Not delivered
 

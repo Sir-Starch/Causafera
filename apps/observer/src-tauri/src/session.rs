@@ -169,10 +169,12 @@ mod tests {
         ClaimEvidenceState, HISTORICAL_BOOTSTRAP_RECORD_SCHEMA, HISTORICAL_BOOTSTRAP_WINDOW_SCHEMA,
         NumericClaimValue,
     };
+    use causafera_runtime::BOOTSTRAP_STAGE_COUNT;
+
     use causafera_observer_api::{
         BOOTSTRAP_SUMMARY_SCHEMA_V1, FieldRasterKind, FieldRasterRequest,
-        MATERIAL_SURFACE_DELTA_SCHEMA_V4, MAX_BOOTSTRAP_RECEIPT_SUMMARIES,
-        MAX_MATERIAL_SURFACE_DELTAS, OBSERVER_PROTOCOL_V1, ObserverQuery, QueryKind, QueryStatus,
+        MATERIAL_SURFACE_DELTA_SCHEMA_V4, MAX_MATERIAL_SURFACE_DELTAS, OBSERVER_PROTOCOL_V1,
+        ObserverQuery, QueryKind, QueryStatus,
     };
     use causafera_observer_wire::{
         ConnectRequest, decode_connect_response, decode_explanation_report, decode_field_raster,
@@ -223,7 +225,10 @@ mod tests {
         assert_eq!(bootstrap.schema_version, BOOTSTRAP_SUMMARY_SCHEMA_V1);
         assert!(bootstrap.complete);
         assert_eq!(bootstrap.stage_count, 6);
-        assert_eq!(bootstrap.receipts.len(), MAX_BOOTSTRAP_RECEIPT_SUMMARIES);
+        // Compared against the stage count the bootstrap actually runs, not
+        // against the cap that produced the list — the cap would agree with a
+        // truncated list.
+        assert_eq!(bootstrap.receipts.len(), BOOTSTRAP_STAGE_COUNT);
         assert_eq!(bootstrap.world_seed, 9);
         assert_eq!(bootstrap.configured_population, DEFAULT_POPULATION);
         assert_eq!(
@@ -526,8 +531,11 @@ mod tests {
         let raster = decode_field_raster(&response.payload).unwrap();
         // The configured lattice, projected whole rather than reduced.
         assert_eq!(raster.edge, raster.depth);
-        assert_eq!(raster.values.len(), raster.cell_count());
-        assert_eq!(raster.cell_traces.len(), raster.cell_count());
+        let cells = raster
+            .cell_count()
+            .expect("a real raster declares a describable lattice");
+        assert_eq!(raster.values.len(), cells);
+        assert_eq!(raster.cell_traces.len(), cells);
         assert!(raster.values.iter().any(|value| *value > 0));
         assert!(raster.cell_traces.iter().any(|trace| *trace > 0));
     }

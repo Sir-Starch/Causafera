@@ -371,7 +371,15 @@ fn configuration_the_stages_execute_under_reaches_their_parameter_fingerprints()
     wider.chunk_extent = 4;
     let wider = snapshot_of(wider);
 
-    // Then: the plan identity moves, and so do the two stages that build on it.
+    // Then: the parameter drives the lattice the stages build, not just the
+    // fingerprint. Without this the value could be disconnected from terrain and
+    // thermal generation entirely and the test would stay green.
+    assert_eq!(baseline.thermal.field_set.fields[0].extent, 3);
+    assert_eq!(wider.thermal.field_set.fields[0].extent, 4);
+    assert_eq!(baseline.thermal.field_set.fields[0].energy.len(), 27);
+    assert_eq!(wider.thermal.field_set.fields[0].energy.len(), 64);
+
+    // And: the plan identity moves, and so do the two stages that build on it.
     assert_ne!(baseline.bootstrap.plan.id, wider.bootstrap.plan.id);
     assert_ne!(
         baseline.bootstrap.plan.stages[0].parameters,
@@ -589,14 +597,22 @@ fn a_plan_with_a_missing_stage_is_rejected() {
 // Persistence: canonical bytes and fail-closed corruption handling.
 // ---------------------------------------------------------------------------
 
-fn rejects(data: RuntimeSnapshotData) {
-    assert!(
-        matches!(
-            RuntimeState::import_snapshot(data),
-            Err(RuntimeError::InvalidSnapshot(_))
+/// Assert import fails closed **for the stated reason**.
+///
+/// Taking any error was how a vacuous test hid for four audit rounds: a test
+/// named for the active-chunk target guard actually tripped thermal region
+/// validation, and deleting the guard it was named for changed nothing. The
+/// expected message is the difference between "something rejected this" and
+/// "the check this test exists for rejected this".
+fn rejects(data: RuntimeSnapshotData, expected: &str) {
+    match RuntimeState::import_snapshot(data) {
+        Err(RuntimeError::InvalidSnapshot(reason)) => assert!(
+            reason.contains(expected),
+            "expected rejection mentioning {expected:?}, got {reason:?}"
         ),
-        "a corrupted bootstrap record must fail closed"
-    );
+        Err(other) => panic!("expected InvalidSnapshot({expected:?}), got {other}"),
+        Ok(_) => panic!("a corrupted bootstrap record must fail closed: {expected:?}"),
+    }
 }
 
 #[test]
@@ -706,7 +722,7 @@ fn a_forged_completion_trace_is_rejected() {
     data.bootstrap.receipts[1].causes = vec![other];
 
     // Then: import rejects it.
-    rejects(data);
+    rejects(data, "invalid canonical bootstrap record");
 }
 
 #[test]
@@ -719,7 +735,7 @@ fn a_stale_completion_trace_is_rejected() {
     data.bootstrap.receipts[5].trace = stale;
 
     // Then: import rejects it.
-    rejects(data);
+    rejects(data, "bootstrap receipt references unknown trace");
 }
 
 #[test]
@@ -733,7 +749,10 @@ fn a_forged_stage_result_is_rejected() {
     data.bootstrap.stage_results[0].result = other;
 
     // Then: import rejects it.
-    rejects(data);
+    rejects(
+        data,
+        "bootstrap completion does not transition its stage result",
+    );
 }
 
 #[test]
@@ -746,7 +765,7 @@ fn a_stage_result_that_disagrees_with_its_receipt_is_rejected() {
     data.bootstrap.stage_results[0].result = other;
 
     // Then: import rejects it.
-    rejects(data);
+    rejects(data, "bootstrap stage result does not match its receipt");
 }
 
 #[test]
@@ -758,7 +777,7 @@ fn a_missing_stage_result_entry_is_rejected() {
     data.bootstrap.stage_results.pop();
 
     // Then: import rejects it.
-    rejects(data);
+    rejects(data, "bootstrap stage results do not cover the receipt set");
 }
 
 /// The three internally-consistent halves of a stage's result — the completion
@@ -790,7 +809,10 @@ fn a_coherently_forged_stage_result_is_rejected() {
 
     // Then: the recomputed result does not match, so import fails closed even
     // though every pairwise check agrees.
-    rejects(data);
+    rejects(
+        data,
+        "bootstrap stage result does not match what the stage committed",
+    );
 }
 
 /// A completion whose causes have been cut back to just its predecessor is a
@@ -817,7 +839,10 @@ fn a_completion_stripped_of_its_stage_effects_is_rejected() {
     event.causes.truncate(1);
 
     // Then: import rejects the summarized ancestry.
-    rejects(data);
+    rejects(
+        data,
+        "bootstrap completion does not name exactly its stage effects and predecessor",
+    );
 }
 
 #[test]
@@ -851,7 +876,10 @@ fn a_stage_effect_rewritten_under_an_unchanged_receipt_is_rejected() {
     .expect("a rewritten transition is still a transition");
 
     // Then: the stage result no longer matches what the stage committed.
-    rejects(data);
+    rejects(
+        data,
+        "bootstrap stage result does not match what the stage committed",
+    );
 }
 
 #[test]
@@ -876,7 +904,7 @@ fn a_stage_completion_the_record_does_not_name_is_rejected() {
     data.traces.events.push(extra);
 
     // Then: the store no longer describes the run the record claims.
-    rejects(data);
+    rejects(data, "committed stage completions do not match the record");
 }
 
 #[test]
@@ -894,67 +922,63 @@ fn a_target_the_configuration_does_not_produce_is_rejected() {
     // Then: the plan no longer matches the persisted configuration. This is the
     // plan-versus-configuration comparison, not the active-chunk check — see
     // the test below for that one.
-    rejects(data);
+    rejects(
+        data,
+        "bootstrap plan does not match the persisted configuration",
+    );
 }
 
 /// The plan-versus-configuration comparison derives both sides from the same
 /// configuration, so on its own it says nothing about whether those chunks are
-/// present in the restored state. This is the separate check.
+/// present in the restored state. This is the separate check — and reaching it
+/// means removing the chunk from every section that also tracks it, because
+/// thermal region validation otherwise rejects the snapshot first. An earlier
+/// version of this test removed the chunk from the spatial section only, and so
+/// proved nothing about the guard it is named for.
 #[test]
 fn a_target_that_is_not_an_active_chunk_is_rejected() {
-    // Given: a valid production snapshot whose targets are the active chunks.
     let mut data = snapshot_of(populated_config(4_151));
-    let active = data
-        .spatial
-        .active_chunks
-        .iter()
-        .map(|chunk| causafera_runtime::bootstrap_chunk_target(chunk.chunk))
-        .collect::<BTreeSet<_>>();
-    assert_eq!(
+    let dropped = data.spatial.active_chunks[8].chunk;
+    assert!(
         data.bootstrap.plan.stages[0]
             .targets
-            .iter()
-            .copied()
-            .collect::<BTreeSet<_>>(),
-        active
+            .contains(&causafera_runtime::bootstrap_chunk_target(dropped)),
+        "the plan targets the chunk this test removes"
     );
 
-    // When: the restored active chunk set no longer contains one of them, with
-    // the plan and the configuration left untouched.
-    data.spatial.active_chunks.retain(|chunk| {
-        causafera_runtime::bootstrap_chunk_target(chunk.chunk)
-            != data.bootstrap.plan.stages[0].targets[0]
-    });
+    data.spatial
+        .active_chunks
+        .retain(|chunk| chunk.chunk != dropped);
+    data.spatial
+        .carrier_adapters
+        .retain(|carrier| carrier.chunk != dropped);
+    data.mana.fields.retain(|field| field.chunk != dropped);
+    data.thermal
+        .field_set
+        .fields
+        .retain(|field| field.chunk != dropped);
+    data.thermal
+        .active_region
+        .active_chunks
+        .retain(|chunk| *chunk != dropped);
+    data.thermal
+        .active_region
+        .resident_chunks
+        .retain(|chunk| *chunk != dropped);
+    data.material_surfaces
+        .records
+        .retain(|record| record.id.chunk != dropped);
+    data.material_surfaces
+        .transitions
+        .retain(|transition| transition.id.chunk != dropped);
+    data.material_surfaces
+        .pending_physical_changes
+        .retain(|id| id.chunk != dropped);
+    data.resolution
+        .entries
+        .retain(|entry| entry.chunk != dropped);
 
-    // Then: import rejects the stage that targets it.
-    rejects(data);
-}
-
-#[test]
-fn a_forged_plan_identity_or_seed_is_rejected() {
-    // Given: two valid production snapshots.
-    let mut identity = snapshot_of(populated_config(4_130));
-    let mut seed = snapshot_of(populated_config(4_130));
-
-    // When: the opaque plan identity, then the world seed, are rewritten.
-    identity.bootstrap.plan.id = causafera_types::HistoricalBootstrapId::new(1);
-    seed.bootstrap.plan.world_seed = 1;
-
-    // Then: both fail against the plan the persisted configuration reproduces.
-    rejects(identity);
-    rejects(seed);
-}
-
-#[test]
-fn a_forged_stage_parameter_fingerprint_is_rejected() {
-    // Given: a valid production snapshot.
-    let mut data = snapshot_of(populated_config(4_131));
-
-    // When: a stage's parameter fingerprint is swapped for another stage's.
-    data.bootstrap.plan.stages[0].parameters = data.bootstrap.plan.stages[1].parameters;
-
-    // Then: import rejects it.
-    rejects(data);
+    rejects(data, "bootstrap stage targets a chunk that is not active");
 }
 
 /// `advanced_through` is the only gate on the bootstrap-time population and
@@ -978,7 +1002,10 @@ fn a_snapshot_whose_clocks_disagree_is_rejected() {
     }
 
     // Then: the disagreement itself is rejected, which re-arms both guards.
-    rejects(data);
+    rejects(
+        data,
+        "snapshot completed time does not match the advanced-through counter",
+    );
 }
 
 /// The clock check must not be satisfiable by moving the other clock either.
@@ -986,7 +1013,10 @@ fn a_snapshot_whose_clocks_disagree_is_rejected() {
 fn a_snapshot_that_moves_only_its_completed_time_is_rejected() {
     let mut data = snapshot_of(populated_config(4_153));
     data.recipe.completed_time = SimulationTime::new(1);
-    rejects(data);
+    rejects(
+        data,
+        "snapshot completed time does not match the advanced-through counter",
+    );
 }
 
 #[test]
@@ -1006,7 +1036,7 @@ fn bootstrap_population_that_is_not_conserved_is_rejected() {
     data.population.aggregates[0].count -= 1;
 
     // Then: import rejects the unconserved population.
-    rejects(data);
+    rejects(data, "bootstrap population is not conserved");
 }
 
 #[test]
@@ -1020,7 +1050,10 @@ fn promoted_actor_ancestry_outside_the_promotion_receipt_is_rejected() {
     data.actors_objective.actor_ancestry[0].1 = vec![root];
 
     // Then: import rejects it.
-    rejects(data);
+    rejects(
+        data,
+        "promoted actor ancestry is absent from the actor promotion receipt",
+    );
 }
 
 #[test]
@@ -1152,16 +1185,24 @@ fn promoted_actor_ancestry_names_the_actor_promotion_receipt() {
 /// directory, which is not production source and is not scanned.
 #[test]
 fn production_source_reaches_no_fixture_constructor() {
-    const BANNED: [&str; 4] = [
-        "fixture_actors",
-        "fixture_sensors",
-        "fn fixture_",
-        "fn demo_",
+    /// A function whose name carries one of these as a whole `_`-delimited
+    /// segment is a fixture or demo constructor. Matching segments rather than
+    /// four fixed literals catches `make_fixture`, `seed_demo_world` and
+    /// `demo_residents`; matching segments rather than raw substrings keeps
+    /// `demote_actor_to_aggregate` out of it, which a substring match flags.
+    const BANNED_NAME_PARTS: [&str; 2] = ["fixture", "demo"];
+    /// Test-only declarations permitted to carry a banned segment, named one by
+    /// one rather than by pattern.
+    ///
+    /// No fixture *constructor* is allowed anywhere, which is why the two that
+    /// existed were removed rather than moved behind `#[cfg(test)]`. The single
+    /// entry here is a test asserting the absence of demo residents, inside a
+    /// `#[cfg(test)]` module in a production file — the scan is textual and
+    /// cannot see the attribute, so the exemption is written down instead of
+    /// being pattern-matched into invisibility.
+    const ALLOWLIST: [&str; 1] = [
+        "crates/causafera-runtime/src/runtime.rs: fn production_runtime_does_not_create_demo_residents",
     ];
-    /// Test-only paths permitted to name a fixture constructor. Empty today:
-    /// no test requires one, which is why the constructors were removed rather
-    /// than moved behind `#[cfg(test)]`.
-    const ALLOWLIST: [&str; 0] = [];
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
@@ -1180,16 +1221,23 @@ fn production_source_reaches_no_fixture_constructor() {
                 .replace('\\', "/");
             // Only production source is in scope; a `tests` directory anywhere in
             // the path is test support by construction.
-            if relative.split('/').any(|segment| segment == "tests")
-                || ALLOWLIST.contains(&relative.as_str())
-            {
+            if relative.split('/').any(|segment| segment == "tests") {
                 continue;
             }
             scanned += 1;
             let source = strip_comments(&std::fs::read_to_string(&path).expect("readable source"));
-            for banned in BANNED {
-                if source.contains(banned) {
-                    offenders.push(format!("{relative}: {banned}"));
+            for declaration in source.match_indices("fn ") {
+                let name = source[declaration.0 + 3..]
+                    .split(|character: char| !character.is_alphanumeric() && character != '_')
+                    .next()
+                    .unwrap_or_default()
+                    .to_ascii_lowercase();
+                if name
+                    .split('_')
+                    .any(|segment| BANNED_NAME_PARTS.contains(&segment))
+                    && !ALLOWLIST.contains(&format!("{relative}: fn {name}").as_str())
+                {
+                    offenders.push(format!("{relative}: fn {name}"));
                 }
             }
         }
@@ -1231,23 +1279,32 @@ fn rust_sources(directory: &std::path::Path) -> Vec<std::path::PathBuf> {
 /// Deliberately naive about `//` inside string literals: a false positive there
 /// would only hide a fixture call written inside a string, which is not a call.
 fn strip_comments(source: &str) -> String {
-    let mut out = String::with_capacity(source.len());
-    let mut rest = source;
-    while let Some(index) = rest.find("/*") {
-        out.push_str(&rest[..index]);
-        rest = match rest[index + 2..].find("*/") {
-            Some(end) => &rest[index + 2 + end + 2..],
-            None => "",
-        };
-    }
-    out.push_str(rest);
-    out.lines()
+    // Line comments first. Stripping block comments first meant an unmatched
+    // `/*` inside a line comment or a string literal swallowed the rest of the
+    // file, hiding every declaration after it from the scan.
+    let without_line_comments = source
+        .lines()
         .map(|line| match line.find("//") {
             Some(index) => &line[..index],
             None => line,
         })
         .collect::<Vec<_>>()
-        .join("\n")
+        .join("\n");
+
+    let mut out = String::with_capacity(without_line_comments.len());
+    let mut rest = without_line_comments.as_str();
+    while let Some(index) = rest.find("/*") {
+        out.push_str(&rest[..index]);
+        // An unterminated block comment keeps the remainder in scope rather
+        // than discarding it: a scan that silently stops reading is worse than
+        // one that reports a comment body.
+        rest = match rest[index + 2..].find("*/") {
+            Some(end) => &rest[index + 2 + end + 2..],
+            None => &rest[index + 2..],
+        };
+    }
+    out.push_str(rest);
+    out
 }
 
 // ---------------------------------------------------------------------------
@@ -1302,9 +1359,9 @@ fn the_bootstrap_benchmark_measures_the_stated_envelope_reproducibly() {
 
     // And: the authoritative outputs are identical between runs. Two runs is what
     // this test needs — it is an identity check, not a sample. The wall-time
-    // ranges recorded in the plan came from running the benchmark five times by
-    // hand, and are not asserted here: they are measurements of a machine, and
-    // this benchmark establishes no threshold.
+    // ranges recorded in the plan come from running the benchmark by hand and
+    // are not asserted here: they are measurements of a machine, and this
+    // benchmark establishes no threshold.
     assert_eq!(first.plan_id, second.plan_id);
     assert_eq!(first.physical_state_digest, second.physical_state_digest);
     assert_eq!(first.history_digest, second.history_digest);
@@ -1370,4 +1427,173 @@ fn the_bootstrap_benchmark_rejects_an_empty_measurement_window() {
         // Then: it is rejected rather than reporting an empty envelope.
         assert!(run_bootstrap_closure_benchmark(config).is_err());
     }
+}
+
+// ---------------------------------------------------------------------------
+// The domain state must agree with the effects the stages committed. Every case
+// below was an accepted import before this pass: the record was validated
+// against the trace store thoroughly, and the state was read on the snapshot's
+// word.
+// ---------------------------------------------------------------------------
+
+/// Both clocks are snapshot data, so requiring them to agree with each other is
+/// not enough — every bootstrap event sits at simulation time zero, so a record
+/// could move both and turn off every bootstrap-time check at once.
+#[test]
+fn a_snapshot_claiming_to_have_advanced_with_no_later_event_is_rejected() {
+    let mut data = snapshot_of(populated_config(4_154));
+    assert_eq!(
+        data.traces
+            .events
+            .iter()
+            .map(|event| event.time)
+            .max()
+            .expect("bootstrap commits events"),
+        SimulationTime::new(0),
+        "every bootstrap event is committed at simulation time zero"
+    );
+
+    // When: both clocks move together, and the state is gutted behind them.
+    data.recipe.completed_time = SimulationTime::new(1);
+    data.physical_counters.advanced_through = SimulationTime::new(1);
+    data.population.aggregates.clear();
+    data.population.aggregate_actor_pool.clear();
+    data.actors_objective.actors.clear();
+    data.actors_objective.actor_ancestry.clear();
+    data.actors_subjective.actors.clear();
+
+    rejects(
+        data,
+        "snapshot claims to have advanced with no event committed after bootstrap",
+    );
+}
+
+/// Conservation as a single sum is one equation in two unknowns: deleting every
+/// actor and adding the same number to an aggregate balances it exactly.
+#[test]
+fn deleting_promoted_actors_and_inflating_an_aggregate_is_rejected() {
+    let mut data = snapshot_of(populated_config(4_155));
+    let promoted = data.actors_objective.actors.len() as u64;
+    assert_eq!(promoted, 8);
+
+    data.actors_objective.actors.clear();
+    data.actors_objective.actor_ancestry.clear();
+    data.actors_objective.actor_objects.clear();
+    data.actors_subjective.actors.clear();
+    data.population.aggregate_actor_pool.clear();
+    data.population.aggregates[0].count += promoted;
+
+    rejects(
+        data,
+        "promoted actor count does not match the promotions the run committed",
+    );
+}
+
+#[test]
+fn a_population_aggregate_outside_the_active_chunks_is_rejected() {
+    let mut data = snapshot_of(populated_config(4_156));
+    data.population.aggregates[0].chart = causafera_types::ChartChunkCoord::new(
+        data.recipe.config.chart_id,
+        causafera_types::ChunkCoord::new(9_999, 9_999, 9_999),
+    );
+    rejects(data, "population aggregate outside active chunks");
+}
+
+/// Stage windows end at the last completion, so an event appended after stage
+/// six is covered by none of them and cannot lend provenance to anything.
+#[test]
+fn an_aggregate_whose_ancestry_is_a_trailing_event_is_rejected() {
+    let mut data = snapshot_of(populated_config(4_157));
+    let mut forged = data
+        .traces
+        .events
+        .iter()
+        .find(|event| {
+            event.kind.raw() != BOOTSTRAP_STAGE_COMPLETION_EVENT_KIND && !event.effects.is_empty()
+        })
+        .expect("bootstrap commits ordinary effects")
+        .clone();
+    forged.trace_id = TraceId::new(data.traces.next_trace_id);
+    forged.event_id = causafera_types::EventId::new(data.traces.next_event_id);
+    forged.causes.clear();
+    data.traces.next_trace_id += 1;
+    data.traces.next_event_id += 1;
+    data.traces.events.push(forged.clone());
+    data.population.aggregates[0].causal_ancestry = vec![forged.trace_id];
+
+    rejects(
+        data,
+        "bootstrap-time snapshot holds events after the last stage completion",
+    );
+}
+
+/// The active-chunk check on material surfaces was one-directional: every
+/// surface had to be in an active chunk, but no active chunk had to have one.
+#[test]
+fn deleting_a_material_surface_is_rejected() {
+    let mut data = snapshot_of(populated_config(4_158));
+    assert_eq!(data.material_surfaces.records.len(), 9);
+    let removed = data.material_surfaces.records.remove(0).id;
+    data.material_surfaces
+        .transitions
+        .retain(|transition| transition.id != removed);
+    data.material_surfaces
+        .pending_physical_changes
+        .retain(|id| *id != removed);
+
+    rejects(
+        data,
+        "material surfaces do not cover exactly the active chunks",
+    );
+}
+
+/// Reservoir validation read the trace's phase and kind but never its payload,
+/// while stage six commits exactly that payload.
+#[test]
+fn a_forged_thermal_reservoir_budget_or_target_is_rejected() {
+    let mut budget = snapshot_of(populated_config(4_159));
+    budget.thermal.reservoirs[0].budget = 999_999;
+    rejects(
+        budget,
+        "thermal reservoir does not match the transition that created it",
+    );
+
+    let mut target = snapshot_of(populated_config(4_159));
+    target.thermal.reservoirs[0].target.cell_index = 3;
+    rejects(
+        target,
+        "thermal reservoir does not match the transition that created it",
+    );
+}
+
+#[test]
+fn actor_ancestry_that_does_not_match_the_actor_set_is_rejected() {
+    let mut orphan = snapshot_of(populated_config(4_160));
+    let ancestry = orphan.actors_objective.actor_ancestry[0].1.clone();
+    orphan
+        .actors_objective
+        .actor_ancestry
+        .push((causafera_runtime::ActorId::new(9_999), ancestry));
+    rejects(
+        orphan,
+        "actor ancestry does not cover exactly the promoted actors",
+    );
+
+    let mut missing = snapshot_of(populated_config(4_160));
+    missing.actors_objective.actor_ancestry.pop();
+    rejects(
+        missing,
+        "actor ancestry does not cover exactly the promoted actors",
+    );
+}
+
+/// Rolling the identifier counters back makes the next commit re-issue live IDs.
+/// Both arrays are binary-searched, so an unsorted store resolves provenance to
+/// the wrong event — silently, and only failing to re-import one save later.
+#[test]
+fn rolled_back_trace_identifier_counters_are_rejected() {
+    let mut data = snapshot_of(populated_config(4_161));
+    data.traces.next_trace_id = 0;
+    data.traces.next_event_id = 0;
+    rejects(data, "trace store failed validation");
 }

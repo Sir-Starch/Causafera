@@ -192,7 +192,9 @@ mod bootstrap_summary {
         ObserverBootstrapReceipt {
             stage,
             completed_at: SimulationTime::new(stage),
-            result: [stage as u8; 32],
+            // Distinct from both top-level digests, so a test that locates the
+            // result by byte pattern cannot find a digest instead.
+            result: [0xA0 | stage as u8; 32],
             completion_trace: TraceId::new(100 + stage),
             dependency_traces: dependencies,
         }
@@ -318,8 +320,14 @@ mod bootstrap_summary {
         let encoded = encode_observer_snapshot(&snapshot);
 
         // When: the receipt's result bytes are truncated to the wrong length.
+        // The pattern is the receipt's own, which no digest shares.
         let mut broken = encoded.clone();
-        let position = find_subsequence(&broken, &[1_u8; 32]).expect("result bytes are present");
+        let position =
+            find_subsequence(&broken, &[0xA1_u8; 32]).expect("receipt result bytes are present");
+        assert!(
+            position > find_subsequence(&broken, &[2_u8; 32]).expect("history digest is present"),
+            "the located bytes must be the receipt's, not a top-level digest's"
+        );
         broken[position - 1] = 31;
 
         // Then: it is rejected rather than accepted with a short fingerprint.
