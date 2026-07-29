@@ -377,3 +377,113 @@ test('an unknown field on a supported wire type is skipped, not rejected', () =>
   const summary = decode([...baseSummary(), ...bootstrapGroup(1), ...scalar(200, 1)]);
   assert.equal(summary.bootstrap.stageCount, 1);
 });
+
+// ---------------------------------------------------------------------------
+// Field raster. `cell_count` became a checked `Option` on the Rust side during
+// this plan, so the lattice bound is a surface this branch changed; the Node
+// suite covered none of it, and neither did the Rust suite until now.
+// ---------------------------------------------------------------------------
+
+const zigzag = (value) => (value < 0n ? -value * 2n - 1n : value * 2n);
+
+/** Delta-encoded value band, built from bytes rather than from the decoder. */
+function deltaBand(values) {
+  const out = [];
+  let previous = 0n;
+  for (const value of values) {
+    out.push(...varint(zigzag(BigInt(value) - previous)));
+    previous = BigInt(value);
+  }
+  return out;
+}
+
+function raster({ edge, depth, values = [], auxiliary, cellTraces }) {
+  const out = [];
+  out.push(...scalar(1, 3));
+  out.push(...scalar(2, 0));
+  out.push(...scalar(3, 0));
+  out.push(...scalar(4, 0));
+  out.push(...scalar(5, 1));
+  out.push(...scalar(6, 0));
+  out.push(...scalar(7, edge));
+  out.push(...scalar(8, depth));
+  out.push(...delimited(9, deltaBand(values)));
+  if (auxiliary !== undefined) out.push(...delimited(10, deltaBand(auxiliary)));
+  if (cellTraces !== undefined) {
+    const packed = [];
+    for (const trace of cellTraces) packed.push(...varint(BigInt(trace)));
+    out.push(...delimited(11, packed));
+  }
+  return out;
+}
+
+const decodeRaster = (bytes) => protocol.decodeFieldRaster(Uint8Array.from(bytes));
+const rasterRejects = (bytes, what) =>
+  assert.throws(() => decodeRaster(bytes), undefined, `${what} must be rejected`);
+
+test('a field raster whose payload fills its lattice decodes, and is the control', () => {
+  const decoded = decodeRaster(raster({ edge: 3, depth: 1, values: [0, 5, -5, 7, 0, 1, 2, 3, 4] }));
+  assert.equal(decoded.edge, 3);
+  assert.equal(decoded.depth, 1);
+  assert.equal(decoded.values.length, 9);
+  assert.equal(decoded.values[2], -5);
+});
+
+test('a field raster is refused when its payload does not fill the declared lattice', () => {
+  rasterRejects(raster({ edge: 4, depth: 1, values: [0, 1, 2, 3, 4, 5, 6, 7, 8] }), 'nine cells in a sixteen-cell lattice');
+  rasterRejects(
+    raster({ edge: 2, depth: 1, values: [0, 1, 2, 3], auxiliary: [0, 1] }),
+    'an auxiliary band shorter than the lattice',
+  );
+  rasterRejects(
+    raster({ edge: 2, depth: 1, values: [0, 1, 2, 3], cellTraces: [1, 2, 3] }),
+    'a trace band shorter than the lattice',
+  );
+});
+
+test('a declared lattice larger than a representable cell count is refused', () => {
+  // Rust computed this as an unchecked multiply before `cell_count` became an
+  // `Option`: `edge² × depth` of exactly 2^64 wrapped to zero and a release
+  // build accepted an empty value band. TypeScript accumulates into a float and
+  // never wrapped, so this is the pair of inputs on which the two decoders used
+  // to disagree outright.
+  rasterRejects(raster({ edge: 1 << 24, depth: 1 << 16 }), 'a lattice of exactly 2^64 cells');
+  rasterRejects(raster({ edge: 1 << 26, depth: 1 << 12 }), 'a lattice that overflows 64 bits');
+  rasterRejects(raster({ edge: 0xffffffff, depth: 0xffffffff }), 'a lattice at the 32-bit maxima');
+});
+
+test('a field raster missing a required field is rejected rather than defaulted', () => {
+  const complete = raster({ edge: 2, depth: 1, values: [0, 1, 2, 3] });
+  for (const field of [1, 5, 7, 8]) {
+    rasterRejects(stripRasterField(complete, field), `a raster with no field ${field}`);
+  }
+});
+
+/** Drop one field from a raster payload, leaving the rest byte-identical. */
+function stripRasterField(bytes, target) {
+  const out = [];
+  let at = 0;
+  while (at < bytes.length) {
+    const start = at;
+    let key = 0n;
+    let shift = 0n;
+    while (bytes[at] & 0x80) key |= BigInt(bytes[at++] & 0x7f) << shift, (shift += 7n);
+    key |= BigInt(bytes[at++]) << shift;
+    const field = Number(key >> 3n);
+    const wire = Number(key & 7n);
+    if (wire === 0) {
+      while (bytes[at] & 0x80) at += 1;
+      at += 1;
+    } else if (wire === 2) {
+      let length = 0n;
+      let lengthShift = 0n;
+      while (bytes[at] & 0x80) length |= BigInt(bytes[at++] & 0x7f) << lengthShift, (lengthShift += 7n);
+      length |= BigInt(bytes[at++]) << lengthShift;
+      at += Number(length);
+    } else {
+      throw new Error(`unexpected wire type ${wire}`);
+    }
+    if (field !== target) out.push(...bytes.slice(start, at));
+  }
+  return out;
+}

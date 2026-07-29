@@ -101,7 +101,8 @@ and four-tick delta test completed in 0.01 s, the bounded world projection test 
 test harness's 0.01 s display precision, and the replay-verified 192-tick populated
 control/intervention Explanation run completed in 2.19 s. Build time, WebKit startup, and browser
 paint are excluded. These are single environment-specific diagnostics, not statistical latency,
-throughput, or population-scale claims; `TODO-PERF-001` remains pending.
+throughput, or population-scale claims. `TODO-PERF-001` is closed on the criteria it met; the
+remainder it did not meet was carried to `TODO-PERF-003`.
 
 ## Conserved Thermal Carrier Benchmark
 
@@ -121,8 +122,9 @@ face diffusion alone. Required measurements:
 
 These are environment-specific baselines; no absolute latency claim is made without reference
 hardware. `TODO-THERMAL-002`'s material exchange term was not benchmarked in that tranche — this
-section names the requirement, not a measurement already taken. The benchmark harness, repeated
-measurements, and statistical reporting remain `TODO-PERF-001`.
+section names the requirement, not a measurement already taken. A benchmark harness with warm-up,
+repeated measurements, and mean/median/stddev reporting over retained raw samples now exists for the
+bootstrap closure workload; extending it to the remaining workloads is `TODO-PERF-003`.
 
 ## Methodology Gaps Found by the Performance Baseline Investigation
 

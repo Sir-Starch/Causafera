@@ -407,6 +407,10 @@ pub enum CausalSnapshotError {
     NonMonotonicTraceIds,
     #[error("event IDs are not strictly increasing")]
     NonMonotonicEventIds,
+    #[error("event times are not non-decreasing")]
+    NonMonotonicTimes,
+    #[error("event carries no effects")]
+    NoEffects,
     #[error("cause refers to unknown trace ID: {0}")]
     UnknownCause(TraceId),
 }
@@ -449,7 +453,26 @@ impl CausalTraceStore {
 
         let mut last_trace_id: Option<TraceId> = None;
         let mut last_event_id: Option<EventId> = None;
+        let mut last_time: Option<SimulationTime> = None;
         for event in &snapshot.events {
+            // Import accepted two shapes the commit path forbids, and both made
+            // a forged trailing event cheap. `CausalEventProposal::new` rejects
+            // an empty effect set, so no committed event has ever had one: an
+            // effectless event is pure padding that carries no state transition
+            // and exists only to change how the store's tail reads.
+            if event.effects.is_empty() {
+                return Err(CausalSnapshotError::NoEffects);
+            }
+            // Commits advance a tick at a time, so store order is time order.
+            // Without this, a store whose times run 0…0, 5, 1 imports cleanly
+            // and any bound phrased as `any(time > limit)` misses the event
+            // hiding behind the larger one.
+            if let Some(last) = last_time
+                && event.time < last
+            {
+                return Err(CausalSnapshotError::NonMonotonicTimes);
+            }
+            last_time = Some(event.time);
             if let Some(last) = last_trace_id
                 && event.trace_id <= last
             {

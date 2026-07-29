@@ -314,7 +314,7 @@ mod bootstrap_summary {
     }
 
     #[test]
-    fn a_receipt_missing_its_result_or_trace_is_rejected() {
+    fn a_receipt_result_of_the_wrong_length_is_rejected() {
         // Given: a valid single-receipt payload.
         let snapshot = summary(vec![receipt(1, Vec::new())]);
         let encoded = encode_observer_snapshot(&snapshot);
@@ -332,6 +332,15 @@ mod bootstrap_summary {
 
         // Then: it is rejected rather than accepted with a short fingerprint.
         assert!(decode_observer_snapshot(&broken).is_err());
+
+        // And, since the name previously promised it: a receipt with the field
+        // removed outright is rejected too, for each of the four it requires.
+        for field in [1_u32, 2, 3, 4] {
+            assert!(
+                decode_observer_snapshot(&receipt_without_field(&encoded, field)).is_err(),
+                "a receipt with no field {field} must be rejected"
+            );
+        }
     }
 
     #[test]
@@ -702,6 +711,26 @@ mod bootstrap_summary {
             cursor = end;
         }
         panic!("payload carries no receipt field");
+    }
+
+    /// The payload with one field dropped from inside its first receipt record,
+    /// re-length-prefixed so the rest of the message stays well formed.
+    fn receipt_without_field(bytes: &[u8], target: u32) -> Vec<u8> {
+        let record = receipt_field_bytes(bytes);
+        let (_, after_key) = read_varint(&record, 0);
+        let (length, after_length) = read_varint(&record, after_key);
+        let body = &record[after_length..after_length + length as usize];
+
+        let stripped = strip_field(body, target);
+        let mut replacement = record[..after_key].to_vec();
+        write_varint(&mut replacement, stripped.len() as u64);
+        replacement.extend_from_slice(&stripped);
+
+        let at = find_subsequence(bytes, &record).expect("the receipt record is present");
+        let mut out = bytes[..at].to_vec();
+        out.extend_from_slice(&replacement);
+        out.extend_from_slice(&bytes[at + record.len()..]);
+        out
     }
 
     fn read_varint(bytes: &[u8], mut cursor: usize) -> (u64, usize) {

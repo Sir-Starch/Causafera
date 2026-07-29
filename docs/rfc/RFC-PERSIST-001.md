@@ -380,9 +380,33 @@ configuration and requires an exact match, which covers plan identity, world see
 dependency chain, parameter fingerprints, and the sorted active-chunk targets in one comparison. It
 then requires every receipt's completion trace to exist in the persisted trace store, to be a
 Lifecycle stage-completion event, and to carry the effect that transitions that stage's bounded
-result state to the receipt's result. At bootstrap time it additionally requires the configured
-population to be conserved across aggregates and promoted actors, and every promoted actor's
-ancestry to be a trace the actor-promotion receipt named.
+result state to the receipt's result. Each stage's committed window is re-derived from the store and
+every result recomputed from it, so a snapshot that rewrites the completion effect, the receipt
+result and the materialized result together is still rejected; each completion's causes must equal
+exactly its own stage effects plus its predecessor receipt. Plan targets are additionally checked
+against the active chunk set the snapshot restored, not only against the configuration.
+
+Validation is in three scopes.
+
+- **Every import, at every simulation time.** Material surfaces cover the active chunks and every
+  surface is anchored to a committed effect naming it; actor objects and `actor_ancestry` each cover
+  exactly the promoted actors; the aggregate actor pool names only actors that exist; population
+  aggregates sit in active chunks; the living population equals the configured bootstrap population
+  plus births minus deaths; and the trace-store and actor identifier counters are above every
+  identifier already issued, so a rolled-back counter cannot make the next commit re-issue a live
+  one. The trace store itself rejects events with no effects and event times that are not
+  non-decreasing, both of which the commit path already forbids.
+- **Bootstrap-time only** — meaning a store that ends at the last stage completion, which is decided
+  by the store's shape rather than by the `advanced_through` counter the snapshot supplies; the two
+  pin each other, so neither a trailing event with the clock at zero nor a moved clock over a
+  bootstrap-only store is accepted. In this scope the configured population must be conserved across
+  aggregates and promoted actors with no net births or deaths, the promoted-actor count must equal
+  the promotions the store committed, every aggregate's ancestry must be a bootstrap stage effect,
+  every promoted actor's ancestry must be a trace the actor-promotion receipt named, material
+  surfaces must equal the active chunks exactly, and each thermal reservoir's budget and target are
+  recomputed from the reservoir stage's committed window.
+- **Independent of the record.** Reservoir targets are resolved against their thermal field, which
+  rejects both a chunk with no field and an out-of-range cell.
 
 ## Security considerations
 

@@ -1,6 +1,7 @@
 # Canonical Production Bootstrap Receipt Closure
 
-**Status:** Implemented — waves 1-5 green, final verification recorded below
+**Status:** Implemented — waves 1-5 green, plus seven audit-hardening rounds; verification below is
+re-run and re-recorded each round
 
 **Accepted:** 2026-07-28
 
@@ -54,10 +55,20 @@ removed if no tests require it.
 - **INV-043:** the world is one coherent spatial system, addressed rather than partitioned.
 
 An earlier revision of this list cited INV-001–004 for determinism, INV-012–016 for the mutation
-boundary, INV-021 for provenance and INV-040 for persistence. All four were wrong:
-`docs/architecture/invariants.md` gives those numbers to omniscience, Explanation non-authority, the
-UI-as-observer rule and biological mana interaction respectively. Corrected against the source rather
-than left as plausible-looking citations.
+boundary, INV-021 for provenance and INV-040 for persistence. Checked against
+`docs/architecture/invariants.md`, three of the four were wrong and the fourth was over-broad:
+
+- INV-001–002 are omniscience and observation-is-not-Ground-Truth, INV-003–004 are mana invariants —
+  none of the four is about determinism.
+- INV-021 is the UI-as-observer rule, not provenance; provenance is INV-014.
+- INV-040 is biological mana interaction, not persistence.
+- INV-012–016 did contain the right invariant: **INV-016 is** the mutation boundary. The range was
+  wrong only in reaching four further numbers that are not — INV-012–013 (Explanation and observer
+  non-authority), INV-014 (provenance) and INV-015 (no random high-level history).
+
+A previous revision of this very paragraph called all four citations wrong and glossed INV-012–016
+as Explanation non-authority, which is accurate for two of the five numbers and not for INV-016.
+Corrected against the source rather than left as a plausible-looking correction.
 
 ## Ontology domains affected
 
@@ -611,6 +622,9 @@ The implementation worker updates only documents whose facts change:
 - If a new follow-up is discovered for stage-history synthesis, receipt-growth management, or
   deeper observer causal queries, add a separate `Detailed Development — ...` TODO with evidence;
   do not hide it in this plan.
+- Opened `TODO-OBS-003` (decoder parity outside the runtime summary), per the rule above: the
+  divergences are pre-existing, outside this plan's surface, and recorded with their evidence rather
+  than absorbed here.
 
 ## Decision log
 
@@ -768,14 +782,17 @@ The implementation worker updates only documents whose facts change:
 
   **Progress had no rows for the audit commits.** Added, with their focused verification.
 
-- **2026-07-28 (fifth audit):** A fifth audit of `ab38ea1` found one fail-open, three further decoder divergences, and a set of
-documentation contradictions this branch had introduced and left standing.
+- **2026-07-28 (fifth audit):** A fifth audit of `ab38ea1` found five defects, one per row of the
+table below: a fail-open gate, a cluster of shared-`Cursor` decoder divergences, a target check that
+was never made, and two documentation contradictions this branch had introduced and left standing.
+(This entry sits after the fourth audit's below only because the table was written first and
+relabelled later; the rounds ran in numeric order.)
 
 | Defect | Proof | Regression coverage |
 | --- | --- | --- |
 | `advanced_through` arrives from the snapshot and gates both bootstrap-time checks, but was never cross-checked against `recipe.completed_time`; a snapshot presenting as bootstrap-time while claiming to have advanced skipped both | reproduced: 100 residents deleted and every promoted ancestry erased, import returned `Ok` | `a_snapshot_whose_clocks_disagree_is_rejected`, `a_snapshot_that_moves_only_its_completed_time_is_rejected` |
 | TypeScript accepted protobuf wire type 5 and an unbounded field number; Rust rejects both. Rust defaulted fields 13..=22 that TypeScript requires | comparison of both cursors | `tools/audit/test-observer-bootstrap-decoder.mjs` |
-| Nothing compared plan targets against the restored active chunk set; the property held through thermal and duplicate validation rather than through the check `RFC-PERSIST-001` describes | probe | `a_target_that_is_not_an_active_chunk_is_rejected` |
+| Nothing compared plan targets against the restored active chunk set; the property held through thermal and duplicate validation rather than through this plan's own §3 promise to verify target chunks are active. `RFC-PERSIST-001` describes only the plan-versus-configuration comparison, which is what the audit showed to be insufficient | probe | `a_target_that_is_not_an_active_chunk_is_rejected` |
 | Four documents still said no observer-overhead figure is reported while two reported one | inspection | wave-5 Decision Log entry superseded in place; the other three corrected |
 | Progress §F1 recorded 33 and 10 where the suites stood at 43 and 20 | inspection | counts refreshed and marked as re-run per round |
 
@@ -813,15 +830,72 @@ documentation contradictions this branch had introduced and left standing.
   `node --test` over `tools/audit/*.mjs` and is in `AGENTS.md`'s validation suite. The TypeScript
   obstacle was also softer than stated: `packages/observer-protocol` already carries `typescript` as
   a devDependency, so the module can be compiled and imported in one step.
-  `tools/audit/test-observer-bootstrap-decoder.mjs` now runs seventeen adversarial vectors through
-  the real decoder, built from hand-written bytes rather than from the decoder's own inverse, and is
+  `tools/audit/test-observer-bootstrap-decoder.mjs` now runs adversarial vectors through the real
+  decoder, built from hand-written bytes rather than from the decoder's own inverse, and is
   registered in the runner. Confirmed to have teeth: reverting three of the parity guards fails
-  exactly three of them.
+  exactly three of them. It began at seventeen `node --test` cases, of which three are positive
+  controls rather than rejections, and stands at twenty-one after round seven added the field-raster
+  lattice section.
 
-- **2026-07-28 (post-audit, not done):** One audit finding is recorded rather than closed. The
+- **2026-07-29 (sixth audit):** Split across four agents by axis. **A bootstrap-time guard was
+  fail-open:** `advanced_through` alone decided whether the domain checks ran, and it arrives from
+  the snapshot, so a record could turn them off by claiming to have advanced. The gate is now the
+  store's shape — `holds_only_the_bootstrap_prefix` — with the clock as a mutual pin, so neither a
+  trailing event with the clock at zero nor a moved clock over a bootstrap-only store is accepted.
+  Population conservation gained a promotion-count equality, because the single sum is satisfiable by
+  deleting every actor and inflating an aggregate by the same number. Aggregates must sit in active
+  chunks, `actor_ancestry` must cover exactly the actor set, material surfaces must cover the active
+  chunks, reservoir budget and target are recomputed from the stage-six window, and the trace store's
+  identifier counters may no longer be rolled back. **One of this plan's own tests was vacuous:**
+  `a_target_that_is_not_an_active_chunk_is_rejected` tripped thermal validation before reaching the
+  guard it named. The root cause was `rejects()` accepting any error, which is now an exact-message
+  assertion at every call site.
+
+- **2026-07-29 (seventh audit):** Split across four agents by axis; one was lost to a session limit
+  and its configuration sweep was adopted directly instead. Findings verified against the code before
+  acting, which mattered three times.
+
+  **One appended event disabled every bootstrap-time domain check.** `validate_bootstrap_domain_state`
+  returned `Ok` as soon as the store held anything past the last completion, so a snapshot could
+  append one junk event, claim to have advanced, and gut the population, the actor set, the material
+  surfaces and a reservoir budget together. The checks that do not depend on the store ending at
+  bootstrap now run unconditionally in `validate_persistent_domain_state`: surfaces cover the active
+  chunks, actor objects cover the actors, the aggregate actor pool names live actors, and the living
+  population equals the bootstrap population plus births minus deaths.
+
+  **Two of the audit's own suggestions were wrong and were not implemented as given.** Exact surface
+  equality would have been a false rejection — thermal transfers create further surfaces at non-zero
+  cell indices during a run — so the unconditional form requires coverage, not equality. And the
+  proposed reservoir clause is unreachable: import already resolves every reservoir against its
+  thermal field, rejecting both a chunk with no field and an out-of-range cell, so a clause here
+  would read as protection that is not there. It was deliberately not added.
+
+  **`next_actor_id` could be rolled back**, the same defect as the closed trace-counter rollback on
+  the one counter that fix did not cover. `promote_actor` issues `ActorId::new(next_actor_id)` into a
+  map, so the next promotion replaces a live actor: residents disappear with no death event and the
+  corrupted state re-exports clean. **The trace store accepted two shapes the commit path forbids** —
+  events with no effects, and times that are not non-decreasing — and both are what made the forged
+  trailing event cheap.
+
+  **A guard had no test, and a test was named for a guard it never reached.** The aggregate-ancestry
+  check survived deletion of the entire suite; it is now reached directly through the runtime root
+  trace and through a stage completion. The test named for it actually covers the prefix guard and
+  has been renamed accordingly.
+
+  **The false-rejection axis is now a permanent test.** Every round tightens what import accepts, and
+  a check phrased too strongly does not fail loudly — it makes a legitimate save unloadable, which no
+  adversarial test can detect. `every_state_the_runtime_produces_survives_import` sweeps the
+  configuration space at bootstrap and after advancement through direct import, an envelope round
+  trip, and an export-resume-export chain.
+
+- **2026-07-29 (post-audit, not done):** Two audit findings are recorded rather than closed. The
   payload-wide byte limit on the runtime-summary decoder is pre-existing behaviour of the whole
   payload, bounded at the query layer by `MAX_QUERY_PAYLOAD_BYTES`; this plan bounds its own group's
-  counts and leaves the payload-wide limit to whoever owns that contract. The earlier companion
+  counts and leaves the payload-wide limit to whoever owns that contract. Decoder parity **outside**
+  the runtime summary is recorded as `TODO-OBS-003`: six pre-existing divergences across the other
+  decoders, the sharpest being Explanation IR, where Rust validates and normalizes through its
+  constructors and TypeScript does neither, so identical accepted bytes produce different objects.
+  Closing that is a cross-decoder change well outside this plan's surface. The earlier companion
   finding — no TypeScript adversarial coverage — was closed in the fifth round and is no longer an
   exception. The source fixture audit remains textual and does not prove reachability, which is what
   that test's own doc comment says; the reachability claim rests on the entry-point equivalence and
@@ -855,21 +929,26 @@ documentation contradictions this branch had introduced and left standing.
 | audit 1 | `cf3f018` | `cargo test -p causafera-runtime --test historical_bootstrap` (37 passed), `cargo test -p causafera-observer-wire --test protocol` (17 passed), full workspace green |
 | audit 2 | `0ea17cb` | `cargo test -p causafera-runtime --test historical_bootstrap` (39 passed), `cargo test -p causafera-observer-wire --test protocol` (18 passed), full workspace green |
 | audit 3 | `5367351` | `cargo test -p causafera-runtime --test historical_bootstrap` (39 passed), `cargo test -p causafera-observer-wire --test protocol` (20 passed), `cargo run -p xtask -- ci`, `git diff --check` |
-| audit 5 | `5793f05` | `cargo test -p causafera-runtime --test historical_bootstrap` (43 passed), `cargo test -p causafera-observer-wire --test protocol` (20 passed), `node --test tools/audit/test-observer-bootstrap-decoder.mjs` (17 passed), `cargo run -p xtask -- ci` |
 | audit 4 | `5d47c0e` | `cargo test -p causafera-runtime --test historical_bootstrap` (40 passed), `cargo test -p causafera-observer-wire --test protocol` (20 passed), `cargo run -p xtask -- ci`, `git diff --check` |
+| audit 5 | `5793f05` | `cargo test -p causafera-runtime --test historical_bootstrap` (43 passed), `cargo test -p causafera-observer-wire --test protocol` (20 passed), `node --test tools/audit/test-observer-bootstrap-decoder.mjs` (17 passed), `cargo run -p xtask -- ci` |
+| audit 6 | `90ff6fe` | `cargo test -p causafera-runtime --test historical_bootstrap` (49 passed), `cargo test -p causafera-observer-wire --test protocol` (20 passed), `cargo run -p xtask -- ci`, `git diff --check` |
+| audit 7 | (this round) | `cargo test -p causafera-runtime --test historical_bootstrap` (57 passed), `cargo test -p causafera-observer-wire` (21 lib + 20 protocol), `node --test tools/audit/test-observer-bootstrap-decoder.mjs` (21 passed), full workspace green in both feature modes, `cargo run -p xtask -- ci` |
 
 Each row names the round's **implementation** commit; the documentation commit that records a row's
-hash necessarily follows it and is not itself listed.
+hash necessarily follows it and is not itself listed. Rows are in round order; audits 4 and 5 were
+previously transposed here, and rounds 6 and 7 were missing entirely until this revision.
 
 ### Final verification
 
-- **F1.** Re-run after every audit round; the counts below are current, not the wave-5 ones.
-  `cargo test -p causafera-runtime --test historical_bootstrap` — 43 passed, 0 failed.
-  `cargo test -p causafera-observer-wire --test protocol` — 20 passed.
+- **F1.** Re-run after every audit round; the counts below are current, not the wave-5 ones. They
+  have now gone stale twice — recorded as 33/10 when the suites stood at 43/20, then left at 43 when
+  round six took them to 49 — so each figure names the exact command that produces it.
+  `cargo test -p causafera-runtime --test historical_bootstrap` — 57 passed, 0 failed.
+  `cargo test -p causafera-observer-wire` — 21 passed (lib) and 20 passed (`tests/protocol.rs`).
   `cargo test -p causafera-explanation --lib` — 17 passed.
   `cargo test -p causafera-observer --bin causafera-observer` — 12 passed.
   `cargo test -p causafera-lab --lib` — 6 passed, 3 ignored (expensive benchmarks, ignored before this plan).
-  `node --test tools/audit/test-observer-bootstrap-decoder.mjs` — 17 passed.
+  `node --test tools/audit/test-observer-bootstrap-decoder.mjs` — 21 passed.
 - **F2.** `cargo fmt --all -- --check` — clean. `cargo clippy --workspace --all-targets --all-features -- -D warnings`
   — clean.
 - **F3.** `cargo test --workspace --all-features` — green. `cargo test --workspace --no-default-features` — green.
@@ -877,13 +956,16 @@ hash necessarily follows it and is not itself listed.
 - **F4.** `cargo run -p xtask -- ci`, `pnpm lint`, `pnpm typecheck`, `pnpm build`,
   `node tools/audit/check-entry-points.mjs`, `git diff --check` — all green.
 
-  `node tools/audit/run-source-tests.mjs` is **not reliably green, and was recorded as green here in
-  error.** It reports 30 passed / 1 failed: `tools/audit/test-capture-cargo-dispatch.mjs` creates a
-  worktree at a frozen baseline commit and runs `cargo test -p ontopolis-core`, a crate that does not
-  exist in this tree. The failure is branch-independent — it reproduces with this branch's changes
-  reverted — and it passed on one earlier invocation here, so it is environment- or cache-dependent
-  rather than deterministic. It is recorded rather than fixed: repairing a frozen-baseline audit
-  fixture is unrelated to this plan. The 30 passing include the 17 added by this plan.
+  `node tools/audit/run-source-tests.mjs` is **not reliably green**, and both of its outcomes have
+  now been observed here. It was recorded as green in error, then measured at 30 passed / 1 failed,
+  and at round seven it reports **31 passed / 0 failed**. The unstable case is
+  `tools/audit/test-capture-cargo-dispatch.mjs`, which creates a worktree at a frozen baseline commit
+  and runs `cargo test -p ontopolis-core`, a crate that does not exist in this tree; run alone it
+  takes about thirteen seconds and passes. The failure is branch-independent — it reproduced with
+  this branch's changes reverted — so it is environment- or cache-dependent rather than
+  deterministic, and the honest statement is that this script cannot be relied on either way. It is
+  recorded rather than fixed: repairing a frozen-baseline audit fixture is unrelated to this plan.
+  The 31 passing include the 21 decoder vectors added by this plan.
 - **F5. Manual QA gate.** The two observer commands as written in the checklist select nothing:
   with `--exact` the filter must be the module-qualified
   `session::tests::session_negotiates_and_streams_real_runtime_snapshots`, and the bare name reports
@@ -908,10 +990,10 @@ consecutive runs of the benchmark.
 
 | Metric | Median | Stddev |
 | --- | --- | --- |
-| bootstrap wall time per `Runtime::new` | 3.14-3.23 ms | 32-126 us |
-| import wall time per `RuntimeState::import_snapshot` | 0.190-0.197 ms | 3.5-31 us |
-| observer poll, control (no encoding) | 9.38-9.53 us | 33-54 ns |
-| observer poll, with summary encoding | 9.67-9.88 us | 259-294 ns |
+| bootstrap wall time per `Runtime::new` | 3.11-3.15 ms | 41-131 us |
+| import wall time per `RuntimeState::import_snapshot` | 0.191-0.193 ms | 2.5-8.3 us |
+| observer poll, control (no encoding) | 9.33-9.37 us | 38-195 ns |
+| observer poll, with summary encoding | 9.62-9.65 us | 248-2512 ns |
 
 | Metric | Measured |
 | --- | --- |
@@ -920,16 +1002,21 @@ consecutive runs of the benchmark.
 | bootstrap provenance events | 53 |
 | observer runtime-summary payload bytes | 436 |
 
-**Observer encoding overhead: roughly 300-350 ns per poll, about 3-4%.** Earlier passes reported
+**Observer encoding overhead: roughly 265-290 ns per poll, about 2.8-2.9%.** Earlier passes reported
 this as unresolvable, and that was a property of the measurement rather than of the system: taken as
 two sequential blocks of eight, the two means straddled each other. Interleaved at twenty samples the
-control's spread collapses to tens of nanoseconds and the two distributions separate — in the
-cleanest of the three runs they do not overlap at all, the observer minimum sitting above the control
-maximum. The figure is now reported because it can be.
+control's spread collapses to tens of nanoseconds and the two distributions separate. An earlier
+revision of this section gave 300-350 ns and 3-4% from a different set of three runs; the honest
+statement across both sets is a few hundred nanoseconds and roughly 3%, and the narrower figure
+above should not be read as more precise than the run-to-run spread allows.
 
-Import cost did **not** measurably rise when `validate_bootstrap_stage_replay` was added, at this
-envelope: the median sits where the pre-hardening mean did. That is a statement about fifty-three
-bootstrap events and six recomputed fingerprints, not about a larger record.
+Import cost did **not** measurably rise across two rounds of added validation, at this envelope. The
+median sat at 0.190-0.197 ms when `validate_bootstrap_stage_replay` was added, and sits at
+0.191-0.193 ms now that `validate_bootstrap_domain_state` and `validate_persistent_domain_state`
+also run on every import. An audit reported this figure as stale on the strength of runs at
+0.211-0.219 ms; those were taken while four subagents and a concurrent build were running, and the
+figure reproduces inside its documented range on a quiet machine. That is a statement about
+fifty-three bootstrap events and six recomputed fingerprints, not about a larger record.
 
 A fourth run, taken first on a cold process, is excluded from the ranges above and recorded here
 instead: bootstrap median 3.70 ms with a 551 us standard deviation, and one import sample of 2.83 ms
@@ -988,13 +1075,15 @@ A fourth audit of `5367351` found four more.
 | TypeScript accepted wire field 35 on a varint wire and dropped it silently; Rust rejected it | `a_mistyped_summary_field_is_rejected_rather_than_read_as_absent` covers the Rust side; the guard is table-driven in both |
 | Neither decoder bounded the tenth byte of a varint, so Rust truncated where TypeScript rejected — in the shared cursor, affecting every message | both reject a tenth byte above one |
 | The bootstrap benchmark ignored the repository's warm-up / mean-median-stddev / raw-sample requirement | `benchmark_summary_statistics_are_computed_over_the_retained_samples`, and the envelope test now asserts every measured repetition is retained |
-| `docs/performance/benchmarks.md` described `TODO-PERF-001` as open after the backlog closed it | the benchmarks document corrected in three places |
+| `docs/performance/benchmarks.md` described `TODO-PERF-001` as open after the backlog closed it | the benchmarks document corrected — in three places at the time, and in the two further places a later audit found |
+| One appended event disabled every bootstrap-time domain check; `next_actor_id` could be rolled back; the trace store accepted effectless events and unordered times; the aggregate-ancestry guard had no test | reproduced: a junk event plus a moved clock let the population, actor set, surfaces and a reservoir budget all be gutted and re-exported clean | `an_advanced_snapshot_cannot_disable_the_persistent_domain_checks`, `a_rolled_back_actor_identifier_counter_is_rejected`, `a_trace_store_holding_events_the_commit_path_forbids_is_rejected`, `an_aggregate_whose_ancestry_is_not_a_stage_effect_is_rejected`, `actor_objects_that_do_not_cover_the_actors_are_rejected`, `an_aggregate_actor_pool_naming_a_phantom_actor_is_rejected`, `a_living_population_that_contradicts_the_birth_and_death_counters_is_rejected`, and `every_state_the_runtime_produces_survives_import` as the negative control |
 
-One audit finding is deliberately **not** acted on and is recorded in the Decision Log: the
-payload-wide byte limit on the runtime summary is pre-existing and bounded at the query layer. Its
-former companion — no automated TypeScript adversarial coverage — was closed in the fifth round by
-`tools/audit/test-observer-bootstrap-decoder.mjs`, after the reason recorded for skipping it turned
-out to be checkably wrong.
+Two audit findings are deliberately **not** acted on and are recorded in the Decision Log: the
+payload-wide byte limit on the runtime summary is pre-existing and bounded at the query layer, and
+decoder parity **outside** the runtime summary is opened as `TODO-OBS-003` rather than closed here.
+Their former companion — no automated TypeScript adversarial coverage — was closed in the fifth round
+by `tools/audit/test-observer-bootstrap-decoder.mjs`, after the reason recorded for skipping it
+turned out to be checkably wrong.
 
 ### Not delivered
 
@@ -1004,6 +1093,12 @@ out to be checkably wrong.
   measurement remain open; only its bootstrap-receipts clause is delivered.
 - `TODO-EXPLAIN-003`'s comparison frames, counterfactual context, and alternatives remain open.
 - Explanation claim schemas 18/19 have no registered locale names; they render by identity.
+- Decoder parity outside the runtime summary and its bootstrap group. A systematic audit found those
+  two in parity across 156 hand-built and 6,300 mutation-fuzz vectors with zero divergences, and six
+  pre-existing root causes of divergence in the other shared decoders — world chunk snapshot,
+  query/connect response, stream envelope, field raster, and Explanation IR, where Rust validates and
+  normalizes through its constructors and TypeScript does neither. Opened as `TODO-OBS-003` with that
+  evidence; closing it is a cross-decoder change outside this plan's surface.
 
 ### Planning evidence
 

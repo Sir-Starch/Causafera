@@ -981,12 +981,13 @@ fn a_target_that_is_not_an_active_chunk_is_rejected() {
     rejects(data, "bootstrap stage targets a chunk that is not active");
 }
 
-/// `advanced_through` is the only gate on the bootstrap-time population and
-/// ancestry checks, and it arrives from the snapshot. `export_snapshot` writes
-/// `completed_time` from it, so the two agree in every honest snapshot — left
-/// unchecked, a snapshot presenting as bootstrap-time while claiming to have
-/// advanced skips both guards and can delete residents and erase promoted
-/// ancestry unnoticed.
+/// `advanced_through` arrives from the snapshot, and `export_snapshot` writes
+/// `completed_time` from it, so the two agree in every honest snapshot. When it
+/// was the sole gate on the bootstrap-time population and ancestry checks, a
+/// snapshot presenting as bootstrap-time while claiming to have advanced skipped
+/// both guards and could delete residents and erase promoted ancestry unnoticed.
+/// The gate is now the store's shape, with the clock as a mutual pin; this test
+/// keeps the clock half of that pin honest.
 #[test]
 fn a_snapshot_whose_clocks_disagree_is_rejected() {
     // Given: a valid bootstrap-time snapshot.
@@ -1032,11 +1033,37 @@ fn bootstrap_population_that_is_not_conserved_is_rejected() {
         .sum();
     assert_eq!(total + data.actors_objective.actors.len() as u64, 512);
 
-    // When: an aggregate loses a member with no corresponding promotion.
-    data.population.aggregates[0].count -= 1;
+    // When: an aggregate gains ten members, and the birth counter is moved to
+    // match so that the births-minus-deaths identity — which now holds at every
+    // simulation time and would otherwise catch this first — stays satisfied.
+    // What remains false is that bootstrap has net zero births and deaths.
+    data.population.aggregates[0].count += 10;
+    data.physical_counters.population_births = 10;
 
     // Then: import rejects the unconserved population.
     rejects(data, "bootstrap population is not conserved");
+}
+
+/// The identity above is scoped to a store that ends at bootstrap. This one is
+/// not: residents are created only by bootstrap or a birth and removed only by a
+/// death, whatever the clock says.
+#[test]
+fn a_living_population_that_contradicts_the_birth_and_death_counters_is_rejected() {
+    let mut data = snapshot_of(populated_config(4_162));
+    data.population.aggregates[0].count -= 1;
+    rejects(
+        data,
+        "living population does not match the bootstrap population plus births minus deaths",
+    );
+
+    // And: counters that no history could have produced are rejected as such,
+    // rather than wrapping into an accidentally satisfiable total.
+    let mut underflow = snapshot_of(populated_config(4_162));
+    underflow.physical_counters.population_deaths = u64::MAX;
+    rejects(
+        underflow,
+        "population birth and death counters are not a reachable history",
+    );
 }
 
 #[test]
@@ -1499,10 +1526,14 @@ fn a_population_aggregate_outside_the_active_chunks_is_rejected() {
     rejects(data, "population aggregate outside active chunks");
 }
 
-/// Stage windows end at the last completion, so an event appended after stage
-/// six is covered by none of them and cannot lend provenance to anything.
+/// A bootstrap-time store ends at the last stage completion, so any event after
+/// it contradicts the clock that says nothing has happened yet.
+///
+/// Named for the prefix guard it actually reaches, not for the aggregate
+/// ancestry the mutation also breaks: the ancestry guard is reached and covered
+/// separately below, because a test that never gets that far cannot protect it.
 #[test]
-fn an_aggregate_whose_ancestry_is_a_trailing_event_is_rejected() {
+fn a_bootstrap_time_snapshot_with_a_trailing_event_is_rejected() {
     let mut data = snapshot_of(populated_config(4_157));
     let mut forged = data
         .traces
@@ -1541,10 +1572,15 @@ fn deleting_a_material_surface_is_rejected() {
         .pending_physical_changes
         .retain(|id| *id != removed);
 
-    rejects(
-        data,
-        "material surfaces do not cover exactly the active chunks",
-    );
+    // A chunk losing its surface is not a bootstrap-only impossibility: surfaces
+    // are never destroyed, so this is caught at every simulation time.
+    rejects(data, "an active chunk has no material surface");
+
+    // The bootstrap-time exact-equality check keeps the other direction, but it
+    // is not reachable through a fabricated surface and this test does not
+    // pretend otherwise: `validate_material_surface_last_transition` requires
+    // every surface to be anchored to a committed effect naming that exact
+    // surface, so an invented one is rejected before the count is ever compared.
 }
 
 /// Reservoir validation read the trace's phase and kind but never its payload,
@@ -1596,4 +1632,267 @@ fn rolled_back_trace_identifier_counters_are_rejected() {
     data.traces.next_trace_id = 0;
     data.traces.next_event_id = 0;
     rejects(data, "trace store failed validation");
+}
+
+/// The same rollback on the counter the fix above did not cover. `promote_actor`
+/// issues `ActorId::new(next_actor_id)` into a map, so a rolled-back counter
+/// makes the next promotion replace a live actor instead of adding one:
+/// residents disappear with no death event and the state re-exports clean.
+#[test]
+fn a_rolled_back_actor_identifier_counter_is_rejected() {
+    let mut data = snapshot_of(populated_config(4_163));
+    assert_eq!(data.physical_counters.next_actor_id, 9);
+    data.physical_counters.next_actor_id = 1;
+    rejects(data, "next actor identifier is not above every live actor");
+
+    // The boundary is exclusive: the counter must be above the last live actor,
+    // not equal to it.
+    let mut boundary = snapshot_of(populated_config(4_163));
+    boundary.physical_counters.next_actor_id = 8;
+    rejects(
+        boundary,
+        "next actor identifier is not above every live actor",
+    );
+}
+
+/// An actor's physical object is what perception reads. Deleting the map left
+/// the actors present to the scheduler and invisible to one another.
+#[test]
+fn actor_objects_that_do_not_cover_the_actors_are_rejected() {
+    let mut missing = snapshot_of(populated_config(4_164));
+    assert_eq!(missing.actors_objective.actor_objects.len(), 8);
+    missing.actors_objective.actor_objects.clear();
+    rejects(
+        missing,
+        "actor objects do not cover exactly the promoted actors",
+    );
+
+    let mut orphan = snapshot_of(populated_config(4_164));
+    let mut extra = orphan.actors_objective.actor_objects[0].1;
+    extra.object_key = 9_999;
+    orphan.actors_objective.actor_objects.push((9_999, extra));
+    rejects(
+        orphan,
+        "actor objects do not cover exactly the promoted actors",
+    );
+}
+
+/// The pool names actors by identity and is folded into `state_digest`, so an
+/// actor that does not exist is digest content no run can produce.
+#[test]
+fn an_aggregate_actor_pool_naming_a_phantom_actor_is_rejected() {
+    let mut data = snapshot_of(populated_config(4_165));
+    assert!(data.population.aggregate_actor_pool.is_empty());
+    let chart = data.population.aggregates[0].chart;
+    data.population
+        .aggregate_actor_pool
+        .push((chart, vec![causafera_runtime::ActorId::new(70_001)]));
+    rejects(
+        data,
+        "aggregate actor pool names an actor that does not exist",
+    );
+}
+
+/// The guard that bounds what may claim bootstrap provenance. Reaching it needs
+/// a trace that exists, is not a stage effect, and does not first trip the
+/// prefix guard — the runtime root trace is all three.
+#[test]
+fn an_aggregate_whose_ancestry_is_not_a_stage_effect_is_rejected() {
+    let mut root = snapshot_of(populated_config(4_166));
+    root.population.aggregates[0].causal_ancestry = vec![TraceId::new(0)];
+    rejects(
+        root,
+        "population aggregate ancestry is not a bootstrap stage effect",
+    );
+
+    // A stage *completion* is committed by the run and named by the record, but
+    // it is a terminal receipt rather than one of the effects a stage produced,
+    // so it cannot lend provenance either.
+    let mut completion = snapshot_of(populated_config(4_166));
+    let terminal = completion.bootstrap.receipts[0].trace;
+    completion.population.aggregates[0].causal_ancestry = vec![terminal];
+    rejects(
+        completion,
+        "population aggregate ancestry is not a bootstrap stage effect",
+    );
+}
+
+/// Two shapes the commit path forbids that import accepted, both of which made a
+/// forged trailing event cheap: `CausalEventProposal::new` rejects an empty
+/// effect set, and commits advance a tick at a time so store order is time order.
+#[test]
+fn a_trace_store_holding_events_the_commit_path_forbids_is_rejected() {
+    let mut effectless = snapshot_of(populated_config(4_167));
+    let mut padding = effectless.traces.events[0].clone();
+    padding.trace_id = TraceId::new(effectless.traces.next_trace_id);
+    padding.event_id = causafera_types::EventId::new(effectless.traces.next_event_id);
+    padding.causes.clear();
+    padding.effects.clear();
+    effectless.traces.next_trace_id += 1;
+    effectless.traces.next_event_id += 1;
+    effectless.traces.events.push(padding);
+    rejects(effectless, "trace store failed validation");
+
+    // Times running 0…0, 5, 1 hide the later event behind the larger one, which
+    // every bound phrased as `any(time > limit)` then misses.
+    let mut unordered = snapshot_of(populated_config(4_167));
+    for time in [5u64, 1] {
+        let mut event = unordered.traces.events[0].clone();
+        event.trace_id = TraceId::new(unordered.traces.next_trace_id);
+        event.event_id = causafera_types::EventId::new(unordered.traces.next_event_id);
+        event.causes.clear();
+        event.time = SimulationTime::new(time);
+        unordered.traces.next_trace_id += 1;
+        unordered.traces.next_event_id += 1;
+        unordered.traces.events.push(event);
+    }
+    rejects(unordered, "trace store failed validation");
+}
+
+/// The whole point of moving these out of the bootstrap-only scope: a snapshot
+/// that appends a real event and claims to have advanced no longer disables
+/// them. The population identity holds at every simulation time, so gutting the
+/// world behind an advanced clock is caught rather than waved through.
+#[test]
+fn an_advanced_snapshot_cannot_disable_the_persistent_domain_checks() {
+    let mut data = snapshot_of(populated_config(4_168));
+    let mut appended = data
+        .traces
+        .events
+        .iter()
+        .find(|event| {
+            event.kind.raw() != BOOTSTRAP_STAGE_COMPLETION_EVENT_KIND && !event.effects.is_empty()
+        })
+        .expect("bootstrap commits ordinary effects")
+        .clone();
+    appended.trace_id = TraceId::new(data.traces.next_trace_id);
+    appended.event_id = causafera_types::EventId::new(data.traces.next_event_id);
+    appended.causes.clear();
+    appended.time = SimulationTime::new(1);
+    data.traces.next_trace_id += 1;
+    data.traces.next_event_id += 1;
+    data.traces.events.push(appended);
+    data.recipe.completed_time = SimulationTime::new(1);
+    data.physical_counters.advanced_through = SimulationTime::new(1);
+
+    // The store now ends past the last completion, so every bootstrap-scoped
+    // check is out of scope by construction. What is left must still hold.
+    let mut gutted = data.clone();
+    gutted.population.aggregates.clear();
+    gutted.actors_objective.actors.clear();
+    gutted.actors_objective.actor_ancestry.clear();
+    gutted.actors_objective.actor_objects.clear();
+    gutted.actors_subjective.actors.clear();
+    rejects(
+        gutted,
+        "living population does not match the bootstrap population plus births minus deaths",
+    );
+
+    let mut surface = data.clone();
+    let removed = surface.material_surfaces.records.remove(0).id;
+    surface
+        .material_surfaces
+        .transitions
+        .retain(|transition| transition.id != removed);
+    surface
+        .material_surfaces
+        .pending_physical_changes
+        .retain(|id| *id != removed);
+    rejects(surface, "an active chunk has no material surface");
+
+    // And the control: the same appended event with the world left alone is
+    // accepted, so the checks above are rejecting the forgery and not the
+    // advancement.
+    assert!(
+        RuntimeState::import_snapshot(data).is_ok(),
+        "an advanced snapshot with consistent domain state must still import"
+    );
+}
+
+/// The negative control for every guard above, and the one this file was
+/// missing: each round of hardening tightens what import accepts, and a check
+/// phrased slightly too strongly does not fail loudly — it makes a legitimate
+/// save unloadable, which no adversarial test can detect.
+///
+/// So the whole configuration space is swept, at bootstrap and after
+/// advancement, through the three paths a real save actually takes. Anything
+/// the runtime itself produced must import.
+#[test]
+fn every_state_the_runtime_produces_survives_import() {
+    let mut configs = vec![RuntimeConfig::new(1), populated_config(2)];
+    for population in [0_u64, 1, 7, 10_000] {
+        let mut config = populated_config(3);
+        config.bootstrap_population = population;
+        configs.push(config);
+    }
+    // Actor and sensor counts, including none of either, and the cue budget's
+    // upper corner.
+    for (actors, sensors) in [(0_u8, 0_u8), (0, 1), (8, 0), (4, 2), (13, 4)] {
+        let mut config = populated_config(4);
+        config.actor_count = actors;
+        config.sensor_count = sensors;
+        configs.push(config);
+    }
+    // Both chart shapes across the radius range, and a wider chunk extent.
+    for radius in 0_u8..=2 {
+        for shape in [
+            causafera_runtime::ActiveChunkShape::Line,
+            causafera_runtime::ActiveChunkShape::Area,
+        ] {
+            let mut config = populated_config(5);
+            config.active_chunk_radius = radius;
+            config.active_chunk_shape = shape;
+            config.actor_count = 2;
+            configs.push(config);
+        }
+    }
+    let mut wide = populated_config(6);
+    wide.chunk_extent = 4;
+    configs.push(wide);
+
+    // Some combinations are not valid worlds at all — more promoted actors than
+    // residents, for one — and the runtime refuses to build them. That is a
+    // configuration verdict, not an import verdict, so those are skipped rather
+    // than counted; the assertion below keeps the skip from hollowing the sweep.
+    let mut exercised = 0_usize;
+    for config in configs {
+        let Ok(mut runtime) = Runtime::new(config) else {
+            continue;
+        };
+        exercised += 1;
+        let mut reached = 0_u64;
+        // Tick zero is the bootstrap prefix; the rest are past it, where the
+        // lifecycle has moved aggregates, demoted actors, and advanced clocks.
+        for checkpoint in [0_u64, 1, 5, 13, 17] {
+            if checkpoint > reached {
+                runtime
+                    .run_ticks(checkpoint - reached)
+                    .expect("a production run must advance");
+                reached = checkpoint;
+            }
+            let data = runtime.export_snapshot().expect("state must export");
+
+            RuntimeState::import_snapshot(data.clone())
+                .expect("import must accept a self-produced snapshot");
+
+            let envelope = assemble_envelope(&data).expect("envelope must assemble");
+            let round_tripped = disassemble_envelope(&envelope).expect("envelope must disassemble");
+            RuntimeState::import_snapshot(round_tripped)
+                .expect("import must accept an envelope round trip");
+
+            // Resume, advance, and re-export: the state a second save is made
+            // from is the one a tightened guard is likeliest to reject.
+            let mut resumed = Runtime::from_snapshot(data).expect("snapshot must resume");
+            resumed.run_ticks(3).expect("a resumed run must advance");
+            let second = resumed
+                .export_snapshot()
+                .expect("resumed state must export");
+            RuntimeState::import_snapshot(second)
+                .expect("import must accept an export-resume-export chain");
+        }
+    }
+    assert!(
+        exercised >= 14,
+        "the sweep must cover the configuration space, not skip it: {exercised} built"
+    );
 }

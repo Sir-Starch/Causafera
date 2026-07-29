@@ -1126,6 +1126,22 @@ impl RuntimeState {
         thermal_receipt_totals: &BTreeMap<TraceId, ThermalBatchReceiptTotals>,
     ) -> Result<(), RuntimeError> {
         self.validate_experiment_recipe_mana_source_receipts()?;
+
+        // The same rollback the trace store's identifier counters were closed
+        // against, on the counter that fix did not cover. `promote_actor` issues
+        // `ActorId::new(state.next_actor_id)` and both `actors` and
+        // `actor_ancestry` are maps, so a rolled-back counter makes the next
+        // promotion silently *replace* a live actor: the aggregate decrements,
+        // the actor set does not grow, and residents disappear with no death
+        // event. The corrupted state then re-exports as a clean save.
+        if let Some(last) = self.actors.keys().next_back()
+            && self.next_actor_id <= last.raw()
+        {
+            return Err(RuntimeError::InvalidSnapshot(
+                "next actor identifier is not above every live actor",
+            ));
+        }
+
         validate_trace_exists(&self.traces, self.latest_physical_trace)?;
         if let Some(trace) = self.latest_mana_trace {
             validate_trace_exists(&self.traces, trace)?;
@@ -1541,6 +1557,10 @@ impl RuntimeState {
             ));
         }
 
+        // Whatever the clock says, these hold at every simulation time, so they
+        // are checked before anything is allowed to narrow the scope.
+        self.validate_persistent_domain_state()?;
+
         // The two conditions have to pin each other, or either one alone is an
         // off switch: a trailing event would otherwise disable the checks below
         // while the clock still reads zero, and a moved clock would disable them
@@ -1561,6 +1581,98 @@ impl RuntimeState {
         }
         self.validate_bootstrap_population_conservation(record, &windows)?;
         self.validate_bootstrap_materialized_state(&windows)?;
+        Ok(())
+    }
+
+    /// Domain state that must hold at every simulation time, not only at
+    /// bootstrap.
+    ///
+    /// The bootstrap-time checks below are scoped to a store that ends at the
+    /// last stage completion, because they compare against what the six stages
+    /// committed and nothing else. That scope was doing more work than it should
+    /// have: everything downstream of it was skipped outright the moment the
+    /// store held anything later, so a single appended event turned off the
+    /// population, actor, surface and reservoir checks together. Whatever else
+    /// an appended event proves, it does not make these stop being true, so they
+    /// are asserted unconditionally and the narrow scope keeps only the
+    /// comparisons that genuinely cannot survive advancement.
+    ///
+    /// Each was measured over 300 ticks across three seeds before being placed
+    /// here, and phrased in the weakest form that holds: surfaces are required
+    /// to *cover* the active chunks rather than to equal them, because thermal
+    /// transfers create further surfaces at non-zero cell indices during a run.
+    fn validate_persistent_domain_state(&self) -> Result<(), RuntimeError> {
+        // Every active chunk keeps the surface its bootstrap stage gave it.
+        // `validate_snapshot_references` already requires the converse, so a
+        // surface can neither escape the active region nor vanish from it.
+        for chunk in self.active_chunks.keys() {
+            if !self
+                .material_surfaces
+                .contains_key(&MaterialSurfaceId::new(*chunk, 0))
+            {
+                return Err(RuntimeError::InvalidSnapshot(
+                    "an active chunk has no material surface",
+                ));
+            }
+        }
+
+        // A reservoir's target is deliberately *not* re-checked here. Import
+        // already resolves every reservoir against its thermal field before this
+        // runs, rejecting a chunk with no field as "target lies outside active
+        // region" and an out-of-range cell as "target cell lies outside field",
+        // and thermal fields exist for exactly the active chunks. A clause here
+        // would be unreachable, and an unreachable guard reads as protection
+        // that is not there.
+
+        // An actor's physical object is what perception reads, so an actor
+        // without one is present to the scheduler and invisible to every other
+        // actor. Deleting the whole map was accepted while the actors remained.
+        if self.actor_objects.len() != self.actors.len()
+            || self
+                .actor_objects
+                .keys()
+                .zip(self.actors.keys())
+                .any(|(object, actor)| *object != actor.raw())
+        {
+            return Err(RuntimeError::InvalidSnapshot(
+                "actor objects do not cover exactly the promoted actors",
+            ));
+        }
+
+        // The pool names actors by identity and feeds `state_digest`, so an
+        // actor that does not exist is digest content no run can produce.
+        for actor in self.aggregate_actor_pool.values().flatten() {
+            if !self.actors.contains_key(actor) {
+                return Err(RuntimeError::InvalidSnapshot(
+                    "aggregate actor pool names an actor that does not exist",
+                ));
+            }
+        }
+
+        // Residents are only ever created by bootstrap or a birth, and only ever
+        // removed by a death; promotion and demotion move one between the
+        // aggregate and the actor set without changing the total. The counters
+        // are snapshot data too, so this binds them to the population rather
+        // than proving either alone.
+        let aggregate_total: u64 = self
+            .population_aggregates
+            .values()
+            .map(|aggregate| aggregate.count)
+            .sum();
+        let live = aggregate_total.saturating_add(self.actors.len() as u64);
+        let expected = self
+            .config
+            .bootstrap_population
+            .checked_add(self.population_births)
+            .and_then(|born| born.checked_sub(self.population_deaths))
+            .ok_or(RuntimeError::InvalidSnapshot(
+                "population birth and death counters are not a reachable history",
+            ))?;
+        if live != expected {
+            return Err(RuntimeError::InvalidSnapshot(
+                "living population does not match the bootstrap population plus births minus deaths",
+            ));
+        }
         Ok(())
     }
 

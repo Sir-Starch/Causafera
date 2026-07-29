@@ -1076,13 +1076,17 @@ covers six stages.
   and `fixture_sensors` are removed; no test needed them. A source audit
   (`production_source_reaches_no_fixture_constructor`) scans every production `.rs` under `crates/`
   and `apps/` with comments stripped, asserts it actually walked the tree, and was confirmed to fail
-  on an injected `fn demo_`. Its test-only allowlist is explicit and empty.
+  on an injected `fn demo_`. Its test-only allowlist is explicit and holds one entry, the name of a
+  `#[cfg(test)]` test in `runtime.rs`.
 - *Aggregate population conservation includes promoted actors* and *actor/body/object state has
   bootstrap ancestry* — met at bootstrap. Import requires aggregates plus promoted actors to equal
   the configured bootstrap population, and every promoted actor's ancestry to be a trace the
-  canonical actor-promotion receipt named. Both are asserted only while `advanced_through` is zero:
-  from the first tick the population lifecycle legitimately moves those numbers, so an equality
-  afterwards would be false rather than protective.
+  canonical actor-promotion receipt named. Both are scoped to a store that ends at the last stage
+  completion — decided by the store's shape, not by the `advanced_through` counter the snapshot
+  supplies — because from the first tick the population lifecycle legitimately moves those numbers,
+  so an equality afterwards would be false rather than protective. The weaker identity that does
+  survive advancement is asserted at every simulation time: living population equals the configured
+  bootstrap population plus births minus deaths.
 - *Reset, experiment, save/resume, and observer sessions use the same production recipe* — met.
   Headless `Runtime::new`, a bare seed, a resumed snapshot, the observer session and its reset, and
   the lab experiment runner all produce the same canonical record for the same configuration, and

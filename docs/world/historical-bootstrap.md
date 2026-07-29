@@ -130,10 +130,17 @@ record is validated through the canonical contract before the constructed runtim
 - `SECTION_POPULATION_BOOTSTRAP` carries the complete plan, the bounded per-stage result state, and
   the receipts at section major 2. Major 1 carried neither a plan nor a result and fails closed.
 - `CURRENT_DIGEST_SCHEMA_VERSION` is 7: the record is authoritative `physical_state_digest` input.
-- Import re-derives the plan from the persisted configuration and requires it to match, then checks
-  every completion trace, effect, result, and cause against the persisted trace store. At bootstrap
-  time it also requires the configured population to be conserved across aggregates and promoted
-  actors, and every promoted actor's ancestry to be a trace the actor-promotion receipt named.
+- Import re-derives the plan from the persisted configuration and requires it to match, then
+  re-derives each stage's committed window from the persisted trace store and recomputes every
+  result from it; a completion's causes must equal exactly its stage effects plus its predecessor.
+  Some domain state is checked on every import at every simulation time — surfaces covering the
+  active chunks, actor objects and ancestry covering the actors, and the living population equalling
+  the configured bootstrap population plus births minus deaths. The rest is scoped to a store that
+  ends at the last stage completion, which is decided by the store's shape and not by the
+  `advanced_through` counter the snapshot supplies: net-zero births and deaths, the promoted-actor
+  count against the promotions the store committed, bootstrap ancestry for every aggregate and
+  promoted actor, and reservoir budgets recomputed from the reservoir stage's window. See
+  [`RFC-PERSIST-001`](../rfc/RFC-PERSIST-001.md) for the full scoping.
 - The observer receives a bounded read-only summary of at most six receipts on the existing runtime
   summary, and two typed Explanation claims (schemas 18 and 19) for completeness and canonical
   window. Neither renders a process name.

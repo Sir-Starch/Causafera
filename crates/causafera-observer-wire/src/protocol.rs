@@ -880,9 +880,9 @@ pub fn decode_field_raster(bytes: &[u8]) -> Result<ObserverFieldRaster, WireErro
     // lattice at all are rejected before anything is compared against them.
     let cell_count = raster
         .cell_count()
-        .ok_or(WireError::InvalidFieldRasterLattice {
-            expected: usize::MAX,
-            received: raster.values.len(),
+        .ok_or(WireError::UnrepresentableFieldRasterLattice {
+            edge: raster.edge,
+            depth: raster.depth,
         })?;
     if raster.values.len() != cell_count {
         return Err(WireError::InvalidFieldRasterLattice {
@@ -1784,6 +1784,14 @@ pub enum WireError {
     DuplicateField(u32),
     #[error("field raster declares {expected} cells but carries {received}")]
     InvalidFieldRasterLattice { expected: usize, received: usize },
+    /// Distinct from the above because the count is not merely wrong, it does
+    /// not exist: reporting `expected: usize::MAX` claimed the raster declared
+    /// 18446744073709551615 cells when what it declared cannot be represented
+    /// at all.
+    #[error(
+        "field raster declares a lattice of edge {edge} and depth {depth}, which is not a representable cell count"
+    )]
+    UnrepresentableFieldRasterLattice { edge: u32, depth: u32 },
     #[error("bounded observer payload exceeds its declared maximum")]
     PayloadTooLarge,
     #[error("bounded observer payload is not in canonical order")]
@@ -1974,6 +1982,67 @@ mod tests {
                 received: 9
             })
         ));
+    }
+
+    /// `cell_count` became a checked `Option` on this branch. Before it did, the
+    /// lattice product was an unchecked multiply, so a declared lattice whose
+    /// `edge² × depth` is exactly 2⁶⁴ wrapped to zero and a release build
+    /// accepted the payload with an empty value band. The overflow branch is the
+    /// whole point of the change and nothing pinned it.
+    #[test]
+    fn field_raster_refuses_a_lattice_whose_cell_count_does_not_fit() {
+        for (edge, depth) in [(1_u32 << 24, 1_u32 << 16), (1 << 26, 1 << 12)] {
+            let mut encoded = raster(Vec::new(), 1, 1);
+            encoded.edge = edge;
+            encoded.depth = depth;
+
+            assert!(
+                matches!(
+                    decode_field_raster(&encode_field_raster(&encoded)),
+                    Err(WireError::UnrepresentableFieldRasterLattice { .. })
+                ),
+                "edge {edge} depth {depth} declares more cells than can be represented"
+            );
+        }
+    }
+
+    /// The tenth continuation byte of a 64-bit varint carries a single usable
+    /// bit. Accepting more silently truncated, so the two decoders could read
+    /// different values from identical bytes; this pins the Rust side of that
+    /// bound, which only the Node suite covered.
+    #[test]
+    fn a_varint_wider_than_sixty_four_bits_is_rejected() {
+        let payload = |tenth: u8| {
+            let mut bytes = vec![0x08_u8];
+            bytes.extend(std::iter::repeat_n(0xFF_u8, 9));
+            let len = bytes.len();
+            bytes[len - 1] = 0x80;
+            bytes.push(tenth);
+            bytes
+        };
+
+        // A tenth byte of 0 or 1 is the only representable continuation, so the
+        // varint itself is read; the payload is still an incomplete raster, and
+        // failing on *that* is what proves the varint was accepted.
+        for tenth in [0x00_u8, 0x01] {
+            assert!(
+                matches!(
+                    decode_field_raster(&payload(tenth)),
+                    Err(WireError::MissingField(_) | WireError::IntegerOverflow)
+                ),
+                "tenth varint byte {tenth:#04x} is representable and must be read, not rejected"
+            );
+        }
+
+        for tenth in [0x02_u8, 0x7F, 0x80, 0x81, 0xFF] {
+            assert!(
+                matches!(
+                    decode_field_raster(&payload(tenth)),
+                    Err(WireError::InvalidVarint)
+                ),
+                "tenth varint byte {tenth:#04x} does not fit in 64 bits"
+            );
+        }
     }
 
     #[test]
