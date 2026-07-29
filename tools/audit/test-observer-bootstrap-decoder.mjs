@@ -353,7 +353,29 @@ test('an over-wide varint is rejected, as the Rust cursor rejects it', () => {
   // value wider than 64 bits. Rust truncates it if unchecked; a bigint cannot,
   // so without the bound the two disagree on validity.
   const overWide = [0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x02];
-  rejects([...baseSummary(), ...varint(29n << 3n), ...overWide], 'an over-wide varint');
+
+  // The varint has to sit inside an otherwise COMPLETE group. Appending field 29
+  // to a summary carrying no group is rejected by the partial-group check
+  // whatever the bound does, which is how an earlier revision of this test
+  // passed with the bound removed — it asserted a rejection it would have got
+  // for the wrong reason.
+  const group = [
+    ...scalar(28, 1),
+    ...varint(29n << 3n),
+    ...overWide,
+    ...scalar(30, 4242),
+    ...scalar(31, 0),
+    ...scalar(32, 0),
+    ...scalar(33, 512),
+    ...scalar(34, 8),
+  ];
+  rejects([...baseSummary(), ...group], 'an over-wide varint inside a complete group');
+
+  // Control: the same group with a representable field 29 decodes, so the
+  // rejection above is the bound and not the group's shape.
+  const control = decode([...baseSummary(), ...bootstrapGroup(0)]);
+  assert.equal(control.bootstrap.schemaVersion, 1);
+  assert.equal(control.bootstrap.planId, 0x0123456789abcdefn);
 });
 
 test('an unsupported wire type is rejected, as the Rust cursor rejects it', () => {

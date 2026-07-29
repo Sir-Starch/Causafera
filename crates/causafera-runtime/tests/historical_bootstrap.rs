@@ -1623,6 +1623,32 @@ fn actor_ancestry_that_does_not_match_the_actor_set_is_rejected() {
     );
 }
 
+/// Two fields the snapshot supplies that the same snapshot lets import
+/// re-derive, and that silently override what they are derived from.
+///
+/// `actor_action_bounds` is the sole displacement bound `validate_action`
+/// enforces and is built from `config.action_bounds`; `ResolutionPolicy`
+/// governs detail promotion and demotion and is a compiled constant, not
+/// configuration at all. Both were taken on the snapshot's word.
+#[test]
+fn state_that_overrides_its_own_configuration_is_rejected() {
+    let mut bounds = snapshot_of(populated_config(4_169));
+    assert_eq!(bounds.recipe.config.action_bounds, 8);
+    bounds.actors_objective.actor_action_bounds = i64::MAX;
+    rejects(
+        bounds,
+        "actor action bounds disagree with the persisted configuration",
+    );
+
+    let mut policy = snapshot_of(populated_config(4_169));
+    policy.resolution_policy.maximum_relevance = 1_000_000_000;
+    policy.resolution_policy.hysteresis = 0;
+    rejects(
+        policy,
+        "resolution policy disagrees with the policy this build defines",
+    );
+}
+
 /// Rolling the identifier counters back makes the next commit re-issue live IDs.
 /// Both arrays are binary-searched, so an unsorted store resolves provenance to
 /// the wrong event — silently, and only failing to re-import one save later.

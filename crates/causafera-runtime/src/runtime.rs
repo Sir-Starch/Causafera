@@ -654,16 +654,7 @@ impl RuntimeState {
                 )
             })
             .collect();
-        let resolution_policy = ResolutionPolicy::new(
-            10_000,
-            900,
-            100,
-            vec![500, 2_000, 5_000],
-            vec![ChannelWeight::new(
-                ResolutionChannelId::new(RESOLUTION_CHANNEL),
-                1_000,
-            )?],
-        )?;
+        let resolution_policy = Self::default_resolution_policy()?;
         let mut state = Self {
             config: config.clone(),
             traces,
@@ -1121,11 +1112,48 @@ impl RuntimeState {
         Ok(state)
     }
 
+    /// The detail-resolution policy this build defines. Named rather than
+    /// inlined so that construction and import compare against one definition
+    /// instead of import comparing against nothing.
+    fn default_resolution_policy() -> Result<ResolutionPolicy, RuntimeError> {
+        Ok(ResolutionPolicy::new(
+            10_000,
+            900,
+            100,
+            vec![500, 2_000, 5_000],
+            vec![ChannelWeight::new(
+                ResolutionChannelId::new(RESOLUTION_CHANNEL),
+                1_000,
+            )?],
+        )?)
+    }
+
     fn validate_snapshot_references(
         &self,
         thermal_receipt_totals: &BTreeMap<TraceId, ThermalBatchReceiptTotals>,
     ) -> Result<(), RuntimeError> {
         self.validate_experiment_recipe_mana_source_receipts()?;
+
+        // Two fields the snapshot supplies that the same snapshot lets us
+        // re-derive, and that silently override what they are derived from.
+        //
+        // `actor_action_bounds` is the sole displacement bound `validate_action`
+        // enforces, and it is built from `config.action_bounds` at construction;
+        // a snapshot could carry `i64::MAX` beside a persisted configuration
+        // saying eight. `ResolutionPolicy` governs detail promotion and
+        // demotion and is a compiled constant, not configuration at all, so a
+        // snapshot could choose its own thresholds. Neither was compared with
+        // anything.
+        if self.actor_action_bounds != self.config.action_bounds {
+            return Err(RuntimeError::InvalidSnapshot(
+                "actor action bounds disagree with the persisted configuration",
+            ));
+        }
+        if self.resolution_policy != Self::default_resolution_policy()? {
+            return Err(RuntimeError::InvalidSnapshot(
+                "resolution policy disagrees with the policy this build defines",
+            ));
+        }
 
         // The same rollback the trace store's identifier counters were closed
         // against, on the counter that fix did not cover. `promote_actor` issues
@@ -1597,8 +1625,12 @@ impl RuntimeState {
     /// are asserted unconditionally and the narrow scope keeps only the
     /// comparisons that genuinely cannot survive advancement.
     ///
-    /// Each was measured over 300 ticks across three seeds before being placed
-    /// here, and phrased in the weakest form that holds: surfaces are required
+    /// Each was measured over 300 ticks across three seeds in a one-off harness
+    /// before being placed here — that harness is not checked in, so treat this
+    /// as provenance for the choice rather than a standing guarantee; the
+    /// checked-in negative control is
+    /// `every_state_the_runtime_produces_survives_import`. Each is phrased in
+    /// the weakest form that holds: surfaces are required
     /// to *cover* the active chunks rather than to equal them, because thermal
     /// transfers create further surfaces at non-zero cell indices during a run.
     fn validate_persistent_domain_state(&self) -> Result<(), RuntimeError> {
@@ -1652,8 +1684,8 @@ impl RuntimeState {
         // Residents are only ever created by bootstrap or a birth, and only ever
         // removed by a death; promotion and demotion move one between the
         // aggregate and the actor set without changing the total. The counters
-        // are snapshot data too, so this binds them to the population rather
-        // than proving either alone.
+        // are snapshot data too, so this binds them to the population and to the
+        // anchored aggregates above rather than proving either alone.
         let aggregate_total: u64 = self
             .population_aggregates
             .values()

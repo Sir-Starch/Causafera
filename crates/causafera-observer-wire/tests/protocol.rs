@@ -185,7 +185,7 @@ mod bootstrap_summary {
         MAX_BOOTSTRAP_RECEIPT_SUMMARIES, ObserverBootstrapReceipt, ObserverBootstrapSummary,
         ObserverSnapshot,
     };
-    use causafera_observer_wire::{decode_observer_snapshot, encode_observer_snapshot};
+    use causafera_observer_wire::{WireError, decode_observer_snapshot, encode_observer_snapshot};
     use causafera_types::{SimulationTime, TraceId};
 
     fn receipt(stage: u64, dependencies: Vec<TraceId>) -> ObserverBootstrapReceipt {
@@ -335,12 +335,25 @@ mod bootstrap_summary {
 
         // And, since the name previously promised it: a receipt with the field
         // removed outright is rejected too, for each of the four it requires.
+        // The specific error, not merely an error: `is_err()` would still pass
+        // if the helper mangled the payload instead of removing one field.
         for field in [1_u32, 2, 3, 4] {
             assert!(
-                decode_observer_snapshot(&receipt_without_field(&encoded, field)).is_err(),
-                "a receipt with no field {field} must be rejected"
+                matches!(
+                    decode_observer_snapshot(&receipt_without_field(&encoded, field)),
+                    Err(WireError::MissingField(missing)) if missing == field
+                ),
+                "a receipt with no field {field} must be rejected as missing that field"
             );
         }
+
+        // And the helper is a no-op on a field the receipt does not carry, which
+        // is what makes the assertions above about removal rather than damage.
+        assert_eq!(
+            decode_observer_snapshot(&receipt_without_field(&encoded, 99))
+                .expect("removing an absent field must leave a valid payload"),
+            snapshot
+        );
     }
 
     #[test]

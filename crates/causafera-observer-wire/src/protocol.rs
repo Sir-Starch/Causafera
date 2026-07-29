@@ -2021,18 +2021,35 @@ mod tests {
             bytes
         };
 
-        // A tenth byte of 0 or 1 is the only representable continuation, so the
-        // varint itself is read; the payload is still an incomplete raster, and
-        // failing on *that* is what proves the varint was accepted.
-        for tenth in [0x00_u8, 0x01] {
-            assert!(
-                matches!(
-                    decode_field_raster(&payload(tenth)),
-                    Err(WireError::MissingField(_) | WireError::IntegerOverflow)
-                ),
-                "tenth varint byte {tenth:#04x} is representable and must be read, not rejected"
-            );
-        }
+        // A tenth byte of 0 or 1 is the only representable continuation. The
+        // decoded VALUE is asserted, not merely the absence of a rejection: a
+        // bound applied at the wrong shift, or one that drops bit 63, still
+        // produces a rejection-free decode of the wrong number, and an earlier
+        // revision of this test could not tell those apart.
+        let complete = |tenth: u8| {
+            let mut raster = raster((0..1).collect(), 1, 1);
+            raster.chart_id = 0;
+            let encoded = encode_field_raster(&raster);
+            // `encode_field_raster` writes field 1 first, as key plus one byte
+            // for a chart id of zero.
+            let mut out = payload(tenth);
+            out.extend_from_slice(&encoded[2..]);
+            out
+        };
+        assert_eq!(
+            decode_field_raster(&complete(0x00))
+                .expect("a representable varint must decode")
+                .chart_id,
+            72_057_594_037_927_935,
+            "nine payload bytes of ones, tenth byte zero"
+        );
+        assert_eq!(
+            decode_field_raster(&complete(0x01))
+                .expect("a representable varint must decode")
+                .chart_id,
+            9_295_429_630_892_703_743,
+            "the tenth byte's single usable bit is bit 63"
+        );
 
         for tenth in [0x02_u8, 0x7F, 0x80, 0x81, 0xFF] {
             assert!(
