@@ -2474,9 +2474,9 @@ its own evidence-backed follow-up TODO rather than being hidden in Progress.
   allowlist and Stage 1's gate invokes the test directly. The frozen oracle currently proves only
   faithfulness of the freeze; the hydrology-fields-ignored claim it exists for arrives in Stage 7.
 
-- **2026-07-29 — Stage 2 complete and checkpointed.** Fixed-point primitives and geography-owned
-  state. No behaviour is scheduled or committed yet; this is the vocabulary the solver is written
-  against.
+- **2026-07-29 — Stage 2 complete and checkpointed.** Checkpoint commit `a3d67b7`. Fixed-point
+  primitives and geography-owned state. No behaviour is scheduled or committed yet; this is the
+  vocabulary the solver is written against.
 
   Changed:
 
