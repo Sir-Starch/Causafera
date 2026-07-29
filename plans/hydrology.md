@@ -2392,7 +2392,8 @@ its own evidence-backed follow-up TODO rather than being hidden in Progress.
   Implementation remains unstarted and no checkpoint commit exists.
 
 - **2026-07-29 — Stage 1 complete and checkpointed.** Branch `feat/conserved-hydrology`, from
-  `29fdf4d` on a clean worktree. Checkpoint commit `b0292a0`.
+  `29fdf4d` on a clean worktree. Checkpoint commit `1484ebe`; this hash is recorded in the
+  immediately following documentation-only commit, since a commit cannot name itself.
 
   Changed:
 
