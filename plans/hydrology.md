@@ -2306,6 +2306,26 @@ its own evidence-backed follow-up TODO rather than being hidden in Progress.
   time that the frozen copy and the live decoder agree field-for-field on real payloads and reject
   the same malformed ones.
 
+- **2026-07-29 — Stage 2 representation choices, all preserving the stated contract.** Four places
+  where the implementation expresses a plan schema differently without changing what it holds or
+  validates. (a) The four `*_fraction_num`/`*_fraction_den` pairs are carried as one
+  `HydraulicFraction { numerator: u32, denominator: NonZeroU32 }`; `numerator()` and `denominator()`
+  are still what gets encoded, and the plan's `0 <= num <= den` rule is enforced once instead of at
+  four construction sites and every override merge. (b) `HydraulicSubstrateKey` — the
+  `(metric, substrate, boundary-kind)` tuple's substrate half — is 88 canonical big-endian bytes
+  rather than an eleven-element tuple, because Stage 5's coarse-process fingerprint needs exactly
+  those bytes and a second encoding would be free to drift from the first. The one signed field's
+  sign bit is flipped so byte order matches numeric order. (c) Constructors with eight or more
+  same-typed arguments take a `*Parts` struct, so a transposition is a compile error rather than a
+  silently different world. (d) `HydrologyCellKey::neighbor` returns `Option`: a chunk address that
+  would leave `i32` has no neighbour, which callers already handle as an exterior face. Wrapping
+  would join the two ends of a chart through arithmetic nobody modelled.
+- **2026-07-29 — Stage 2 measurement: `i128` alone does not make a product safe.** The accumulation
+  domain cannot hold the product of two whole-range `WaterVolume` values — `(2^64 - 1)²` needs 128
+  unsigned bits and `i128` offers 127 — so "accumulate in `i128`" is a necessary and not a
+  sufficient condition. Every multiplication in the solver goes through `checked_water_mul`, and the
+  bound is pinned by test rather than assumed.
+
 ## Progress
 
 - **2026-07-29 — Accepted.** Revision 19 is the authoritative hydrology implementation plan.
@@ -2453,6 +2473,70 @@ its own evidence-backed follow-up TODO rather than being hidden in Progress.
   `tools/audit/run-source-tests.mjs` or `check-entry-points.mjs`, because both files are on Stage 7's
   allowlist and Stage 1's gate invokes the test directly. The frozen oracle currently proves only
   faithfulness of the freeze; the hydrology-fields-ignored claim it exists for arrives in Stage 7.
+
+- **2026-07-29 — Stage 2 complete and checkpointed.** Fixed-point primitives and geography-owned
+  state. No behaviour is scheduled or committed yet; this is the vocabulary the solver is written
+  against.
+
+  Changed:
+
+  - `crates/causafera-types/src/physics.rs` — `WaterVolume` (non-negative `u64` mm³), `WaterDepthMm`,
+    the `WaterAccumulator` `i128` domain, and `checked_water_mul` /
+    `checked_water_div_floor` / `checked_water_rem_floor`. Flooring division and its paired
+    Euclidean remainder replace Rust's truncating `/` and `%`, which disagree with the plan's
+    `floor` specification for every negative numerator — and heads, deltas, and residuals are all
+    signed. Nothing saturates.
+  - `crates/causafera-geography/Cargo.toml` — `thiserror` added, matching the rest of the workspace.
+  - `crates/causafera-geography/src/hydrology.rs` — **deleted** (the three-line `f32` placeholder).
+  - `crates/causafera-geography/src/hydrology/mod.rs` — the twenty hard allocation bounds,
+    `SURFACE_CELL_COUNT`, and one `HydrologyStateError` covering all four submodules.
+  - `crates/causafera-geography/src/hydrology/metric.rs` — `HydrologyGridMetric` (schema 1,
+    `NonZeroU64` area/edge/timestep) and the chart-keyed `HydrologyGridMetrics` registry. Depth
+    conversion returns its sub-millimetre remainder rather than dropping it.
+  - `crates/causafera-geography/src/hydrology/substrate.rs` — `HydraulicFraction`,
+    `HydraulicSubstrateCell` with all eleven plan fields, and the canonical
+    `HydraulicSubstrateKey`.
+  - `crates/causafera-geography/src/hydrology/forcing.rs` — `HydrologyForcingMember`,
+    `HydrologyForcingRecord`, `HydrologyForcingSchedule`, and
+    `BOOTSTRAP_HYDROLOGY_FORCING_POLICY_V1`, including both origin fan-in bounds and the
+    checked-subtraction bootstrap horizon.
+  - `crates/causafera-geography/src/hydrology/state.rs` — the lattice (`HydrologyCellKey`,
+    `FaceDirection`, `HydrologyEdgeKey`, `HydrologyExteriorFaceKey`), boundaries, cell state, the
+    field and field set, conveyance, residency, resolution state, and the six-variant
+    `HydrologyCarrierKey` encoding.
+  - `crates/causafera-geography/src/lib.rs` — **no change needed**: `mod hydrology` resolves to the
+    new directory unchanged. It is on the stage allowlist because the module moved, not because its
+    text did.
+
+  Evidence:
+
+  - 78 new tests (15 in `causafera-types`, 63 in `causafera-geography`), all passing.
+  - Every hard allocation bound in the stage's scope is tested at `limit` and at `limit + 1`:
+    charts (64), chunks (128), edges (262 144), boundary records (524 288), forcing records (8 192),
+    targets per record (4 096), total forcing members (262 144), origins per tick (8), and origins
+    per cell per tick (6). `MAX_HYDROLOGY_CHUNKS * SURFACE_CELL_COUNT == MAX_HYDROLOGY_CELLS` is
+    asserted, so the two independently stated constants cannot silently disagree.
+  - Seam behaviour is proven, not assumed: every one of the 32 cells along a chunk seam resolves to
+    its neighbour across the boundary, the relation is symmetric, and the orthogonal coordinate is
+    preserved in both axes. A conveyance edge on a seam face constructs exactly like an interior one.
+  - Input-order independence is proven for the metric registry, the field set, and the conveyance
+    graph.
+  - Every carrier-key variant round-trips at its exact declared length (23, 45, 24, 17, 21, 9), and
+    decoding rejects short input, trailing bytes, unknown variants, unknown face directions,
+    out-of-range ordinals, and reversed or degenerate edge endpoints.
+  - Depth quantisation keeps its remainder: `depth * area + remainder == volume` exactly, including
+    the case where a whole movement is below one millimetre of depth.
+
+  Commands run and their actual results:
+
+  - `cargo test -p causafera-types physics -- --nocapture` — **15 passed**, 0 failed.
+  - `cargo test -p causafera-geography hydrology -- --nocapture` — **63 passed**, 0 failed.
+  - `cargo clippy -p causafera-types -p causafera-geography --all-targets --all-features -D warnings`
+    — clean.
+  - `cargo fmt --all -- --check` — clean.
+  - `git diff --check` — clean.
+  - `cargo test --workspace --all-features` — all 71 suites passed, run to confirm deleting the
+    `HydrologyCell` placeholder broke no consumer. It had none, as the plan's Context recorded.
 
 Execution must begin by re-reading this Progress section and Decision log, then inspecting
 `git status`. The implementing agent updates both sections whenever scope, contract, verification,

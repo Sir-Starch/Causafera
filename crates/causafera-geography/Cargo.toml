@@ -10,5 +10,6 @@ rust-version.workspace = true
 causafera-types = { workspace = true }
 causafera-core = { workspace = true }
 causafera-world = { workspace = true }
+thiserror = { workspace = true }
 
 [dev-dependencies]
