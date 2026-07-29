@@ -2580,8 +2580,8 @@ its own evidence-backed follow-up TODO rather than being hidden in Progress.
   - `cargo test --workspace --all-features` — all 71 suites passed, run to confirm deleting the
     `HydrologyCell` placeholder broke no consumer. It had none, as the plan's Context recorded.
 
-- **2026-07-30 — Stage 3 complete and checkpointed.** The local vertical cycle and exact receipts.
-  Water now moves, and the ledger closes on it.
+- **2026-07-30 — Stage 3 complete and checkpointed.** Checkpoint commit `f167fde`. The local
+  vertical cycle and exact receipts. Water now moves, and the ledger closes on it.
 
   Changed:
 
