@@ -3674,6 +3674,8 @@ its own evidence-backed follow-up TODO rather than being hidden in Progress.
   - `node tools/audit/check-entry-points.mjs` — pass (30 entry points, 20 tests).
   - `git diff --check` — clean.
 
+  Checkpoint: `b6c5ea9`.
+
 Execution must begin by re-reading this Progress section and Decision log, then inspecting
 `git status`. The implementing agent updates both sections whenever scope, contract, verification,
 or checkpoint evidence changes.
