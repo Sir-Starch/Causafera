@@ -18,9 +18,10 @@
 //      payloads and on malformed ones — the evidence that the copy is faithful
 //      rather than merely plausible.
 //
-// Stage 7 extends this file with the actual compatibility claim: the frozen
-// decoder ignores hydrology fields 36-48 on a new-engine payload, and field 35
-// still carries at most six bootstrap receipts.
+// Stage 7 adds the actual compatibility claim at the end of this file: the
+// frozen decoder ignores hydrology fields 36-48 on a new-engine payload, reads
+// the same summary it read without them, and still holds field 35 to six
+// bootstrap receipts.
 
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
@@ -358,24 +359,51 @@ test('the frozen oracle and the live decoder agree on every valid payload', () =
 /**
  * The live decoder's output with the fields added after the freeze removed.
  *
- * There is exactly one so far — the summary's `stageSeven`, which reports the
- * appended field-48 bootstrap stage. The frozen decoder cannot have a key for a
- * field that did not exist when it was frozen, so comparing the two without
- * removing it would report the *presence* of an additive field as a divergence,
- * which is the opposite of what this audit is for. The removal is deliberately
- * narrow: a field the live decoder added anywhere else still fails the
- * comparison.
+ * There are exactly two: the summary's `stageSeven`, which reports the appended
+ * field-48 bootstrap stage, and its `hydrology` group. The frozen decoder cannot
+ * have a key for a field that did not exist when it was frozen, so comparing the
+ * two without removing them would report the *presence* of an additive field as
+ * a divergence, which is the opposite of what this audit is for. The removal is
+ * deliberately narrow: a field the live decoder added anywhere else still fails
+ * the comparison.
  */
 function withoutAdditions(value) {
-  if (value === null || typeof value !== 'object' || !('bootstrap' in value)) {
-    return value;
+  if (value === null || typeof value !== 'object') return value;
+  let stripped = value;
+  if ('hydrology' in stripped) {
+    const { hydrology, ...rest } = stripped;
+    assert.ok(
+      hydrology !== null && typeof hydrology === 'object',
+      'hydrology is a summary object',
+    );
+    stripped = rest;
   }
-  const { stageSeven, ...bootstrap } = value.bootstrap;
+  if ('unsignedValues' in stripped) {
+    const { unsignedValues, unsignedValuesSchemaVersion, ...rest } = stripped;
+    assert.ok(unsignedValues instanceof BigUint64Array, 'the unsigned band is a BigUint64Array');
+    assert.equal(typeof unsignedValuesSchemaVersion, 'number');
+    stripped = rest;
+  }
+  for (const key of [
+    'hydrologyDeltas',
+    'hydrologyDeltaSchemaVersion',
+    'hydrologyTransferSummaries',
+    'hydrologyTransferSchemaVersion',
+    'hydrologyConveyanceSummaries',
+    'hydrologyConveyanceSchemaVersion',
+  ]) {
+    if (key in stripped) {
+      const { [key]: _removed, ...rest } = stripped;
+      stripped = rest;
+    }
+  }
+  if (!('bootstrap' in stripped)) return stripped;
+  const { stageSeven, ...bootstrap } = stripped.bootstrap;
   assert.ok(
     stageSeven === null || typeof stageSeven === 'object',
     'stageSeven is absent, null, or a receipt',
   );
-  return { ...value, bootstrap };
+  return { ...stripped, bootstrap };
 }
 
 test('the frozen oracle and the live decoder reject the same payloads', () => {
@@ -469,4 +497,186 @@ test('two appended stages in one payload are refused by the live decoder', () =>
     ...delimited(48, receiptBody(7, [106])),
   ]);
   assert.throws(() => live.decodeRuntimeSummary(doubled), /repeats its appended stage/);
+});
+
+// ---------------------------------------------------------------------------
+// Stage 7: the hydrology fields
+// ---------------------------------------------------------------------------
+
+/** Canonical unsigned LEB128 over 128 bits, as fields 37-40 and 46 carry. */
+function varint128(value) {
+  const out = [];
+  let remaining = BigInt.asUintN(128, BigInt(value));
+  while (remaining >= 0x80n) {
+    out.push(Number((remaining & 0x7fn) | 0x80n));
+    remaining >>= 7n;
+  }
+  out.push(Number(remaining));
+  return out;
+}
+
+function zigzag128Bytes(value) {
+  const wide = BigInt(value);
+  return varint128(wide < 0n ? (~wide << 1n) | 1n : wide << 1n);
+}
+
+/** Fields 36-47 exactly as the current engine writes them. */
+function hydrologyGroup() {
+  const out = [];
+  out.push(...scalar(36, 1));
+  // Deliberately past `u64::MAX`: the value a narrowing decoder destroys.
+  out.push(...delimited(37, varint128((1n << 64n) + 5n)));
+  out.push(...delimited(38, varint128(2000n)));
+  out.push(...delimited(39, varint128(3000n)));
+  out.push(...delimited(40, varint128(4000n)));
+  out.push(...delimited(41, zigzag128Bytes(0)));
+  out.push(...scalar(42, 3));
+  out.push(...scalar(43, 7));
+  out.push(...scalar(44, 11));
+  out.push(...scalar(45, 4242));
+  out.push(...delimited(46, varint128((1n << 64n) + 9n)));
+  out.push(...delimited(47, varint(0xffffffffffffffffn)));
+  return out;
+}
+
+/** A world snapshot carrying the three hydrology sections at fields 9-14. */
+function worldSnapshotWithHydrology() {
+  const cellBody = (ordinal) => {
+    const bytes = new Uint8Array(22);
+    const view = new DataView(bytes.buffer);
+    view.setBigUint64(0, 1n, false);
+    view.setInt32(8, 0, false);
+    view.setInt32(12, 0, false);
+    view.setInt32(16, 0, false);
+    view.setUint16(20, ordinal, false);
+    return Array.from(bytes);
+  };
+  const delta = [
+    ...scalar(1, 1),
+    ...scalar(2, zigzag(0)),
+    ...scalar(3, zigzag(0)),
+    ...scalar(4, zigzag(0)),
+    ...scalar(5, 0),
+    ...delimited(6, varint(10)),
+    ...delimited(7, varint(12)),
+    ...delimited(8, varint(20)),
+    ...delimited(9, varint(18)),
+    ...delimited(10, varint(30)),
+    ...delimited(11, varint(30)),
+    ...delimited(12, zigzag128Bytes(2)),
+    ...delimited(13, zigzag128Bytes(-2)),
+    ...scalar(14, 51),
+    ...scalar(15, 900),
+    ...scalar(16, 6),
+  ];
+  const transfer = [
+    ...scalar(1, 3),
+    ...delimited(2, [0x01, ...cellBody(0)]),
+    ...delimited(3, [0x01, ...cellBody(0)]),
+    ...delimited(4, varint(100)),
+    ...delimited(5, varint(80)),
+    ...delimited(6, varint(20)),
+    ...scalar(7, 51),
+    ...scalar(8, 900),
+    ...scalar(9, 6),
+  ];
+  const conveyance = [
+    ...delimited(1, [0x02, ...cellBody(0), ...cellBody(1)]),
+    ...delimited(2, varint(5)),
+    ...delimited(3, varint(50)),
+    ...delimited(4, varint(1)),
+    ...delimited(5, varint(1)),
+    ...scalar(6, 901),
+    ...scalar(7, 6),
+  ];
+  return [
+    ...worldChunkSnapshot(),
+    ...delimited(9, delta),
+    ...scalar(10, 1),
+    ...delimited(11, transfer),
+    ...scalar(12, 1),
+    ...delimited(13, conveyance),
+    ...scalar(14, 1),
+  ];
+}
+
+test('the frozen V1 decoder ignores hydrology fields 36-48 entirely', () => {
+  // The compatibility claim the whole plan rests on: protocol V1 stays V1
+  // because a client built before hydrology existed reads a new-engine payload
+  // and gets exactly what it always got.
+  const without = Uint8Array.from([...baseSummary(), ...bootstrapGroup(6)]);
+  const withHydrology = Uint8Array.from([
+    ...baseSummary(),
+    ...bootstrapGroup(6),
+    ...hydrologyGroup(),
+    ...delimited(48, receiptBody(7, [106])),
+  ]);
+
+  const before = frozen.decodeRuntimeSummary(without);
+  const after = frozen.decodeRuntimeSummary(withHydrology);
+
+  assert.deepEqual(
+    normalize(after),
+    normalize(before),
+    'a frozen V1 consumer must not see hydrology at all',
+  );
+  assert.equal(after.bootstrap.stageCount, 6, 'field 31 stays a projected six');
+  assert.equal(after.bootstrap.complete, true, 'field 32 stays six-stage completion');
+  assert.equal(after.bootstrap.receipts.length, 6, 'field 35 stays capped at six');
+});
+
+test('the live decoder reads the hydrology group the frozen one skipped', () => {
+  // The other half: the additive fields are not merely tolerated, they carry
+  // real values that the frozen decoder had no way to represent.
+  const decoded = live.decodeRuntimeSummary(
+    Uint8Array.from([...baseSummary(), ...bootstrapGroup(6), ...hydrologyGroup()]),
+  );
+
+  assert.equal(decoded.hydrology.schemaVersion, 1);
+  assert.equal(decoded.hydrology.totalSurface, (1n << 64n) + 5n);
+  assert.equal(decoded.hydrology.latestForcing.acceptedSource, (1n << 64n) + 9n);
+  assert.equal(decoded.hydrology.latestForcing.acceptedEvapotranspiration, 0xffffffffffffffffn);
+  // And the six-stage projection is untouched beside it.
+  assert.equal(decoded.bootstrap.stageCount, 6);
+  assert.equal(decoded.bootstrap.receipts.length, 6);
+});
+
+test('the frozen V1 decoder ignores world-snapshot fields 9-14', () => {
+  const without = Uint8Array.from(worldChunkSnapshot());
+  const withHydrology = Uint8Array.from(worldSnapshotWithHydrology());
+
+  assert.deepEqual(
+    normalize(frozen.decodeWorldChunkSnapshot(withHydrology)),
+    normalize(frozen.decodeWorldChunkSnapshot(without)),
+    'a frozen V1 consumer must not see the hydrology sections',
+  );
+
+  // The live decoder does see them, so the comparison above is about an
+  // invisible addition rather than an absent one.
+  const decoded = live.decodeWorldChunkSnapshot(withHydrology);
+  assert.equal(decoded.hydrologyDeltas.length, 1);
+  assert.equal(decoded.hydrologyTransferSummaries.length, 1);
+  assert.equal(decoded.hydrologyConveyanceSummaries.length, 1);
+});
+
+test('the frozen V1 decoder refuses a hydrology raster it cannot represent', () => {
+  // A water lattice is not something the old decoder can read wrongly and
+  // quietly: it has no unsigned band, so the raster's signed band is empty and
+  // the declared lattice does not match. Failing closed is the correct legacy
+  // behaviour — a client that cannot carry `u64` volumes must not draw them.
+  const raster = Uint8Array.from([
+    ...scalar(1, 1),
+    ...scalar(2, zigzag(0)),
+    ...scalar(3, zigzag(0)),
+    ...scalar(4, zigzag(0)),
+    ...scalar(5, 4),
+    ...scalar(7, 2),
+    ...scalar(8, 1),
+    ...delimited(13, [...varint(1), ...varint(2), ...varint(3), ...varint(4)]),
+    ...scalar(14, 1),
+  ]);
+
+  assert.throws(() => frozen.decodeFieldRaster(raster));
+  const decoded = live.decodeFieldRaster(raster);
+  assert.deepEqual(Array.from(decoded.unsignedValues), [1n, 2n, 3n, 4n]);
 });

@@ -53,6 +53,71 @@ message RuntimeSummary {
   bytes thermal_total_reservoir_budget = 25;
   uint32 thermal_active_chunk_count = 26;
   uint32 thermal_active_cell_count = 27;
+  // Fields 28-35 mirror the already-shipped bootstrap summary. They allocate no
+  // new semantics: the Rust and TypeScript codecs have carried these exact
+  // numbers and wire types since the bootstrap summary shipped, and this
+  // declaration is the schema catching up to them.
+  uint32 bootstrap_schema_version = 28;
+  // An opaque content-addressed plan identity: an equality identity for replay
+  // inspection, never an ordering or a distance.
+  uint64 bootstrap_plan_id = 29;
+  uint64 bootstrap_world_seed = 30;
+  // Frozen V1 meaning: the six-stage projection, never a seven-stage count.
+  uint32 bootstrap_stage_count = 31;
+  // Frozen V1 meaning: stages one through six are complete.
+  bool bootstrap_complete = 32;
+  uint64 bootstrap_configured_population = 33;
+  uint32 bootstrap_configured_promotion_limit = 34;
+  // Frozen V1 bound: at most six entries, stages one through six in order.
+  repeated BootstrapReceipt bootstrap_receipts = 35;
+
+  // Fields 36-42 are one atomic group. A payload written before hydrology
+  // existed omits all of 36-48; a payload from a build that has hydrology
+  // carries 36-42 even when the domain is disabled, in which case the totals,
+  // the count, and the residual are zero. "This build has no hydrology" and
+  // "this world holds no water" are different facts.
+  uint32 hydrology_summary_schema_version = 36;
+  // Canonical shortest-form unsigned u128 LEB128. A whole-scope total sums u64
+  // per-carrier volumes over an unbounded number of carriers, so it does not fit
+  // one.
+  bytes hydrology_total_surface = 37;
+  bytes hydrology_total_soil = 38;
+  bytes hydrology_total_groundwater = 39;
+  bytes hydrology_total_conveyance = 40;
+  // Canonical shortest-form ZigZag i128 LEB128. Exactly zero for every committed
+  // batch; carried so an observer can see that rather than assume it.
+  bytes hydrology_latest_residual = 41;
+  uint32 hydrology_active_chunk_count = 42;
+
+  // Fields 43-47 describe the greatest applied (scheduled_tick, forcing_id) and
+  // are either all present or all absent. A tick with no forcing ID names
+  // nothing, and an accepted volume with no record to attribute it to is a
+  // number with no provenance.
+  optional uint64 hydrology_latest_forcing_tick = 43;
+  optional uint64 hydrology_latest_forcing_id = 44;
+  optional uint64 hydrology_latest_forcing_origin = 45;
+  // Precipitation plus external inflow, as accepted. Canonical unsigned u128.
+  optional bytes hydrology_latest_accepted_source = 46;
+  // Canonical unsigned u64 LEB128.
+  optional bytes hydrology_latest_accepted_et = 47;
+
+  // The appended hydrology bootstrap stage, projected separately so field 35
+  // keeps its frozen six-receipt bound and a pre-hydrology decoder can skip it.
+  // Absent when hydrology is disabled or bootstrap has not completed; otherwise
+  // it must contain stage seven and nothing else.
+  optional BootstrapReceipt hydrology_bootstrap_receipt = 48;
+}
+
+// One bootstrap stage's terminal receipt. Trace anchors and an equality
+// fingerprint only: no stage targets, no process meaning, no rendered names.
+message BootstrapReceipt {
+  uint64 stage = 1;
+  uint64 completed_at = 2;
+  // Exactly 32 bytes. A fingerprint is an equality identity, never a magnitude.
+  bytes result = 3;
+  uint64 completion_trace = 4;
+  // At most 8 entries, strictly ascending.
+  repeated uint64 dependency_traces = 5;
 }
 
 message WorldChunkSnapshot {
@@ -64,6 +129,101 @@ message WorldChunkSnapshot {
   repeated ThermalFieldDelta thermal_deltas = 6;
   uint32 thermal_delta_schema_version = 7;
   repeated MaterialSurfaceThermalDelta material_surface_thermal_deltas = 8;
+  // Each hydrology list is capped at 64 and its cap rejects entry 65 rather than
+  // truncating: a bound a peer can exceed without being told is not a bound.
+  // Entries without their schema marker are rejected rather than read under a
+  // contract the payload never declared.
+  repeated HydrologyCellDelta hydrology_deltas = 9;
+  uint32 hydrology_delta_schema_version = 10;
+  repeated HydrologyTransferSummary hydrology_transfer_summaries = 11;
+  uint32 hydrology_transfer_schema_version = 12;
+  repeated HydrologyConveyanceSummary hydrology_conveyance_summaries = 13;
+  uint32 hydrology_conveyance_schema_version = 14;
+}
+
+// One cell's committed storage change over one tick. Volumes are canonical
+// shortest-form unsigned LEB128 rather than sint64 because a water volume is a
+// u64 and the upper half of its range has no signed image.
+message HydrologyCellDelta {
+  uint64 chart_id = 1;
+  sint32 chunk_x = 2;
+  sint32 chunk_y = 3;
+  sint32 chunk_z = 4;
+  uint32 cell_ordinal = 5;
+  bytes surface_before = 6;
+  bytes surface_after = 7;
+  bytes soil_before = 8;
+  bytes soil_after = 9;
+  bytes groundwater_before = 10;
+  bytes groundwater_after = 11;
+  // Signed: precipitation and inflow are positive, evapotranspiration is not.
+  // Canonical ZigZag i128 LEB128.
+  bytes net_forcing = 12;
+  // Signed: what the cell gained from and lost to its neighbours.
+  bytes net_lateral_flow = 13;
+  uint64 transition_trace_id = 14;
+  uint64 conservation_trace_id = 15;
+  uint64 transition_tick = 16;
+}
+
+// One accepted, partly accepted, or wholly rejected movement of water. All three
+// volumes travel because a limiter that engaged is evidence, and a process with
+// nothing to do must stay distinguishable from one that was refused.
+//
+// The unique canonical key is
+// (tick, process_kind, source_key, target_key, transfer_trace_id).
+message HydrologyTransferSummary {
+  // An opaque numeric process identity. Never a human-language string.
+  uint32 process_kind = 1;
+  // Canonical HydrologyCarrierKey encoding; see HydrologyCarrierKeyVariant.
+  bytes source_key = 2;
+  bytes target_key = 3;
+  bytes requested_volume = 4;
+  bytes accepted_volume = 5;
+  bytes unaccepted_volume = 6;
+  uint64 transfer_trace_id = 7;
+  uint64 conservation_trace_id = 8;
+  uint64 tick = 9;
+  optional uint64 forcing_origin_trace_id = 10;
+}
+
+// One conveyance edge's current storage and this tick's accepted exchange. This
+// is a channel with a volume, a capacity, and a release rule — not a river, a
+// stream, or a canal, and nothing downstream may promote it into a named thing.
+message HydrologyConveyanceSummary {
+  bytes edge_key = 1;
+  bytes storage = 2;
+  bytes capacity = 3;
+  bytes accepted_inflow = 4;
+  bytes accepted_release = 5;
+  uint64 last_change_trace_id = 6;
+  uint64 tick = 7;
+}
+
+// The variant byte that leads every canonical carrier key. Each variant is
+// fixed-length, so a length is a complete structural check: a key of the wrong
+// size is a key for a different variant or for nothing at all. A cell body is 22
+// bytes — chart u64, chunk x/y/z as two's-complement i32, ordinal u16, all
+// big-endian.
+//
+// Decoders reject unknown variants, unknown directions, wrong lengths,
+// noncanonical endpoint order, trailing bytes, and source/target duplicates
+// where the carrier cannot be both ends of one transfer.
+enum HydrologyCarrierKeyVariant {
+  HYDROLOGY_CARRIER_KEY_VARIANT_UNSPECIFIED = 0;
+  // Length 23.
+  HYDROLOGY_CARRIER_KEY_VARIANT_CELL = 1;
+  // Length 45: two 22-byte cell bodies in ascending key order.
+  HYDROLOGY_CARRIER_KEY_VARIANT_EDGE = 2;
+  // Length 24: one cell body and a direction byte, 0=-X, 1=+X, 2=-Y, 3=+Y.
+  HYDROLOGY_CARRIER_KEY_VARIANT_EXTERIOR_FACE = 3;
+  // Length 17: scheduled tick u64 and forcing ID u64, big-endian.
+  HYDROLOGY_CARRIER_KEY_VARIANT_FORCING_RECORD = 4;
+  // Length 21: chart u64 and chunk x/y/z, big-endian.
+  HYDROLOGY_CARRIER_KEY_VARIANT_RESOLUTION_CHUNK = 5;
+  // Length 9. A local DAG proposal key for trace inspection, never a physical
+  // transfer endpoint.
+  HYDROLOGY_CARRIER_KEY_VARIANT_BATCH_NODE = 6;
 }
 
 // One bounded request for one chunk of one measured lattice. It travels in
@@ -73,6 +233,14 @@ enum FieldRasterKind {
   FIELD_RASTER_KIND_TERRAIN_ELEVATION = 1;
   FIELD_RASTER_KIND_TERRAIN_ROUGHNESS = 2;
   FIELD_RASTER_KIND_MANA_INTENSITY = 3;
+  // The three water buckets, in cubic millimetres. Projected whole at the
+  // chunk's own lattice: a block mean of volumes would report a quantity no cell
+  // holds, and changing hydrology's detail is a conservative resolution
+  // transition inside the simulation rather than a reduction an observer asks
+  // for.
+  FIELD_RASTER_KIND_HYDROLOGY_SURFACE_WATER = 4;
+  FIELD_RASTER_KIND_HYDROLOGY_SOIL_WATER = 5;
+  FIELD_RASTER_KIND_HYDROLOGY_GROUNDWATER = 6;
 }
 
 message FieldRasterRequest {
@@ -103,6 +271,15 @@ message FieldRaster {
   // Packed varints, one per cell: the trace that last changed it, zero for none.
   bytes cell_traces = 11;
   uint64 generation_trace_id = 12;
+  // The lossless unsigned band, carried only by hydrology lattices and mutually
+  // exclusive with fields 9 and 10. Packed canonical shortest-form u64 LEB128,
+  // exactly edge * edge * depth values. Rust exposes Vec<u64> and TypeScript
+  // BigUint64Array; neither converts through i64 or Float64Array. A non-hydrology
+  // raster carrying fields 13-14, or a hydrology raster carrying 9 or 10, is
+  // rejected.
+  bytes unsigned_values = 13;
+  // HYDROLOGY_RASTER_VALUES_SCHEMA_V1 = 1.
+  uint32 unsigned_values_schema_version = 14;
 }
 
 message MaterialSurfaceDelta {

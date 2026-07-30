@@ -31,7 +31,9 @@ const REQUIRED = [
   'tools/audit/test-tooling-and-endpoints.mjs',
   'tools/audit/test-trust-boundaries.mjs',
   'tools/audit/test-hydrology-production-boundaries.mjs',
+  'tools/audit/test-observer-hydrology-decoder.mjs',
   'tools/audit/test-observer-hydrology-legacy-decoder.mjs',
+  'tools/audit/test-observer-proto-schema.mjs',
   'tools/audit/validate-capability-audit.mjs',
   'tools/audit/verify-mapping-endpoints.mjs',
 ];
