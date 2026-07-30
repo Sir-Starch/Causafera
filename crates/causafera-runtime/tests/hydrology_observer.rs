@@ -406,3 +406,99 @@ fn observing_changes_no_authoritative_digest() {
     assert_eq!(unobserved, summarized);
     assert_eq!(unobserved, fully_observed);
 }
+#[test]
+fn the_captured_engine_payload_is_still_what_the_engine_emits() {
+    // `tools/audit/fixtures/observer-hydrology-engine-payload.json` is how the
+    // TypeScript decoder gets to see real engine bytes: every other Node audit
+    // feeds it payloads an audit built, which proves the decoder consistent with
+    // a test rather than with the producer.
+    //
+    // The capture is only worth anything while it still matches. This test
+    // regenerates it from the same deterministic fixture and fails when the two
+    // diverge, so a wire change either updates the capture or is caught here —
+    // it can never quietly leave the TypeScript audit checking a payload this
+    // engine stopped producing.
+    let runtime = ticked(wet_runtime_config(), 3);
+    let summary = runtime
+        .snapshot()
+        .expect("the runtime snapshot must succeed")
+        .observer_snapshot();
+    let world = world_of(&runtime);
+    let raster = runtime
+        .observer_field_raster(&FieldRasterRequest {
+            chart_id: 1,
+            chunk_x: 0,
+            chunk_y: 0,
+            chunk_z: 0,
+            field: FieldRasterKind::HydrologySurfaceWater,
+            detail_level: 0,
+        })
+        .expect("the raster query must succeed")
+        .expect("the chunk is resident");
+
+    let captured = std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../tools/audit/fixtures/observer-hydrology-engine-payload.json"
+    ))
+    .expect("the capture must be readable");
+    // A six-line extractor rather than a JSON dependency for one test: the file
+    // is machine-written, every value this side reads is a hex string or a
+    // decimal one, and none of them can contain an escape.
+    let field = |key: &str| -> String {
+        let needle = format!("\"{key}\": \"");
+        let start = captured
+            .find(&needle)
+            .unwrap_or_else(|| panic!("the capture must name {key}"))
+            + needle.len();
+        let rest = &captured[start..];
+        rest[..rest.find('"').expect("the value is quoted")].to_owned()
+    };
+    let count = |key: &str| -> u64 {
+        let needle = format!("\"{key}\": ");
+        let start = captured
+            .find(&needle)
+            .unwrap_or_else(|| panic!("the capture must name {key}"))
+            + needle.len();
+        let rest = &captured[start..];
+        rest[..rest
+            .find(|byte: char| !byte.is_ascii_digit())
+            .expect("the value ends")]
+            .parse()
+            .expect("a decimal count")
+    };
+
+    for (key, bytes) in [
+        ("summary_hex", encode_observer_snapshot(&summary)),
+        ("world_hex", encode_world_snapshot(&world)),
+        ("raster_hex", encode_field_raster(&raster)),
+    ] {
+        let hex = bytes
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>();
+        assert_eq!(
+            field(key),
+            hex,
+            "the captured {key} payload no longer matches what the engine emits; \
+             regenerate tools/audit/fixtures/observer-hydrology-engine-payload.json"
+        );
+    }
+    // The values the TypeScript audit asserts on, pinned on this side too, so a
+    // capture that decoded to something else would fail in both places.
+    assert_eq!(
+        field("hydrologyTotalSurface"),
+        summary.hydrology.total_surface.to_string()
+    );
+    assert_eq!(
+        count("hydrologyDeltaCount"),
+        world.hydrology_deltas.len() as u64
+    );
+    assert_eq!(
+        count("hydrologyTransferCount"),
+        world.hydrology_transfer_summaries.len() as u64
+    );
+    assert_eq!(
+        count("hydrologyConveyanceCount"),
+        world.hydrology_conveyance_summaries.len() as u64
+    );
+}

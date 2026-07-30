@@ -15,7 +15,7 @@
 
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -81,12 +81,6 @@ const delimited = (field, bytes) => [
   ...bytes,
 ];
 const zigzag = (value) => BigInt.asUintN(64, (BigInt(value) << 1n) ^ (BigInt(value) >> 63n));
-
-/** ZigZag over 128 bits, which is what fields 41, 12, and 13 carry. */
-function zigzag128(value) {
-  const wide = BigInt(value);
-  return BigInt.asUintN(128, wide < 0n ? (~(wide << 1n) | 1n) ^ ~0n : wide << 1n);
-}
 
 function varint128(value) {
   const out = [];
@@ -743,4 +737,89 @@ test('the carrier key validator agrees with its own length table', () => {
     ...cellBody(1, -1, 0, 0, 0),
   ]);
   assert.throws(() => live.validateHydrologyCarrierKey(positiveFirst), /canonical endpoint order/);
+});
+
+// ---------------------------------------------------------------------------
+// A real engine payload
+// ---------------------------------------------------------------------------
+
+// Every payload above was built from bytes by this file, which proves the
+// decoder consistent with an audit rather than with the producer. These bytes
+// came out of a production-bootstrapped runtime after three committed hydrology
+// ticks. A Rust test regenerates and compares them, so the capture cannot
+// quietly drift away from what the engine emits.
+const CAPTURE = JSON.parse(
+  readFileSync(
+    path.join(REPOSITORY_ROOT, 'tools', 'audit', 'fixtures', 'observer-hydrology-engine-payload.json'),
+    'utf8',
+  ),
+);
+
+function fromHex(hex) {
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let index = 0; index < bytes.length; index += 1) {
+    bytes[index] = Number.parseInt(hex.slice(index * 2, index * 2 + 2), 16);
+  }
+  return bytes;
+}
+
+test('the TypeScript decoder reads a real engine summary', () => {
+  const decoded = live.decodeRuntimeSummary(fromHex(CAPTURE.summary_hex));
+
+  assert.equal(decoded.hydrology.schemaVersion, live.HYDROLOGY_SUMMARY_SCHEMA_V1);
+  assert.equal(decoded.hydrology.totalSurface.toString(), CAPTURE.hydrologyTotalSurface);
+  // A committed batch closes exactly, and the engine says so.
+  assert.equal(decoded.hydrology.latestResidual, 0n);
+  assert.ok(decoded.hydrology.activeChunkCount > 0);
+  // The bootstrap projection beside it is the frozen six-stage one.
+  assert.equal(decoded.bootstrap.stageCount, 6);
+  assert.equal(decoded.bootstrap.receipts.length, 6);
+  assert.notEqual(decoded.bootstrap.stageSeven, null);
+  assert.equal(decoded.bootstrap.stageSeven.stage, 7n);
+});
+
+test('the TypeScript decoder reads a real engine world projection', () => {
+  const decoded = live.decodeWorldChunkSnapshot(fromHex(CAPTURE.world_hex));
+
+  assert.equal(decoded.hydrologyDeltas.length, CAPTURE.hydrologyDeltaCount);
+  assert.equal(decoded.hydrologyTransferSummaries.length, CAPTURE.hydrologyTransferCount);
+  assert.equal(decoded.hydrologyConveyanceSummaries.length, CAPTURE.hydrologyConveyanceCount);
+  assert.equal(decoded.hydrologyDeltaSchemaVersion, 1);
+
+  for (const summary of decoded.hydrologyTransferSummaries) {
+    // The producer's keys pass this decoder's own independent validator, which
+    // is what ties the two implementations together on real bytes.
+    live.validateHydrologyCarrierKey(summary.sourceKey);
+    live.validateHydrologyCarrierKey(summary.targetKey);
+    assert.equal(
+      summary.requestedVolume - summary.acceptedVolume,
+      summary.unacceptedVolume,
+    );
+    assert.notEqual(summary.transferTraceId, 0n);
+  }
+  for (const delta of decoded.hydrologyDeltas) {
+    assert.notEqual(delta.transitionTraceId, 0n);
+    assert.notEqual(delta.conservationTraceId, 0n);
+  }
+  for (const summary of decoded.hydrologyConveyanceSummaries) {
+    assert.equal(live.validateHydrologyCarrierKey(summary.edgeKey), live.HYDROLOGY_CARRIER_EDGE);
+    assert.ok(summary.storage <= summary.capacity);
+  }
+});
+
+test('the TypeScript decoder reads a real engine water raster', () => {
+  const decoded = live.decodeFieldRaster(fromHex(CAPTURE.raster_hex));
+
+  assert.equal(decoded.field, live.FieldRasterKind.HydrologySurfaceWater);
+  assert.equal(decoded.unsignedValuesSchemaVersion, live.HYDROLOGY_RASTER_VALUES_SCHEMA_V1);
+  assert.ok(decoded.unsignedValues instanceof BigUint64Array);
+  assert.equal(decoded.unsignedValues.length, decoded.edge * decoded.edge * decoded.depth);
+  assert.equal(decoded.values.length, 0, 'a water lattice carries no signed band');
+  assert.equal(decoded.cellTraces.length, decoded.unsignedValues.length);
+  // The lattice holds real water, so a decoder that returned an empty band
+  // could not have passed the length check above by accident.
+  assert.ok(
+    Array.from(decoded.unsignedValues).some((value) => value > 0n),
+    'the captured chunk holds water',
+  );
 });
