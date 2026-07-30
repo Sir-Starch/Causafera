@@ -2765,6 +2765,68 @@ its own evidence-backed follow-up TODO rather than being hidden in Progress.
   `ResolutionRuntimeSystem` besides. Internal to the crate; no registration order, stream key, or
   persisted byte changes.
 
+- **2026-07-30 — Stage 7 wave A: the observer boundary decodes carrier keys against the
+  specification, not against geography.** §12 declares every `HydrologyCarrierKey` variant's exact
+  length, direction codes, and canonical endpoint order. `causafera-observer-api` depends only on
+  `causafera-types`, and importing `causafera-geography` to reuse `HydrologyCarrierKey::decode`
+  would put a simulation crate behind the observer boundary. The API instead carries opaque key
+  bytes and validates them with its own `validate_hydrology_carrier_key`, written from the declared
+  encoding. Their agreement is a tested fact — `hydrology_observer.rs` runs every engine-produced key
+  through the observer validator — rather than a shared implementation. The endpoint comparison
+  decodes the chunk coordinates as `i32` instead of comparing bytes, because a two's-complement
+  negative coordinate sorts above a positive one byte-wise and the two peers would disagree about
+  which endpoint of an edge is canonical.
+
+- **2026-07-30 — Stage 7 wave A: "source/target duplicates where the process requires distinct
+  carriers" is judged on the carrier, not on the process.** Infiltration, percolation, and
+  evapotranspiration move water between buckets *inside* one cell, and the transfer summary does not
+  carry buckets, so a cell legitimately appears as both endpoints. Every other carrier is a single
+  store or a single face, so naming it twice describes a transfer to nowhere. The decoder therefore
+  rejects `source == target` for every variant except `Cell`. Deciding it structurally keeps the wire
+  layer out of the business of classifying simulation processes, which it must not do.
+
+- **2026-07-30 — Stage 7 wave A: `encode_response` became fallible.** §12 requires the response cap
+  enforced "before emitting `QueryResponse.payload`", and a `-> Vec<u8>` signature cannot refuse.
+  Both `encode_response` and `encode_query_response` now return `Result`; the only production caller
+  is `apps/observer/src-tauri/src/session.rs`. The decode side checks the length before copying,
+  since `Cursor::bytes` only reborrows.
+
+- **2026-07-30 — Stage 7 wave A: shortest-form checking is new-field only.** §12 requires hydrology
+  byte integers in shortest canonical form. Thermal totals in fields 24 and 25 predate the rule and
+  a frozen V1 decoder was never held to it, so tightening them would be a contract change to shipped
+  fields. `decode_i128_zigzag_canonical` wraps the existing decoder for hydrology's use and leaves 24
+  and 25 as they were.
+
+- **2026-07-30 — Stage 7 wave A: hydrology's three projection bounds reject rather than truncate.**
+  V33 requires every decode-before-allocation cap to refuse `limit + 1`. The older material-surface
+  and thermal lists silently skip past their caps, which reports a truncated projection as a complete
+  one. Hydrology's fields 9, 11, and 13 return `PayloadTooLarge` instead. The older behaviour is left
+  alone; changing it is not in this plan's scope.
+
+- **2026-07-30 — Stage 7 wave A: the projection lives in `hydrology_projection.rs`.** Stage 7's file
+  list names `runtime.rs`, but the repository's module rule forbids accumulating unrelated surface
+  there, and hydrology already owns four sibling modules. The read model is a fifth. `runtime.rs`
+  keeps only the two call sites that assemble the observer snapshots.
+
+- **2026-07-30 — Stage 7 wave A: the forcing group is present only while its batch is retained.**
+  §12 makes fields 43..=47 all-present or all-absent, and their accepted volumes come from the
+  applied record's own transfer receipts rather than from the tick's conservation totals — two
+  records may apply in one tick, and attributing that tick's whole accepted precipitation to
+  whichever sorted last would be a fabricated per-record measurement. Once retention evicts the
+  batch the group is absent in full, which is the same answer V33 requires of Explanation: evidence
+  that is gone is reported as gone, not as zero.
+
+- **2026-07-30 — Stage 7 wave A: hydrology rasters are projected whole.** Terrain offers block-mean
+  detail levels; a block mean of water volumes would report a quantity no cell holds, and changing
+  hydrology's detail is a conservative resolution transition inside the simulation rather than a
+  reduction an observer may ask for. The hydrology raster reports `detail_level` zero at the chunk's
+  own 32 x 32 lattice, exactly as the mana volume does.
+
+- **2026-07-30 — Correction to the Stage 6 record: `causafera-observer` does exist.** Stage 6's
+  Progress entries recorded `cargo test -p causafera-observer --all-features` as unrunnable because
+  no such package existed. That was wrong — it is `apps/observer/src-tauri`. The gate runs and passes
+  (**12 tests**), and it is part of every wave's evidence from Stage 7 onwards.
+
 ## Progress
 
 - **2026-07-29 — Accepted.** Revision 19 is the authoritative hydrology implementation plan.
@@ -3736,6 +3798,65 @@ its own evidence-backed follow-up TODO rather than being hidden in Progress.
   - `git diff --check` — clean.
 
   Checkpoint: `779d3b5`.
+
+- **2026-07-30 — Stage 7 wave A complete: observer API, wire codec, and runtime projection.**
+
+  Files changed:
+
+  - `crates/causafera-observer-api/src/query.rs` — `MAX_QUERY_RESPONSE_PAYLOAD_BYTES`, the five
+    hydrology schema constants and three 64-entry bounds, `FieldRasterKind` 4/5/6 with
+    `carries_unsigned_values`, the unsigned raster band on `ObserverFieldRaster`,
+    `ObserverHydrologySummary`/`ObserverHydrologyForcing`, `HydrologyCellDelta`,
+    `HydrologyTransferSummary` with its canonical key, `HydrologyConveyanceSummary`, the six
+    hydrology fields on `ObserverWorldSnapshot`, `validate_hydrology_carrier_key`, and
+    `ObserverResponse::validate`.
+  - `crates/causafera-observer-wire/src/protocol.rs` — runtime-summary fields 36..=47 as one required
+    group plus one all-or-nothing forcing subgroup; world-snapshot fields 9..=14 with per-list schema
+    gating, rejecting bounds, and duplicate-key refusal; field-raster fields 13..=14 with mutually
+    exclusive bands; canonical `u64`/`u128`/ZigZag-`i128` byte integers and a shortest-form packed
+    varint; the response cap on both sides.
+  - `crates/causafera-observer-wire/tests/protocol.rs` — the `hydrology_projection` module,
+    **26 tests**.
+  - `crates/causafera-runtime/src/hydrology_projection.rs` — new; the summary, the three bounded
+    per-tick lists, and their canonical ordering.
+  - `crates/causafera-runtime/src/field_raster.rs` — the three water lattices as an unsigned band.
+  - `crates/causafera-runtime/src/snapshots.rs`, `src/runtime.rs`, `src/lib.rs` — the projection's two
+    call sites and the module registration.
+  - `crates/causafera-runtime/tests/hydrology_observer.rs` — new, **10 tests**.
+  - `apps/observer/src-tauri/src/session.rs` — propagates the now-fallible response encoder.
+
+  What the tests establish:
+
+  - **Round trip (V28)** — a real engine payload survives summary, world, and raster codecs
+    unchanged; totals above `u64::MAX` and a raster value above `i64::MAX` come back exact.
+  - **Additive compatibility (V28)** — fields 1..=35 are byte-identical with and without a hydrology
+    summary, and a payload stripped of 36 onwards decodes as absent with every older field intact.
+  - **Atomic groups (§12)** — each of 36..=42 and each of 43..=47 missing is rejected; so are a
+    duplicated scalar, a mistyped field, an unknown schema, a noncanonical zero, and a value wider
+    than its declared domain.
+  - **Bounds (V33)** — the producer caps all three lists at 64 and the decoder refuses entry 65.
+  - **Carrier keys (§12)** — unknown variant, wrong length, unknown face direction, reversed edge,
+    self-edge, and a non-cell carrier as both endpoints all reject; a cell as both endpoints does not.
+  - **Projection integrity** — totals equal the sum over authoritative state, the three volumes of
+    every transfer close, every row belongs to one batch, ordering is strictly canonical, and every
+    projected key passes the independent observer validator.
+  - **Neutrality (V27)** — unobserved, summary-only, and fully observed runs of the same world reach
+    identical physical and history digests.
+  - **Retention (V33)** — after eviction the forcing group is absent rather than zeroed.
+
+  Commands run and their actual results:
+
+  - `cargo test -p causafera-observer-api -p causafera-observer-wire --all-features` — **46 passed**,
+    0 failed.
+  - `cargo test -p causafera-runtime --test hydrology_observer` — **10 passed**, 0 failed.
+  - `cargo test -p causafera-observer --all-features` — **12 passed**, 0 failed.
+  - `cargo test --workspace --all-features` — 82 suites, **891 passed**, 0 failed.
+  - `cargo clippy --workspace --all-targets --all-features -- -D warnings` — clean.
+  - `cargo fmt --all -- --check` — clean.
+  - `git diff --check` — clean.
+
+  Not yet done in Stage 7: Explanation claims, the `.proto` backfill, the TypeScript decoder, and the
+  three Node audits.
 
 Execution must begin by re-reading this Progress section and Decision log, then inspecting
 `git status`. The implementing agent updates both sections whenever scope, contract, verification,
