@@ -296,6 +296,27 @@ pub enum HydrologyError {
     ReceiptInconsistent,
     #[error("hydrology synthetic aggregation node identifiers are exhausted")]
     NodeIdentifiersExhausted,
+    /// Surface head is terrain elevation plus ponded depth, so a resident chunk
+    /// with no terrain has no head — and a solver that defaulted the elevation
+    /// to zero would invent a flat world and route water across it.
+    #[error("a resident hydrology chunk has no terrain elevation")]
+    TerrainMissing,
+    #[error("a terrain chunk is filed under the wrong hydrology chunk address")]
+    TerrainChunkMismatch,
+    /// A face with no resident neighbour and no boundary record. Exporting and
+    /// blocking are both physical claims, and neither may be assumed (V13).
+    #[error("an exterior hydrology face has no boundary record")]
+    UnspecifiedBoundaryFace,
+    /// Saturated depth divides by `cell_area * specific_yield_num`, so a cell
+    /// that stores groundwater without a specific yield has no water table.
+    #[error("a hydrology cell stores groundwater without a specific yield")]
+    GroundwaterWithoutSpecificYield,
+    #[error("the hydrology request's resident chunks are not the field set's")]
+    ResidencyMismatch,
+    #[error("a hydrology event cites {count} causes, at most {max} are allowed")]
+    EventCauseLimitExceeded { count: usize, max: usize },
+    #[error("a hydrology event carries {count} effects, at most {max} are allowed")]
+    EventEffectLimitExceeded { count: usize, max: usize },
 }
 
 #[cfg(test)]

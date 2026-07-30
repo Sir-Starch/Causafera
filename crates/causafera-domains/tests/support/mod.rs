@@ -11,19 +11,24 @@
 //! rather than about the fixture.
 #![allow(dead_code)]
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::num::{NonZeroU32, NonZeroU64};
 
 use causafera_core::StateFingerprint;
 use causafera_domains::{HydrologyEvolutionLimits, HydrologyEvolutionRequest};
 use causafera_geography::{
-    HydraulicFraction, HydraulicSubstrateCell, HydraulicSubstrateParts, HydrologyActiveRegion,
+    ElevationMm, FaceDirection, FluxBoundary, HydraulicFraction, HydraulicSubstrateCell,
+    HydraulicSubstrateParts, HydrologyActiveRegion, HydrologyBoundaryCondition,
     HydrologyBoundaryMap, HydrologyCellKey, HydrologyCellState, HydrologyCellStorage,
-    HydrologyConveyanceGraph, HydrologyField, HydrologyFieldSet, HydrologyForcingMember,
-    HydrologyForcingParts, HydrologyForcingRecord, HydrologyGridMetric, HydrologyGridMetrics,
-    SURFACE_CELL_COUNT,
+    HydrologyConveyanceEdge, HydrologyConveyanceGraph, HydrologyEdgeKey, HydrologyExteriorFaceKey,
+    HydrologyField, HydrologyFieldSet, HydrologyForcingMember, HydrologyForcingParts,
+    HydrologyForcingRecord, HydrologyGridMetric, HydrologyGridMetrics, RoughnessMm,
+    SURFACE_CELL_COUNT, TerrainChunk, TerrainGenerationProvenance, TerrainGeneratorFingerprint,
+    TerrainParameterFingerprint,
 };
-use causafera_types::{ChartChunkCoord, ChunkCoord, SpatialChartId, TraceId, WaterVolume};
+use causafera_types::{
+    ChartChunkCoord, ChunkCoord, MaterialId, SpatialChartId, TraceId, WaterVolume,
+};
 
 pub const BOOTSTRAP_TRACE: TraceId = TraceId::new(1);
 pub const ORIGIN_TRACE: TraceId = TraceId::new(2);
@@ -296,10 +301,119 @@ impl Forcing {
     }
 }
 
-/// A request over the given state with no conveyance and no boundaries — the
-/// shape Stage 3's vertical cycle runs in.
+/// Flat terrain for every listed chunk, all cells at one elevation.
+pub fn flat_terrain(chunks: &[i32], elevation_mm: i32) -> BTreeMap<ChartChunkCoord, TerrainChunk> {
+    terrain_from(chunks, |_, _| elevation_mm)
+}
+
+/// Terrain built from a per-cell elevation function of `(chunk_x, ordinal)`.
+pub fn terrain_from(
+    chunks: &[i32],
+    elevation_of: impl Fn(i32, u16) -> i32,
+) -> BTreeMap<ChartChunkCoord, TerrainChunk> {
+    chunks
+        .iter()
+        .map(|&chunk_x| {
+            let elevations: Vec<ElevationMm> = (0..SURFACE_CELL_COUNT)
+                .map(|ordinal| ElevationMm::new(elevation_of(chunk_x, ordinal as u16)))
+                .collect();
+            let chunk = chunk(chunk_x);
+            let terrain = TerrainChunk::from_fields(
+                chunk.chunk,
+                TerrainGenerationProvenance::new(
+                    1,
+                    BOOTSTRAP_TRACE,
+                    TerrainGeneratorFingerprint::new(1),
+                    TerrainParameterFingerprint::new(1),
+                    Vec::new(),
+                ),
+                elevations,
+                vec![MaterialId::new(1); SURFACE_CELL_COUNT],
+                // Roughness has no hydraulic meaning inside the solver: it
+                // adjusts transmissivity at bootstrap, which is Stage 6.
+                vec![RoughnessMm::new(0); SURFACE_CELL_COUNT],
+            )
+            .expect("a full terrain chunk is valid");
+            (chunk, terrain)
+        })
+        .collect()
+}
+
+/// Every exterior face of the resident region, explicitly closed.
+///
+/// Not a default the solver applies: a face with no resident neighbour and no
+/// boundary record rejects the whole proposal, because exporting and blocking are
+/// both physical claims (V13). A fixture that wants a wall has to say so.
+pub fn closed_perimeter(chunks: &[i32]) -> HydrologyBoundaryMap {
+    boundary_map(chunks, |_| HydrologyBoundaryCondition::CLOSED)
+}
+
+/// Every exterior face of the resident region, with a per-face condition.
+pub fn boundary_map(
+    chunks: &[i32],
+    condition_of: impl Fn(HydrologyExteriorFaceKey) -> HydrologyBoundaryCondition,
+) -> HydrologyBoundaryMap {
+    let resident: BTreeSet<ChartChunkCoord> = chunks.iter().map(|&x| chunk(x)).collect();
+    let mut records = Vec::new();
+    for &chunk_x in chunks {
+        for ordinal in 0..SURFACE_CELL_COUNT {
+            let cell = cell(chunk_x, ordinal as u16);
+            for direction in FaceDirection::ALL {
+                let exterior = match cell.neighbor(direction) {
+                    Some(neighbor) => !resident.contains(&neighbor.chunk()),
+                    None => true,
+                };
+                if exterior {
+                    let face = HydrologyExteriorFaceKey::new(cell, direction);
+                    records.push((face, condition_of(face)));
+                }
+            }
+        }
+    }
+    HydrologyBoundaryMap::new(records).expect("perimeter records are unique")
+}
+
+/// An open boundary channel on both surface and groundwater.
+pub fn open_both(external_head_mm: i64, conductance: u64) -> HydrologyBoundaryCondition {
+    let open = FluxBoundary::Open {
+        external_head_mm,
+        conductance_mm2_per_tick: conductance,
+    };
+    HydrologyBoundaryCondition::new(open, open)
+}
+
+/// One conveyance edge directed from `source` toward `outlet`.
+#[allow(clippy::too_many_arguments)]
+pub fn edge(
+    source: HydrologyCellKey,
+    outlet: HydrologyCellKey,
+    storage: u64,
+    capacity: u64,
+    release: (u32, u32),
+    inlet: u64,
+) -> HydrologyConveyanceEdge {
+    HydrologyConveyanceEdge::new(
+        HydrologyEdgeKey::new(source, outlet).expect("the endpoints differ"),
+        outlet,
+        WaterVolume::new(storage),
+        WaterVolume::new(capacity),
+        fraction(release.0, release.1),
+        WaterVolume::new(inlet),
+        BOOTSTRAP_TRACE,
+        WaterVolume::new(storage),
+    )
+    .expect("a configured edge is valid")
+}
+
+pub fn conveyance(edges: Vec<HydrologyConveyanceEdge>) -> HydrologyConveyanceGraph {
+    HydrologyConveyanceGraph::new(edges).expect("the edge set is valid")
+}
+
+/// A request over the given state: flat terrain, a closed perimeter, and no
+/// conveyance, unless a test replaces one of them.
 pub struct Scenario {
     pub metrics: HydrologyGridMetrics,
+    pub terrain: BTreeMap<ChartChunkCoord, TerrainChunk>,
     pub active: HydrologyActiveRegion,
     pub conveyance: HydrologyConveyanceGraph,
     pub boundaries: HydrologyBoundaryMap,
@@ -310,9 +424,10 @@ impl Scenario {
     pub fn new(chunks: &[i32]) -> Self {
         Self {
             metrics: metrics(),
+            terrain: flat_terrain(chunks, 0),
             active: active(chunks),
             conveyance: HydrologyConveyanceGraph::default(),
-            boundaries: HydrologyBoundaryMap::default(),
+            boundaries: closed_perimeter(chunks),
             forcing: Vec::new(),
         }
     }
@@ -322,10 +437,26 @@ impl Scenario {
         self
     }
 
+    pub fn with_terrain(mut self, terrain: BTreeMap<ChartChunkCoord, TerrainChunk>) -> Self {
+        self.terrain = terrain;
+        self
+    }
+
+    pub fn with_boundaries(mut self, boundaries: HydrologyBoundaryMap) -> Self {
+        self.boundaries = boundaries;
+        self
+    }
+
+    pub fn with_conveyance(mut self, conveyance: HydrologyConveyanceGraph) -> Self {
+        self.conveyance = conveyance;
+        self
+    }
+
     pub fn request(&self, tick: u64) -> HydrologyEvolutionRequest<'_> {
         HydrologyEvolutionRequest {
             tick,
             metrics: &self.metrics,
+            terrain: &self.terrain,
             active: &self.active,
             conveyance: &self.conveyance,
             boundaries: &self.boundaries,

@@ -2,19 +2,30 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use causafera_core::{CausalEventDagCause, CausalEventProposalKey, StateFingerprint};
 use causafera_geography::{
-    HydrologyCarrierKey, HydrologyCellKey, HydrologyCellState, HydrologyCellStorage,
-    HydrologyField, HydrologyFieldSet, HydrologyForcingRecord, HydrologyGridMetrics,
+    FaceDirection, FluxBoundary, HydraulicFraction, HydraulicSubstrateCell,
+    HydrologyBoundaryCondition, HydrologyCarrierKey, HydrologyCellKey, HydrologyCellState,
+    HydrologyCellStorage, HydrologyConveyanceEdge, HydrologyConveyanceGraph, HydrologyEdgeKey,
+    HydrologyExteriorFaceKey, HydrologyField, HydrologyFieldSet, HydrologyForcingRecord,
+    HydrologyGridMetric, HydrologyGridMetrics, SURFACE_CELL_COUNT, TERRAIN_CELLS_PER_CHUNK,
 };
-use causafera_types::{ChartChunkCoord, TraceId, WaterAccumulator, WaterVolume, WaterVolumeError};
+use causafera_types::{
+    ChartChunkCoord, TraceId, WaterAccumulator, WaterVolume, WaterVolumeError, checked_water_mul,
+};
 
 use super::{
     HydrologyBucket, HydrologyCellChange, HydrologyConservationParts, HydrologyConservationReceipt,
-    HydrologyError, HydrologyEventEffect, HydrologyEventKind, HydrologyEventPlan,
-    HydrologyEvolutionProposal, HydrologyEvolutionRequest, HydrologyForcingAllocation,
-    HydrologyForcingSettlement, HydrologyProperty, HydrologyProposalParts, HydrologyTerminalLeaf,
-    HydrologyTransferParts, HydrologyTransferReceipt, forcing_applied_fingerprint,
-    forcing_settlement_fingerprint, process, substage, volume_fingerprint,
+    HydrologyEdgeChange, HydrologyError, HydrologyEventEffect, HydrologyEventKind,
+    HydrologyEventPlan, HydrologyEvolutionProposal, HydrologyEvolutionRequest,
+    HydrologyForcingAllocation, HydrologyForcingSettlement, HydrologyProperty,
+    HydrologyProposalParts, HydrologyTerminalLeaf, HydrologyTransferParts,
+    HydrologyTransferReceipt, forcing_applied_fingerprint, forcing_settlement_fingerprint, process,
+    substage, volume_fingerprint,
 };
+
+/// The hydrology lattice is the terrain lattice, so an ordinal means the same
+/// cell in both. If that ever stopped holding, every head in the solver would be
+/// read from the wrong ground.
+const _: () = assert!(SURFACE_CELL_COUNT == TERRAIN_CELLS_PER_CHUNK);
 
 /// Deterministic hydrology evolution over one frozen state.
 ///
@@ -122,9 +133,78 @@ struct Batch {
     receipts: Vec<HydrologyTransferReceipt>,
     events: Vec<HydrologyEventPlan>,
     cell_changes: Vec<HydrologyCellChange>,
+    edge_changes: Vec<HydrologyEdgeChange>,
     accepted_precipitation: WaterAccumulator,
     accepted_external_inflow: WaterAccumulator,
     accepted_evapotranspiration: WaterAccumulator,
+    boundary_exports: WaterAccumulator,
+    /// Exports accepted in substages 5 and 6, waiting for substage 8 to
+    /// materialize their sink receipts. Substage 8 computes no new demand — the
+    /// water has already left — so holding them here keeps the ledger's `sinks`
+    /// term and its evidence in the substage the plan puts them in.
+    pending_exports: Vec<PendingExport>,
+}
+
+/// One accepted open-boundary export, before substage 8 records it.
+struct PendingExport {
+    donor: HydrologyCellKey,
+    face: HydrologyExteriorFaceKey,
+    bucket: HydrologyBucket,
+    process_kind: u32,
+    requested: WaterVolume,
+    accepted: WaterVolume,
+    source_before: WaterVolume,
+    source_after: WaterVolume,
+    /// The routing settlement event that actually removed the water.
+    event: CausalEventProposalKey,
+}
+
+/// One conveyance edge's running state through a tick.
+#[derive(Clone, Debug)]
+struct EdgeWork {
+    source: HydrologyCellKey,
+    outlet: HydrologyCellKey,
+    before: WaterVolume,
+    storage: WaterVolume,
+    capacity: WaterVolume,
+    release: HydraulicFraction,
+    /// The configured per-tick inlet budget. A coefficient, not state: it resets
+    /// every tick and is never persisted as "what is left".
+    inlet_capacity: WaterVolume,
+    /// How much of that budget is still unspent. Surface inflow spends it first,
+    /// then baseflow, then conveyance release — the plan's substage order is
+    /// what decides which process gets a contested inlet.
+    inlet_remaining: WaterVolume,
+    last_change: TraceId,
+    last_change_before: WaterVolume,
+    reference: CausalEventDagCause,
+    terminal: Option<CausalEventProposalKey>,
+}
+
+fn build_edge_work(graph: &HydrologyConveyanceGraph) -> BTreeMap<HydrologyEdgeKey, EdgeWork> {
+    graph
+        .edges()
+        .iter()
+        .map(|(key, edge)| {
+            (
+                *key,
+                EdgeWork {
+                    source: edge.source(),
+                    outlet: edge.outlet(),
+                    before: edge.storage(),
+                    storage: edge.storage(),
+                    capacity: edge.capacity(),
+                    release: edge.release(),
+                    inlet_capacity: edge.inlet_capacity_per_tick(),
+                    inlet_remaining: edge.inlet_capacity_per_tick(),
+                    last_change: edge.last_change(),
+                    last_change_before: edge.last_change_before(),
+                    reference: CausalEventDagCause::Existing(edge.last_change()),
+                    terminal: None,
+                },
+            )
+        })
+        .collect()
 }
 
 impl HydrologyEvolutionModel {
@@ -149,26 +229,68 @@ impl HydrologyEvolutionModel {
             receipts: Vec::new(),
             events: Vec::new(),
             cell_changes: Vec::new(),
+            edge_changes: Vec::new(),
             accepted_precipitation: WaterAccumulator::ZERO,
             accepted_external_inflow: WaterAccumulator::ZERO,
             accepted_evapotranspiration: WaterAccumulator::ZERO,
+            boundary_exports: WaterAccumulator::ZERO,
+            pending_exports: Vec::new(),
         };
 
-        // The chart of every resident chunk must have a registered metric, or
-        // nothing about it is computable. The field set already checked this at
-        // construction; re-checking here keeps the solver honest about its own
-        // preconditions rather than trusting a caller-built value object.
+        // The chart of every resident chunk must have a registered metric, and
+        // every resident chunk must have the terrain its heads are measured
+        // against. The field set already checked the metric at construction;
+        // re-checking here keeps the solver honest about its own preconditions
+        // rather than trusting a caller-built value object.
         for chunk in state.fields().keys() {
             request.metrics.get(chunk.chart)?;
+            let terrain = request
+                .terrain
+                .get(chunk)
+                .ok_or(HydrologyError::TerrainMissing)?;
+            if terrain.chunk() != chunk.chunk {
+                return Err(HydrologyError::TerrainChunkMismatch);
+            }
+        }
+        // The request's own idea of which chunks are resident has to be the field
+        // set it was handed. Without this the active region would be decoration:
+        // a solver that routed over a chunk the request does not consider
+        // resident would be exchanging water across an edge of the world.
+        if request.active.resident_chunks().len() != state.fields().len()
+            || !state
+                .fields()
+                .keys()
+                .all(|chunk| request.active.resident_chunks().contains(chunk))
+        {
+            return Err(HydrologyError::ResidencyMismatch);
         }
 
         let mut work = build_work(state);
+        let mut edges = build_edge_work(request.conveyance);
         let mut applied_forcing = Vec::new();
         let settlements =
             substage_forcing(&mut batch, &mut work, state, &request, &mut applied_forcing)?;
         substage_infiltration(&mut batch, &mut work, state)?;
         substage_percolation(&mut batch, &mut work, state)?;
         let settlements = substage_evapotranspiration(&mut batch, &mut work, settlements)?;
+        route(
+            &mut batch,
+            &mut work,
+            &mut edges,
+            state,
+            &request,
+            &SURFACE_CHANNEL,
+        )?;
+        route(
+            &mut batch,
+            &mut work,
+            &mut edges,
+            state,
+            &request,
+            &GROUNDWATER_CHANNEL,
+        )?;
+        substage_conveyance(&mut batch, &mut work, &mut edges, state, &request)?;
+        substage_boundary_export(&mut batch)?;
 
         if batch.receipts.len() > request.limits.max_transfers_per_tick {
             return Err(HydrologyError::TransferLimitExceeded {
@@ -176,22 +298,46 @@ impl HydrologyEvolutionModel {
                 max: request.limits.max_transfers_per_tick,
             });
         }
+        // The trace store enforces these caps too, and would reject the batch
+        // atomically. Checking here means a proposal the store cannot possibly
+        // commit is never handed back as if it were valid.
+        for event in &batch.events {
+            if event.causes.len() > request.limits.max_causes_per_event {
+                return Err(HydrologyError::EventCauseLimitExceeded {
+                    count: event.causes.len(),
+                    max: request.limits.max_causes_per_event,
+                });
+            }
+            if event.effects.len() > request.limits.max_effects_per_event {
+                return Err(HydrologyError::EventEffectLimitExceeded {
+                    count: event.effects.len(),
+                    max: request.limits.max_effects_per_event,
+                });
+            }
+        }
 
         let after_state = build_after_state(state, &work, request.metrics, batch_sequence)?;
-        let conservation = build_conservation(&batch, state, &after_state, &request)?;
+        let after_conveyance = build_after_conveyance(&edges)?;
+        let conservation = build_conservation(
+            &batch,
+            state,
+            &after_state,
+            request.conveyance,
+            &after_conveyance,
+        )?;
         conservation.require_balanced()?;
 
-        let terminal_leaves = collect_terminal_leaves(&work);
+        let terminal_leaves = collect_terminal_leaves(&work, &edges);
 
         Ok(HydrologyEvolutionProposal::new(HydrologyProposalParts {
             tick: request.tick,
             batch_sequence,
             after_state,
-            after_conveyance: request.conveyance.clone(),
+            after_conveyance,
             applied_forcing,
             forcing_settlements: settlements,
             cell_changes: batch.cell_changes,
-            edge_changes: Vec::new(),
+            edge_changes: batch.edge_changes,
             transfer_receipts: batch.receipts,
             conservation,
             events: batch.events,
@@ -1006,6 +1152,1193 @@ fn bucket_effect(
 }
 
 // ---------------------------------------------------------------------------
+// Substages 5-8 — lateral routing, conveyance, and boundary export
+// ---------------------------------------------------------------------------
+
+/// Where an accepted lateral transfer lands.
+///
+/// Ordered, because the receiver reduction groups by destination and the plan's
+/// tie-break is `(receiver_key, donor_key, edge_key)`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum FlowTarget {
+    /// The neighbour's own bucket of the same kind.
+    Cell(HydrologyCellKey),
+    /// A conveyance edge's storage.
+    Edge(HydrologyEdgeKey),
+    /// Outside the modelled world, through an open boundary channel.
+    Boundary(HydrologyExteriorFaceKey),
+}
+
+/// One directed demand across one face, from raw demand to applied transfer.
+#[derive(Clone, Debug)]
+struct Outflow {
+    donor: HydrologyCellKey,
+    /// The face crossed. Interior faces sort before exterior ones because the
+    /// carrier variants do, and within each group the order is the plan's
+    /// ascending canonical key.
+    face: HydrologyCarrierKey,
+    target: FlowTarget,
+    process_kind: u32,
+    raw: u128,
+    accepted: u128,
+    source_before: WaterVolume,
+    source_after: WaterVolume,
+    target_before: WaterVolume,
+    target_after: WaterVolume,
+}
+
+impl Outflow {
+    /// The canonical order competing demands are reduced and applied in.
+    ///
+    /// `(donor, face)` is the plan's rule. `process_kind` breaks the one tie it
+    /// leaves open: a cell's groundwater lateral outflow and its baseflow can
+    /// cross the same face, and two demands with one name would make their
+    /// reduction order an accident of insertion.
+    fn order(&self) -> (HydrologyCellKey, HydrologyCarrierKey, u32) {
+        (self.donor, self.face, self.process_kind)
+    }
+}
+
+/// Which of the two lateral channels one routing pass moves.
+struct RoutingChannel {
+    substage_ordinal: u8,
+    /// The per-cell settlement event's process identity.
+    settlement_process: u32,
+    /// A cell-to-cell transfer of this channel's bucket.
+    lateral_process: u32,
+    /// A transfer of this channel's bucket into a conveyance edge.
+    edge_process: u32,
+    /// An export through this channel of an open boundary face.
+    boundary_process: u32,
+    property: HydrologyProperty,
+    /// Whether this channel also offers water to a cell's outgoing edge
+    /// independently of head, which is what baseflow is.
+    baseflow: bool,
+}
+
+const SURFACE_CHANNEL: RoutingChannel = RoutingChannel {
+    substage_ordinal: substage::SURFACE_ROUTING,
+    settlement_process: process::SURFACE_ROUTING,
+    lateral_process: process::SURFACE_LATERAL,
+    edge_process: process::CONVEYANCE_INFLOW,
+    boundary_process: process::SURFACE_BOUNDARY_EXPORT,
+    property: HydrologyProperty::Surface,
+    baseflow: false,
+};
+
+const GROUNDWATER_CHANNEL: RoutingChannel = RoutingChannel {
+    substage_ordinal: substage::GROUNDWATER_ROUTING,
+    settlement_process: process::GROUNDWATER_ROUTING,
+    lateral_process: process::GROUNDWATER_LATERAL,
+    edge_process: process::BASEFLOW,
+    boundary_process: process::GROUNDWATER_BOUNDARY_EXPORT,
+    property: HydrologyProperty::Groundwater,
+    baseflow: true,
+};
+
+impl RoutingChannel {
+    const fn bucket(&self) -> HydrologyBucket {
+        self.property.bucket()
+    }
+
+    const fn conductance(&self, ground: &HydraulicSubstrateCell) -> u64 {
+        match self.property {
+            HydrologyProperty::Groundwater => ground.groundwater_conductance_mm2_per_tick(),
+            _ => ground.surface_conductance_mm2_per_tick(),
+        }
+    }
+
+    const fn boundary(&self, condition: &HydrologyBoundaryCondition) -> FluxBoundary {
+        match self.property {
+            HydrologyProperty::Groundwater => condition.groundwater,
+            _ => condition.surface,
+        }
+    }
+
+    /// The head this channel drives flow with, in millimetres.
+    ///
+    /// Surface head is the ponded water's own top surface; groundwater head is
+    /// the water table implied by the stored volume and the specific yield. Both
+    /// are measured against the same absolute reference as terrain, so a face
+    /// between them is a comparison of two elevations and not of two volumes.
+    fn head(
+        &self,
+        metric: HydrologyGridMetric,
+        ground: &HydraulicSubstrateCell,
+        elevation_mm: i32,
+        value: WaterVolume,
+    ) -> Result<i128, HydrologyError> {
+        match self.property {
+            HydrologyProperty::Groundwater => {
+                if ground.groundwater_capacity().is_zero() && value.is_zero() {
+                    // No aquifer and nothing in it: the head is the base, and
+                    // nothing can flow because the conductance rule needs both
+                    // endpoints anyway.
+                    return Ok(i128::from(ground.aquifer_base_elevation_mm()));
+                }
+                let yield_fraction = ground.specific_yield();
+                if yield_fraction.numerator() == 0 {
+                    // Defence in depth with no reachable case: the substrate
+                    // constructor refuses a zero yield over real capacity, and
+                    // the field constructor refuses storage above capacity, so
+                    // stored groundwater always arrives with a yield. Kept as
+                    // the divisor's precondition rather than as an assumption.
+                    return Err(HydrologyError::GroundwaterWithoutSpecificYield);
+                }
+                let scaled = checked_water_mul(
+                    value.as_i128(),
+                    i128::from(yield_fraction.denominator().get()),
+                )?;
+                let divisor = checked_water_mul(
+                    i128::from(metric.cell_area_mm2().get()),
+                    i128::from(yield_fraction.numerator()),
+                )?;
+                let saturated_depth = causafera_types::checked_water_div_floor(scaled, divisor)?;
+                Ok(
+                    WaterAccumulator::new(i128::from(ground.aquifer_base_elevation_mm()))
+                        .add(saturated_depth)?
+                        .get(),
+                )
+            }
+            _ => Ok(WaterAccumulator::new(i128::from(elevation_mm))
+                .add(metric.depth_of(value)?.as_i128())?
+                .get()),
+        }
+    }
+}
+
+/// `floor(2 * a * b / (a + b))`, and zero when either endpoint cannot conduct.
+///
+/// Symmetric, so a face has one conductance whichever side asks. A zero endpoint
+/// gives zero rather than the harmonic limit, because ground that cannot pass
+/// water does not become passable by being next to ground that can.
+fn harmonic_face_conductance(a: u64, b: u64) -> Result<i128, HydrologyError> {
+    if a == 0 || b == 0 {
+        return Ok(0);
+    }
+    let product = checked_water_mul(2, checked_water_mul(i128::from(a), i128::from(b))?)?;
+    let sum = WaterAccumulator::new(i128::from(a))
+        .add(i128::from(b))?
+        .get();
+    Ok(causafera_types::checked_water_div_floor(product, sum)?)
+}
+
+const fn bucket_slot(
+    storage: &mut HydrologyCellStorage,
+    property: HydrologyProperty,
+) -> &mut WaterVolume {
+    match property {
+        HydrologyProperty::Soil => &mut storage.soil,
+        HydrologyProperty::Groundwater => &mut storage.groundwater,
+        _ => &mut storage.surface,
+    }
+}
+
+const fn bucket_capacity(
+    ground: &HydraulicSubstrateCell,
+    property: HydrologyProperty,
+) -> WaterVolume {
+    match property {
+        HydrologyProperty::Soil => ground.soil_capacity(),
+        HydrologyProperty::Groundwater => ground.groundwater_capacity(),
+        _ => ground.surface_capacity(),
+    }
+}
+
+fn cell_bucket_reference(entry: &CellWork, property: HydrologyProperty) -> CausalEventDagCause {
+    match property {
+        HydrologyProperty::Soil => entry.soil_ref.clone(),
+        HydrologyProperty::Groundwater => entry.groundwater_ref.clone(),
+        _ => entry.surface_ref.clone(),
+    }
+}
+
+/// One lateral routing pass: substage 5 for surface water, substage 6 for
+/// groundwater and baseflow.
+///
+/// Every demand is computed from one frozen state before any of it is applied,
+/// so no cell observes another cell's write within the pass. That single property
+/// is what makes a chunk seam an ordinary face, a three-cell chain unable to move
+/// one unit through two faces, and the result independent of the order the cells
+/// happen to be visited in.
+fn route(
+    batch: &mut Batch,
+    work: &mut BTreeMap<ChartChunkCoord, Vec<CellWork>>,
+    edges: &mut BTreeMap<HydrologyEdgeKey, EdgeWork>,
+    state: &HydrologyFieldSet,
+    request: &HydrologyEvolutionRequest<'_>,
+    channel: &RoutingChannel,
+) -> Result<(), HydrologyError> {
+    let mut heads: BTreeMap<HydrologyCellKey, i128> = BTreeMap::new();
+    let mut frozen: BTreeMap<HydrologyCellKey, WaterVolume> = BTreeMap::new();
+    for (chunk, field) in state.fields() {
+        let metric = request.metrics.get(chunk.chart)?;
+        let terrain = request
+            .terrain
+            .get(chunk)
+            .ok_or(HydrologyError::TerrainMissing)?;
+        let entries = &work[chunk];
+        for (ordinal, ground) in field.substrate().iter().enumerate() {
+            let cell = HydrologyCellKey::new(*chunk, ordinal as u16)?;
+            let value = bucket_value(&entries[ordinal].storage, channel.property);
+            frozen.insert(cell, value);
+            heads.insert(
+                cell,
+                channel.head(
+                    metric,
+                    ground,
+                    terrain.elevations()[ordinal].millimetres(),
+                    value,
+                )?,
+            );
+        }
+    }
+
+    let mut outflows = collect_demands(state, request, channel, &heads, &frozen, edges)?;
+    outflows.sort_by_key(Outflow::order);
+    reduce_donors(&mut outflows, &frozen)?;
+    reduce_receivers(&mut outflows, state, edges, channel, &frozen)?;
+    apply_transfers(batch, work, edges, &mut outflows, channel)?;
+    emit_routing_events(batch, work, edges, request, channel, &outflows, &frozen)?;
+    Ok(())
+}
+
+/// Every raw demand of one channel, computed from the frozen state.
+fn collect_demands(
+    state: &HydrologyFieldSet,
+    request: &HydrologyEvolutionRequest<'_>,
+    channel: &RoutingChannel,
+    heads: &BTreeMap<HydrologyCellKey, i128>,
+    frozen: &BTreeMap<HydrologyCellKey, WaterVolume>,
+    edges: &BTreeMap<HydrologyEdgeKey, EdgeWork>,
+) -> Result<Vec<Outflow>, HydrologyError> {
+    let mut outflows = Vec::new();
+    for (chunk, field) in state.fields() {
+        for (ordinal, ground) in field.substrate().iter().enumerate() {
+            let cell = HydrologyCellKey::new(*chunk, ordinal as u16)?;
+            let head = heads[&cell];
+            for direction in FaceDirection::ALL {
+                match cell.neighbor(direction) {
+                    Some(neighbor) if state.is_resident(neighbor) => {
+                        let edge_key = HydrologyEdgeKey::new(cell, neighbor)?;
+                        // The canonical pair is processed exactly once, from its
+                        // low endpoint. Visiting it from both sides would give
+                        // one face two demands and move the water twice.
+                        if cell != edge_key.low() {
+                            continue;
+                        }
+                        let neighbor_head = heads[&neighbor];
+                        if neighbor_head == head {
+                            continue;
+                        }
+                        let (donor, receiver) = if head > neighbor_head {
+                            (cell, neighbor)
+                        } else {
+                            (neighbor, cell)
+                        };
+                        let neighbor_ground = state
+                            .ground(neighbor)
+                            .ok_or(HydrologyError::ForcingTargetNotResident)?;
+                        let conductance = harmonic_face_conductance(
+                            channel.conductance(ground),
+                            channel.conductance(neighbor_ground),
+                        )?;
+                        if conductance == 0 {
+                            continue;
+                        }
+                        let drop = WaterAccumulator::new(heads[&donor])
+                            .sub(heads[&receiver])?
+                            .get();
+                        let raw = u128::try_from(checked_water_mul(conductance, drop)?)
+                            .map_err(|_| WaterVolumeError::Overflow)?;
+                        if raw == 0 {
+                            continue;
+                        }
+                        // Surface water enters the face's conveyance edge only
+                        // when that edge is directed the way the head already
+                        // points. A reverse-head transfer takes the ordinary
+                        // surface path rather than reversing a directed channel.
+                        let target = match edges.get(&edge_key) {
+                            Some(edge) if !channel.baseflow && edge.source == donor => {
+                                FlowTarget::Edge(edge_key)
+                            }
+                            _ => FlowTarget::Cell(receiver),
+                        };
+                        let process_kind = match target {
+                            FlowTarget::Edge(_) => channel.edge_process,
+                            _ => channel.lateral_process,
+                        };
+                        outflows.push(Outflow {
+                            donor,
+                            face: HydrologyCarrierKey::Edge(edge_key),
+                            target,
+                            process_kind,
+                            raw,
+                            accepted: 0,
+                            source_before: WaterVolume::ZERO,
+                            source_after: WaterVolume::ZERO,
+                            target_before: WaterVolume::ZERO,
+                            target_after: WaterVolume::ZERO,
+                        });
+                    }
+                    // No resident neighbour: an exterior face, which must carry
+                    // an explicit boundary record. Neither exporting nor
+                    // blocking may be assumed here (V13).
+                    _ => {
+                        let face = HydrologyExteriorFaceKey::new(cell, direction);
+                        let condition = request
+                            .boundaries
+                            .get(face)
+                            .ok_or(HydrologyError::UnspecifiedBoundaryFace)?;
+                        let FluxBoundary::Open {
+                            external_head_mm,
+                            conductance_mm2_per_tick,
+                        } = channel.boundary(&condition)
+                        else {
+                            continue;
+                        };
+                        if conductance_mm2_per_tick == 0 {
+                            continue;
+                        }
+                        let drop = WaterAccumulator::new(head)
+                            .sub(i128::from(external_head_mm))?
+                            .get();
+                        if drop <= 0 {
+                            continue;
+                        }
+                        let raw = u128::try_from(checked_water_mul(
+                            i128::from(conductance_mm2_per_tick),
+                            drop,
+                        )?)
+                        .map_err(|_| WaterVolumeError::Overflow)?;
+                        if raw == 0 {
+                            continue;
+                        }
+                        outflows.push(Outflow {
+                            donor: cell,
+                            face: HydrologyCarrierKey::ExteriorFace(face),
+                            target: FlowTarget::Boundary(face),
+                            process_kind: channel.boundary_process,
+                            raw,
+                            accepted: 0,
+                            source_before: WaterVolume::ZERO,
+                            source_after: WaterVolume::ZERO,
+                            target_before: WaterVolume::ZERO,
+                            target_after: WaterVolume::ZERO,
+                        });
+                    }
+                }
+            }
+
+            if !channel.baseflow {
+                continue;
+            }
+            // Baseflow does not read head: it is the aquifer draining into the
+            // one channel that leaves the cell. A cell with no outgoing edge
+            // retains its groundwater.
+            let stored = frozen[&cell];
+            let threshold = ground.baseflow_threshold();
+            let excess = if stored > threshold {
+                stored.checked_sub(threshold)?
+            } else {
+                WaterVolume::ZERO
+            };
+            let requested = ground.baseflow_fraction().apply_to_volume(excess)?;
+            if requested.is_zero() {
+                continue;
+            }
+            let Some(edge) = request.conveyance.outgoing(cell) else {
+                continue;
+            };
+            outflows.push(Outflow {
+                donor: cell,
+                face: HydrologyCarrierKey::Edge(edge.key()),
+                target: FlowTarget::Edge(edge.key()),
+                process_kind: channel.edge_process,
+                raw: u128::from(requested.get()),
+                accepted: 0,
+                source_before: WaterVolume::ZERO,
+                source_after: WaterVolume::ZERO,
+                target_before: WaterVolume::ZERO,
+                target_after: WaterVolume::ZERO,
+            });
+        }
+    }
+    Ok(outflows)
+}
+
+/// Scale every donor's demands down to what the donor actually owns.
+///
+/// A donor whose faces jointly ask for more than it holds cannot pay them all.
+/// Reducing them proportionally by the largest-remainder rule makes the accepted
+/// total exactly the available volume — not one unit more, which would be a
+/// source, and not one less, which would be a quantisation sink.
+fn reduce_donors(
+    outflows: &mut [Outflow],
+    frozen: &BTreeMap<HydrologyCellKey, WaterVolume>,
+) -> Result<(), HydrologyError> {
+    let mut index = 0;
+    while index < outflows.len() {
+        let donor = outflows[index].donor;
+        let end = index + outflows[index..].partition_point(|flow| flow.donor == donor);
+        let available = u128::from(frozen[&donor].get());
+        let raws: Vec<u128> = outflows[index..end].iter().map(|flow| flow.raw).collect();
+        let mut total = 0_u128;
+        for raw in &raws {
+            total = total.checked_add(*raw).ok_or(WaterVolumeError::Overflow)?;
+        }
+        if total > available {
+            let shares = allocate_largest_remainder(available, &raws)?;
+            for (flow, share) in outflows[index..end].iter_mut().zip(shares) {
+                flow.accepted = share;
+            }
+        } else {
+            for flow in outflows[index..end].iter_mut() {
+                flow.accepted = flow.raw;
+            }
+        }
+        index = end;
+    }
+    Ok(())
+}
+
+/// Scale every receiver's already donor-limited inflows down to what it can hold.
+///
+/// Receiver capacity is read from the frozen state, not from the receiver's
+/// post-outflow volume: a receiver that also donates would otherwise accept more
+/// or less depending on whether its own outflow had been applied yet, which is
+/// exactly the order dependence the frozen substage exists to prevent. Because
+/// this pass only lowers already-bounded numbers, one donor pass and one receiver
+/// pass satisfy both constraints without iterating.
+fn reduce_receivers(
+    outflows: &mut [Outflow],
+    state: &HydrologyFieldSet,
+    edges: &BTreeMap<HydrologyEdgeKey, EdgeWork>,
+    channel: &RoutingChannel,
+    frozen: &BTreeMap<HydrologyCellKey, WaterVolume>,
+) -> Result<(), HydrologyError> {
+    let mut grouped: BTreeMap<FlowTarget, Vec<usize>> = BTreeMap::new();
+    for (index, flow) in outflows.iter().enumerate() {
+        if matches!(flow.target, FlowTarget::Boundary(_)) {
+            continue;
+        }
+        grouped.entry(flow.target).or_default().push(index);
+    }
+
+    for (target, indices) in grouped {
+        let room = match target {
+            FlowTarget::Cell(cell) => {
+                let ground = state
+                    .ground(cell)
+                    .ok_or(HydrologyError::ForcingTargetNotResident)?;
+                u128::from(
+                    frozen[&cell]
+                        .remaining_below(bucket_capacity(ground, channel.property))
+                        .get(),
+                )
+            }
+            FlowTarget::Edge(key) => {
+                let edge = &edges[&key];
+                u128::from(
+                    edge.storage
+                        .remaining_below(edge.capacity)
+                        .min(edge.inlet_remaining)
+                        .get(),
+                )
+            }
+            FlowTarget::Boundary(_) => continue,
+        };
+        let demands: Vec<u128> = indices
+            .iter()
+            .map(|&index| outflows[index].accepted)
+            .collect();
+        let mut total = 0_u128;
+        for demand in &demands {
+            total = total
+                .checked_add(*demand)
+                .ok_or(WaterVolumeError::Overflow)?;
+        }
+        if total <= room {
+            continue;
+        }
+        let shares = allocate_largest_remainder(room, &demands)?;
+        for (&index, share) in indices.iter().zip(shares) {
+            outflows[index].accepted = share;
+        }
+    }
+    Ok(())
+}
+
+/// Debit every donor, credit every receiver, and record what each transfer did.
+///
+/// The two passes run in different canonical orders — donors in `(donor, face,
+/// process)` order, receivers grouped by destination — so each receipt's
+/// before/after pair is the exact step that transfer took, and a receipt whose
+/// withdrawal and deposit disagree cannot be produced.
+fn apply_transfers(
+    batch: &mut Batch,
+    work: &mut BTreeMap<ChartChunkCoord, Vec<CellWork>>,
+    edges: &mut BTreeMap<HydrologyEdgeKey, EdgeWork>,
+    outflows: &mut [Outflow],
+    channel: &RoutingChannel,
+) -> Result<(), HydrologyError> {
+    for flow in outflows.iter_mut() {
+        let accepted = share_volume(flow.accepted)?;
+        let entry = cell_work(work, flow.donor).expect("a donor is resident");
+        let slot = bucket_slot(&mut entry.storage, channel.property);
+        flow.source_before = *slot;
+        flow.source_after = slot.checked_sub(accepted)?;
+        *slot = flow.source_after;
+    }
+
+    let mut grouped: BTreeMap<FlowTarget, Vec<usize>> = BTreeMap::new();
+    for (index, flow) in outflows.iter().enumerate() {
+        grouped.entry(flow.target).or_default().push(index);
+    }
+    for (target, indices) in grouped {
+        for index in indices {
+            let accepted = share_volume(outflows[index].accepted)?;
+            let (before, after) = match target {
+                FlowTarget::Cell(cell) => {
+                    let entry = cell_work(work, cell).expect("a receiver is resident");
+                    let slot = bucket_slot(&mut entry.storage, channel.property);
+                    let before = *slot;
+                    *slot = before.checked_add(accepted)?;
+                    (before, *slot)
+                }
+                FlowTarget::Edge(key) => {
+                    let edge = edges.get_mut(&key).expect("the edge was found by key");
+                    let before = edge.storage;
+                    edge.storage = before.checked_add(accepted)?;
+                    edge.inlet_remaining = edge.inlet_remaining.checked_sub(accepted)?;
+                    (before, edge.storage)
+                }
+                // An export leaves the world. Its sink receipt is materialized in
+                // substage 8; nothing further is removed there.
+                FlowTarget::Boundary(_) => (WaterVolume::ZERO, WaterVolume::ZERO),
+            };
+            outflows[index].target_before = before;
+            outflows[index].target_after = after;
+            if matches!(target, FlowTarget::Boundary(_)) {
+                batch.boundary_exports = batch.boundary_exports.add_volume(accepted)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Emit one settlement event per changed cell, one inflow event per receiving
+/// edge, and every transfer receipt of one routing pass.
+#[allow(clippy::too_many_arguments)]
+fn emit_routing_events(
+    batch: &mut Batch,
+    work: &mut BTreeMap<ChartChunkCoord, Vec<CellWork>>,
+    edges: &mut BTreeMap<HydrologyEdgeKey, EdgeWork>,
+    request: &HydrologyEvolutionRequest<'_>,
+    channel: &RoutingChannel,
+    outflows: &[Outflow],
+    frozen: &BTreeMap<HydrologyCellKey, WaterVolume>,
+) -> Result<(), HydrologyError> {
+    // Every cause is taken from this snapshot, so a sibling settlement in the
+    // same substage is never cited: each of them was computed from the frozen
+    // state, and citing one another would claim a dependency that the frozen
+    // substage specifically does not have.
+    let mut references: BTreeMap<HydrologyCellKey, CausalEventDagCause> = BTreeMap::new();
+    for (chunk, entries) in work.iter() {
+        for (ordinal, entry) in entries.iter().enumerate() {
+            let cell = HydrologyCellKey::new(*chunk, ordinal as u16)?;
+            references.insert(cell, cell_bucket_reference(entry, channel.property));
+        }
+    }
+    let edge_references: BTreeMap<HydrologyEdgeKey, CausalEventDagCause> = edges
+        .iter()
+        .map(|(key, edge)| (*key, edge.reference.clone()))
+        .collect();
+
+    // A cell settles when it took part in an accepted transfer, not merely when
+    // its total moved. A cell that passed ten units through — ten in, ten out —
+    // ends the substage holding what it started with, and if that were taken as
+    // "nothing happened" both of its transfers would have no committed event to
+    // point at, leaving them orphans the moment their trace was asked for.
+    let mut participants: BTreeSet<HydrologyCellKey> = BTreeSet::new();
+    for flow in outflows {
+        if flow.accepted == 0 {
+            continue;
+        }
+        participants.insert(flow.donor);
+        if let FlowTarget::Cell(receiver) = flow.target {
+            participants.insert(receiver);
+        }
+    }
+    let mut changed: BTreeMap<HydrologyCellKey, (WaterVolume, WaterVolume)> = BTreeMap::new();
+    for (chunk, entries) in work.iter() {
+        for (ordinal, entry) in entries.iter().enumerate() {
+            let cell = HydrologyCellKey::new(*chunk, ordinal as u16)?;
+            let after = bucket_value(&entry.storage, channel.property);
+            let before = frozen[&cell];
+            if before != after || participants.contains(&cell) {
+                changed.insert(cell, (before, after));
+            }
+        }
+    }
+    debug_assert!(
+        changed
+            .iter()
+            .all(|(cell, (before, after))| before == after || participants.contains(cell)),
+        "a bucket cannot move without an accepted transfer moving it"
+    );
+
+    let mut emitted: BTreeMap<HydrologyCellKey, CausalEventProposalKey> = BTreeMap::new();
+    for (cell, (before, after)) in &changed {
+        let key = vertical_key(channel.substage_ordinal, channel.settlement_process, *cell)?;
+        let mut causes: BTreeSet<CausalEventDagCause> = BTreeSet::new();
+        causes.insert(references[cell].clone());
+        for direction in FaceDirection::ALL {
+            if let Some(neighbor) = cell.neighbor(direction)
+                && let Some(reference) = references.get(&neighbor)
+            {
+                causes.insert(reference.clone());
+            }
+        }
+        if let Some(edge) = request.conveyance.outgoing(*cell) {
+            causes.insert(CausalEventDagCause::Existing(edge.last_change()));
+        }
+        batch.events.push(HydrologyEventPlan {
+            key: key.clone(),
+            kind: HydrologyEventKind::CellChange,
+            causes: causes.into_iter().collect(),
+            effects: vec![bucket_effect(*cell, channel.property, *before, *after)],
+        });
+        batch.cell_changes.push(HydrologyCellChange {
+            cell: *cell,
+            bucket: channel.bucket(),
+            before: *before,
+            after: *after,
+            settlement_event: key.clone(),
+        });
+        let entry = cell_work(work, *cell).expect("a changed cell is resident");
+        set_reference(entry, channel.property, key.clone());
+        emitted.insert(*cell, key);
+    }
+
+    // One inflow event per edge that actually received. Cites the edge's own
+    // reference plus the local routing event of the cell the water came from.
+    let mut edge_inflows: BTreeMap<HydrologyEdgeKey, WaterVolume> = BTreeMap::new();
+    for flow in outflows {
+        if let FlowTarget::Edge(key) = flow.target {
+            let accepted = share_volume(flow.accepted)?;
+            let total = edge_inflows.entry(key).or_insert(WaterVolume::ZERO);
+            *total = total.checked_add(accepted)?;
+        }
+    }
+    for (edge_key, total) in edge_inflows {
+        if total.is_zero() {
+            continue;
+        }
+        let edge = edges.get_mut(&edge_key).expect("the edge received water");
+        let before = edge.storage.checked_sub(total)?;
+        let after = edge.storage;
+        let key = CausalEventProposalKey::new(
+            channel.substage_ordinal,
+            channel.edge_process,
+            &HydrologyCarrierKey::Edge(edge_key).encode(),
+            0,
+        )?;
+        let mut causes: BTreeSet<CausalEventDagCause> = BTreeSet::new();
+        causes.insert(edge_references[&edge_key].clone());
+        if let Some(source_event) = emitted.get(&edge.source) {
+            causes.insert(CausalEventDagCause::Local(source_event.clone()));
+        }
+        batch.events.push(HydrologyEventPlan {
+            key: key.clone(),
+            kind: HydrologyEventKind::EdgeTransfer,
+            causes: causes.into_iter().collect(),
+            effects: vec![edge_effect(edge_key, before, after)],
+        });
+        batch.edge_changes.push(HydrologyEdgeChange {
+            edge: edge_key,
+            before,
+            after,
+            settlement_event: key.clone(),
+        });
+        edge.reference = CausalEventDagCause::Local(key.clone());
+        edge.terminal = Some(key);
+    }
+
+    for flow in outflows {
+        let requested = share_volume(flow.raw)?;
+        let accepted = share_volume(flow.accepted)?;
+        let donor_event = emitted.get(&flow.donor).cloned();
+        match flow.target {
+            FlowTarget::Boundary(face) => {
+                batch.pending_exports.push(PendingExport {
+                    donor: flow.donor,
+                    face,
+                    bucket: channel.bucket(),
+                    process_kind: flow.process_kind,
+                    requested,
+                    accepted,
+                    source_before: flow.source_before,
+                    source_after: flow.source_after,
+                    event: vertical_key(
+                        channel.substage_ordinal,
+                        channel.settlement_process,
+                        flow.donor,
+                    )?,
+                });
+            }
+            FlowTarget::Cell(receiver) => {
+                let receiver_event = emitted.get(&receiver).cloned();
+                batch
+                    .receipts
+                    .push(HydrologyTransferReceipt::new(HydrologyTransferParts {
+                        batch_sequence: batch.batch_sequence,
+                        tick: batch.tick,
+                        process_kind: flow.process_kind,
+                        source: HydrologyCarrierKey::Cell(flow.donor),
+                        source_bucket: channel.bucket(),
+                        target: HydrologyCarrierKey::Cell(receiver),
+                        target_bucket: channel.bucket(),
+                        requested,
+                        accepted,
+                        source_before: flow.source_before,
+                        source_after: flow.source_after,
+                        target_before: flow.target_before,
+                        target_after: flow.target_after,
+                        causal_parents: Vec::new(),
+                        forcing_origin: None,
+                        transfer_event: donor_event,
+                        storage_event: receiver_event,
+                    })?);
+            }
+            FlowTarget::Edge(edge_key) => {
+                let edge_event = edges[&edge_key].terminal.clone();
+                batch
+                    .receipts
+                    .push(HydrologyTransferReceipt::new(HydrologyTransferParts {
+                        batch_sequence: batch.batch_sequence,
+                        tick: batch.tick,
+                        process_kind: flow.process_kind,
+                        source: HydrologyCarrierKey::Cell(flow.donor),
+                        source_bucket: channel.bucket(),
+                        target: HydrologyCarrierKey::Edge(edge_key),
+                        target_bucket: HydrologyBucket::Conveyance,
+                        requested,
+                        accepted,
+                        source_before: flow.source_before,
+                        source_after: flow.source_after,
+                        target_before: flow.target_before,
+                        target_after: flow.target_after,
+                        causal_parents: Vec::new(),
+                        forcing_origin: None,
+                        transfer_event: donor_event,
+                        storage_event: edge_event,
+                    })?);
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Substage 7 — release stored conveyance water toward each edge's outlet.
+///
+/// Every release is computed from the complete frozen pre-release edge state, so
+/// water that arrived this tick cannot leave again in the same tick and a chain
+/// of edges cannot cascade. A flat or closed depression simply keeps its storage.
+fn substage_conveyance(
+    batch: &mut Batch,
+    work: &mut BTreeMap<ChartChunkCoord, Vec<CellWork>>,
+    edges: &mut BTreeMap<HydrologyEdgeKey, EdgeWork>,
+    state: &HydrologyFieldSet,
+    request: &HydrologyEvolutionRequest<'_>,
+) -> Result<(), HydrologyError> {
+    let frozen: BTreeMap<HydrologyEdgeKey, WaterVolume> = edges
+        .iter()
+        .map(|(key, edge)| (*key, edge.storage))
+        .collect();
+
+    struct Release {
+        source: HydrologyEdgeKey,
+        target: FlowTarget,
+        raw: u128,
+        accepted: u128,
+        source_before: WaterVolume,
+        source_after: WaterVolume,
+        target_before: WaterVolume,
+        target_after: WaterVolume,
+    }
+
+    let mut releases: Vec<Release> = Vec::new();
+    for (key, edge) in edges.iter() {
+        let stored = frozen[key];
+        let raw = edge.release.apply_to_volume(stored)?.min(stored);
+        if raw.is_zero() {
+            continue;
+        }
+        // The outlet's own outgoing edge continues the channel; a local minimum
+        // spills onto the outlet cell's surface instead.
+        let target = match request.conveyance.outgoing(edge.outlet) {
+            Some(downstream) => FlowTarget::Edge(downstream.key()),
+            None => FlowTarget::Cell(edge.outlet),
+        };
+        releases.push(Release {
+            source: *key,
+            target,
+            raw: u128::from(raw.get()),
+            accepted: u128::from(raw.get()),
+            source_before: WaterVolume::ZERO,
+            source_after: WaterVolume::ZERO,
+            target_before: WaterVolume::ZERO,
+            target_after: WaterVolume::ZERO,
+        });
+    }
+    // Ascending source edge key: the plan's tie-break for equal remainders when
+    // several edges compete for one downstream capacity.
+    releases.sort_by_key(|release| release.source);
+
+    let mut grouped: BTreeMap<FlowTarget, Vec<usize>> = BTreeMap::new();
+    for (index, release) in releases.iter().enumerate() {
+        grouped.entry(release.target).or_default().push(index);
+    }
+    for (target, indices) in &grouped {
+        let room = match target {
+            FlowTarget::Edge(key) => {
+                let edge = &edges[key];
+                u128::from(
+                    frozen[key]
+                        .remaining_below(edge.capacity)
+                        .min(edge.inlet_remaining)
+                        .get(),
+                )
+            }
+            FlowTarget::Cell(cell) => {
+                let ground = state
+                    .ground(*cell)
+                    .ok_or(HydrologyError::ForcingTargetNotResident)?;
+                let entry = cell_work(work, *cell).expect("an outlet is resident");
+                u128::from(
+                    entry
+                        .storage
+                        .surface
+                        .remaining_below(ground.surface_capacity())
+                        .get(),
+                )
+            }
+            FlowTarget::Boundary(_) => continue,
+        };
+        let demands: Vec<u128> = indices
+            .iter()
+            .map(|&index| releases[index].accepted)
+            .collect();
+        let mut total = 0_u128;
+        for demand in &demands {
+            total = total
+                .checked_add(*demand)
+                .ok_or(WaterVolumeError::Overflow)?;
+        }
+        if total <= room {
+            continue;
+        }
+        let shares = allocate_largest_remainder(room, &demands)?;
+        for (&index, share) in indices.iter().zip(shares) {
+            releases[index].accepted = share;
+        }
+    }
+
+    for release in releases.iter_mut() {
+        let accepted = share_volume(release.accepted)?;
+        let edge = edges
+            .get_mut(&release.source)
+            .expect("the source edge exists");
+        release.source_before = edge.storage;
+        release.source_after = edge.storage.checked_sub(accepted)?;
+        edge.storage = release.source_after;
+    }
+    // The net change each receiver settles, captured as it happens: the first
+    // credit's `before` and the last credit's `after`.
+    let mut settled: BTreeMap<FlowTarget, (WaterVolume, WaterVolume)> = BTreeMap::new();
+    for (target, indices) in &grouped {
+        for &index in indices {
+            let accepted = share_volume(releases[index].accepted)?;
+            let (before, after) = match target {
+                FlowTarget::Edge(key) => {
+                    let edge = edges.get_mut(key).expect("the downstream edge exists");
+                    let before = edge.storage;
+                    edge.storage = before.checked_add(accepted)?;
+                    edge.inlet_remaining = edge.inlet_remaining.checked_sub(accepted)?;
+                    (before, edge.storage)
+                }
+                FlowTarget::Cell(cell) => {
+                    let entry = cell_work(work, *cell).expect("an outlet is resident");
+                    let before = entry.storage.surface;
+                    entry.storage.surface = before.checked_add(accepted)?;
+                    (before, entry.storage.surface)
+                }
+                FlowTarget::Boundary(_) => continue,
+            };
+            releases[index].target_before = before;
+            releases[index].target_after = after;
+            settled
+                .entry(*target)
+                .and_modify(|range| range.1 = after)
+                .or_insert((before, after));
+        }
+    }
+
+    // Causes come from the pre-release snapshot for the same reason the lateral
+    // passes snapshot theirs: the allocation depended on what every competitor
+    // was holding before any of them released.
+    let pre_release_edge_refs: BTreeMap<HydrologyEdgeKey, CausalEventDagCause> = edges
+        .iter()
+        .map(|(key, edge)| (*key, edge.reference.clone()))
+        .collect();
+    let mut pre_release_cell_refs: BTreeMap<HydrologyCellKey, CausalEventDagCause> =
+        BTreeMap::new();
+    for (chunk, entries) in work.iter() {
+        for (ordinal, entry) in entries.iter().enumerate() {
+            let cell = HydrologyCellKey::new(*chunk, ordinal as u16)?;
+            pre_release_cell_refs.insert(cell, entry.surface_ref.clone());
+        }
+    }
+
+    let mut allocation_events: BTreeMap<FlowTarget, Vec<CausalEventProposalKey>> = BTreeMap::new();
+    for release in &releases {
+        if release.accepted == 0 {
+            continue;
+        }
+        let key = CausalEventProposalKey::new(
+            substage::CONVEYANCE_ROUTING,
+            process::CONVEYANCE_RELEASE,
+            &HydrologyCarrierKey::Edge(release.source).encode(),
+            0,
+        )?;
+        let mut causes: BTreeSet<CausalEventDagCause> = BTreeSet::new();
+        causes.insert(pre_release_edge_refs[&release.source].clone());
+        match release.target {
+            FlowTarget::Edge(downstream) => {
+                causes.insert(pre_release_edge_refs[&downstream].clone());
+            }
+            FlowTarget::Cell(cell) => {
+                causes.insert(pre_release_cell_refs[&cell].clone());
+            }
+            FlowTarget::Boundary(_) => {}
+        }
+        // At most three competitors: a receiver has at most four faces, so at
+        // most four edges can name it as their outlet.
+        for &index in &grouped[&release.target] {
+            let competitor = releases[index].source;
+            if competitor != release.source {
+                causes.insert(pre_release_edge_refs[&competitor].clone());
+            }
+        }
+        batch.events.push(HydrologyEventPlan {
+            key: key.clone(),
+            kind: HydrologyEventKind::EdgeTransfer,
+            causes: causes.into_iter().collect(),
+            effects: vec![edge_effect(
+                release.source,
+                release.source_before,
+                release.source_after,
+            )],
+        });
+        batch.edge_changes.push(HydrologyEdgeChange {
+            edge: release.source,
+            before: release.source_before,
+            after: release.source_after,
+            settlement_event: key.clone(),
+        });
+        let edge = edges
+            .get_mut(&release.source)
+            .expect("the source edge exists");
+        edge.reference = CausalEventDagCause::Local(key.clone());
+        edge.terminal = Some(key.clone());
+        allocation_events
+            .entry(release.target)
+            .or_default()
+            .push(key);
+    }
+
+    for (target, allocations) in allocation_events {
+        let carrier = match target {
+            FlowTarget::Edge(key) => HydrologyCarrierKey::Edge(key),
+            FlowTarget::Cell(cell) => HydrologyCarrierKey::Cell(cell),
+            FlowTarget::Boundary(_) => continue,
+        };
+        let Some(&(before, after)) = settled.get(&target) else {
+            continue;
+        };
+        if before == after {
+            continue;
+        }
+        let key = CausalEventProposalKey::new(
+            substage::CONVEYANCE_ROUTING,
+            process::CONVEYANCE_SETTLEMENT,
+            &carrier.encode(),
+            0,
+        )?;
+        let mut causes: BTreeSet<CausalEventDagCause> = BTreeSet::new();
+        match target {
+            FlowTarget::Edge(edge_key) => {
+                causes.insert(edges[&edge_key].reference.clone());
+            }
+            FlowTarget::Cell(cell) => {
+                let entry = cell_work(work, cell).expect("an outlet is resident");
+                causes.insert(entry.surface_ref.clone());
+            }
+            FlowTarget::Boundary(_) => {}
+        }
+        for allocation in &allocations {
+            causes.insert(CausalEventDagCause::Local(allocation.clone()));
+        }
+        let effects = match target {
+            FlowTarget::Edge(edge_key) => vec![edge_effect(edge_key, before, after)],
+            FlowTarget::Cell(cell) => {
+                vec![bucket_effect(
+                    cell,
+                    HydrologyProperty::Surface,
+                    before,
+                    after,
+                )]
+            }
+            FlowTarget::Boundary(_) => Vec::new(),
+        };
+        batch.events.push(HydrologyEventPlan {
+            key: key.clone(),
+            kind: HydrologyEventKind::EdgeTransfer,
+            causes: causes.into_iter().collect(),
+            effects,
+        });
+        match target {
+            FlowTarget::Edge(edge_key) => {
+                batch.edge_changes.push(HydrologyEdgeChange {
+                    edge: edge_key,
+                    before,
+                    after,
+                    settlement_event: key.clone(),
+                });
+                let edge = edges.get_mut(&edge_key).expect("the edge exists");
+                edge.reference = CausalEventDagCause::Local(key.clone());
+                edge.terminal = Some(key);
+            }
+            FlowTarget::Cell(cell) => {
+                batch.cell_changes.push(HydrologyCellChange {
+                    cell,
+                    bucket: HydrologyBucket::Surface,
+                    before,
+                    after,
+                    settlement_event: key.clone(),
+                });
+                let entry = cell_work(work, cell).expect("an outlet is resident");
+                set_reference(entry, HydrologyProperty::Surface, key);
+            }
+            FlowTarget::Boundary(_) => {}
+        }
+    }
+
+    for release in &releases {
+        let (target_carrier, target_bucket) = match release.target {
+            FlowTarget::Edge(key) => (HydrologyCarrierKey::Edge(key), HydrologyBucket::Conveyance),
+            FlowTarget::Cell(cell) => (HydrologyCarrierKey::Cell(cell), HydrologyBucket::Surface),
+            FlowTarget::Boundary(face) => (
+                HydrologyCarrierKey::ExteriorFace(face),
+                HydrologyBucket::External,
+            ),
+        };
+        batch
+            .receipts
+            .push(HydrologyTransferReceipt::new(HydrologyTransferParts {
+                batch_sequence: batch.batch_sequence,
+                tick: batch.tick,
+                process_kind: process::CONVEYANCE_RELEASE,
+                source: HydrologyCarrierKey::Edge(release.source),
+                source_bucket: HydrologyBucket::Conveyance,
+                target: target_carrier,
+                target_bucket,
+                requested: share_volume(release.raw)?,
+                accepted: share_volume(release.accepted)?,
+                source_before: release.source_before,
+                source_after: release.source_after,
+                target_before: release.target_before,
+                target_after: release.target_after,
+                causal_parents: Vec::new(),
+                forcing_origin: None,
+                transfer_event: edges[&release.source].terminal.clone(),
+                storage_event: None,
+            })?);
+    }
+    Ok(())
+}
+
+/// Substage 8 — materialize the sink receipts for exports already accepted.
+///
+/// No new demand and no further withdrawal: the donor reduction in substages 5
+/// and 6 already removed this water, and its own before/after pair is carried
+/// here so the ledger's `sinks` term has per-face evidence.
+fn substage_boundary_export(batch: &mut Batch) -> Result<(), HydrologyError> {
+    for export in std::mem::take(&mut batch.pending_exports) {
+        batch
+            .receipts
+            .push(HydrologyTransferReceipt::new(HydrologyTransferParts {
+                batch_sequence: batch.batch_sequence,
+                tick: batch.tick,
+                process_kind: export.process_kind,
+                source: HydrologyCarrierKey::Cell(export.donor),
+                source_bucket: export.bucket,
+                target: HydrologyCarrierKey::ExteriorFace(export.face),
+                target_bucket: HydrologyBucket::External,
+                requested: export.requested,
+                accepted: export.accepted,
+                source_before: export.source_before,
+                source_after: export.source_after,
+                target_before: WaterVolume::ZERO,
+                target_after: WaterVolume::ZERO,
+                causal_parents: Vec::new(),
+                forcing_origin: None,
+                transfer_event: (!export.accepted.is_zero()).then(|| export.event.clone()),
+                storage_event: (!export.accepted.is_zero()).then_some(export.event),
+            })?);
+    }
+    Ok(())
+}
+
+fn edge_effect(
+    edge: HydrologyEdgeKey,
+    before: WaterVolume,
+    after: WaterVolume,
+) -> HydrologyEventEffect {
+    let carrier = HydrologyCarrierKey::Edge(edge);
+    HydrologyEventEffect {
+        carrier,
+        property: HydrologyProperty::Conveyance,
+        before: volume_fingerprint(&carrier, HydrologyProperty::Conveyance, before),
+        after: volume_fingerprint(&carrier, HydrologyProperty::Conveyance, after),
+    }
+}
+
+fn build_after_conveyance(
+    edges: &BTreeMap<HydrologyEdgeKey, EdgeWork>,
+) -> Result<HydrologyConveyanceGraph, HydrologyError> {
+    let mut rebuilt = Vec::with_capacity(edges.len());
+    for (key, edge) in edges {
+        rebuilt.push(HydrologyConveyanceEdge::new(
+            *key,
+            edge.outlet,
+            edge.storage,
+            edge.capacity,
+            edge.release,
+            edge.inlet_capacity,
+            edge.last_change,
+            if edge.storage == edge.before {
+                edge.last_change_before
+            } else {
+                edge.before
+            },
+        )?);
+    }
+    Ok(HydrologyConveyanceGraph::new(rebuilt)?)
+}
+
+// ---------------------------------------------------------------------------
 // Substage 9 — conservation preflight, and the after-state
 // ---------------------------------------------------------------------------
 
@@ -1061,14 +2394,15 @@ fn build_conservation(
     batch: &Batch,
     before: &HydrologyFieldSet,
     after: &HydrologyFieldSet,
-    request: &HydrologyEvolutionRequest<'_>,
+    conveyance_before: &HydrologyConveyanceGraph,
+    conveyance_after: &HydrologyConveyanceGraph,
 ) -> Result<HydrologyConservationReceipt, HydrologyError> {
-    // Totals are summed from the two field sets, not from the running deltas
-    // the solver accumulated. A ledger built from the solver's own bookkeeping
-    // would agree with the solver by construction and could not catch it.
+    // Totals are summed from the two field sets and the two conveyance graphs,
+    // not from the running deltas the solver accumulated. A ledger built from the
+    // solver's own bookkeeping would agree with the solver by construction and
+    // could not catch it.
     let (surface_before, soil_before, groundwater_before) = bucket_totals(before)?;
     let (surface_after, soil_after, groundwater_after) = bucket_totals(after)?;
-    let conveyance = request.conveyance.total_storage()?.get();
 
     HydrologyConservationReceipt::new(HydrologyConservationParts {
         tick: batch.tick,
@@ -1076,15 +2410,15 @@ fn build_conservation(
         surface_before,
         soil_before,
         groundwater_before,
-        conveyance_before: conveyance,
+        conveyance_before: conveyance_before.total_storage()?.get(),
         surface_after,
         soil_after,
         groundwater_after,
-        conveyance_after: conveyance,
+        conveyance_after: conveyance_after.total_storage()?.get(),
         accepted_precipitation: batch.accepted_precipitation.get(),
         accepted_external_inflow: batch.accepted_external_inflow.get(),
         accepted_evapotranspiration: batch.accepted_evapotranspiration.get(),
-        boundary_exports: 0,
+        boundary_exports: batch.boundary_exports.get(),
     })
 }
 
@@ -1106,8 +2440,18 @@ fn bucket_totals(state: &HydrologyFieldSet) -> Result<(i128, i128, i128), Hydrol
 /// leaf order `(carrier bytes, bucket tag, proposal key bytes)`.
 fn collect_terminal_leaves(
     work: &BTreeMap<ChartChunkCoord, Vec<CellWork>>,
+    edges: &BTreeMap<HydrologyEdgeKey, EdgeWork>,
 ) -> Vec<HydrologyTerminalLeaf> {
     let mut leaves = Vec::new();
+    for (key, edge) in edges {
+        if let Some(event) = &edge.terminal {
+            leaves.push(HydrologyTerminalLeaf {
+                carrier_bytes: HydrologyCarrierKey::Edge(*key).encode(),
+                bucket_tag: HydrologyBucket::Conveyance.tag(),
+                event: event.clone(),
+            });
+        }
+    }
     for (chunk, entries) in work {
         for (ordinal, entry) in entries.iter().enumerate() {
             let Ok(cell) = HydrologyCellKey::new(*chunk, ordinal as u16) else {

@@ -2368,6 +2368,73 @@ its own evidence-backed follow-up TODO rather than being hidden in Progress.
   covered by `a_forcing_total_that_would_overflow_the_carrier_is_refused`. Recorded rather than
   papered over with an unreachable test.
 
+- **2026-07-30 — Stage 4: terrain is borrowed, not copied into hydrology state.** §6 needs
+  `terrain_elevation_mm` every tick and §3's `HydraulicSubstrateCell` does not carry it, so
+  `HydrologyEvolutionRequest` gained `terrain: &BTreeMap<ChartChunkCoord, TerrainChunk>` — the same
+  type and keying `crates/causafera-runtime/src/carrier.rs` already passes around. A per-cell
+  elevation copy inside hydrology state was rejected: terrain elevation is an existing authoritative
+  carrier the plan lists as reused, and a second persisted copy could drift from it while both
+  claimed to be the ground water flows over. Every resident chunk must have a terrain entry filed
+  under its own address, or the tick is refused rather than defaulting an elevation to zero and
+  inventing a flat world. `SURFACE_CELL_COUNT == TERRAIN_CELLS_PER_CHUNK` is a compile-time
+  assertion, because the two lattices sharing an ordinal is what makes the lookup meaningful.
+- **2026-07-30 — Stage 4: an exterior face with no boundary record refuses the tick.** §3 says
+  missing resident neighbours are explicit boundary records and V13 says they never silently export
+  or block, so the solver rejects rather than defaulting to no-flux. The consequence is that every
+  fixture — and, at Stage 6, bootstrap — must supply a record for each perimeter face; the shared
+  test support gained `closed_perimeter` and `boundary_map` for that, and `Scenario::new` now
+  defaults to a closed perimeter instead of an empty map. Stage 3's fixtures were relying on an
+  implicit wall; they now say so. `tests/support/mod.rs` is therefore on this stage's allowlist even
+  though the plan's Stage 4 file list names only the three new test binaries.
+- **2026-07-30 — Stage 4: the donor tie-break needs one discriminator the plan does not name.**
+  §6 breaks equal remainders by "ascending canonical edge key". Within a donor's interior faces that
+  is literal, and exterior faces sort after all interior ones because `HydrologyCarrierKey`'s variants
+  do. It leaves one case open: a cell's groundwater lateral outflow and its baseflow can cross the
+  *same* face, so two competing demands would share a key. The reduction order is therefore
+  `(donor, face, process_kind)`, which reduces to the plan's rule whenever the faces differ. Ordering
+  uses the key types' value order (`HydrologyEdgeKey`'s canonicity is defined by `a < b`), while the
+  terminal-leaf sort keeps the plan's explicit `carrier_key_bytes` byte order; the two differ only
+  for negative chunk coordinates and each is used where its own contract names it.
+- **2026-07-30 — Stage 4 addition: a cell settles when it took part in a transfer, not when its
+  total moved.** Emitting the routing settlement only for cells whose bucket changed leaves a
+  pass-through cell — ten units in, ten out — with no event, and both of its transfers with no
+  committed event to name. That is the same provenance hole as the Stage 3 forcing settlement. The
+  participation set is now `{donor} ∪ {cell receiver}` over accepted transfers, unioned with
+  "value changed"; the effect's before and after are equal for a pass-through, which is an honest
+  "settled at this value after these transfers" rather than a claim of change. A cell with no
+  accepted transfer still emits nothing, so the plan's alias rule is unchanged.
+- **2026-07-30 — Stage 4: three process identities added, for the reason `EVAPOTRANSPIRATION` was.**
+  `process::SURFACE_ROUTING`, `GROUNDWATER_ROUTING`, and `CONVEYANCE_SETTLEMENT` name the per-cell
+  and per-receiver *settlement events*, whose net change may come from lateral outflow, lateral
+  inflow, conveyance inflow, and boundary export at once. Borrowing any one participating process's
+  identity would misreport the others in a receipt and in a proposal-key lookup.
+- **2026-07-30 — Stage 4: "competing source-edge local events" means their post-inflow events.**
+  §8's release-allocation fan-in reads ambiguously: if a competitor's *release* event were the cause,
+  two edges contending for one downstream capacity would cite each other and `commit_dag_batch` would
+  reject the batch as cyclic. The causes are therefore each competitor's pre-release reference — its
+  post-inflow local event or its pre-tick trace — which is both acyclic and the actual dependency:
+  the allocation depended on what every competitor was holding before any of them released.
+- **2026-07-30 — Stage 4: `GroundwaterWithoutSpecificYield` has no reachable case.** §6 calls a zero
+  specific yield invalid when groundwater storage is enabled. Stage 2's substrate constructor already
+  refuses a zero yield over real capacity, and its field constructor refuses storage above capacity,
+  so stored groundwater always arrives with a yield. The solver keeps the guard as the divisor's
+  stated precondition, and `stored_groundwater_can_never_reach_the_solver_without_a_specific_yield`
+  pins the closure at the two constructors instead of asserting an unreachable error — the same
+  treatment the Stage 3 overflow control got.
+- **2026-07-30 — Stage 4: the solver validates the fan-in caps and the resident set itself.**
+  `commit_dag_batch` enforces the cause and effect caps and would roll the batch back atomically, but
+  returning a proposal that cannot possibly commit as if it were valid is a worse failure mode than
+  refusing it, so `propose` checks both against the request's limits. It also requires the request's
+  resident chunk set to equal the field set's, which is what stops `HydrologyActiveRegion` from being
+  decoration: routing over a chunk the request does not consider resident would exchange water across
+  an edge of the world it was told did not exist.
+- **2026-07-30 — Stage 4 finding: fixtures that share one pre-tick trace cannot test a fan-in
+  bound.** Causes are deduplicated, so a five-way fan-in over cells all anchored to one bootstrap
+  trace collapses to a single cause and the cap assertion passes vacuously. Both fan-in tests build
+  distinct per-bucket anchors and assert the widest event actually reaches five causes before
+  asserting it stays under sixteen. Found by the cap negative control failing to fire, not by review
+  of the passing test.
+
 ## Progress
 
 - **2026-07-29 — Accepted.** Revision 19 is the authoritative hydrology implementation plan.
@@ -2666,6 +2733,85 @@ its own evidence-backed follow-up TODO rather than being hidden in Progress.
   are Stage 4; the §8 aggregation tree and conservation event are Stage 6. `HydrologyEventKind`
   carries `EdgeTransfer` and `Representation` variants that nothing emits yet, and the proposal
   carries an always-empty `edge_changes`; both are the seams those stages fill.
+
+- **2026-07-30 — Stage 4 complete.** Substages 5 through 8 are implemented and the whole tick closes
+  over routing, baseflow, conveyance, and boundary export. Checkpoint commit `<pending>`.
+
+  Files changed and why:
+
+  - `crates/causafera-domains/src/hydrology/evolution.rs` — surface and groundwater head, harmonic
+    face conductance, the frozen-state demand pass, the donor and receiver largest-remainder
+    reductions, baseflow, conveyance storage-discharge release, and the substage-8 sink receipts,
+    plus per-edge running state, the after-conveyance graph, and the two new preconditions.
+  - `crates/causafera-domains/src/hydrology/proposal.rs` — the request carries terrain.
+  - `crates/causafera-domains/src/hydrology/parameters.rs` — three settlement-event process
+    identities.
+  - `crates/causafera-domains/src/hydrology/records.rs` — six new refusal variants.
+  - `crates/causafera-domains/tests/support/mod.rs` — terrain, perimeter, boundary, and conveyance
+    fixtures; `Scenario` defaults to flat terrain and a closed perimeter.
+  - `crates/causafera-domains/tests/hydrology_routing.rs`, `hydrology_boundaries.rs`,
+    `hydrology_groundwater.rs` — 51 new tests.
+
+  `crates/causafera-domains/src/hydrology/receipts.rs` is on the plan's Stage 4 file list but needed
+  no change: `HydrologyReceiptTotals::from_receipts` already classified every routing, conveyance, and
+  boundary process kind allocated in Stage 3, and `validate_paired_transfers` /
+  `validate_boundary_transfers` already covered the new receipt shapes. The three new suites assert
+  both against every proposal they build rather than leaving that untested.
+
+  What the gates actually assert:
+
+  - **Head and flux (V8)** — head is terrain plus ponded depth, so equal water on unequal ground
+    moves and unequal water on level ground also moves; equal heads move nothing and emit no receipt;
+    the face conductance is `floor(2·300·700/1000) = 420`, not the arithmetic mean; a zero endpoint
+    stops the face from either side.
+  - **Reduction (V9)** — four demands of 1, 2, 3, 4 against seven available accept exactly 1, 1, 2, 3
+    and sum to the donor's holding; two donors of four into five units of receiver room accept 3 and
+    2 by ascending donor key and each keeps the refused remainder; a demand reduced to zero still
+    carries its requested amount.
+  - **Frozen substage (V10)** — one unit cannot cross two faces of a three-cell staircase, and the
+    middle cell's refused onward demand is recorded rather than absent.
+  - **Seam (V11)** — the same physical pair produces byte-identical flux inside a chunk and across a
+    same-chart chunk seam.
+  - **Once per face (V12)** — one receipt per canonical face; cell, chunk, and edge insertion
+    permutations produce identical receipts, state, events, terminal leaves, and ledger.
+  - **Boundaries (V13)** — an empty *and* a partially populated boundary map both refuse the tick; a
+    no-flux perimeter retains everything; an open face exports exactly `(100 − 30) × 7 = 490`; equal
+    or higher external head exports zero; an underfunded export is reduced and recorded; the surface
+    and groundwater channels of one face are independent.
+  - **Groundwater (V14)** — saturated depth follows the exact specific-yield equation, the aquifer
+    base shifts the head it is measured from, and receiver capacity limits inflow with the remainder
+    left in the donor.
+  - **Baseflow and conveyance (V15)** — baseflow is exactly `excess × fraction`; below threshold
+    produces none; a cell with no outgoing edge retains its groundwater; edge storage capacity and
+    per-tick inlet each bound it; baseflow and groundwater lateral outflow split a donor canonically;
+    release is the exact fraction of frozen pre-release storage, capped by outlet capacity with the
+    remainder retained; three upstream edges into 500 units of downstream room accept 167, 167, 166
+    by ascending source-edge key; water entering an edge this tick cannot leave it; a directed edge
+    takes surface flow only when the head agrees, and a reverse-head transfer never enters it;
+    surface inflow spends the inlet budget before baseflow sees it.
+  - **Conservation (V16, V17 in part)** — a sloped closed basin closes exactly for 100 consecutive
+    ticks with nonzero internal transfers; a 25-tick run over forcing, ET, routing, and export closes
+    per tick and in aggregate, with the ledger cross-checked against receipts recomputed from scratch.
+  - **Preconditions** — a request whose resident set disagrees with the field set is refused; events
+    past the cause or effect cap are refused before the proposal is returned; the widest event of a
+    crowded tick reaches five distinct causes and stays under sixteen.
+
+  Commands run and their actual results:
+
+  - `cargo test -p causafera-domains --test hydrology_routing -- --nocapture` — **18 passed**.
+  - `cargo test -p causafera-domains --test hydrology_boundaries -- --nocapture` — **9 passed**.
+  - `cargo test -p causafera-domains --test hydrology_groundwater -- --nocapture` — **19 passed**.
+  - `cargo test -p causafera-domains --all-features` — **145 passed** across 11 binaries, 0 failed.
+  - `cargo clippy --workspace --all-targets --all-features -- -D warnings` — clean.
+  - `cargo fmt --all -- --check` — clean.
+  - `git diff --check` — clean.
+  - `cargo test --workspace --all-features` — all 76 suites passed.
+  - `cargo test --workspace --no-default-features` — all 76 suites passed.
+
+  Not done in this stage, by design: resolution (Stage 5) still emits nothing, so
+  `HydrologyEventKind::Representation` and `HydrologyProperty::Resolution` remain unused; the §8
+  aggregation tree, the terminal conservation event, and the synthetic-node counter are Stage 6, which
+  is where the ordered terminal-leaf list — now including conveyance edges — is consumed.
 
 Execution must begin by re-reading this Progress section and Decision log, then inspecting
 `git status`. The implementing agent updates both sections whenever scope, contract, verification,

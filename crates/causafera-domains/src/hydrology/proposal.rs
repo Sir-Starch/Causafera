@@ -1,9 +1,12 @@
+use std::collections::BTreeMap;
+
 use causafera_core::{CausalEventDagCause, CausalEventProposalKey, StateFingerprint};
 use causafera_geography::{
     HydrologyActiveRegion, HydrologyBoundaryMap, HydrologyCarrierKey, HydrologyCellKey,
     HydrologyConveyanceGraph, HydrologyFieldSet, HydrologyForcingRecord, HydrologyGridMetrics,
+    TerrainChunk,
 };
-use causafera_types::{TraceId, WaterVolume};
+use causafera_types::{ChartChunkCoord, TraceId, WaterVolume};
 
 use super::{
     HydrologyBucket, HydrologyCellChange, HydrologyConservationReceipt, HydrologyEdgeChange,
@@ -20,6 +23,12 @@ use super::{
 pub struct HydrologyEvolutionRequest<'a> {
     pub tick: u64,
     pub metrics: &'a HydrologyGridMetrics,
+    /// The authoritative terrain of every resident hydrology chunk.
+    ///
+    /// Borrowed from geography rather than copied into hydrology state: terrain
+    /// elevation already exists as a carrier, and a second persisted copy could
+    /// drift from it while both claimed to be the ground water flows over.
+    pub terrain: &'a BTreeMap<ChartChunkCoord, TerrainChunk>,
     pub active: &'a HydrologyActiveRegion,
     pub conveyance: &'a HydrologyConveyanceGraph,
     pub boundaries: &'a HydrologyBoundaryMap,

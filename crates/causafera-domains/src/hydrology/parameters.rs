@@ -53,6 +53,16 @@ pub mod process {
     /// event settles whichever of the two buckets it actually drew from, so
     /// naming it after either bucket would misreport the half that did not move.
     pub const EVAPOTRANSPIRATION: u32 = 20;
+    /// One cell's surface-routing settlement *event*. Its net change may come
+    /// from lateral outflow, lateral inflow, conveyance inflow, and boundary
+    /// export at once, so borrowing any one of those process identities would
+    /// misreport the others — the same reason `EVAPOTRANSPIRATION` exists.
+    pub const SURFACE_ROUTING: u32 = 21;
+    /// One cell's groundwater-routing settlement event, for the same reason.
+    pub const GROUNDWATER_ROUTING: u32 = 22;
+    /// One conveyance receiver's settlement event, which folds every release
+    /// allocation that reached it this tick.
+    pub const CONVEYANCE_SETTLEMENT: u32 = 23;
 }
 
 /// Structural caps one hydrology batch is validated against.
