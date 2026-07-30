@@ -2852,6 +2852,27 @@ its own evidence-backed follow-up TODO rather than being hidden in Progress.
   downstream: `rendering_is_locale_dependent_and_the_claims_are_not` asserts that the claims are
   identical across locales and only the text differs.
 
+- **2026-07-30 — Stage 7 wave C: the `.proto` backfill declares what the codecs already do.**
+  Fields 28-35 and `BootstrapReceipt` shipped before the schema named them. The backfill describes
+  the existing bytes rather than a tidier arrangement of them, and `test-observer-proto-schema.mjs`
+  pins every number and wire shape against `protocol.rs`, `query.rs`, and `index.ts` by reading all
+  four as text. The repository has no generated-binding pipeline, so no generated-binding claim is
+  made — which is exactly why the schema needed pinning: nothing else would have caught a field the
+  schema names at 37 and the codec writes at 38.
+
+- **2026-07-30 — Stage 7 wave C: `HydrologyCarrierKeyVariant` is declared as a proto enum.** §12
+  specifies the six variants and their fixed lengths, and proto3 has no way to declare a
+  fixed-length `bytes`. The enum carries the variant codes as a checkable declaration and the
+  lengths as comments the schema audit greps for, so a consumer generating bindings has the contract
+  in the schema instead of only in two hand-written decoders.
+
+- **2026-07-30 — Stage 7 wave C: the frozen V1 decoder *refuses* a hydrology raster, and that is
+  the correct legacy behaviour.** It has no unsigned band, so the raster's signed band is empty and
+  the declared lattice does not match. Failing closed is right: a client that cannot carry `u64`
+  volumes must not draw them as zeroes. The additive promise covers the summary and the world
+  snapshot, where a frozen consumer keeps reading exactly what it read before; a raster kind it does
+  not know is a kind it never requests.
+
 ## Progress
 
 - **2026-07-29 — Accepted.** Revision 19 is the authoritative hydrology implementation plan.
@@ -3923,6 +3944,57 @@ its own evidence-backed follow-up TODO rather than being hidden in Progress.
   - `git diff --check` — clean.
 
   Not yet done in Stage 7: the `.proto` backfill, the TypeScript decoder, and the three Node audits.
+
+- **2026-07-30 — Stage 7 wave C complete: schema, TypeScript decoder, and audits. Stage 7 closed.**
+
+  Files changed:
+
+  - `proto/causafera/observer/v1/query.proto` — the 28-35 bootstrap mirror and `BootstrapReceipt`,
+    hydrology fields 36-48, `WorldChunkSnapshot` 9-14, the three hydrology messages,
+    `HydrologyCarrierKeyVariant`, raster kinds 4-6, and `FieldRaster` 13-14.
+  - `packages/observer-protocol/src/index.ts` — the hydrology constants, raster kinds and
+    `carriesUnsignedValues`, the `HydrologySummary`/`HydrologyForcing`/`HydrologyCellDelta`/
+    `HydrologyTransferSummary`/`HydrologyConveyanceSummary` interfaces, their decoders, the carrier-key
+    validator, canonical `u64`/`u128`/ZigZag-`i128` byte integers, `varintShortest`, duplicate-key
+    refusal, and the response cap.
+  - `tools/audit/test-observer-hydrology-decoder.mjs` — new, **23 tests**.
+  - `tools/audit/test-observer-proto-schema.mjs` — new, **9 tests**.
+  - `tools/audit/test-observer-hydrology-legacy-decoder.mjs` — **4 new tests** and additive-field
+    stripping for the agreement comparison; now **14 tests**.
+  - `tools/audit/run-source-tests.mjs`, `tools/audit/check-entry-points.mjs` — both new audits
+    registered.
+
+  What the tests establish:
+
+  - **Old-client compatibility (V28)** — the frozen pre-hydrology oracle decodes a payload carrying
+    fields 36-48 and the world sections 9-14 to *exactly* what it decoded without them, while the
+    live decoder reads the hydrology group beside an untouched six-stage bootstrap projection.
+  - **Two independent decoders, one contract (V28)** — the TypeScript decoder refuses the same
+    partial groups, unknown schemas, duplicates, mistyped fields, noncanonical integers,
+    out-of-domain values, over-bound lists, duplicate keys, malformed carrier keys, non-distinct
+    non-cell endpoints, non-closing transfers, mixed raster bands, and over-cap responses that the
+    Rust decoder refuses. Every payload is built from bytes, not from an encoder.
+  - **Lossless width (V28)** — `BigUint64Array` raster values and `bigint` totals above `u64::MAX`
+    round-trip exactly through the TypeScript decoder.
+  - **Schema conformance (V28)** — every pre-existing bootstrap and new hydrology field number, wire
+    shape, enum discriminant, carrier length, and bound is the same in the schema, the Rust codec,
+    and the TypeScript codec; no message declares a number twice.
+
+  Commands run and their actual results:
+
+  - `cargo test --workspace --all-features` — 84 suites, **913 passed**, 0 failed.
+  - `cargo test --workspace --no-default-features` — 84 suites, **913 passed**, 0 failed.
+  - `cargo run -p xtask -- ci` — CI checks passed.
+  - `cargo clippy --workspace --all-targets --all-features -- -D warnings` — clean.
+  - `cargo fmt --all -- --check` — clean.
+  - `pnpm lint` — pass. `pnpm typecheck` — pass. `pnpm build` — pass.
+  - `node tools/audit/run-source-tests.mjs` — **87 passed**, 0 failed.
+  - `node tools/audit/check-entry-points.mjs` — pass (32 entry points, 22 tests).
+  - `node tools/audit/test-observer-hydrology-decoder.mjs` — **23 passed**, 0 failed.
+  - `node tools/audit/test-observer-hydrology-legacy-decoder.mjs` — **14 passed**, 0 failed.
+  - `node tools/audit/test-observer-proto-schema.mjs` — **9 passed**, 0 failed.
+  - `cargo test -p causafera-observer --all-features` — **12 passed**, 0 failed.
+  - `git diff --check` — clean.
 
 Execution must begin by re-reading this Progress section and Decision log, then inspecting
 `git status`. The implementing agent updates both sections whenever scope, contract, verification,
