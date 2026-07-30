@@ -2876,7 +2876,7 @@ its own evidence-backed follow-up TODO rather than being hidden in Progress.
 - **2026-07-30 — Stage 5 complete.** Conservative resolution is implemented: block addressing over
   global terrain-cell coordinates, exact constitutive grouping, the capped largest-remainder reducer,
   coarse vertical and forcing aggregation with capacity-aware back-allocation, authoritative fine
-  block-boundary faces, and promotion/demotion records. Checkpoint commit `<pending>`.
+  block-boundary faces, and promotion/demotion records. Checkpoint commit `ecba3e7`.
 
   Files changed and why:
 
