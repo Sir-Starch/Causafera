@@ -1514,3 +1514,55 @@ fn an_explicit_bound_engages_before_the_derived_coefficient_passes_it() {
         "and the tick moved water into it rather than out"
     );
 }
+
+#[test]
+fn every_coarse_identifier_precedes_every_terminal_one_in_the_same_tick() {
+    // The synthetic-node counter is shared and persisted, so its allocation order
+    // is part of what import has to reproduce: every coarse group's leaves, nodes
+    // and process event draw their identifiers before the single terminal tree
+    // draws any of its own (V17). Read from a session the engine coarsened by
+    // itself, because the order only matters where both kinds of tree exist.
+    let mut hydrology = enabled_config();
+    hydrology.forcing_schedule.clear();
+    let mut runtime = Runtime::new(config_with(hydrology)).expect("construction");
+    runtime.run_ticks(12).expect("twelve ticks must commit");
+
+    let exported = runtime.export_snapshot().expect("export");
+    let coarse_kinds = [
+        causafera_runtime::HYDROLOGY_COARSE_INPUT_LEAF_EVENT_KIND,
+        causafera_runtime::HYDROLOGY_COARSE_INPUT_AGGREGATE_EVENT_KIND,
+        causafera_runtime::HYDROLOGY_COARSE_PROCESS_EVENT_KIND,
+    ];
+
+    let mut ticks_with_both = 0;
+    for tick in 1..=12 {
+        let of_kind = |kinds: &[u64]| -> Vec<u64> {
+            exported
+                .traces
+                .events
+                .iter()
+                .filter(|event| event.time.raw() == tick && kinds.contains(&event.kind.raw()))
+                .flat_map(|event| {
+                    event
+                        .effects
+                        .iter()
+                        .map(|effect| effect.target().object_id())
+                })
+                .collect()
+        };
+        let coarse = of_kind(&coarse_kinds);
+        let terminal = of_kind(&[causafera_runtime::HYDROLOGY_BATCH_AGGREGATE_EVENT_KIND]);
+        if coarse.is_empty() || terminal.is_empty() {
+            continue;
+        }
+        ticks_with_both += 1;
+        assert!(
+            coarse.iter().max() < terminal.iter().min(),
+            "tick {tick}: coarse identifiers must all precede terminal ones"
+        );
+    }
+    assert!(
+        ticks_with_both > 0,
+        "the run must reach a tick that evaluated coarse groups, or this proves nothing"
+    );
+}

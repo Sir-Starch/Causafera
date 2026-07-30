@@ -803,3 +803,198 @@ pub enum HydrologyRegistryError {
     #[error("a hydrology object registry's ordinals are not dense from zero")]
     NotDense,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn fingerprint(seed: u8) -> StateFingerprint {
+        StateFingerprint::new([seed; 32])
+    }
+
+    fn children(count: usize) -> Vec<(CausalEventProposalKey, StateFingerprint)> {
+        (0..count)
+            .map(|index| {
+                (
+                    node_key(
+                        substage::CONSERVATION,
+                        process::BATCH_AGGREGATE,
+                        index as u64 + 1_000,
+                    )
+                    .expect("a node key is constructible"),
+                    fingerprint(index as u8),
+                )
+            })
+            .collect()
+    }
+
+    /// Build one tree and report the nodes it emitted, in emission order.
+    fn tree(count: usize) -> (Allocated, Vec<CausalEventDagProposal>, u64) {
+        let mut counter = 7;
+        let mut out = Vec::new();
+        let root = build_tree(
+            children(count),
+            DOMAIN_BATCH_NODE,
+            HYDROLOGY_BATCH_AGGREGATE_EVENT_KIND,
+            HYDROLOGY_BATCH_ROOT_PROPERTY,
+            substage::CONSERVATION,
+            process::BATCH_AGGREGATE,
+            &mut counter,
+            &mut out,
+        )
+        .expect("the tree must build");
+        (root, out, counter)
+    }
+
+    /// How many nodes a 16-ary bottom-up tree over `count` leaves must contain.
+    fn expected_nodes(count: usize) -> usize {
+        if count == 0 {
+            return 1;
+        }
+        let mut level = count;
+        let mut total = 0;
+        loop {
+            let nodes = level.div_ceil(HYDROLOGY_AGGREGATION_ARITY);
+            total += nodes;
+            if nodes == 1 {
+                return total;
+            }
+            level = nodes;
+        }
+    }
+
+    #[test]
+    fn every_leaf_count_the_plan_names_produces_one_root() {
+        // Zero, one, exactly the arity, one past it, and deep enough to need three
+        // levels. The tree's shape is a persisted identity — import rebuilds every
+        // node and every identifier from it — so the boundaries are the contract.
+        for count in [0, 1, 16, 17, 257] {
+            let (root, nodes, counter) = tree(count);
+            assert_eq!(
+                nodes.len(),
+                expected_nodes(count),
+                "unexpected node count for {count} leaves"
+            );
+            assert_eq!(
+                counter,
+                7 + nodes.len() as u64,
+                "identifiers are consecutive from the shared counter"
+            );
+            // The root is the last node emitted, because allocation is bottom-up
+            // and left-to-right.
+            assert_eq!(
+                nodes.last().expect("at least one node").key(),
+                &root.key,
+                "the root is allocated last"
+            );
+            for (offset, node) in nodes.iter().enumerate() {
+                assert_eq!(
+                    node.key(),
+                    &node_key(
+                        substage::CONSERVATION,
+                        process::BATCH_AGGREGATE,
+                        7 + offset as u64
+                    )
+                    .expect("a node key is constructible"),
+                    "node {offset} did not draw the identifier its position implies"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn an_empty_tree_still_commits_a_root_with_no_causes() {
+        // A tick that changed nothing still has to be representable. The
+        // conservation event cites this root unconditionally, so an absent root
+        // would make an empty tick unrepresentable rather than empty (V3).
+        let (root, nodes, _) = tree(0);
+        assert_eq!(nodes.len(), 1);
+        let node = &nodes[0];
+        assert!(
+            node.causes().is_empty(),
+            "a root over nothing cites nothing"
+        );
+        assert_eq!(
+            root.fingerprint,
+            node_fingerprint(DOMAIN_BATCH_NODE, 0, &[]),
+            "the empty root's fingerprint is the node formula at child count zero"
+        );
+    }
+
+    #[test]
+    fn one_leaf_still_gets_its_own_root() {
+        let (root, nodes, _) = tree(1);
+        assert_eq!(nodes.len(), 1);
+        assert_eq!(nodes[0].causes().len(), 1);
+        assert_eq!(
+            root.fingerprint,
+            node_fingerprint(DOMAIN_BATCH_NODE, 0, &[fingerprint(0)])
+        );
+    }
+
+    #[test]
+    fn a_seventeenth_leaf_forces_a_second_level() {
+        // Sixteen fit in one node; the seventeenth does not, so the tree grows a
+        // level rather than a wider node. The level number is part of every node
+        // fingerprint, so this is an identity change, not a layout preference.
+        let (_, sixteen, _) = tree(16);
+        assert_eq!(sixteen.len(), 1, "the arity is sixteen, exactly");
+
+        let (root, nodes, _) = tree(17);
+        assert_eq!(
+            nodes.len(),
+            3,
+            "two level-zero groups and one level-one root"
+        );
+        assert_eq!(nodes[0].causes().len(), 16);
+        assert_eq!(nodes[1].causes().len(), 1);
+        assert_eq!(nodes[2].causes().len(), 2);
+
+        let first = node_fingerprint(
+            DOMAIN_BATCH_NODE,
+            0,
+            &(0..16)
+                .map(|index| fingerprint(index as u8))
+                .collect::<Vec<_>>(),
+        );
+        let second = node_fingerprint(DOMAIN_BATCH_NODE, 0, &[fingerprint(16)]);
+        assert_eq!(
+            root.fingerprint,
+            node_fingerprint(DOMAIN_BATCH_NODE, 1, &[first, second]),
+            "the root hashes its own level and its children in order"
+        );
+    }
+
+    #[test]
+    fn a_repeated_child_key_is_cited_once_and_hashed_twice() {
+        // One settlement event can be terminal for two buckets. The cause list
+        // deduplicates at first occurrence so the event stays valid; the payload
+        // keeps both records so no conserved carrier is erased.
+        let shared = node_key(substage::CONSERVATION, process::BATCH_AGGREGATE, 1_000)
+            .expect("a node key is constructible");
+        let mut counter = 1;
+        let mut out = Vec::new();
+        let root = build_tree(
+            vec![
+                (shared.clone(), fingerprint(1)),
+                (shared.clone(), fingerprint(2)),
+            ],
+            DOMAIN_BATCH_NODE,
+            HYDROLOGY_BATCH_AGGREGATE_EVENT_KIND,
+            HYDROLOGY_BATCH_ROOT_PROPERTY,
+            substage::CONSERVATION,
+            process::BATCH_AGGREGATE,
+            &mut counter,
+            &mut out,
+        )
+        .expect("the tree must build");
+
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].causes().len(), 1, "the repeated key is cited once");
+        assert_eq!(
+            root.fingerprint,
+            node_fingerprint(DOMAIN_BATCH_NODE, 0, &[fingerprint(1), fingerprint(2)]),
+            "and both record fingerprints stay in the payload"
+        );
+    }
+}

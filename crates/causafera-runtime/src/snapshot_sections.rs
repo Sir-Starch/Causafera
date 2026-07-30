@@ -4673,6 +4673,52 @@ mod tests {
     }
 
     #[test]
+    fn every_hydrology_decode_cap_rejects_one_past_its_limit() {
+        // Every count hydrology decodes goes through `read_count` before anything
+        // is allocated, so this is the one place all of them are enforced. The
+        // limit itself is accepted and `limit + 1` is refused — the plan's bound
+        // is inclusive, and a decoder that rejected its own maximum would make a
+        // legally exported state unimportable.
+        use causafera_geography::{
+            MAX_HYDROLOGY_BOUNDARY_RECORDS, MAX_HYDROLOGY_CAUSES_PER_EVENT,
+            MAX_HYDROLOGY_CELL_OVERRIDES, MAX_HYDROLOGY_CELLS, MAX_HYDROLOGY_CHART_OVERRIDES,
+            MAX_HYDROLOGY_CHARTS, MAX_HYDROLOGY_CHUNKS, MAX_HYDROLOGY_EDGES,
+            MAX_HYDROLOGY_FORCING_RECORDS, MAX_HYDROLOGY_PERSISTED_TRANSFER_RECEIPTS,
+            MAX_HYDROLOGY_STORED_RECEIPT_BATCHES, MAX_HYDROLOGY_TARGETS_PER_FORCING,
+        };
+
+        for cap in [
+            MAX_HYDROLOGY_CHARTS,
+            MAX_HYDROLOGY_CHUNKS,
+            MAX_HYDROLOGY_CELLS,
+            MAX_HYDROLOGY_EDGES,
+            MAX_HYDROLOGY_FORCING_RECORDS,
+            MAX_HYDROLOGY_TARGETS_PER_FORCING,
+            MAX_HYDROLOGY_CHART_OVERRIDES,
+            MAX_HYDROLOGY_CELL_OVERRIDES,
+            MAX_HYDROLOGY_BOUNDARY_RECORDS,
+            MAX_HYDROLOGY_STORED_RECEIPT_BATCHES,
+            MAX_HYDROLOGY_PERSISTED_TRANSFER_RECEIPTS,
+            MAX_HYDROLOGY_CAUSES_PER_EVENT,
+        ] {
+            let at_limit = (cap as u64).to_le_bytes();
+            let mut decoder = LittleEndianDecoder::new(&at_limit);
+            assert_eq!(
+                read_count(&mut decoder, cap, "bound").expect("the limit itself is accepted"),
+                cap
+            );
+
+            let past = (cap as u64 + 1).to_le_bytes();
+            let mut decoder = LittleEndianDecoder::new(&past);
+            assert!(
+                read_count(&mut decoder, cap, "bound").is_err(),
+                "a count of {} must be refused before it can reserve memory",
+                cap + 1
+            );
+        }
+    }
+
+    #[test]
     fn runtime_recipe_section_rejects_every_major_but_the_current_one() {
         // Given: a complete current snapshot envelope, whose recipe section is
         // V6 since `active_chunk_shape` started being written.

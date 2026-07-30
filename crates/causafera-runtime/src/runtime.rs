@@ -230,7 +230,7 @@ impl Runtime {
         register(
             &mut scheduler,
             Phase::Physics,
-            Box::new(crate::HydrologyEvolutionSystem::new(Arc::clone(&state))),
+            Box::new(crate::HydrologyRuntimeSystem::new(Arc::clone(&state))),
         );
         Ok(Self {
             scheduler,

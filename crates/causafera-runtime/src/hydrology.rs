@@ -125,12 +125,12 @@ impl Default for HydrologyRuntimeState {
 /// whole point: `StreamKey { world_seed, time, phase, system_id }` seeds each
 /// system's `RandomStream`, so inserting anywhere but last would renumber every
 /// later system and silently reseed it (plan risk R7).
-pub(crate) struct HydrologyEvolutionSystem {
+pub(crate) struct HydrologyRuntimeSystem {
     state: Arc<Mutex<RuntimeState>>,
     next_time: SimulationTime,
 }
 
-impl HydrologyEvolutionSystem {
+impl HydrologyRuntimeSystem {
     pub(crate) fn new(state: Arc<Mutex<RuntimeState>>) -> Self {
         Self {
             state,
@@ -342,7 +342,7 @@ impl HydrologyEvolutionSystem {
     }
 }
 
-impl System for HydrologyEvolutionSystem {
+impl System for HydrologyRuntimeSystem {
     fn run(&mut self, _stream: &mut RandomStream) {
         if let Err(error) = self.execute()
             && let Ok(mut state) = self.state.lock()

@@ -2746,6 +2746,25 @@ its own evidence-backed follow-up TODO rather than being hidden in Progress.
   solver never sees, so the source audit now asserts that no hydrology production file names
   `surface_material` or `MaterialId` at all. An absence is what the audit instrument is for.
 
+- **2026-07-30 — Stage 6 wave I: the aggregation tree's own shape had no test.** V17 and V19 name
+  zero-, one-, sixteen-, seventeen- and multi-level leaf counts, and nothing exercised any of them:
+  the tree was only ever built incidentally, at whatever size a fixture happened to produce. The
+  shape is a persisted identity — every node's fingerprint carries its level and child count, and
+  import rebuilds each identifier from the same allocation order — so the boundaries are the
+  contract, not an implementation detail. Unit tests now drive the builder directly at each named
+  count, including the empty root V3 requires and the stable-deduplicated repeated child key §8
+  describes.
+- **2026-07-30 — Stage 6 wave I: `read_count` is the single decode-before-allocation gate, so it is
+  tested as one.** Every hydrology collection decodes its length through it. V33 asks that every cap
+  reject `limit + 1`; one table-driven test over all twelve caps says exactly that, and also that the
+  limit itself is accepted — a decoder that rejected its own maximum would make a legally exported
+  state unimportable.
+- **2026-07-30 — Stage 6 wave I: the runtime system is named `HydrologyRuntimeSystem`.** §10 names it
+  that; the implementation had called it `HydrologyEvolutionSystem`, which also read as the domain's
+  `HydrologyEvolutionModel`. Renamed to the plan's name, which matches `ManaRuntimeSystem` and
+  `ResolutionRuntimeSystem` besides. Internal to the crate; no registration order, stream key, or
+  persisted byte changes.
+
 ## Progress
 
 - **2026-07-29 — Accepted.** Revision 19 is the authoritative hydrology implementation plan.
@@ -3273,7 +3292,7 @@ its own evidence-backed follow-up TODO rather than being hidden in Progress.
     coarse-process, and batch-sequence fingerprints, the shared 16-ary tree builder, and the batch
     assembler.
   - `crates/causafera-runtime/src/hydrology.rs` (new) — `HydrologyRuntimeState` with whole-batch
-    receipt retention, `HydrologyEvolutionSystem`, and causal initialization from configuration
+    receipt retention, `HydrologyRuntimeSystem`, and causal initialization from configuration
     including the §4 per-second-to-per-tick conversions, downhill conveyance construction, and the
     explicit boundary perimeter.
   - `crates/causafera-runtime/src/runtime.rs` — the appended registration, the state field, the
@@ -3675,6 +3694,46 @@ its own evidence-backed follow-up TODO rather than being hidden in Progress.
   - `git diff --check` — clean.
 
   Checkpoint: `b6c5ea9`.
+
+- **2026-07-30 — Stage 6 wave I: the aggregation tree shapes, the decode caps, and the system's
+  name.** Three gaps a re-read of V3, V17, V19 and V33 against the source found.
+
+  Files changed:
+
+  - `crates/causafera-runtime/src/hydrology_events.rs` — five unit tests over `build_tree`.
+  - `crates/causafera-runtime/src/snapshot_sections.rs` — one table-driven test over every
+    hydrology decode cap.
+  - `crates/causafera-runtime/tests/hydrology_runtime.rs` — the shared synthetic-identifier
+    ordering, read from a session the engine coarsened by itself.
+  - `crates/causafera-runtime/src/hydrology.rs`, `src/runtime.rs` — `HydrologyEvolutionSystem`
+    renamed to §10's `HydrologyRuntimeSystem`.
+
+  What the gates actually assert:
+
+  - **Tree shape (V17, V19)** — zero, one, sixteen, seventeen and 257 leaves each produce exactly one
+    root, the node count a 16-ary bottom-up tree implies, and identifiers consecutive from the shared
+    counter in emission order, with the root allocated last; the seventeenth leaf forces a second
+    level and the root hashes its own level and its children in order.
+  - **Empty tick (V3)** — a tree over no leaves still commits one root, with no causes and the node
+    formula at child count zero, so a tick that changed nothing is representable rather than absent.
+  - **Repeated membership (§8)** — one event terminal for two carriers is cited once and hashed
+    twice.
+  - **Shared counter (V17)** — in every tick that evaluated coarse groups, every coarse leaf, node and
+    process identifier precedes every terminal-tree identifier, with an assertion that such a tick
+    was reached.
+  - **Decode caps (V33)** — all twelve hydrology caps accept their limit and refuse `limit + 1`
+    before allocating.
+
+  Commands run and their actual results:
+
+  - `cargo test -p causafera-runtime --all-features` — **358 passed**, 0 failed.
+  - `cargo test --workspace --all-features` — 82 suites, **865 passed**, 0 failed.
+  - `cargo test --workspace --no-default-features` — 82 suites, **865 passed**, 0 failed.
+  - `cargo clippy --workspace --all-targets --all-features -- -D warnings` — clean.
+  - `cargo fmt --all -- --check` — clean.
+  - `node tools/audit/run-source-tests.mjs` — **51 passed**, 0 failed.
+  - `node tools/audit/check-entry-points.mjs` — pass (30 entry points, 20 tests).
+  - `git diff --check` — clean.
 
 Execution must begin by re-reading this Progress section and Decision log, then inspecting
 `git status`. The implementing agent updates both sections whenever scope, contract, verification,
