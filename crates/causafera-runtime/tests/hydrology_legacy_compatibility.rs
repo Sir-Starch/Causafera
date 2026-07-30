@@ -35,7 +35,9 @@
 
 use causafera_core::{Phase, RandomStream, StreamKey};
 use causafera_persistence::SnapshotEnvelope;
-use causafera_runtime::snapshot_sections::{SECTION_RUNTIME_RECIPE, assemble_envelope};
+use causafera_runtime::snapshot_sections::{
+    HYDROLOGY_SECTION_ID, HYDROLOGY_SECTION_MAJOR, SECTION_RUNTIME_RECIPE, assemble_envelope,
+};
 use causafera_runtime::{
     ActiveChunkShape, CURRENT_DIGEST_SCHEMA_VERSION, HYDROLOGY_SYSTEM_ID, Runtime, RuntimeConfig,
     RuntimeSnapshotData, SchedulerRegistration,
@@ -168,7 +170,11 @@ fn scheduler_assigns_the_ids_the_persisted_recipe_declares() {
         HYDROLOGY_SYSTEM_ID,
         "the appended system declares its own schema identity"
     );
-    assert_eq!(CURRENT_DIGEST_SCHEMA_VERSION.raw(), 7);
+    assert_eq!(
+        CURRENT_DIGEST_SCHEMA_VERSION.raw(),
+        HYDROLOGY_DIGEST_SCHEMA,
+        "schema 8 covers hydrology"
+    );
 }
 
 /// One `u64` drawn from each registered system's stream at
@@ -452,7 +458,10 @@ fn pre_hydrology_section_payloads_are_pinned() {
     // not perturb mana, terrain, actors, traces, or any other domain's payload.
     let legacy: Vec<_> = projection
         .iter()
-        .filter(|section| section.0 != u64::from(SECTION_RUNTIME_RECIPE))
+        .filter(|section| {
+            section.0 != u64::from(SECTION_RUNTIME_RECIPE)
+                && section.0 != u64::from(HYDROLOGY_SECTION_ID)
+        })
         .cloned()
         .collect();
     let legacy_expected: Vec<_> = expected
@@ -489,6 +498,31 @@ fn pre_hydrology_section_payloads_are_pinned() {
     );
     assert_ne!(recipe.6, recipe_before.6, "the recipe payload changed");
 
+    // And: the hydrology section is a new required section carrying exactly one
+    // byte — the disabled flag. A snapshot that simply omitted it would be
+    // indistinguishable from one taken before hydrology existed, and only one of
+    // those is a statement about the world it describes.
+    let hydrology = projection
+        .iter()
+        .find(|section| section.0 == u64::from(HYDROLOGY_SECTION_ID))
+        .expect("the hydrology section is required");
+    assert_eq!(hydrology.1, HYDROLOGY_SECTION_MAJOR);
+    assert_eq!(
+        hydrology.5, 1,
+        "a disabled domain's whole payload is its flag"
+    );
+    assert!(
+        !PRE_HYDROLOGY_SECTIONS
+            .iter()
+            .any(|section| section.0 == u64::from(HYDROLOGY_SECTION_ID)),
+        "the baseline predates the section, which is the point"
+    );
+    assert_eq!(
+        projection.len(),
+        PRE_HYDROLOGY_SECTIONS.len() + 1,
+        "exactly one section was added"
+    );
+
     // And: the projection is non-vacuous — the evolved world really did fill
     // the subsystem sections this fixture exists to protect.
     assert!(
@@ -503,8 +537,10 @@ fn pre_hydrology_section_payloads_are_pinned() {
 
 const PRE_HYDROLOGY_PHYSICAL_DIGEST: &str =
     "2a6027286ac7964da7abcfd7dd78a911c931a8a1a1e429906f1e7ccfeef822f3";
+#[allow(dead_code, reason = "historical record of the pre-hydrology identity")]
 const PRE_HYDROLOGY_HISTORY_DIGEST: &str =
     "fe5641b7993e06e38b3c5c080d8ba32ae2efcdfb8362aa4132a014d33a9e0f0e";
+#[allow(dead_code, reason = "historical record of the pre-hydrology identity")]
 const PRE_HYDROLOGY_EXPERIMENT_DIGEST: &str =
     "dbdcdb841556eddfb3099eb375d64bc738ac94fa01d740bdf50e32330f461320";
 const PRE_HYDROLOGY_ENVELOPE_DIGEST: &str =
@@ -531,25 +567,43 @@ fn pre_hydrology_digests_are_pinned() {
         "a tick must change history, or this fixture proves nothing"
     );
 
-    // And: the evolved identities are exactly the captured baseline. Stage 6
-    // moves all three to schema 8 deliberately; that is a declared change, and
-    // the assertions here are what make it visible instead of silent.
-    assert_eq!(evolved.physical_state_digest.schema_version.raw(), 7);
-    assert_eq!(evolved.history_digest.schema_version.raw(), 7);
-    assert_eq!(evolved.canonical_state.schema_version.raw(), 7);
+    // And: all three digests moved to schema 8, which is the declared change.
+    // Their bytes therefore differ from the captured baseline — a digest is an
+    // identity, and schema 8 identifies a state that includes hydrology. What must
+    // *not* have moved is the legacy subsystem section payloads, which
+    // `pre_hydrology_section_payloads_are_pinned` asserts byte for byte; together
+    // the two tests say the difference is attributable to the declared schema and
+    // section changes and to nothing else.
     assert_eq!(
+        evolved.physical_state_digest.schema_version.raw(),
+        HYDROLOGY_DIGEST_SCHEMA
+    );
+    assert_eq!(
+        evolved.history_digest.schema_version.raw(),
+        HYDROLOGY_DIGEST_SCHEMA
+    );
+    assert_eq!(
+        evolved.canonical_state.schema_version.raw(),
+        HYDROLOGY_DIGEST_SCHEMA
+    );
+    assert_ne!(
         hex(&evolved.physical_state_digest.bytes()),
         PRE_HYDROLOGY_PHYSICAL_DIGEST,
-        "physical digest"
+        "schema 8 covers new state, so the physical digest must move"
+    );
+    assert_eq!(
+        hex(&evolved.physical_state_digest.bytes()),
+        DISABLED_HYDROLOGY_PHYSICAL_DIGEST,
+        "physical digest under schema 8 with hydrology disabled"
     );
     assert_eq!(
         hex(&evolved.history_digest.bytes()),
-        PRE_HYDROLOGY_HISTORY_DIGEST,
+        DISABLED_HYDROLOGY_HISTORY_DIGEST,
         "history digest"
     );
     assert_eq!(
         hex(&evolved.canonical_state.bytes()),
-        PRE_HYDROLOGY_EXPERIMENT_DIGEST,
+        DISABLED_HYDROLOGY_EXPERIMENT_DIGEST,
         "experiment digest"
     );
 
@@ -573,6 +627,9 @@ fn pre_hydrology_digests_are_pinned() {
     );
 }
 
+/// The digest schema that covers hydrology.
+const HYDROLOGY_DIGEST_SCHEMA: u16 = 8;
+
 /// The runtime recipe section major before hydrology was configurable.
 const PRE_HYDROLOGY_RECIPE_MAJOR: u16 = 6;
 
@@ -591,10 +648,20 @@ const DISABLED_HYDROLOGY_RECIPE_BYTES: usize = 2 + 1 + 2 + 1 + 1 + 8 + 1 + 8;
 /// schema ID, a revision, and a registration order.
 const APPENDED_REGISTRATION_RECIPE_BYTES: usize = 2 + 8 + 2 + 2;
 
+/// The three authoritative digests of the same world under schema 8, with
+/// hydrology disabled. Measured, not restated: schema 8 writes one zero for a
+/// disabled domain, so what moved is the schema version and that single byte.
+const DISABLED_HYDROLOGY_PHYSICAL_DIGEST: &str =
+    "a62665b6c03d56846ef206302bff041bc59271678437c1b2ee7e29e32210ecac";
+const DISABLED_HYDROLOGY_HISTORY_DIGEST: &str =
+    "14c3bc82f53b042d936f41eb60044282275b411653bbc8f9b6a349503afdff81";
+const DISABLED_HYDROLOGY_EXPERIMENT_DIGEST: &str =
+    "4faa93eaf8dfda6bb5025f80d87b8612540bcf799192d1fd8cdf94a798d18817";
+
 /// The full-envelope digest of the same pre-hydrology world once its recipe
 /// records a disabled hydrology configuration.
 const DISABLED_HYDROLOGY_ENVELOPE_DIGEST: &str =
-    "d7964912c0fdbb39e469cbaf4e31dc1783a8707e3c6248045f1ffb5184fe73e8";
+    "baf641b23243b693f3f33163b44c7d8efc3b557bc197915fbf06a1d5d08750d7";
 
 // ---------------------------------------------------------------------------
 // Resume equivalence

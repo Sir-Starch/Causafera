@@ -88,6 +88,8 @@ pub struct RuntimeSnapshotData {
     pub spatial: SpatialChunkSnapshot,
     pub mana: ManaFieldSetSnapshot,
     pub thermal: ThermalSnapshot,
+    /// The complete hydrology state, present even when the domain is disabled.
+    pub hydrology: crate::HydrologyRuntimeState,
     pub resolution: ResolutionFieldSnapshot,
     pub resolution_policy: ResolutionPolicySnapshot,
     pub pattern_history: PatternHistorySnapshot,

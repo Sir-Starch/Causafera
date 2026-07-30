@@ -10,6 +10,7 @@ mod field_raster;
 mod hydrology;
 mod hydrology_config;
 mod hydrology_events;
+mod hydrology_validation;
 mod mana;
 mod material_surface;
 mod pattern_history;

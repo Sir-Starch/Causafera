@@ -136,6 +136,48 @@ impl HydrologyObjectRegistry {
         &self.resolution
     }
 
+    /// Rebuild a registry from persisted tables, validating each as a bijection.
+    ///
+    /// Import cannot re-derive these and compare: deriving them would compare a
+    /// table with itself. They are checked as bijections onto a dense range instead,
+    /// because an unknown, duplicate, skipped, or out-of-order ordinal would let two
+    /// carriers share one causal target.
+    pub fn from_tables(
+        cells: Vec<(HydrologyCellKey, u64)>,
+        edges: Vec<(HydrologyEdgeKey, u64)>,
+        forcing: Vec<((u64, u64), u64)>,
+        resolution: Vec<(ChartChunkCoord, u64)>,
+    ) -> Result<Self, HydrologyRegistryError> {
+        fn table<K: Ord>(
+            entries: Vec<(K, u64)>,
+        ) -> Result<BTreeMap<K, u64>, HydrologyRegistryError> {
+            let count = entries.len();
+            let mut map = BTreeMap::new();
+            for (key, ordinal) in entries {
+                if map.insert(key, ordinal).is_some() {
+                    return Err(HydrologyRegistryError::DuplicateKey);
+                }
+            }
+            let mut ordinals: Vec<u64> = map.values().copied().collect();
+            ordinals.sort_unstable();
+            if ordinals.len() != count {
+                return Err(HydrologyRegistryError::DuplicateKey);
+            }
+            for (index, ordinal) in ordinals.iter().enumerate() {
+                if *ordinal != index as u64 {
+                    return Err(HydrologyRegistryError::NotDense);
+                }
+            }
+            Ok(map)
+        }
+        Ok(Self {
+            cells: table(cells)?,
+            edges: table(edges)?,
+            forcing: table(forcing)?,
+            resolution: table(resolution)?,
+        })
+    }
+
     /// Whether every table is a bijection onto `0..len`.
     ///
     /// An unknown, duplicate, skipped, or out-of-order assignment would let two
@@ -726,4 +768,13 @@ pub(crate) fn build_hydrology_batch(
         conservation_key,
         next_node_id: counter,
     })
+}
+
+/// Why a persisted object registry was refused.
+#[derive(Clone, Copy, Debug, thiserror::Error, PartialEq, Eq)]
+pub enum HydrologyRegistryError {
+    #[error("a hydrology object registry names the same carrier more than once")]
+    DuplicateKey,
+    #[error("a hydrology object registry's ordinals are not dense from zero")]
+    NotDense,
 }

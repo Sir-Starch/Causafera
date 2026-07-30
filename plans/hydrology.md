@@ -2594,6 +2594,35 @@ its own evidence-backed follow-up TODO rather than being hidden in Progress.
   "the last one" stop meaning "the reservoir one". It now indexes by `THERMAL_RESERVOIR_STAGE`. Found
   by an enabled session failing to assemble an envelope, not by review.
 
+- **2026-07-30 — Stage 6 wave D: the hydrology section is required even when the domain is
+  disabled.** A disabled domain writes one byte — its flag. Omitting the section instead would make
+  "this world has no water" and "this snapshot predates hydrology" the same bytes, and only one of
+  those is a statement about the world the snapshot describes. Its absence and a wrong major both
+  fail closed.
+- **2026-07-30 — Stage 6 wave D: the section decodes through the live constructors.** Every
+  collection is rebuilt with the same constructor a running engine uses, so a forged section cannot
+  install a state the engine could not have produced — an unsorted forcing member list, an edge
+  joining non-adjacent cells, a cell above its capacity, or a duplicate boundary face all fail at
+  decode. `hydrology_validation` then checks only what no single constructor can see: the registry as
+  a bijection over the carriers it actually addresses, every retained ledger closing and recomputing
+  from its own receipts, the forcing schedule against the runtime time it was imported at, and
+  residency against the field set.
+- **2026-07-30 — Stage 6 wave D found a real gap: the section and the recipe could disagree.** An
+  import carrying a disabled hydrology section beside an enabled recipe succeeded. One of the two is
+  lying and import cannot tell which, so it now refuses both. Found by the negative control failing
+  to fire, not by review.
+- **2026-07-30 — Stage 6 wave D: schema 8 moved four other fixtures' pinned digests.** V22 permits
+  exactly this — "physical/history/experiment digests differ only through the declared
+  recipe/required-section/schema changes" — so each fixture was updated to say so rather than
+  re-pinned silently. `thermal_conservation_aggregates/neutrality.rs` keeps its schema-7 values beside
+  its schema-8 ones and asserts they differ; `thermal_persistence` and `thermal_determinism` assert
+  thermal's own section identifiers are unchanged while the shared digest schema moved;
+  `material_surface_loop` now reads the schema from the constant rather than repeating it.
+- **2026-07-30 — Stage 6 wave D: retained batches are digested by their ledgers, not their
+  receipts.** Per-transfer receipts are evictable detail bounded by the retention rule; the ledger
+  each batch closed is the claim about the world. Digesting the receipts would make a digest change
+  when eviction ran, which is a retention event rather than a state change.
+
 ## Progress
 
 - **2026-07-29 — Accepted.** Revision 19 is the authoritative hydrology implementation plan.
@@ -3230,6 +3259,64 @@ its own evidence-backed follow-up TODO rather than being hidden in Progress.
   water does not survive export and reload — section `0x000F`, digest schema 8, and import validation
   are wave D. The whole-tick staging transaction and the near-cap later-phase rollback are also still
   ahead.
+
+- **2026-07-30 — Stage 6 wave D complete: persistence, digest schema 8, and import validation.**
+  Hydrology state survives export and reload byte for byte, is authoritative equality input under the
+  new digest schema, and a malformed or forged section fails closed. Checkpoint commit `<pending>`.
+
+  Files changed and why:
+
+  - `crates/causafera-runtime/src/snapshot_sections.rs` — section `0x000F` major 1, its encoder and
+    decoder, and the envelope wiring.
+  - `crates/causafera-runtime/src/snapshots.rs` — the snapshot field.
+  - `crates/causafera-runtime/src/digests.rs` — `write_hydrology_state` and a length-prefixed slice
+    writer.
+  - `crates/causafera-runtime/src/runtime.rs` — schema 7 to 8, the export and import paths, and
+    twelve refusal variants.
+  - `crates/causafera-runtime/src/hydrology_validation.rs` (new) — the cross-cutting import checks.
+  - `crates/causafera-core/src/provenance.rs` — `CausalEventProposalKey::from_bytes`, so a persisted
+    receipt's batch-local event name survives a round trip.
+  - `crates/causafera-runtime/src/hydrology_events.rs` — `HydrologyObjectRegistry::from_tables`.
+  - `crates/causafera-runtime/tests/support_hydrology.rs` (new) — shared runtime configurations.
+  - `crates/causafera-runtime/tests/hydrology_persistence.rs` (new) — 9 tests.
+  - `crates/causafera-runtime/tests/hydrology_import_validation.rs` (new) — 13 tests.
+  - `crates/causafera-runtime/tests/hydrology_legacy_compatibility.rs`,
+    `thermal_conservation_aggregates/neutrality.rs`, `thermal_persistence.rs`,
+    `thermal_determinism.rs`, `material_surface_loop.rs` — the declared schema change, asserted.
+
+  What the gates actually assert:
+
+  - **The section (V24)** — required and versioned; a wrong major and its absence both fail closed; a
+    disabled domain is exactly one byte; an evolved state round-trips field for field and re-encodes
+    byte-identically, so one state has one representation.
+  - **Digest schema 8** — every digest reports schema 8; two sessions differing only in their water do
+    not share a physical digest.
+  - **Save and resume (V26)** — export, import, export is byte-identical, including the physical
+    digest; a run interrupted at tick four and resumed reaches the same fields, conveyance, node
+    counter, and digest as one that never stopped; a pending forcing record survives a reload and
+    still applies at its tick; an applied one stays persisted and is not reapplied; retained typed
+    batches survive intact.
+  - **Malformed and forged (V25)** — trailing bytes, four truncation points, a payload after a
+    disabled flag, an unsupported policy schema, and a forged count are all refused at decode; a
+    disabled section beside an enabled recipe, a nonzero conservation residual, a batch missing its
+    ledger, a registry that does not address its own carriers, a non-dense registry, and a pending
+    record scheduled in the past are all refused; an unmodified section still imports, so every
+    rejection is attributable to its mutation.
+
+  Commands run and their actual results:
+
+  - `cargo test -p causafera-runtime --test hydrology_persistence` — **9 passed**.
+  - `cargo test -p causafera-runtime --test hydrology_import_validation` — **13 passed**.
+  - `cargo clippy --workspace --all-targets --all-features -- -D warnings` — clean.
+  - `cargo fmt --all -- --check` — clean.
+  - `git diff --check` — clean.
+  - `cargo test --workspace --all-features` — all 81 suites passed.
+  - `cargo test --workspace --no-default-features` — all 81 suites passed.
+  - `node tools/audit/run-source-tests.mjs` — 0 failures.
+
+  Not done in this wave, by design: the observer surface still reports six bootstrap stages with no
+  field-48 receipt, and the two new audit scripts do not exist — that is wave E. The whole-tick
+  staging transaction and near-cap later-phase rollback remain the last part of the stage.
 
 Execution must begin by re-reading this Progress section and Decision log, then inspecting
 `git status`. The implementing agent updates both sections whenever scope, contract, verification,

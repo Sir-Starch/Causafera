@@ -47,7 +47,10 @@ pub const EXPERIMENT_RECIPE_MANA_SOURCE_POLICY_SCHEMA_V1: u64 = 1;
 /// Bumped to 7 when the canonical production bootstrap record (plan identity,
 /// per-stage result fingerprints, and terminal receipts) became an authoritative
 /// input to `physical_state_digest`.
-pub const CURRENT_DIGEST_SCHEMA_VERSION: DigestSchemaVersion = DigestSchemaVersion::new(7);
+/// Schema 8 adds hydrology to the physical digest. A digest is an identity, never
+/// a distance: the version says which state it covers, and a session that
+/// gained a domain gained new authoritative state to cover.
+pub const CURRENT_DIGEST_SCHEMA_VERSION: DigestSchemaVersion = DigestSchemaVersion::new(8);
 
 const PHYSICAL_SYSTEM_ID: u64 = 10;
 pub const EXPERIMENT_RECIPE_MANA_SOURCE_SYSTEM_ID: u64 = 19;
@@ -612,6 +615,30 @@ pub enum RuntimeError {
     /// to, and an origin with no ancestry is not an origin.
     #[error("the hydrology bootstrap stage has no preceding stage to cite")]
     HydrologyBootstrapWithoutPredecessor,
+    #[error("an imported disabled hydrology state carries water it says it does not have")]
+    HydrologyDisabledStateNotCanonical,
+    #[error("an imported hydrology object registry is not a bijection onto a dense range")]
+    HydrologyRegistryNotDense,
+    #[error("an imported hydrology object registry does not address exactly its own carriers")]
+    HydrologyRegistryIncomplete,
+    #[error("an imported hydrology chunk has no resolution entry")]
+    HydrologyResolutionEntryMissing,
+    #[error("an imported hydrology residency set does not match its field set")]
+    HydrologyResidencyMismatch,
+    #[error("an imported applied hydrology forcing record's timestamp is not its scheduled tick")]
+    HydrologyForcingAppliedAtMismatch,
+    #[error("an imported hydrology forcing record claims to have applied in the future")]
+    HydrologyForcingAppliedInTheFuture,
+    #[error("an imported pending hydrology forcing record is scheduled in the past")]
+    HydrologyForcingMissedItsTick,
+    #[error("an imported hydrology forcing record targets a cell that is not resident")]
+    HydrologyForcingTargetNotResident,
+    #[error("an imported hydrology retained batch is missing its receipts or its ledger")]
+    HydrologyRetainedBatchIncomplete,
+    #[error("imported hydrology receipts do not recompute to the ledger they claim")]
+    HydrologyReceiptsDisagreeWithLedger,
+    #[error("an imported hydrology section and its recipe disagree about whether water exists")]
+    HydrologyStateDisagreesWithRecipe,
     #[error("hydrology state is invalid: {0}")]
     HydrologyState(#[from] causafera_geography::HydrologyStateError),
     #[error("hydrology causal commit failed: {0}")]
@@ -871,6 +898,7 @@ impl RuntimeState {
 
     pub fn export_snapshot(&self) -> RuntimeSnapshotData {
         RuntimeSnapshotData {
+            hydrology: self.hydrology.clone(),
             recipe: RuntimeRecipeSnapshot {
                 seed: self.config.deterministic.world_seed,
                 config: self.config.clone(),
@@ -1213,10 +1241,7 @@ impl RuntimeState {
             thermal_reservoirs,
             thermal_parameters,
             pending_thermal_injections: Vec::new(),
-            // Wave D restores this from the persisted hydrology section; a
-            // snapshot taken before that section exists reloads a disabled domain,
-            // which is what every pre-hydrology snapshot describes.
-            hydrology: crate::HydrologyRuntimeState::disabled(),
+            hydrology: data.hydrology.clone(),
             thermal_receipts,
             thermal_conservation_receipts,
             resolution,
@@ -1523,6 +1548,11 @@ impl RuntimeState {
             }
         }
         self.validate_bootstrap_record()?;
+        crate::hydrology_validation::validate_imported_hydrology(
+            &self.hydrology,
+            self.config.hydrology.enabled,
+            self.advanced_through.raw(),
+        )?;
         Ok(())
     }
 
@@ -3038,6 +3068,7 @@ impl RuntimeState {
             }
         }
         write_bootstrap_record(&mut digest, &self.bootstrap);
+        write_hydrology_state(&mut digest, &self.hydrology);
         PhysicalStateDigest {
             schema_version: CURRENT_DIGEST_SCHEMA_VERSION,
             fingerprint: digest.finish(),

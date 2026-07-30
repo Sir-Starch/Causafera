@@ -308,6 +308,25 @@ impl CanonicalDigest {
         }
     }
 
+    /// Write a length-prefixed byte slice.
+    ///
+    /// Length-prefixed so two adjacent slices cannot be confused for one longer
+    /// one, and chunked the same way `write_bytes` is so a 32-byte fingerprint
+    /// written either way agrees.
+    pub(crate) fn write_slice(&mut self, bytes: &[u8]) {
+        self.write(bytes.len() as u64);
+        let mut chunks = bytes.chunks_exact(8);
+        for chunk in &mut chunks {
+            self.write(u64::from_le_bytes(chunk.try_into().expect("exact chunk")));
+        }
+        let tail = chunks.remainder();
+        if !tail.is_empty() {
+            let mut padded = [0_u8; 8];
+            padded[..tail.len()].copy_from_slice(tail);
+            self.write(u64::from_le_bytes(padded));
+        }
+    }
+
     pub(crate) fn finish(self) -> StateFingerprint {
         fingerprint_words(self.0)
     }
@@ -382,6 +401,159 @@ impl HistoryDigestPrefix {
     pub(crate) fn advance(&mut self, accumulator: CanonicalDigest, absorbed_events: usize) {
         self.accumulator = accumulator;
         self.absorbed_events = absorbed_events;
+    }
+}
+
+/// Write the complete hydrology state into a state digest.
+///
+/// Authoritative equality input under schema 8: two runs of the same seed and
+/// recipe agree on every volume, every anchor, every edge, every boundary, every
+/// forcing record, and the synthetic-node counter, and any change to one of them
+/// moves the digest. The written bytes are an identity, never a distance.
+///
+/// A disabled domain writes a single zero, which is what makes "this world has no
+/// water" a digestible claim rather than an absence.
+pub(crate) fn write_hydrology_state(
+    digest: &mut CanonicalDigest,
+    hydrology: &crate::HydrologyRuntimeState,
+) {
+    if !hydrology.enabled {
+        digest.write(0);
+        return;
+    }
+    digest.write(1);
+    digest.write(hydrology.next_node_id);
+    digest.write(hydrology.fields.batch_sequence());
+    digest.write(hydrology.fields.conservation_last_change().raw());
+    digest.write(u64::from(hydrology.resolution_policy.enabled));
+    digest.write(u64::from(hydrology.resolution_policy.max_level));
+
+    digest.write(hydrology.metrics.len() as u64);
+    for (chart, metric) in hydrology.metrics.entries() {
+        digest.write(chart.raw());
+        digest.write(metric.cell_area_mm2().get());
+        digest.write(metric.orthogonal_edge_length_mm().get());
+        digest.write(metric.timestep_millis().get());
+    }
+
+    digest.write(hydrology.fields.fields().len() as u64);
+    for (chunk, field) in hydrology.fields.fields() {
+        write_chart_chunk(digest, *chunk);
+        for cell in field.cells() {
+            let storage = cell.storage();
+            digest.write(storage.surface.get());
+            digest.write(storage.soil.get());
+            digest.write(storage.groundwater.get());
+            digest.write(cell.surface_last_change().raw());
+            digest.write(cell.soil_last_change().raw());
+            digest.write(cell.groundwater_last_change().raw());
+            digest.write_bytes(cell.forcing_input_fingerprint().bytes());
+            digest.write(cell.forcing_last_change().raw());
+        }
+        for ground in field.substrate() {
+            digest.write_slice(ground.constitutive_key().bytes());
+        }
+    }
+
+    digest.write(hydrology.conveyance.len() as u64);
+    for (key, edge) in hydrology.conveyance.edges() {
+        digest.write_slice(&causafera_geography::HydrologyCarrierKey::Edge(*key).encode());
+        digest.write(edge.storage().get());
+        digest.write(edge.capacity().get());
+        digest.write(edge.last_change().raw());
+    }
+
+    digest.write(hydrology.boundaries.len() as u64);
+    for (face, condition) in hydrology.boundaries.records() {
+        digest.write_slice(&causafera_geography::HydrologyCarrierKey::ExteriorFace(*face).encode());
+        let (
+            surface_kind,
+            surface_head,
+            surface_conductance,
+            ground_kind,
+            ground_head,
+            ground_conductance,
+        ) = condition.constitutive_kind();
+        digest.write(u64::from(surface_kind));
+        digest.write(surface_head as u64);
+        digest.write(surface_conductance);
+        digest.write(u64::from(ground_kind));
+        digest.write(ground_head as u64);
+        digest.write(ground_conductance);
+    }
+
+    digest.write(hydrology.forcing.len() as u64);
+    for record in &hydrology.forcing {
+        digest.write(record.scheduled_tick());
+        digest.write(record.forcing_id());
+        digest.write(record.precipitation_volume().get());
+        digest.write(record.potential_et_volume().get());
+        digest.write(record.external_inflow_volume().get());
+        digest.write(record.origin_trace().raw());
+        digest.write(record.producer_policy_schema());
+        match record.applied_at() {
+            None => digest.write(0),
+            Some(tick) => {
+                digest.write(1);
+                digest.write(tick);
+            }
+        }
+    }
+
+    digest.write(hydrology.resolution.len() as u64);
+    for (chunk, entry) in &hydrology.resolution {
+        write_chart_chunk(digest, *chunk);
+        digest.write(u64::from(entry.level()));
+        digest.write(entry.last_change().raw());
+    }
+
+    // The registry's ordinals are authoritative: they are what every causal target
+    // in the store was written against, so two states that agree on their water but
+    // disagree on their addressing are not the same state.
+    digest.write(hydrology.registry.cells().len() as u64);
+    digest.write(hydrology.registry.edges().len() as u64);
+    for (edge, ordinal) in hydrology.registry.edges() {
+        digest.write_slice(&causafera_geography::HydrologyCarrierKey::Edge(*edge).encode());
+        digest.write(*ordinal);
+    }
+    digest.write(hydrology.registry.forcing().len() as u64);
+    for ((scheduled_tick, forcing_id), ordinal) in hydrology.registry.forcing() {
+        digest.write(*scheduled_tick);
+        digest.write(*forcing_id);
+        digest.write(*ordinal);
+    }
+
+    // Retained typed batches are digested by their conservation ledgers. The
+    // per-transfer receipts are evictable detail; the ledger each batch closed is
+    // the claim about the world.
+    digest.write(hydrology.retained_batches.len() as u64);
+    for trace in &hydrology.retained_batches {
+        digest.write(trace.raw());
+        match hydrology.conservation_receipts.get(trace) {
+            None => digest.write(0),
+            Some(receipt) => {
+                digest.write(1);
+                digest.write(receipt.tick());
+                digest.write(receipt.batch_sequence());
+                for term in [
+                    receipt.surface_before(),
+                    receipt.soil_before(),
+                    receipt.groundwater_before(),
+                    receipt.conveyance_before(),
+                    receipt.surface_after(),
+                    receipt.soil_after(),
+                    receipt.groundwater_after(),
+                    receipt.conveyance_after(),
+                    receipt.accepted_precipitation(),
+                    receipt.accepted_external_inflow(),
+                    receipt.accepted_evapotranspiration(),
+                    receipt.boundary_exports(),
+                    receipt.residual(),
+                ] {
+                    digest.write_slice(&term.to_be_bytes());
+                }
+            }
+        }
     }
 }
 

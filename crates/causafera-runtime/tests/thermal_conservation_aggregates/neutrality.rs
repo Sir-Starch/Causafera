@@ -24,10 +24,19 @@ fn hex32(bytes: [u8; 32]) -> String {
 // section major stays 2: both were introduced on this branch and no released
 // snapshot has ever carried either, so bumping them again would version a
 // contract nothing outside this branch has seen.
-const FIXTURE_PHYSICAL_DIGEST: &str =
+// The values below moved once, at digest schema 8, which added hydrology to the
+// physical digest. That is a declared change to what the digest *covers*, not a
+// change in what this fixture's thermal state is: the schema-7 values are kept
+// beside them as the historical record, and the assertion that they differ is what
+// keeps the move visible instead of silent.
+const SCHEMA_7_PHYSICAL_DIGEST: &str =
     "9959c05092be0e49af0976a6cc2ce7c3d2c12d35bc86c6a456948ac71b4f359b";
-const FIXTURE_HISTORY_DIGEST: &str =
+const SCHEMA_7_HISTORY_DIGEST: &str =
     "356199334c64beb629e406c7bc83bb4972e03cfdf81efdd32ba79a313698b5b3";
+const FIXTURE_PHYSICAL_DIGEST: &str =
+    "0048f9a24a4c86f41db77b01458a9c82db3c6815240ecaba30fee708af8a02da";
+const FIXTURE_HISTORY_DIGEST: &str =
+    "aa7e07d5ef7cc8e921af5b7bd7ae83d0a2c00c8a2293e324be864175e9cfae7f";
 
 #[test]
 fn aggregate_validation_verdict_is_input_order_independent() {
@@ -137,16 +146,29 @@ fn digest_and_section_versions_are_unchanged() {
         .expect("fixture ticks must execute");
     let snapshot = runtime.snapshot().expect("snapshot must succeed");
 
-    // Then: the digests match the values recorded before the validation change.
+    // Then: the digests match the recorded schema-8 values, and differ from the
+    // schema-7 ones by exactly that declared change.
+    assert_eq!(
+        snapshot.physical_state_digest.schema_version.raw(),
+        causafera_runtime::CURRENT_DIGEST_SCHEMA_VERSION.raw()
+    );
+    assert_ne!(
+        hex32(snapshot.physical_state_digest.bytes()),
+        SCHEMA_7_PHYSICAL_DIGEST
+    );
+    assert_ne!(
+        hex32(snapshot.history_digest.bytes()),
+        SCHEMA_7_HISTORY_DIGEST
+    );
     assert_eq!(
         hex32(snapshot.physical_state_digest.bytes()),
         FIXTURE_PHYSICAL_DIGEST,
-        "physical_state_digest must be byte-identical to the pre-change value"
+        "physical_state_digest must be byte-identical to the recorded schema-8 value"
     );
     assert_eq!(
         hex32(snapshot.history_digest.bytes()),
         FIXTURE_HISTORY_DIGEST,
-        "history_digest must be byte-identical to the pre-change value"
+        "history_digest must be byte-identical to the recorded schema-8 value"
     );
 
     // And: importing the exported snapshot reproduces the same digests.

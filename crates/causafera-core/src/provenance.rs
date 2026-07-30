@@ -192,6 +192,10 @@ pub enum CausalEventProposalError {
     EffectsNotStrictlyOrdered { index: usize },
     #[error("proposal-key carrier is {length} bytes, which does not fit its 16-bit length field")]
     CarrierKeyTooLong { length: usize },
+    /// A persisted proposal key's bytes do not describe a key: wrong version, or a
+    /// declared carrier length that disagrees with the payload that follows it.
+    #[error("a hydrology proposal key's canonical bytes are malformed")]
+    MalformedProposalKey,
 }
 
 /// Version byte every [`CausalEventProposalKey`] encoding starts with.
@@ -244,6 +248,28 @@ impl CausalEventProposalKey {
         bytes.extend_from_slice(carrier_key);
         bytes.extend_from_slice(&local_ordinal.to_be_bytes());
         Ok(Self { bytes })
+    }
+
+    /// Rebuild a key from its canonical bytes.
+    ///
+    /// Import needs this: a persisted receipt names the batch-local event that
+    /// carried it, and the name has to survive a round trip. The prefix is
+    /// re-validated rather than trusted, so a forged key with a wrong version or a
+    /// carrier length that disagrees with its payload is rejected here.
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, CausalEventProposalError> {
+        if bytes.len() < Self::PREFIX_LEN + 4 {
+            return Err(CausalEventProposalError::MalformedProposalKey);
+        }
+        if bytes[0] != CAUSAL_EVENT_PROPOSAL_KEY_VERSION {
+            return Err(CausalEventProposalError::MalformedProposalKey);
+        }
+        let carrier_length = usize::from(u16::from_be_bytes([bytes[6], bytes[7]]));
+        if bytes.len() != Self::PREFIX_LEN + carrier_length + 4 {
+            return Err(CausalEventProposalError::MalformedProposalKey);
+        }
+        Ok(Self {
+            bytes: bytes.to_vec(),
+        })
     }
 
     pub fn bytes(&self) -> &[u8] {

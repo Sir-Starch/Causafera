@@ -2,11 +2,15 @@ use causafera_core::phases::Phase;
 use causafera_core::provenance::{
     CausalEffect, CausalEventSnapshot, CausalTraceSnapshot, StateFingerprint,
 };
-use causafera_domains::{HydrologyResolutionPolicy, ManaFieldSetSnapshot, ManaFieldSnapshot};
+use causafera_domains::{
+    HydrologyConservationReceipt, HydrologyResolutionPolicy, HydrologyTransferReceipt,
+    ManaFieldSetSnapshot, ManaFieldSnapshot,
+};
 use causafera_geography::{
-    FaceDirection, FluxBoundary, HydrologyBoundaryCondition, HydrologyCellKey, HydrologyGridMetric,
-    MAX_HYDROLOGY_CELL_OVERRIDES, MAX_HYDROLOGY_CHART_OVERRIDES, MAX_HYDROLOGY_CHARTS,
-    MAX_HYDROLOGY_FORCING_RECORDS, MAX_HYDROLOGY_TARGETS_PER_FORCING,
+    FaceDirection, FluxBoundary, HydraulicFraction, HydrologyBoundaryCondition,
+    HydrologyCarrierKey, HydrologyCellKey, HydrologyGridMetric, MAX_HYDROLOGY_CELL_OVERRIDES,
+    MAX_HYDROLOGY_CHART_OVERRIDES, MAX_HYDROLOGY_CHARTS, MAX_HYDROLOGY_FORCING_RECORDS,
+    MAX_HYDROLOGY_TARGETS_PER_FORCING,
 };
 use causafera_persistence::{
     FORMAT_MAJOR_V1, FORMAT_MINOR_V1, LittleEndianDecoder, LittleEndianEncoder, PersistenceError,
@@ -37,19 +41,19 @@ use crate::{
     ExperimentRecipeManaSourceReceiptSnapshot, ExperimentRecipeManaSourceRecipe, GenericFeature,
     HYDROLOGY_BOOTSTRAP_PARAMETERS_SCHEMA_V1, HYDROLOGY_LIMITS_SCHEMA_V1,
     HydrologyBootstrapOverride, HydrologyBootstrapParameters, HydrologyConfig,
-    HydrologyForcingSpec, MAX_EXPERIMENT_RECIPE_MANA_SOURCES, MAX_HISTORICAL_STAGES,
-    MAX_MATERIAL_SURFACE_TRANSITIONS, MAX_STAGE_DEPENDENCIES, MAX_STAGE_EXTERNAL_CAUSES,
-    MAX_STAGE_TARGETS, MaterialSurface, MaterialSurfaceGateTransition, MaterialSurfaceId,
-    MaterialSurfaceManaGate, MaterialSurfaceRecordSnapshot, MaterialSurfaceSnapshot,
-    MaterialSurfaceThermalState, MaterialSurfaceThermalTransition, MaterialSurfaceTransition,
-    MinimalBodyState, PatternHistorySnapshot, PerceivedSelf, PhysicalCountersSnapshot,
-    PopulationAggregate, PopulationAggregateSnapshot, RuntimeConfig, RuntimeRecipeSnapshot,
-    RuntimeSnapshotData, RuntimeState, SensorAperture, SensorKindId, SpatialChunkSnapshot,
-    SubjectiveSceneSnapshot, SubjectiveTarget, SystemRegistrationSnapshot, TerrainCarrierSnapshot,
-    TerrainParticipation, ThermalActiveRegionSnapshot, ThermalBoundaryRecordSnapshot,
-    ThermalCellTransferReceiptSnapshot, ThermalConservationReceiptSnapshot,
-    ThermalFaceRecordSnapshot, ThermalFieldSetSnapshot, ThermalFieldSnapshot,
-    ThermalMaterialTransferRecordSnapshot, ThermalReservoirScheduleSnapshot,
+    HydrologyForcingSpec, HydrologyRuntimeState, MAX_EXPERIMENT_RECIPE_MANA_SOURCES,
+    MAX_HISTORICAL_STAGES, MAX_MATERIAL_SURFACE_TRANSITIONS, MAX_STAGE_DEPENDENCIES,
+    MAX_STAGE_EXTERNAL_CAUSES, MAX_STAGE_TARGETS, MaterialSurface, MaterialSurfaceGateTransition,
+    MaterialSurfaceId, MaterialSurfaceManaGate, MaterialSurfaceRecordSnapshot,
+    MaterialSurfaceSnapshot, MaterialSurfaceThermalState, MaterialSurfaceThermalTransition,
+    MaterialSurfaceTransition, MinimalBodyState, PatternHistorySnapshot, PerceivedSelf,
+    PhysicalCountersSnapshot, PopulationAggregate, PopulationAggregateSnapshot, RuntimeConfig,
+    RuntimeRecipeSnapshot, RuntimeSnapshotData, RuntimeState, SensorAperture, SensorKindId,
+    SpatialChunkSnapshot, SubjectiveSceneSnapshot, SubjectiveTarget, SystemRegistrationSnapshot,
+    TerrainCarrierSnapshot, TerrainParticipation, ThermalActiveRegionSnapshot,
+    ThermalBoundaryRecordSnapshot, ThermalCellTransferReceiptSnapshot,
+    ThermalConservationReceiptSnapshot, ThermalFaceRecordSnapshot, ThermalFieldSetSnapshot,
+    ThermalFieldSnapshot, ThermalMaterialTransferRecordSnapshot, ThermalReservoirScheduleSnapshot,
     ThermalReservoirSnapshot, ThermalReservoirTransferRecordSnapshot, ThermalSnapshot,
 };
 
@@ -67,6 +71,10 @@ pub const SECTION_EXPERIMENT_MANIFEST: u16 = 0x000B;
 pub const MATERIAL_SURFACE_SECTION_ID: u16 = 0x000C;
 pub const SECTION_EXPERIMENT_RECIPE_MANA_SOURCE_RECEIPTS: u16 = 0x000D;
 pub const THERMAL_SECTION_ID: u16 = 0x000E;
+/// Hydrology's own section. Required, and present even for a disabled domain: a
+/// snapshot that simply omitted it would be indistinguishable from one taken
+/// before hydrology existed.
+pub const HYDROLOGY_SECTION_ID: u16 = 0x000F;
 
 /// Bumped to 5 when `RuntimeConfig` gained `terrain_participation`, which
 /// changes how the world evolves and so cannot be defaulted on read.
@@ -88,6 +96,7 @@ pub const EXPERIMENT_RECIPE_MANA_SOURCE_RECEIPTS_SECTION_MAJOR: u16 = 1;
 /// `material_thermal_capacity` and cell receipts/conservation receipts gained the material term
 /// (`TODO-THERMAL-002`).
 pub const THERMAL_SECTION_MAJOR: u16 = 2;
+pub const HYDROLOGY_SECTION_MAJOR: u16 = 1;
 /// Bumped to 2 when the bootstrap payload changed from two fields per receipt to
 /// the complete canonical plan, per-stage result state, and terminal receipts.
 /// Major 1 carried no plan and no result, so it cannot be read forward: it fails
@@ -3349,6 +3358,16 @@ pub fn assemble_envelope(data: &RuntimeSnapshotData) -> Result<SnapshotEnvelope,
         },
     );
     sections.insert(
+        u64::from(HYDROLOGY_SECTION_ID),
+        SectionPayload {
+            section_major: HYDROLOGY_SECTION_MAJOR,
+            section_minor: CURRENT_SECTION_MINOR,
+            flags: 0,
+            decoded_size_limit: 0,
+            bytes: encode_hydrology_section(&data.hydrology),
+        },
+    );
+    sections.insert(
         u64::from(SECTION_RESOLUTION_FIELD),
         SectionPayload {
             section_major: 1,
@@ -3527,6 +3546,11 @@ pub fn disassemble_envelope(
             .bytes
             .as_slice(),
     )?;
+    let hydrology = decode_hydrology_section(
+        required_section(envelope, HYDROLOGY_SECTION_ID, HYDROLOGY_SECTION_MAJOR)?
+            .bytes
+            .as_slice(),
+    )?;
     let (resolution, resolution_policy) = decode_resolution_section(
         envelope
             .sections
@@ -3625,6 +3649,7 @@ pub fn disassemble_envelope(
         spatial,
         mana,
         thermal,
+        hydrology,
         resolution,
         resolution_policy,
         pattern_history,
@@ -3657,6 +3682,7 @@ fn is_known_section(schema_id: u64) -> bool {
             || id == u64::from(MATERIAL_SURFACE_SECTION_ID)
             || id == u64::from(SECTION_EXPERIMENT_RECIPE_MANA_SOURCE_RECEIPTS)
             || id == u64::from(THERMAL_SECTION_ID)
+            || id == u64::from(HYDROLOGY_SECTION_ID)
     )
 }
 
@@ -3677,6 +3703,740 @@ fn required_section(
         )));
     }
     Ok(payload)
+}
+
+// ---------------------------------------------------------------------------
+// Hydrology section `0x000F`, major 1
+// ---------------------------------------------------------------------------
+
+/// Encode the complete hydrology state.
+///
+/// Written even when the domain is disabled: the leading flag is the whole
+/// payload in that case, because "this world has no water" and "this snapshot
+/// predates hydrology" are different claims and a reader has to be able to tell
+/// them apart.
+pub fn encode_hydrology_section(state: &HydrologyRuntimeState) -> Vec<u8> {
+    let mut buf = Vec::new();
+    let mut enc = LittleEndianEncoder::new(&mut buf);
+    encode_bool(&mut enc, state.enabled);
+    if !state.enabled {
+        return buf;
+    }
+
+    enc.write_u16(state.resolution_policy.schema_version);
+    encode_bool(&mut enc, state.resolution_policy.enabled);
+    enc.write_u8(state.resolution_policy.max_level);
+    enc.write_u64(state.next_node_id);
+    enc.write_u64(state.fields.batch_sequence());
+    enc.write_u64(state.fields.conservation_last_change().raw());
+
+    enc.write_u64(state.metrics.len() as u64);
+    for (chart, metric) in state.metrics.entries() {
+        enc.write_u64(chart.raw());
+        enc.write_u16(metric.schema_version());
+        enc.write_u64(metric.cell_area_mm2().get());
+        enc.write_u64(metric.orthogonal_edge_length_mm().get());
+        enc.write_u64(metric.timestep_millis().get());
+    }
+
+    enc.write_u64(state.resolution.len() as u64);
+    for (chunk, entry) in &state.resolution {
+        encode_chart_chunk(&mut enc, *chunk);
+        enc.write_u8(entry.level());
+        enc.write_u64(entry.last_change().raw());
+    }
+
+    enc.write_u64(state.active.resident_chunks().len() as u64);
+    for chunk in state.active.resident_chunks() {
+        encode_chart_chunk(&mut enc, *chunk);
+    }
+    enc.write_u64(state.active.active_chunks().len() as u64);
+    for chunk in state.active.active_chunks() {
+        encode_chart_chunk(&mut enc, *chunk);
+    }
+
+    enc.write_u64(state.fields.fields().len() as u64);
+    for (chunk, field) in state.fields.fields() {
+        encode_chart_chunk(&mut enc, *chunk);
+        for cell in field.cells() {
+            let storage = cell.storage();
+            enc.write_u64(storage.surface.get());
+            enc.write_u64(storage.soil.get());
+            enc.write_u64(storage.groundwater.get());
+            enc.write_u64(cell.surface_last_change().raw());
+            enc.write_u64(cell.soil_last_change().raw());
+            enc.write_u64(cell.groundwater_last_change().raw());
+            enc.write_fixed(&cell.forcing_input_fingerprint().bytes());
+            enc.write_u64(cell.forcing_last_change().raw());
+            let before = cell.last_change_before();
+            enc.write_u64(before.surface.get());
+            enc.write_u64(before.soil.get());
+            enc.write_u64(before.groundwater.get());
+        }
+        for ground in field.substrate() {
+            enc.write_u64(ground.surface_capacity().get());
+            enc.write_u64(ground.soil_capacity().get());
+            enc.write_u64(ground.groundwater_capacity().get());
+            enc.write_u64(ground.infiltration_limit_per_tick().get());
+            encode_hydraulic_fraction(&mut enc, ground.percolation_fraction());
+            encode_hydraulic_fraction(&mut enc, ground.specific_yield());
+            enc.write_i64(ground.aquifer_base_elevation_mm());
+            enc.write_u64(ground.baseflow_threshold().get());
+            encode_hydraulic_fraction(&mut enc, ground.baseflow_fraction());
+            enc.write_u64(ground.surface_conductance_mm2_per_tick());
+            enc.write_u64(ground.groundwater_conductance_mm2_per_tick());
+        }
+    }
+
+    enc.write_u64(state.conveyance.len() as u64);
+    for (key, edge) in state.conveyance.edges() {
+        encode_hydrology_cell(&mut enc, key.low());
+        encode_hydrology_cell(&mut enc, key.high());
+        encode_hydrology_cell(&mut enc, edge.outlet());
+        enc.write_u64(edge.storage().get());
+        enc.write_u64(edge.capacity().get());
+        encode_hydraulic_fraction(&mut enc, edge.release());
+        enc.write_u64(edge.inlet_capacity_per_tick().get());
+        enc.write_u64(edge.last_change().raw());
+        enc.write_u64(edge.last_change_before().get());
+    }
+
+    enc.write_u64(state.boundaries.len() as u64);
+    for (face, condition) in state.boundaries.records() {
+        encode_hydrology_cell(&mut enc, face.cell());
+        enc.write_u8(face.direction().code());
+        encode_hydrology_boundary(&mut enc, *condition);
+    }
+
+    enc.write_u64(state.forcing.len() as u64);
+    for record in &state.forcing {
+        enc.write_u64(record.forcing_id());
+        enc.write_u64(record.scheduled_tick());
+        enc.write_u64(record.precipitation_volume().get());
+        enc.write_u64(record.potential_et_volume().get());
+        enc.write_u64(record.external_inflow_volume().get());
+        enc.write_u64(record.origin_trace().raw());
+        enc.write_u64(record.producer_policy_schema());
+        match record.applied_at() {
+            None => encode_bool(&mut enc, false),
+            Some(tick) => {
+                encode_bool(&mut enc, true);
+                enc.write_u64(tick);
+            }
+        }
+        enc.write_u64(record.targets().len() as u64);
+        for member in record.targets() {
+            encode_hydrology_cell(&mut enc, member.cell);
+            enc.write_u64(member.weight.get());
+        }
+    }
+
+    // The registry's four tables. Persisted rather than re-derived, because import
+    // has to validate them as bijections against the state they address; deriving
+    // them would make that check compare a table with itself.
+    encode_registry_table(&mut enc, state.registry.cells().len(), |enc| {
+        for (cell, ordinal) in state.registry.cells() {
+            encode_hydrology_cell(enc, *cell);
+            enc.write_u64(*ordinal);
+        }
+    });
+    encode_registry_table(&mut enc, state.registry.edges().len(), |enc| {
+        for (edge, ordinal) in state.registry.edges() {
+            encode_hydrology_cell(enc, edge.low());
+            encode_hydrology_cell(enc, edge.high());
+            enc.write_u64(*ordinal);
+        }
+    });
+    encode_registry_table(&mut enc, state.registry.forcing().len(), |enc| {
+        for ((scheduled_tick, forcing_id), ordinal) in state.registry.forcing() {
+            enc.write_u64(*scheduled_tick);
+            enc.write_u64(*forcing_id);
+            enc.write_u64(*ordinal);
+        }
+    });
+    encode_registry_table(&mut enc, state.registry.resolution().len(), |enc| {
+        for (chunk, ordinal) in state.registry.resolution() {
+            encode_chart_chunk(enc, *chunk);
+            enc.write_u64(*ordinal);
+        }
+    });
+
+    // Retained typed batches, in the tick order eviction follows.
+    enc.write_u64(state.retained_batches.len() as u64);
+    for trace in &state.retained_batches {
+        enc.write_u64(trace.raw());
+        let receipts = state.receipts.get(trace).map_or(&[][..], Vec::as_slice);
+        enc.write_u64(receipts.len() as u64);
+        for receipt in receipts {
+            encode_hydrology_receipt(&mut enc, receipt);
+        }
+        match state.conservation_receipts.get(trace) {
+            None => encode_bool(&mut enc, false),
+            Some(receipt) => {
+                encode_bool(&mut enc, true);
+                encode_hydrology_conservation(&mut enc, receipt);
+            }
+        }
+    }
+    buf
+}
+
+fn encode_registry_table(
+    enc: &mut LittleEndianEncoder<'_>,
+    len: usize,
+    write: impl FnOnce(&mut LittleEndianEncoder<'_>),
+) {
+    enc.write_u64(len as u64);
+    write(enc);
+}
+
+fn encode_hydraulic_fraction(enc: &mut LittleEndianEncoder<'_>, fraction: HydraulicFraction) {
+    enc.write_u32(fraction.numerator());
+    enc.write_u32(fraction.denominator().get());
+}
+
+fn encode_hydrology_receipt(enc: &mut LittleEndianEncoder<'_>, receipt: &HydrologyTransferReceipt) {
+    enc.write_u64(receipt.batch_sequence());
+    enc.write_u64(receipt.tick());
+    enc.write_u32(receipt.process_kind());
+    encode_carrier(enc, receipt.source());
+    enc.write_u8(receipt.source_bucket().tag());
+    encode_carrier(enc, receipt.target());
+    enc.write_u8(receipt.target_bucket().tag());
+    enc.write_u64(receipt.requested().get());
+    enc.write_u64(receipt.accepted().get());
+    enc.write_u64(receipt.source_before().get());
+    enc.write_u64(receipt.source_after().get());
+    enc.write_u64(receipt.target_before().get());
+    enc.write_u64(receipt.target_after().get());
+    enc.write_u64(receipt.causal_parents().len() as u64);
+    for parent in receipt.causal_parents() {
+        enc.write_u64(parent.raw());
+    }
+    match receipt.forcing_origin() {
+        None => encode_bool(enc, false),
+        Some(origin) => {
+            encode_bool(enc, true);
+            enc.write_u64(origin.raw());
+        }
+    }
+    // The two proposal keys are batch-local names, not traces. They are persisted
+    // so an evicted batch's receipts can still be matched to the events that
+    // carried them while those events remain in the store.
+    for key in [receipt.transfer_event(), receipt.storage_event()] {
+        match key {
+            None => encode_bool(enc, false),
+            Some(key) => {
+                encode_bool(enc, true);
+                enc.write_u64(key.bytes().len() as u64);
+                enc.write_bytes(key.bytes());
+            }
+        }
+    }
+}
+
+fn encode_carrier(enc: &mut LittleEndianEncoder<'_>, carrier: HydrologyCarrierKey) {
+    let bytes = carrier.encode();
+    enc.write_u64(bytes.len() as u64);
+    enc.write_bytes(&bytes);
+}
+
+fn encode_hydrology_conservation(
+    enc: &mut LittleEndianEncoder<'_>,
+    receipt: &HydrologyConservationReceipt,
+) {
+    enc.write_u64(receipt.tick());
+    enc.write_u64(receipt.batch_sequence());
+    for term in [
+        receipt.surface_before(),
+        receipt.soil_before(),
+        receipt.groundwater_before(),
+        receipt.conveyance_before(),
+        receipt.surface_after(),
+        receipt.soil_after(),
+        receipt.groundwater_after(),
+        receipt.conveyance_after(),
+        receipt.accepted_precipitation(),
+        receipt.accepted_external_inflow(),
+        receipt.accepted_evapotranspiration(),
+        receipt.boundary_exports(),
+    ] {
+        enc.write_bytes(&term.to_le_bytes());
+    }
+}
+
+/// Decode the complete hydrology state through its validating constructors.
+///
+/// Every collection is rebuilt with the same constructor a live runtime uses, so a
+/// forged section cannot install a state the engine could not have produced: an
+/// unsorted forcing member list, an edge joining non-adjacent cells, a cell holding
+/// more than its capacity, or a duplicate boundary face all fail here rather than
+/// on the first tick that trips over them.
+pub fn decode_hydrology_section(bytes: &[u8]) -> Result<HydrologyRuntimeState, PersistenceError> {
+    use causafera_geography::{
+        HydraulicSubstrateCell, HydraulicSubstrateParts, HydrologyActiveRegion,
+        HydrologyBoundaryMap, HydrologyCellState, HydrologyCellStorage, HydrologyConveyanceEdge,
+        HydrologyConveyanceGraph, HydrologyEdgeKey, HydrologyExteriorFaceKey, HydrologyField,
+        HydrologyFieldSet, HydrologyForcingMember, HydrologyForcingParts, HydrologyForcingRecord,
+        HydrologyGridMetrics, HydrologyResolutionState, MAX_HYDROLOGY_BOUNDARY_RECORDS,
+        MAX_HYDROLOGY_CHUNKS, MAX_HYDROLOGY_EDGES, MAX_HYDROLOGY_STORED_RECEIPT_BATCHES,
+        SURFACE_CELL_COUNT,
+    };
+
+    let mut dec = LittleEndianDecoder::new(bytes);
+    let mut state = HydrologyRuntimeState::disabled();
+    if !decode_bool(&mut dec)? {
+        require_empty(&dec)?;
+        return Ok(state);
+    }
+
+    let policy_schema = dec.read_u16()?;
+    if policy_schema != HydrologyResolutionPolicy::SCHEMA_VERSION {
+        return Err(PersistenceError::codec(format!(
+            "unsupported hydrology resolution policy schema {policy_schema}"
+        )));
+    }
+    let resolution_policy = HydrologyResolutionPolicy {
+        schema_version: policy_schema,
+        enabled: decode_bool(&mut dec)?,
+        max_level: dec.read_u8()?,
+    };
+    let next_node_id = dec.read_u64()?;
+    let batch_sequence = dec.read_u64()?;
+    let conservation_last_change = TraceId::new(dec.read_u64()?);
+
+    let metric_count = read_count(&mut dec, MAX_HYDROLOGY_CHARTS, "hydrology grid metric")?;
+    let mut metric_entries = Vec::with_capacity(metric_count);
+    for _ in 0..metric_count {
+        let chart = SpatialChartId::new(dec.read_u64()?);
+        let schema_version = dec.read_u16()?;
+        metric_entries.push((
+            chart,
+            HydrologyGridMetric::from_parts(
+                schema_version,
+                dec.read_u64()?,
+                dec.read_u64()?,
+                dec.read_u64()?,
+            )
+            .map_err(hydrology_codec)?,
+        ));
+    }
+    let metrics = HydrologyGridMetrics::new(metric_entries).map_err(hydrology_codec)?;
+
+    let resolution_count =
+        read_count(&mut dec, MAX_HYDROLOGY_CHUNKS, "hydrology resolution entry")?;
+    let mut resolution = BTreeMap::new();
+    for _ in 0..resolution_count {
+        let chunk = decode_chart_chunk(&mut dec)?;
+        let level = dec.read_u8()?;
+        let entry = HydrologyResolutionState::new(level, TraceId::new(dec.read_u64()?))
+            .map_err(hydrology_codec)?;
+        if resolution.insert(chunk, entry).is_some() {
+            return Err(PersistenceError::codec(
+                "duplicate hydrology resolution entry",
+            ));
+        }
+    }
+
+    let resident = decode_chunk_set(&mut dec, "hydrology resident chunk")?;
+    let active = decode_chunk_set(&mut dec, "hydrology active chunk")?;
+    let active = HydrologyActiveRegion::new(active, resident).map_err(hydrology_codec)?;
+
+    let field_count = read_count(&mut dec, MAX_HYDROLOGY_CHUNKS, "hydrology field")?;
+    let mut fields = Vec::with_capacity(field_count);
+    for _ in 0..field_count {
+        let chunk = decode_chart_chunk(&mut dec)?;
+        let mut cells = Vec::with_capacity(SURFACE_CELL_COUNT);
+        for _ in 0..SURFACE_CELL_COUNT {
+            let storage = HydrologyCellStorage::new(
+                WaterVolume::new(dec.read_u64()?),
+                WaterVolume::new(dec.read_u64()?),
+                WaterVolume::new(dec.read_u64()?),
+            );
+            let surface = TraceId::new(dec.read_u64()?);
+            let soil = TraceId::new(dec.read_u64()?);
+            let groundwater = TraceId::new(dec.read_u64()?);
+            let fingerprint = StateFingerprint::new(*dec.read_fixed::<32>()?);
+            let forcing = TraceId::new(dec.read_u64()?);
+            let before = HydrologyCellStorage::new(
+                WaterVolume::new(dec.read_u64()?),
+                WaterVolume::new(dec.read_u64()?),
+                WaterVolume::new(dec.read_u64()?),
+            );
+            cells.push(HydrologyCellState::from_parts(
+                storage,
+                surface,
+                soil,
+                groundwater,
+                fingerprint,
+                forcing,
+                before,
+            ));
+        }
+        let mut substrate = Vec::with_capacity(SURFACE_CELL_COUNT);
+        for _ in 0..SURFACE_CELL_COUNT {
+            substrate.push(
+                HydraulicSubstrateCell::new(HydraulicSubstrateParts {
+                    surface_capacity: WaterVolume::new(dec.read_u64()?),
+                    soil_capacity: WaterVolume::new(dec.read_u64()?),
+                    groundwater_capacity: WaterVolume::new(dec.read_u64()?),
+                    infiltration_limit_per_tick: WaterVolume::new(dec.read_u64()?),
+                    percolation_fraction: decode_hydraulic_fraction(&mut dec)?,
+                    specific_yield: decode_hydraulic_fraction(&mut dec)?,
+                    aquifer_base_elevation_mm: dec.read_i64()?,
+                    baseflow_threshold: WaterVolume::new(dec.read_u64()?),
+                    baseflow_fraction: decode_hydraulic_fraction(&mut dec)?,
+                    surface_conductance_mm2_per_tick: dec.read_u64()?,
+                    groundwater_conductance_mm2_per_tick: dec.read_u64()?,
+                })
+                .map_err(hydrology_codec)?,
+            );
+        }
+        fields.push(HydrologyField::from_parts(chunk, cells, substrate).map_err(hydrology_codec)?);
+    }
+    let fields =
+        HydrologyFieldSet::from_parts(fields, &metrics, batch_sequence, conservation_last_change)
+            .map_err(hydrology_codec)?;
+
+    let edge_count = read_count(&mut dec, MAX_HYDROLOGY_EDGES, "hydrology conveyance edge")?;
+    let mut edges = Vec::with_capacity(edge_count);
+    for _ in 0..edge_count {
+        let low = decode_hydrology_cell(&mut dec)?;
+        let high = decode_hydrology_cell(&mut dec)?;
+        let outlet = decode_hydrology_cell(&mut dec)?;
+        let key = HydrologyEdgeKey::new(low, high).map_err(hydrology_codec)?;
+        // Canonical order is the identity, so accepting a reversed pair would give
+        // one face two names.
+        if key.low() != low || key.high() != high {
+            return Err(PersistenceError::codec(
+                "hydrology conveyance edge endpoints are not in canonical order",
+            ));
+        }
+        edges.push(
+            HydrologyConveyanceEdge::new(
+                key,
+                outlet,
+                WaterVolume::new(dec.read_u64()?),
+                WaterVolume::new(dec.read_u64()?),
+                decode_hydraulic_fraction(&mut dec)?,
+                WaterVolume::new(dec.read_u64()?),
+                TraceId::new(dec.read_u64()?),
+                WaterVolume::new(dec.read_u64()?),
+            )
+            .map_err(hydrology_codec)?,
+        );
+    }
+    let conveyance = HydrologyConveyanceGraph::new(edges).map_err(hydrology_codec)?;
+
+    let boundary_count = read_count(
+        &mut dec,
+        MAX_HYDROLOGY_BOUNDARY_RECORDS,
+        "hydrology boundary record",
+    )?;
+    let mut boundary_records = Vec::with_capacity(boundary_count);
+    for _ in 0..boundary_count {
+        let cell = decode_hydrology_cell(&mut dec)?;
+        let direction = FaceDirection::from_code(dec.read_u8()?).map_err(hydrology_codec)?;
+        boundary_records.push((
+            HydrologyExteriorFaceKey::new(cell, direction),
+            decode_hydrology_boundary(&mut dec)?,
+        ));
+    }
+    let boundaries = HydrologyBoundaryMap::new(boundary_records).map_err(hydrology_codec)?;
+
+    let forcing_count = read_count(&mut dec, MAX_HYDROLOGY_FORCING_RECORDS, "hydrology forcing")?;
+    let mut forcing = Vec::with_capacity(forcing_count);
+    for _ in 0..forcing_count {
+        let forcing_id = dec.read_u64()?;
+        let scheduled_tick = dec.read_u64()?;
+        let precipitation_volume = WaterVolume::new(dec.read_u64()?);
+        let potential_et_volume = WaterVolume::new(dec.read_u64()?);
+        let external_inflow_volume = WaterVolume::new(dec.read_u64()?);
+        let origin_trace = TraceId::new(dec.read_u64()?);
+        let producer_policy_schema = dec.read_u64()?;
+        let applied_at = if decode_bool(&mut dec)? {
+            Some(dec.read_u64()?)
+        } else {
+            None
+        };
+        let target_count = read_count(
+            &mut dec,
+            MAX_HYDROLOGY_TARGETS_PER_FORCING,
+            "hydrology forcing target",
+        )?;
+        let mut targets = Vec::with_capacity(target_count);
+        for _ in 0..target_count {
+            let cell = decode_hydrology_cell(&mut dec)?;
+            let weight = NonZeroU64::new(dec.read_u64()?).ok_or_else(|| {
+                PersistenceError::codec("a hydrology forcing weight must be positive")
+            })?;
+            targets.push(HydrologyForcingMember::new(cell, weight));
+        }
+        forcing.push(
+            HydrologyForcingRecord::new(HydrologyForcingParts {
+                forcing_id,
+                scheduled_tick,
+                targets,
+                precipitation_volume,
+                potential_et_volume,
+                external_inflow_volume,
+                origin_trace,
+                producer_policy_schema,
+                applied_at,
+            })
+            .map_err(hydrology_codec)?,
+        );
+    }
+
+    let registry = decode_hydrology_registry(&mut dec)?;
+
+    let batch_count = read_count(
+        &mut dec,
+        MAX_HYDROLOGY_STORED_RECEIPT_BATCHES,
+        "hydrology retained batch",
+    )?;
+    let mut retained_batches = Vec::with_capacity(batch_count);
+    let mut receipts = BTreeMap::new();
+    let mut conservation_receipts = BTreeMap::new();
+    for _ in 0..batch_count {
+        let trace = TraceId::new(dec.read_u64()?);
+        let receipt_count = read_count(
+            &mut dec,
+            causafera_geography::MAX_HYDROLOGY_PERSISTED_TRANSFER_RECEIPTS,
+            "hydrology transfer receipt",
+        )?;
+        let mut batch = Vec::with_capacity(receipt_count);
+        for _ in 0..receipt_count {
+            batch.push(decode_hydrology_receipt(&mut dec)?);
+        }
+        if decode_bool(&mut dec)? {
+            conservation_receipts.insert(trace, decode_hydrology_conservation(&mut dec)?);
+        }
+        if receipts.insert(trace, batch).is_some() {
+            return Err(PersistenceError::codec(
+                "duplicate hydrology retained batch",
+            ));
+        }
+        retained_batches.push(trace);
+    }
+    require_empty(&dec)?;
+
+    state.enabled = true;
+    state.fields = fields;
+    state.conveyance = conveyance;
+    state.boundaries = boundaries;
+    state.metrics = metrics;
+    state.active = active;
+    state.resolution = resolution;
+    state.resolution_policy = resolution_policy;
+    state.forcing = forcing;
+    state.registry = registry;
+    state.next_node_id = next_node_id;
+    state.receipts = receipts;
+    state.conservation_receipts = conservation_receipts;
+    state.retained_batches = retained_batches;
+    Ok(state)
+}
+
+fn hydrology_codec(error: causafera_geography::HydrologyStateError) -> PersistenceError {
+    PersistenceError::codec(format!("invalid hydrology state: {error}"))
+}
+
+fn decode_chunk_set(
+    dec: &mut LittleEndianDecoder<'_>,
+    what: &str,
+) -> Result<std::collections::BTreeSet<ChartChunkCoord>, PersistenceError> {
+    let count = read_count(dec, causafera_geography::MAX_HYDROLOGY_CHUNKS, what)?;
+    let mut chunks = std::collections::BTreeSet::new();
+    for _ in 0..count {
+        if !chunks.insert(decode_chart_chunk(dec)?) {
+            return Err(PersistenceError::codec(format!("duplicate {what}")));
+        }
+    }
+    Ok(chunks)
+}
+
+fn decode_hydraulic_fraction(
+    dec: &mut LittleEndianDecoder<'_>,
+) -> Result<HydraulicFraction, PersistenceError> {
+    let numerator = dec.read_u32()?;
+    let denominator = dec.read_u32()?;
+    HydraulicFraction::from_parts(numerator, denominator).map_err(hydrology_codec)
+}
+
+fn decode_hydrology_registry(
+    dec: &mut LittleEndianDecoder<'_>,
+) -> Result<crate::HydrologyObjectRegistry, PersistenceError> {
+    use causafera_geography::{HydrologyEdgeKey, MAX_HYDROLOGY_CELLS, MAX_HYDROLOGY_EDGES};
+
+    let cell_count = read_count(dec, MAX_HYDROLOGY_CELLS, "hydrology cell ordinal")?;
+    let mut cells = Vec::with_capacity(cell_count);
+    for _ in 0..cell_count {
+        cells.push((decode_hydrology_cell(dec)?, dec.read_u64()?));
+    }
+    let edge_count = read_count(dec, MAX_HYDROLOGY_EDGES, "hydrology edge ordinal")?;
+    let mut edges = Vec::with_capacity(edge_count);
+    for _ in 0..edge_count {
+        let low = decode_hydrology_cell(dec)?;
+        let high = decode_hydrology_cell(dec)?;
+        edges.push((
+            HydrologyEdgeKey::new(low, high).map_err(hydrology_codec)?,
+            dec.read_u64()?,
+        ));
+    }
+    let forcing_count = read_count(
+        dec,
+        MAX_HYDROLOGY_FORCING_RECORDS,
+        "hydrology forcing ordinal",
+    )?;
+    let mut forcing = Vec::with_capacity(forcing_count);
+    for _ in 0..forcing_count {
+        forcing.push(((dec.read_u64()?, dec.read_u64()?), dec.read_u64()?));
+    }
+    let resolution_count = read_count(
+        dec,
+        causafera_geography::MAX_HYDROLOGY_CHUNKS,
+        "hydrology resolution ordinal",
+    )?;
+    let mut resolution = Vec::with_capacity(resolution_count);
+    for _ in 0..resolution_count {
+        resolution.push((decode_chart_chunk(dec)?, dec.read_u64()?));
+    }
+    crate::HydrologyObjectRegistry::from_tables(cells, edges, forcing, resolution)
+        .map_err(|error| PersistenceError::codec(format!("invalid hydrology registry: {error}")))
+}
+
+fn decode_hydrology_receipt(
+    dec: &mut LittleEndianDecoder<'_>,
+) -> Result<HydrologyTransferReceipt, PersistenceError> {
+    use causafera_domains::HydrologyTransferParts;
+
+    let batch_sequence = dec.read_u64()?;
+    let tick = dec.read_u64()?;
+    let process_kind = dec.read_u32()?;
+    let source = decode_carrier(dec)?;
+    let source_bucket = bucket_from_tag(dec.read_u8()?)?;
+    let target = decode_carrier(dec)?;
+    let target_bucket = bucket_from_tag(dec.read_u8()?)?;
+    let requested = WaterVolume::new(dec.read_u64()?);
+    let accepted = WaterVolume::new(dec.read_u64()?);
+    let source_before = WaterVolume::new(dec.read_u64()?);
+    let source_after = WaterVolume::new(dec.read_u64()?);
+    let target_before = WaterVolume::new(dec.read_u64()?);
+    let target_after = WaterVolume::new(dec.read_u64()?);
+    let parent_count = read_count(dec, MAX_HYDROLOGY_CAUSES, "hydrology receipt parent")?;
+    let mut causal_parents = Vec::with_capacity(parent_count);
+    for _ in 0..parent_count {
+        causal_parents.push(TraceId::new(dec.read_u64()?));
+    }
+    let forcing_origin = if decode_bool(dec)? {
+        Some(TraceId::new(dec.read_u64()?))
+    } else {
+        None
+    };
+    let transfer_event = decode_proposal_key(dec)?;
+    let storage_event = decode_proposal_key(dec)?;
+    HydrologyTransferReceipt::new(HydrologyTransferParts {
+        batch_sequence,
+        tick,
+        process_kind,
+        source,
+        source_bucket,
+        target,
+        target_bucket,
+        requested,
+        accepted,
+        source_before,
+        source_after,
+        target_before,
+        target_after,
+        causal_parents,
+        forcing_origin,
+        transfer_event,
+        storage_event,
+    })
+    .map_err(|error| PersistenceError::codec(format!("invalid hydrology receipt: {error}")))
+}
+
+const MAX_HYDROLOGY_CAUSES: usize = causafera_geography::MAX_HYDROLOGY_CAUSES_PER_EVENT;
+
+fn bucket_from_tag(tag: u8) -> Result<causafera_domains::HydrologyBucket, PersistenceError> {
+    use causafera_domains::HydrologyBucket;
+    match tag {
+        0x01 => Ok(HydrologyBucket::Surface),
+        0x02 => Ok(HydrologyBucket::Soil),
+        0x03 => Ok(HydrologyBucket::Groundwater),
+        0x04 => Ok(HydrologyBucket::ForcingInput),
+        0x05 => Ok(HydrologyBucket::Conveyance),
+        0x06 => Ok(HydrologyBucket::Resolution),
+        0x07 => Ok(HydrologyBucket::ForcingRecord),
+        0x08 => Ok(HydrologyBucket::CoarseProcess),
+        0x09 => Ok(HydrologyBucket::External),
+        other => Err(PersistenceError::codec(format!(
+            "unknown hydrology bucket tag {other:#04x}"
+        ))),
+    }
+}
+
+fn decode_carrier(
+    dec: &mut LittleEndianDecoder<'_>,
+) -> Result<HydrologyCarrierKey, PersistenceError> {
+    let length = read_count(dec, 64, "hydrology carrier key byte")?;
+    let mut bytes = Vec::with_capacity(length);
+    for _ in 0..length {
+        bytes.push(dec.read_u8()?);
+    }
+    HydrologyCarrierKey::decode(&bytes).map_err(hydrology_codec)
+}
+
+fn decode_proposal_key(
+    dec: &mut LittleEndianDecoder<'_>,
+) -> Result<Option<causafera_core::provenance::CausalEventProposalKey>, PersistenceError> {
+    if !decode_bool(dec)? {
+        return Ok(None);
+    }
+    let length = read_count(dec, 256, "hydrology proposal key byte")?;
+    let mut bytes = Vec::with_capacity(length);
+    for _ in 0..length {
+        bytes.push(dec.read_u8()?);
+    }
+    causafera_core::provenance::CausalEventProposalKey::from_bytes(&bytes)
+        .map(Some)
+        .map_err(|error| {
+            PersistenceError::codec(format!("invalid hydrology proposal key: {error}"))
+        })
+}
+
+fn decode_hydrology_conservation(
+    dec: &mut LittleEndianDecoder<'_>,
+) -> Result<HydrologyConservationReceipt, PersistenceError> {
+    use causafera_domains::HydrologyConservationParts;
+
+    let tick = dec.read_u64()?;
+    let batch_sequence = dec.read_u64()?;
+    let mut terms = [0_i128; 12];
+    for term in &mut terms {
+        *term = i128::from_le_bytes(*dec.read_fixed::<16>()?);
+    }
+    HydrologyConservationReceipt::new(HydrologyConservationParts {
+        tick,
+        batch_sequence,
+        surface_before: terms[0],
+        soil_before: terms[1],
+        groundwater_before: terms[2],
+        conveyance_before: terms[3],
+        surface_after: terms[4],
+        soil_after: terms[5],
+        groundwater_after: terms[6],
+        conveyance_after: terms[7],
+        accepted_precipitation: terms[8],
+        accepted_external_inflow: terms[9],
+        accepted_evapotranspiration: terms[10],
+        boundary_exports: terms[11],
+    })
+    .map_err(|error| {
+        PersistenceError::codec(format!("invalid hydrology conservation receipt: {error}"))
+    })
 }
 
 #[cfg(test)]
