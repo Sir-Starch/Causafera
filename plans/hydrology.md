@@ -3612,6 +3612,8 @@ its own evidence-backed follow-up TODO rather than being hidden in Progress.
     timeout. Recorded as observed rather than dismissed.
   - `git diff --check` — clean.
 
+  Checkpoint: `e4d0505`.
+
 Execution must begin by re-reading this Progress section and Decision log, then inspecting
 `git status`. The implementing agent updates both sections whenever scope, contract, verification,
 or checkpoint evidence changes.
