@@ -35,7 +35,7 @@
 
 use causafera_core::{Phase, RandomStream, StreamKey};
 use causafera_persistence::SnapshotEnvelope;
-use causafera_runtime::snapshot_sections::assemble_envelope;
+use causafera_runtime::snapshot_sections::{SECTION_RUNTIME_RECIPE, assemble_envelope};
 use causafera_runtime::{
     ActiveChunkShape, CURRENT_DIGEST_SCHEMA_VERSION, Runtime, RuntimeConfig, RuntimeSnapshotData,
     SchedulerRegistration,
@@ -396,13 +396,47 @@ fn pre_hydrology_section_payloads_are_pinned() {
         })
         .collect();
 
-    // Then: every section matches the captured baseline exactly.
+    // Then: every *legacy subsystem* section matches the captured baseline byte
+    // for byte. This is the assertion that matters for V22: adding hydrology must
+    // not perturb mana, terrain, actors, traces, or any other domain's payload.
+    let legacy: Vec<_> = projection
+        .iter()
+        .filter(|section| section.0 != u64::from(SECTION_RUNTIME_RECIPE))
+        .cloned()
+        .collect();
+    let legacy_expected: Vec<_> = expected
+        .iter()
+        .filter(|section| section.0 != u64::from(SECTION_RUNTIME_RECIPE))
+        .cloned()
+        .collect();
     assert_eq!(
-        projection,
-        expected,
-        "pre-hydrology section projection drifted; measured table was:{}",
+        legacy,
+        legacy_expected,
+        "a pre-hydrology subsystem section drifted; measured table was:{}",
         rust_literal(&projection)
     );
+
+    // And: the runtime recipe section changed, deliberately and by exactly the
+    // declared amount. The recipe describes what a session was configured to be,
+    // so a new domain belongs in it; recording the size of a disabled hydrology
+    // block is what keeps that from being a place future state can hide.
+    let recipe = projection
+        .iter()
+        .find(|section| section.0 == u64::from(SECTION_RUNTIME_RECIPE))
+        .expect("the recipe section is required");
+    let recipe_before = expected
+        .iter()
+        .find(|section| section.0 == u64::from(SECTION_RUNTIME_RECIPE))
+        .expect("the baseline recorded the recipe section");
+    assert_eq!(recipe_before.1, PRE_HYDROLOGY_RECIPE_MAJOR);
+    assert_eq!(recipe.1, HYDROLOGY_RECIPE_MAJOR);
+    assert_eq!(
+        recipe.5,
+        recipe_before.5 + DISABLED_HYDROLOGY_RECIPE_BYTES,
+        "a disabled hydrology configuration must encode exactly its version fields \
+         and its empty collections"
+    );
+    assert_ne!(recipe.6, recipe_before.6, "the recipe payload changed");
 
     // And: the projection is non-vacuous — the evolved world really did fill
     // the subsystem sections this fixture exists to protect.
@@ -468,16 +502,44 @@ fn pre_hydrology_digests_are_pinned() {
         "experiment digest"
     );
 
+    // And: the full envelope digest moved, because the recipe section it covers
+    // now records the hydrology configuration. That is the one declared change
+    // at this stage — the three authoritative digests above are byte-identical,
+    // which is what says no legacy subsystem state was disturbed to get here.
     let encoded = assemble_envelope(&runtime.export_snapshot().expect("state must export"))
         .expect("state must assemble")
         .encode()
         .expect("envelope must encode");
-    assert_eq!(
+    assert_ne!(
         digest_hex(&encoded),
         PRE_HYDROLOGY_ENVELOPE_DIGEST,
-        "complete envelope"
+        "the envelope digest must move with the recipe section"
+    );
+    assert_eq!(
+        digest_hex(&encoded),
+        DISABLED_HYDROLOGY_ENVELOPE_DIGEST,
+        "complete envelope with a disabled hydrology recipe"
     );
 }
+
+/// The runtime recipe section major before hydrology was configurable.
+const PRE_HYDROLOGY_RECIPE_MAJOR: u16 = 6;
+
+/// The major that carries the hydrology configuration.
+const HYDROLOGY_RECIPE_MAJOR: u16 = 7;
+
+/// Bytes a disabled hydrology configuration adds to the runtime recipe.
+///
+/// `limits_schema` and the resolution policy's schema version at two bytes each,
+/// three one-byte flags, one byte of maximum level, and two eight-byte counts for
+/// the empty metric and forcing collections. A disabled domain still says so
+/// explicitly, because "off" and "absent" are different claims about a snapshot.
+const DISABLED_HYDROLOGY_RECIPE_BYTES: usize = 2 + 1 + 2 + 1 + 1 + 8 + 1 + 8;
+
+/// The full-envelope digest of the same pre-hydrology world once its recipe
+/// records a disabled hydrology configuration.
+const DISABLED_HYDROLOGY_ENVELOPE_DIGEST: &str =
+    "35b4489e35ad7e09b0f371f35b125864f2c999594b287d249e3229bf379ddb0b";
 
 // ---------------------------------------------------------------------------
 // Resume equivalence

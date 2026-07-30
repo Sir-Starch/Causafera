@@ -2495,6 +2495,33 @@ its own evidence-backed follow-up TODO rather than being hidden in Progress.
   is not permitted to create water. Recorded because the first version of the test asserted the
   larger aggregate and was wrong.
 
+- **2026-07-30 — Stage 6 is executed in five waves.** The stage spans thirty files across the Rust
+  runtime, the lab, the observer API and wire, the Tauri session, the TypeScript protocol, and the
+  audit tooling, and its parts have genuinely different failure modes. The waves are: **A** the
+  configuration contract, appended registration, and recipe major 7; **B** runtime hydrology state,
+  the Physics system, the DAG mapping, the §8 terminal tree, the §9 coarse-input trees, the persisted
+  node counter, and the whole-tick staging transaction; **C** the seventh production bootstrap stage
+  and its object registry; **D** section `0x000F`, digest schema 8, and import validation; **E**
+  the additive observer field 48 across all four language surfaces plus the audits. Each wave has its
+  own green gate and checkpoint. The stage's contract is unchanged — this is execution order, not a
+  rescope.
+- **2026-07-30 — Stage 6 wave A: V22's "byte-identical" applies to legacy *subsystem* sections, not
+  to the recipe.** Adding `HydrologyConfig` to `RuntimeConfig` changes the runtime recipe section by
+  construction, and the recipe is what a session was configured to be, so a new domain belongs in it.
+  Measured: the physical, history, and experiment digests are byte-identical after the change, and
+  only the full-envelope digest moves. `pre_hydrology_section_payloads_are_pinned` therefore asserts
+  every section *except* the recipe against its captured row, and asserts the recipe's change is
+  exactly the declared one — major 6 to 7, and a payload longer by exactly the 24 bytes a disabled
+  hydrology block encodes. `pre_hydrology_digests_are_pinned` keeps the three authoritative digests
+  pinned unchanged and asserts the envelope digest moved. Re-pinning the whole table would have
+  hidden precisely what V22 exists to expose.
+- **2026-07-30 — Stage 6 wave A: a disabled hydrology configuration encodes itself explicitly.** The
+  recipe writes the limits schema, the resolution policy's schema and flags, and both empty
+  collection counts even when the domain is off. Encoding nothing would make "hydrology was disabled
+  in this world" and "this snapshot predates hydrology" the same bytes, and only one of those is a
+  statement about the world the snapshot describes. The 24-byte cost is asserted by name so future
+  state cannot accumulate there unnoticed.
+
 ## Progress
 
 - **2026-07-29 — Accepted.** Revision 19 is the authoritative hydrology implementation plan.
@@ -2949,6 +2976,65 @@ its own evidence-backed follow-up TODO rather than being hidden in Progress.
   itself, and the synthetic-node ID counter are Stage 6, which is where the persisted counter lives.
   Nothing yet consumes `HydrologyRepresentationChange` — the runtime's `Phase::Resolution` adapter is
   Stage 6 as well.
+
+- **2026-07-30 — Stage 6 wave A complete: the configuration contract.** `HydrologyConfig` exists, is
+  disabled by default, validates its bounds when enabled, and round-trips through the canonical
+  runtime recipe encoding at major 7. Checkpoint commit `<pending>`.
+
+  Files changed and why:
+
+  - `crates/causafera-runtime/src/hydrology_config.rs` (new) — `HydrologyConfig`,
+    `HydrologyForcingSpec`, `HydrologyBootstrapParameters`, `HydrologyBootstrapOverride`, and their
+    validation.
+  - `crates/causafera-runtime/src/config.rs` — `RuntimeConfig::hydrology`, defaulted to disabled and
+    validated at construction.
+  - `crates/causafera-runtime/src/runtime.rs` — thirteen refusal variants.
+  - `crates/causafera-runtime/src/snapshot_sections.rs` — recipe major 6 to 7, and the canonical
+    hydrology configuration encoder and decoder.
+  - `crates/causafera-runtime/src/lib.rs` — module registration and re-export.
+  - `crates/causafera-runtime/tests/hydrology_runtime.rs` (new) — 15 tests.
+  - `crates/causafera-runtime/tests/hydrology_legacy_compatibility.rs` — the two V22 tests now
+    separate the legacy subsystem payloads from the declared recipe change.
+
+  What the gates actually assert:
+
+  - **The disabled default** — a new `RuntimeConfig` carries no metric, no parameters, no forcing, and
+    a disabled resolution policy, and constructs; a disabled configuration carrying any one of those
+    four is refused rather than silently ignored.
+  - **Bounded enablement** — enabling without bootstrap parameters or without an explicit grid metric
+    is refused; an unknown limits or bootstrap schema is refused rather than assumed; each of the four
+    fractions outside `[0, 1]` is refused; initial storage above its own capacity is refused for all
+    four buckets rather than clamped; groundwater capacity without a specific yield is refused.
+  - **The forcing schedule** — a record at tick zero is refused and tick one is admitted; the horizon
+    itself is admitted and one tick past it is refused; unsorted, duplicated, empty-target, unsorted-
+    target, and duplicated-target schedules are all refused; a resolution level above the
+    representable maximum is refused rather than clamped.
+  - **The canonical encoding** — a disabled configuration round-trips; an enabled one round-trips
+    every field including a negative aquifer offset, per-chart and per-cell overrides, and a
+    single-face open boundary; re-encoding a decoded value is byte-identical, so one configuration has
+    one representation; two sessions differing only in whether hydrology is on do not share recipe
+    bytes.
+  - **V22** — every pre-hydrology subsystem section is byte-identical; the recipe section moved from
+    major 6 to 7 and grew by exactly 24 bytes; the physical, history, and experiment digests are
+    unchanged and the full-envelope digest moved.
+
+  Commands run and their actual results:
+
+  - `cargo test -p causafera-runtime --test hydrology_runtime` — **15 passed**.
+  - `cargo test -p causafera-runtime --test hydrology_legacy_compatibility` — **7 passed**.
+  - `cargo clippy --workspace --all-targets --all-features -- -D warnings` — clean.
+  - `cargo fmt --all -- --check` — clean.
+  - `git diff --check` — clean.
+  - `cargo test --workspace --all-features` — all 78 suites passed.
+  - `cargo test --workspace --no-default-features` — all 78 suites passed.
+  - `node tools/audit/check-entry-points.mjs` — pass (27 entry points, 18 tests).
+  - `node tools/audit/run-source-tests.mjs` — 0 failures.
+
+  Not done in this wave, by design: nothing yet *executes* hydrology. The system is not registered,
+  no runtime state is held, and no tick proposes anything — an enabled configuration currently
+  validates, persists, and reloads without producing water. Waves B through E remain, in the order
+  recorded in the Decision log; the digest schema is still 7 and section `0x000F` does not exist yet,
+  so the plan's schema-8 and required-section changes are still ahead.
 
 Execution must begin by re-reading this Progress section and Decision log, then inspecting
 `git status`. The implementing agent updates both sections whenever scope, contract, verification,

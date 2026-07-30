@@ -520,6 +520,47 @@ pub enum RuntimeError {
     ActorCognition(#[from] causafera_cognition::SceneUpdateError),
     #[error("snapshot is invalid: {0}")]
     InvalidSnapshot(&'static str),
+    #[error("hydrology limits schema {schema} is not supported")]
+    HydrologyLimitsSchemaUnknown { schema: u16 },
+    #[error("hydrology bootstrap parameter schema {schema} is not supported")]
+    HydrologyBootstrapParametersSchemaUnknown { schema: u16 },
+    /// A disabled hydrology configuration has exactly one canonical shape.
+    /// Carrying parameters it will never use means its author believed something
+    /// the runtime does not.
+    #[error("a disabled hydrology configuration carries state it cannot use")]
+    HydrologyDisabledConfigNotCanonical,
+    #[error("hydrology is enabled without bootstrap parameters")]
+    HydrologyEnabledWithoutParameters,
+    #[error("hydrology is enabled without an explicit grid metric")]
+    HydrologyMetricMissing,
+    #[error("hydrology resolution level {level} is above the representable maximum")]
+    HydrologyResolutionLevelUnsupported { level: u8 },
+    #[error("hydrology {what}: {count} exceeds the limit of {max}")]
+    HydrologyBoundExceeded {
+        what: &'static str,
+        count: usize,
+        max: usize,
+    },
+    #[error("a hydrology forcing schedule is unsorted, duplicated, or empty")]
+    HydrologyForcingScheduleNotCanonical,
+    #[error(
+        "a hydrology forcing record is scheduled for tick {scheduled_tick}, \
+         which is not after the bootstrap tick {bootstrap_tick}"
+    )]
+    HydrologyForcingScheduledTooEarly {
+        scheduled_tick: u64,
+        bootstrap_tick: u64,
+    },
+    #[error(
+        "a hydrology forcing record at tick {scheduled_tick} is beyond the {horizon}-tick horizon"
+    )]
+    HydrologyForcingBeyondHorizon { scheduled_tick: u64, horizon: u64 },
+    #[error("a hydrology fraction {numerator}/{denominator} is outside [0, 1]")]
+    HydrologyFractionOutOfRange { numerator: u32, denominator: u32 },
+    #[error("hydrology initial storage exceeds its own configured capacity")]
+    HydrologyInitialStorageExceedsCapacity,
+    #[error("hydrology configures groundwater capacity without a specific yield")]
+    HydrologyZeroSpecificYield,
 }
 
 impl From<ManaError> for RuntimeError {
