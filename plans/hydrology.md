@@ -2735,7 +2735,7 @@ its own evidence-backed follow-up TODO rather than being hidden in Progress.
   carries an always-empty `edge_changes`; both are the seams those stages fill.
 
 - **2026-07-30 — Stage 4 complete.** Substages 5 through 8 are implemented and the whole tick closes
-  over routing, baseflow, conveyance, and boundary export. Checkpoint commit `<pending>`.
+  over routing, baseflow, conveyance, and boundary export. Checkpoint commit `bdc2a83`.
 
   Files changed and why:
 
