@@ -2979,7 +2979,7 @@ its own evidence-backed follow-up TODO rather than being hidden in Progress.
 
 - **2026-07-30 — Stage 6 wave A complete: the configuration contract.** `HydrologyConfig` exists, is
   disabled by default, validates its bounds when enabled, and round-trips through the canonical
-  runtime recipe encoding at major 7. Checkpoint commit `<pending>`.
+  runtime recipe encoding at major 7. Checkpoint commit `9725d2d`.
 
   Files changed and why:
 
