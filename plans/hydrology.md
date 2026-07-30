@@ -3515,6 +3515,8 @@ its own evidence-backed follow-up TODO rather than being hidden in Progress.
   - `node tools/audit/check-entry-points.mjs` — pass (30 entry points, 20 tests).
   - `git diff --check` — clean.
 
+  Checkpoint: `7ab9cae`.
+
   One defect this wave found and fixed rather than carried: the composed accounting immediately
   refused a session whose configuration the same runtime had just accepted, because wave D's
   forcing-target residency rule made that session unexportable while leaving it tickable. A cap check
