@@ -4185,7 +4185,7 @@ its own evidence-backed follow-up TODO rather than being hidden in Progress.
   accepted as a performance architecture — see the Decision log entry above. No throughput, scale,
   or emergence claim is made anywhere in this plan's documentation.
 
-- **2026-07-30 — Post-review remediation of the §11 import obligations.** Checkpoint `PLACEHOLDER`.
+- **2026-07-30 — Post-review remediation of the §11 import obligations.** Checkpoints `4a99c26` and `8e58418`.
 
   An independent gate review of `ced3569` reported six blockers. Five were real and are fixed here;
   the sixth was a benchmark run the reviewer interrupted (`SIGINT`, exit 130) rather than a defect —
