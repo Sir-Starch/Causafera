@@ -3262,7 +3262,7 @@ its own evidence-backed follow-up TODO rather than being hidden in Progress.
 
 - **2026-07-30 — Stage 6 wave D complete: persistence, digest schema 8, and import validation.**
   Hydrology state survives export and reload byte for byte, is authoritative equality input under the
-  new digest schema, and a malformed or forged section fails closed. Checkpoint commit `<pending>`.
+  new digest schema, and a malformed or forged section fails closed. Checkpoint commit `33d04c4`.
 
   Files changed and why:
 
