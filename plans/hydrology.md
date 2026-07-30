@@ -2827,6 +2827,31 @@ its own evidence-backed follow-up TODO rather than being hidden in Progress.
   no such package existed. That was wrong — it is `apps/observer/src-tauri`. The gate runs and passes
   (**12 tests**), and it is part of every wave's evidence from Stage 7 onwards.
 
+- **2026-07-30 — Stage 7 wave B: exact water volumes travel as `Ratio { v, 1 }`.** §12 forbids
+  widening `NumericClaimValue`. A water volume is a `u64` and the existing `Scalar`/`Range` variants
+  are `i64`, so the upper half of the range has no signed image. `exact_volume` builds the ratio; the
+  storage minimum and maximum are two claims rather than one `Range` for the same reason. `Range`
+  survives only where the quantity is genuinely signed — water-table elevation.
+
+- **2026-07-30 — Stage 7 wave B: a nonzero conservation residual answers with insufficiency, not an
+  error.** Thermal's equivalent claim errors out. §12 states the hydrology rule differently: "any
+  nonzero/uncommitted residual returns typed insufficiency". A nonzero residual means the batch is
+  not committed evidence, and reporting the discrepancy as a measurement would present an
+  uncommitted state as a finding. A transfer whose three volumes do not close is a different matter
+  and *is* an error — those come from one receipt, so a caller presenting them not closing has built
+  the claim from parts of different transfers.
+
+- **2026-07-30 — Stage 7 wave B: the water-table formula is exposed rather than copied.**
+  `groundwater_head_mm` was a private method on `RoutingChannel`. The Explanation claim needs the
+  same number, and a second implementation would produce evidence about a value the solver never
+  used. It is now a public function in `causafera-domains` and the routing channel delegates to it.
+
+- **2026-07-30 — Stage 7 wave B: hydrology claim schemas are rendered, unlike thermal's.** Schemas 16
+  through 19 fall through to `render.rs`'s generic renderer. Stage 7's file list names `render.rs`, so
+  the ten hydrology schemas are registered in all five locales instead. Rendering stays strictly
+  downstream: `rendering_is_locale_dependent_and_the_claims_are_not` asserts that the claims are
+  identical across locales and only the text differs.
+
 ## Progress
 
 - **2026-07-29 — Accepted.** Revision 19 is the authoritative hydrology implementation plan.
@@ -3857,6 +3882,47 @@ its own evidence-backed follow-up TODO rather than being hidden in Progress.
 
   Not yet done in Stage 7: Explanation claims, the `.proto` backfill, the TypeScript decoder, and the
   three Node audits.
+
+- **2026-07-30 — Stage 7 wave B complete: typed hydrology Explanation.**
+
+  Files changed:
+
+  - `crates/causafera-explanation/src/ir.rs` — schemas 20..=29, `exact_volume`,
+    `HydrologyStorageClaim`, `HydrologyForcingClaim`, `HydrologyTransferPathClaim`,
+    `HydrologyConservationClaim`, and the `HydrologyTransferDoesNotClose` error.
+  - `crates/causafera-explanation/src/render.rs` — the ten schema names in five locales.
+  - `crates/causafera-domains/src/hydrology/evolution.rs`, `hydrology/mod.rs` — `groundwater_head_mm`
+    lifted out of `RoutingChannel::head` and exported.
+  - `crates/causafera-runtime/src/hydrology_projection.rs` — the scoped claim builder, bounded to
+    64 evidence traces per claim.
+  - `crates/causafera-runtime/src/runtime.rs` — `Runtime::observer_hydrology_explanation`.
+  - `crates/causafera-runtime/tests/hydrology_explanation.rs` — new, **12 tests**.
+
+  What the tests establish:
+
+  - **Exact values (V29)** — storage bounds and totals are `Ratio { v, 1 }`; a per-carrier volume of
+    `u64::MAX` survives; the water table is a signed `Range`.
+  - **Insufficiency (V29)** — an unresolved chunk, a session that never enabled hydrology, and a
+    whole-scope total above `u64::MAX` all answer `Unknown` with no traces and zero confidence,
+    while the per-carrier bounds beside an unrepresentable total stay supported.
+  - **Residual (§8, §12)** — a committed batch reports `Scalar { 0 }` supported; a nonzero residual
+    reports insufficiency; a transfer whose volumes do not close is refused at construction.
+  - **Ancestry (V2, §12)** — the accepted-forcing claim cites the producer's own origin trace.
+  - **Retention (V33)** — after eviction the forcing claims report insufficiency.
+  - **Locale neutrality (V27)** — the same claims render differently in English and Russian.
+
+  Commands run and their actual results:
+
+  - `cargo test -p causafera-explanation --all-features` — **17 passed**, 0 failed.
+  - `cargo test -p causafera-runtime --test hydrology_explanation` — **12 passed**, 0 failed.
+  - `cargo test --workspace --all-features` — 84 suites, **913 passed**, 0 failed.
+  - `cargo clippy --workspace --all-targets --all-features -- -D warnings` — clean.
+  - `cargo fmt --all -- --check` — clean.
+  - `node tools/audit/validate-i18n.mjs` — pass (5 locales, 251 keys each).
+  - `node tools/audit/run-source-tests.mjs` — **51 passed**, 0 failed.
+  - `git diff --check` — clean.
+
+  Not yet done in Stage 7: the `.proto` backfill, the TypeScript decoder, and the three Node audits.
 
 Execution must begin by re-reading this Progress section and Decision log, then inspecting
 `git status`. The implementing agent updates both sections whenever scope, contract, verification,
