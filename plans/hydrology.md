@@ -2888,6 +2888,41 @@ its own evidence-backed follow-up TODO rather than being hidden in Progress.
   does not extend, and extending it would be the semantic classification the plan forbids feeding
   back. Recorded rather than silently skipped.
 
+- **2026-07-30 — Stage 8: the fine-versus-coarse comparison could not be obtained, and the
+  retained-fine/coarse design is therefore not accepted as a performance architecture on this
+  evidence.** The benchmark plan makes acceptance conditional on a coarse workload evaluating
+  strictly fewer vertical groups and internal faces than a fine one. Two independent reasons blocked
+  it. `ResolutionPolicy` is a compiled constant rather than configuration — deliberately — and a
+  hydrology policy with a lower maximum refuses the tick instead of coarsening it, so a benchmark
+  cannot ask for a coarse world; the engine placed every resident chunk at level 3 in all six
+  workloads, leaving no fine chunk to compare against. And coarse grouping did not engage even at
+  level 3: `HydrologyConstitutiveKey` requires exact equality, that identity includes the substrate's
+  derived conductances, and those derive from per-cell terrain roughness, so the nine-chunk workload
+  at block edge 8 still evaluated 9,216 vertical groups over 9,216 cells — one per cell. That is the
+  design working as specified rather than a defect, and the consequence is recorded in
+  `docs/performance/benchmarks.md` and in `TODO-HYDRO-001`'s outcome instead of the level number
+  being reported as if it were a saving.
+
+- **2026-07-30 — Stage 8: the 1,000- and 10,000-tick sweeps are unreachable, and the ceiling is the
+  measurement.** The 256 MiB export cap refuses a tick at 221 for one chunk, 59 for three, and 15
+  for nine. Nothing else bounds a hydrology session: per-tick cost grows from ~104 ms to ~726 ms over
+  those 221 ticks, and what the session pays for is the causal trace store rather than the solver.
+  The harness reports where the cap engaged rather than treating the refusal as a failure — the tick
+  is rolled back whole by the staging transaction, so the state measured afterwards is the last one
+  that committed.
+
+- **2026-07-30 — Stage 8: `docs/world/hydrology.md` was rewritten rather than amended.** It described
+  `WaterBody` with `River`/`Lake`/`Wetland` types, polygon boundaries, float volumes, sediment load,
+  drainage networks, and catchments — every one of which the plan forbids in authoritative state, and
+  several of which a production-boundary audit now fails the build over. Amending it would have left
+  a document whose first half contradicts its second.
+
+- **2026-07-30 — Stage 8: `docs/observer/protocol.md`'s binding instruction was factually wrong.** It
+  said to generate Rust and TypeScript bindings from the proto definitions and not to duplicate
+  schemas by hand. There is no generated-binding pipeline and both codecs are hand-written. The
+  document now says so and names the schema-conformance audit that stands in for the missing build
+  step.
+
 ## Progress
 
 - **2026-07-29 — Accepted.** Revision 19 is the authoritative hydrology implementation plan.
@@ -4049,6 +4084,70 @@ its own evidence-backed follow-up TODO rather than being hidden in Progress.
   real engine payloads, exact `.proto` schema-conformance coverage, adversarial decoding of malformed
   and unsupported payloads, and proof that query cadence, projection choice, locale, and observer
   absence leave the authoritative digests unchanged.
+
+- **2026-07-30 — Stage 8 complete: benchmarks, status documents, and full validation.**
+
+  Files changed:
+
+  - `apps/observer/src-tauri/examples/hydrology_bench.rs` — new; the six workloads, the per-level
+    resolution report, and the export-cap ceiling probe. Every measured run asserts an exactly-zero
+    residual on each retained batch before its timing is reported.
+  - `apps/observer/src-tauri/Cargo.toml` — `causafera-domains` and `causafera-geography` as
+    dev-dependencies, for the example only; the shipped binary links neither.
+  - `docs/performance/benchmarks.md` — the measured results, the environment, the export-cap
+    ceilings, and an explicit statement that the fine/coarse comparison was not obtained.
+  - `docs/world/hydrology.md` — rewritten to describe what is implemented, with an explicit
+    "what is not implemented" section.
+  - `docs/observer/protocol.md` — the corrected binding statement, the response cap, and the
+    hydrology wire contract.
+  - `docs/architecture/observer.md` — the bounded hydrology read model.
+  - `docs/architecture/protocol.md` — hydrology as the worked example of an additive change.
+  - `docs/explanation/explanation-ir.md` — the ten hydrology claim schemas and the insufficiency
+    rules.
+  - `docs/world/historical-bootstrap.md` — the seventh stage, digest schema 8, and the field-48
+    split.
+  - `docs/world/spatial-hierarchy.md` — hydrology as chunk-resident state.
+  - `docs/ontology/causal-carriers.md` — the hydrology carrier family and the tick ledger.
+  - `docs/ontology/domain-coverage-matrix.md` — Hydrology M0 → **M2**, with Geography and Climate
+    adjusted to match.
+  - `docs/development/todo-backlog.md` — `TODO-HYDRO-001` closed, with an outcome that names the
+    limitation the benchmark found.
+  - `CHANGELOG.md`, `PLANS.md` — the slice recorded; the plan moved to Completed.
+
+  Measured results (commit `4f56b5d`, rustc 1.97.1, release with thin LTO, Ryzen 9 7950X3D,
+  64 GB, 10 repetitions after warm-up):
+
+  | Workload | ticks | cells | vertical | faces | mean ms | stddev |
+  | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+  | 1. one chunk, vertical only | 24 | 1,024 | 1,024 | 0 | 2,489.401 | 32.446 |
+  | 2. three line chunks, seams | 24 | 3,072 | 3,072 | 639 | 8,848.186 | 212.797 |
+  | 3. nine chunks, full routing | 15 of 24 | 9,216 | 9,216 | 2,111 | 15,690.245 | 292.701 |
+  | 5. snapshot export | 6 | — | — | — | 8.521 | 0.514 |
+  | 5. snapshot import | 6 | — | — | — | 154.245 | 2.277 |
+  | 6. run length 100 | 100 | 1,024 | 858 | 192 | 31,699.029 | 252.006 |
+
+  Export-cap ceilings, exact and deterministic: **221** ticks at one chunk, **59** at three,
+  **15** at nine.
+
+  Full validation (V34), all run and all green:
+
+  - `cargo fmt --all -- --check` — clean.
+  - `cargo clippy --workspace --all-targets --all-features -- -D warnings` — clean.
+  - `cargo test --workspace --all-features` — 84 suites, **914 passed**, 0 failed.
+  - `cargo test --workspace --no-default-features` — 84 suites, **914 passed**, 0 failed.
+  - `cargo run -p xtask -- ci` — CI checks passed.
+  - `pnpm lint` — pass. `pnpm typecheck` — pass. `pnpm build` — pass.
+  - `git diff --check` — clean.
+  - `node tools/audit/check-entry-points.mjs` — pass (32 entry points, 22 tests).
+  - `node tools/audit/run-source-tests.mjs` — **90 passed**, 0 failed.
+  - `node tools/audit/test-hydrology-production-boundaries.mjs` — **6 passed**, 0 failed.
+  - `node tools/audit/test-observer-hydrology-decoder.mjs` — **26 passed**, 0 failed.
+  - `node tools/audit/test-observer-hydrology-legacy-decoder.mjs` — **14 passed**, 0 failed.
+  - `node tools/audit/test-observer-proto-schema.mjs` — **9 passed**, 0 failed.
+
+  Claims not backed by evidence, stated as such: the retained-fine/coarse design is **not**
+  accepted as a performance architecture — see the Decision log entry above. No throughput, scale,
+  or emergence claim is made anywhere in this plan's documentation.
 
 Execution must begin by re-reading this Progress section and Decision log, then inspecting
 `git status`. The implementing agent updates both sections whenever scope, contract, verification,
