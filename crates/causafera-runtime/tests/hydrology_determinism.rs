@@ -1,7 +1,8 @@
 //! Replay, input order, and the whole-tick staging guarantee.
 //!
-//! Covers `plans/hydrology.md` verification gates V23 and the observable half of
-//! V18.
+//! Covers `plans/hydrology.md` verification gates V23 and V18. V18's near-cap case
+//! needs a reachable envelope budget and lives in the `tick_transaction` unit
+//! tests; everything here drives it through a real domain refusal.
 
 mod support_hydrology;
 
@@ -97,10 +98,12 @@ fn a_disabled_session_is_unaffected_by_the_hydrology_system() {
 
 #[test]
 fn a_failed_tick_leaves_nothing_observable_behind() {
-    // V18's observable half, provoked by a reachable failure: configuration
-    // validates a forcing record's ordering, bounds, and horizon but cannot know
-    // which chunks a session will hold resident, so a record targeting a chunk
-    // outside the active region passes construction and refuses its tick.
+    // V18 through a reachable domain failure: configuration validates a forcing
+    // record's ordering, bounds, and horizon but cannot know which chunks a session
+    // will hold resident, so a record targeting a chunk outside the active region
+    // passes construction and refuses its tick. The near-cap half of the same gate
+    // lives in the crate's `tick_transaction` unit tests, where the envelope budget
+    // can be set to a value a test can actually reach.
     let mut config = enabled_runtime_config();
     config.hydrology.forcing_schedule = vec![causafera_runtime::HydrologyForcingSpec {
         forcing_id: 1,
@@ -131,16 +134,12 @@ fn a_failed_tick_leaves_nothing_observable_behind() {
     let before_state = runtime.hydrology_state();
     let time_before = runtime.current_time();
 
-    // Tick two is refused before anything runs. The refusal is the domain's, not
-    // the staging guard's, which is what says nothing was left behind for the guard
-    // to find.
+    // Tick two refuses, and what surfaces is the domain's own reason rather than a
+    // bookkeeping complaint about the rollback: the transaction restores the staged
+    // pre-image and re-reports the failure that caused it.
     let error = runtime
         .run_ticks(1)
         .expect_err("a record targeting a non-resident chunk must refuse its tick");
-    assert!(
-        !error.to_string().contains("staging guarantee"),
-        "the tick must be refused before execution, not caught after it: {error}"
-    );
     assert!(
         error.to_string().contains("resident"),
         "unexpected refusal: {error}"
@@ -179,9 +178,11 @@ fn a_failed_tick_leaves_nothing_observable_behind() {
 
 #[test]
 fn a_refused_tick_commits_no_causal_events() {
-    // `commit_dag_batch` is atomic and every later system bails on a recorded
-    // failure, so a refused tick adds nothing to the trace store. Asserted through
-    // the store's own length, which is what the staging guard checks.
+    // The store is where a half-executed tick would show. Hydrology is *not* the
+    // first system in `Phase::Physics` — appending it is what preserved every
+    // existing stream key — so by the time it refuses, an earlier system has
+    // already committed. The staging transaction is what makes those commits go
+    // away again, and the store's own length is where that is visible.
     let mut config = enabled_runtime_config();
     config.hydrology.forcing_schedule = vec![causafera_runtime::HydrologyForcingSpec {
         forcing_id: 1,

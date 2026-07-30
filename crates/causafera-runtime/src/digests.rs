@@ -360,6 +360,7 @@ impl CanonicalDigest {
 ///   folding it into the prefix would be wrong. `history_digest` reads
 ///   `event_id`, `trace_id`, `time`, `phase`, `kind`, `causes` and `effects`,
 ///   and never `children`; adding it would silently break this.
+#[derive(Clone)]
 pub(crate) struct HistoryDigestPrefix {
     accumulator: CanonicalDigest,
     absorbed_events: usize,

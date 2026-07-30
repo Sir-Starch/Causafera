@@ -45,4 +45,4 @@ pub use runtime::*;
 pub use snapshot_sections::*;
 pub use snapshots::*;
 pub(crate) use thermal::*;
-pub use tick_transaction::*;
+pub(crate) use tick_transaction::*;

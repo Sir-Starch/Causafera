@@ -125,6 +125,12 @@ pub struct Runtime {
     pub(crate) scheduler: Scheduler,
     pub(crate) state: Arc<Mutex<RuntimeState>>,
     scheduler_registrations: Vec<SchedulerRegistration>,
+    /// The complete-envelope byte cap every hydrology-enabled tick is held to.
+    ///
+    /// Always `causafera_persistence::MAX_TOTAL_SIZE` in production; a field only
+    /// so a test can lower it to a reachable value and drive the near-cap
+    /// rejection on a real session. See `crate::tick_transaction`.
+    pub(crate) snapshot_budget: u64,
 }
 
 /// One system's phase and the stream-keying ID the scheduler actually assigned it.
@@ -230,6 +236,7 @@ impl Runtime {
             scheduler,
             state,
             scheduler_registrations,
+            snapshot_budget: causafera_persistence::MAX_TOTAL_SIZE,
         })
     }
 
@@ -262,26 +269,36 @@ impl Runtime {
         if self.scheduler.current_time().raw() >= MAX_RUNTIME_TICKS {
             return Err(RuntimeError::TickLimitExceeded);
         }
-        // Opened before the phases run and closed after: on failure it asserts the
-        // tick left nothing observable behind, which is what makes a refused tick a
-        // tick that did not happen rather than one that half did.
-        let guard = {
+        // A hydrology-enabled tick runs inside a staging transaction; every other
+        // session keeps the frozen legacy path, which is what keeps its bytes and
+        // stream probes comparable with the pre-hydrology evidence (V22).
+        let transaction = {
             let state = self.lock_state()?;
             if let Some(error) = state.failure.clone() {
                 return Err(error);
             }
-            // Admission before execution: a tick hydrology cannot complete is
-            // refused while nothing has run, which is what makes it a tick that
-            // did not happen rather than one that half did.
-            crate::tick_transaction::admit_hydrology_tick(
-                &state,
-                self.scheduler.current_time().raw() + 1,
-            )?;
-            crate::TickStagingGuard::open(&state)
+            state
+                .hydrology
+                .enabled
+                .then(|| RuntimeTickTransaction::open(&state, self.snapshot_budget))
         };
         self.scheduler.tick();
         let mut state = self.lock_state()?;
-        guard.close(&state)?;
+        if let Some(transaction) = transaction {
+            let restore_to = transaction.completed_time();
+            if let Err(error) = transaction.close(&mut state, self.scheduler.current_time()) {
+                // The staged state is back. The scheduler has to come back with
+                // it: its clock and every system's next-execution time are what
+                // key the RNG streams, so leaving them advanced would make the
+                // retried tick a different tick.
+                drop(state);
+                self.scheduler.set_current_time(restore_to);
+                self.scheduler.restore_system_times(restore_to.tick());
+                return Err(error);
+            }
+        } else if let Some(error) = state.failure.clone() {
+            return Err(error);
+        }
         if state.advanced_through != self.scheduler.current_time() {
             return Err(RuntimeError::PhaseDesynchronized);
         }
@@ -424,6 +441,11 @@ impl Runtime {
             .scheduler
             .restore_system_times(data.recipe.completed_time.tick());
         let restored_state = RuntimeState::import_snapshot(data)?;
+        // A resumed session has to be able to save again. Checked here rather than
+        // inside `RuntimeState::import_snapshot` because envelope assembly imports
+        // the data itself to compute its digests, and a size check inside import
+        // would call assembly, which would call import.
+        crate::tick_transaction::require_exportable(&restored_state)?;
         *runtime.lock_state()? = restored_state;
         Ok(runtime)
     }
@@ -432,7 +454,7 @@ impl Runtime {
         RuntimeState::import_snapshot(data)
     }
 
-    fn lock_state(&self) -> Result<MutexGuard<'_, RuntimeState>, RuntimeError> {
+    pub(crate) fn lock_state(&self) -> Result<MutexGuard<'_, RuntimeState>, RuntimeError> {
         self.state.lock().map_err(|_| RuntimeError::StatePoisoned)
     }
 }
@@ -646,19 +668,28 @@ pub enum RuntimeError {
     HydrologyForcingAppliedInTheFuture,
     #[error("an imported pending hydrology forcing record is scheduled in the past")]
     HydrologyForcingMissedItsTick,
-    #[error("an imported hydrology forcing record targets a cell that is not resident")]
-    HydrologyForcingTargetNotResident,
     #[error("an imported hydrology retained batch is missing its receipts or its ledger")]
     HydrologyRetainedBatchIncomplete,
     #[error("imported hydrology receipts do not recompute to the ledger they claim")]
     HydrologyReceiptsDisagreeWithLedger,
     #[error("an imported hydrology section and its recipe disagree about whether water exists")]
     HydrologyStateDisagreesWithRecipe,
-    /// A failed tick left something observable behind. The failure itself is
-    /// reported instead whenever the staging held; this variant means the staging
-    /// guarantee was broken, which is a worse fault than whatever failed.
-    #[error("a failed tick violated its staging guarantee: {what}")]
-    TickStagingViolated { what: &'static str },
+    /// The hydrology section of the would-be snapshot outgrew its own cap.
+    ///
+    /// Reported before the state is accepted, never after: a state that cannot be
+    /// encoded is a state this session could never save.
+    #[error("the hydrology snapshot section would encode {size} bytes and the bound is {max}")]
+    HydrologySectionWouldExceedBound { size: usize, max: usize },
+    /// The complete would-be snapshot envelope outgrew the persistence cap.
+    ///
+    /// Composed, not estimated: every section, the causal trace bytes, the header
+    /// and the section directory. A tick that crosses it is refused whole,
+    /// including its later-phase work, because the alternative is an accepted
+    /// world nobody can export.
+    #[error("the complete snapshot envelope would encode {size} bytes and the cap is {max}")]
+    SnapshotWouldExceedTotalSize { size: u64, max: u64 },
+    #[error("snapshot assembly failed: {0}")]
+    SnapshotAssembly(#[from] causafera_persistence::PersistenceError),
     #[error("hydrology state is invalid: {0}")]
     HydrologyState(#[from] causafera_geography::HydrologyStateError),
     #[error("hydrology causal commit failed: {0}")]
@@ -686,6 +717,13 @@ impl From<ThermalError> for RuntimeError {
     }
 }
 
+/// Every value one tick may mutate, in one place.
+///
+/// `Clone` exists for exactly one caller: [`crate::RuntimeTickTransaction`] stages
+/// a copy of the whole thing before a hydrology-enabled tick starts, so a tick that
+/// cannot be published can be undone in one infallible move rather than unwound
+/// system by system (`plans/hydrology.md` §10). Nothing else clones runtime state.
+#[derive(Clone)]
 pub struct RuntimeState {
     pub(crate) config: RuntimeConfig,
     pub(crate) traces: CausalTraceStore,
@@ -913,6 +951,11 @@ impl RuntimeState {
             .execute(&mut state)
             .map_err(|error| bootstrap_construction_error(error, "invalid bootstrap state"))?;
         state.bootstrap = bootstrap;
+        // Configuration is accepted only if the world it produced can be saved.
+        // The bounds on cells, edges, boundaries, overrides and forcing members are
+        // each satisfiable while their composition is not, so the composed size is
+        // the only thing that actually answers the question.
+        crate::tick_transaction::require_exportable(&state)?;
         Ok(state)
     }
 
@@ -1568,7 +1611,7 @@ impl RuntimeState {
             }
         }
         self.validate_bootstrap_record()?;
-        crate::hydrology_validation::validate_imported_hydrology(
+        crate::hydrology_validation::validate_hydrology_state(
             &self.hydrology,
             self.config.hydrology.enabled,
             self.advanced_through.raw(),

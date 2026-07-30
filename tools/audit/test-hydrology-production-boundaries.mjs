@@ -35,6 +35,7 @@ const PRODUCTION = [
   "crates/causafera-runtime/src/hydrology_config.rs",
   "crates/causafera-runtime/src/hydrology_events.rs",
   "crates/causafera-runtime/src/hydrology_validation.rs",
+  "crates/causafera-runtime/src/tick_transaction.rs",
 ];
 
 /** Read a production file, stripped of its `#[cfg(test)]` module and comments. */

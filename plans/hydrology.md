@@ -2636,7 +2636,9 @@ its own evidence-backed follow-up TODO rather than being hidden in Progress.
   as a divergence, which is the opposite of the audit's purpose. `withoutAdditions` removes exactly
   that one key and asserts its shape; a field added anywhere else still fails the comparison.
 - **2026-07-30 — Stage 6 wave E: V18 is satisfied by refusing before execution, not by rolling
-  back.** `TickStagingGuard` was written first and immediately found the real problem: hydrology is
+  back.** *Superseded by the wave F entry below: this was a deviation from §10, not a correction of
+  it, and the near-cap half of V18 is unreachable without the staging transaction the section
+  specifies.* `TickStagingGuard` was written first and immediately found the real problem: hydrology is
   not the first system in `Phase::Physics` — appending it was what preserved every existing stream
   key — so by the time it refused, `PhysicalPatternSystem` had already committed. Restoring that would
   need a whole-state snapshot the runtime does not take, and `RuntimeState` is not `Clone`.
@@ -2646,6 +2648,53 @@ its own evidence-backed follow-up TODO rather than being hidden in Progress.
   usable rather than closing. That is stronger than a rollback for this class of failure. The guard
   remains for failures that depend on the tick's own arithmetic and reports the violation rather than
   the failure, which is the louder of the two faults.
+- **2026-07-30 — Stage 6 wave F: `RuntimeTickTransaction` replaces pre-tick admission, and
+  `RuntimeState` is now `Clone`.** The wave E reasoning was wrong on its load-bearing premise. Making
+  the whole state copyable is three lines — `RuntimeState` and `HistoryDigestPrefix` derive `Clone` —
+  and every field was already `Clone`. With that, §10 is implementable exactly as written: the
+  transaction stages the complete pre-image before any phase runs, and publish and rollback are each
+  one infallible move. Admission before execution could only ever pre-empt failures knowable from the
+  pre-tick state, which is precisely the class that excludes the cap crossing V18 names. The staged
+  copy covers state, traces and their counters, the history-digest prefix, time, pending inputs and
+  cursors, retention bookkeeping and the synthetic-node counter; the scheduler's clock and per-system
+  next-execution times are restored through the same `set_current_time` / `restore_system_times` pair
+  a snapshot resume uses, and RNG streams need nothing staged because `StreamKey` derives them from
+  time rather than from an accumulating counter. `TickStagingGuard` and `admit_hydrology_tick` are
+  gone: with a real rollback their checks are tautologies.
+- **2026-07-30 — Stage 6 wave F: staging is inverted relative to §10's wording, not relative to its
+  contract.** §10 describes systems writing to staged values and one swap publishing them. Systems
+  hold `Arc<Mutex<RuntimeState>>` handles taken at registration, so the staging area is the live
+  state and the *pre-image* is what is held aside; commit drops the pre-image and rollback restores
+  it. Both directions are one infallible move, no phase can observe the other copy, and the
+  guaranteed property — a refused tick leaves state, traces, counters, queues, time and stream keys
+  byte-identical — is the one §10 states. Re-plumbing every system's handle to invert the copy would
+  change eleven unrelated constructors and observe nothing new.
+- **2026-07-30 — Stage 6 wave F: the exact-size accounting is composed, and it is computed rather
+  than encoded.** `SnapshotEnvelope::encode` does not enforce `MAX_TOTAL_SIZE` — only `decode` does —
+  so an oversized state would export and then never import, which is exactly the unexportable
+  accepted state §11 forbids. `require_exportable` assembles the canonical envelope and sums header,
+  every section payload in schema-ID order, and one directory entry per section, which is `encode`'s
+  own arithmetic; a unit test pins the computed length against `encode().len()` so it cannot drift
+  into an estimate. `MAX_HYDROLOGY_SECTION_BYTES` had been declared since Stage 2 and enforced
+  nowhere; it is now checked in the same place.
+- **2026-07-30 — Stage 6 wave F: the import-side size check belongs to `Runtime::from_snapshot`, not
+  to `RuntimeState::import_snapshot`.** `assemble_envelope` imports the data it is assembling in order
+  to compute its digests, so a size check inside import calls assembly, which calls import. The
+  recursion was not hypothetical — it overflowed the stack on the first run. The check therefore sits
+  at the session-level acceptance boundary, which is where "before accepting import" actually is.
+- **2026-07-30 — Stage 6 wave F: forcing-target residency is a tick rule, not a state rule.** Wave D
+  added a validation refusing any state whose forcing record targets a non-resident cell. §4 says
+  every target must be resident *at its scheduled tick*, and §11's import list says nothing about
+  target residency — so the wave D rule was both stricter than the contract and self-contradictory:
+  it made a legally configured, tickable session unexportable, which the composed size accounting
+  immediately surfaced. The rule is gone from `validate_hydrology_state`; the proposal still refuses
+  the record when it fires, which is what V2 and V18 exercise.
+- **2026-07-30 — Stage 6 wave F: the near-cap budget is a field, and that is the honest way to test
+  it.** Reaching 256 MiB would mean allocating it. `Runtime::snapshot_budget` is crate-visible, set
+  once to `MAX_TOTAL_SIZE` in `Runtime::new`, and pinned there by its own test; the V18 near-cap case
+  lowers it by one byte below what a real tick of a real session needs, so the only fiction in the
+  test is the cap's magnitude. Everything else — the later-phase events that cross it, the whole-tick
+  refusal, the byte-identical pre-image, the retry that succeeds with room — is the real mechanism.
 
 ## Progress
 
@@ -3377,10 +3426,12 @@ its own evidence-backed follow-up TODO rather than being hidden in Progress.
     itself; export, import, export is byte-identical; a disabled session is inert rather than merely
     quiet.
   - **Whole-tick staging (V18, observable half)** — a forcing record targeting a non-resident chunk
-    passes construction and refuses its tick before anything runs; physical state, history, time, the
+    passes construction and refuses its tick; physical state, history, time, the
     retained batch list, and the node counter all match the pre-tick snapshot; the session stays
     readable; refusing the same tick twice is the same refusal; and the trace store does not grow, not
-    even from a system that runs before hydrology.
+    even from a system that runs before hydrology. (Wave F replaced the mechanism these tests were
+    written against — pre-tick admission — with the staging transaction §10 specifies. The assertions
+    are unchanged and still hold.)
   - **Source boundaries** — no hydrology production path names a fixture or demo constructor; no
     production file names `River`, `Lake`, `Wetland`, `Flood`, `Watershed`, `Season`, `SoilClass`, or
     `Biome`; none reads `chunk_extent`; the process and substage identity module contains no string
@@ -3409,14 +3460,66 @@ its own evidence-backed follow-up TODO rather than being hidden in Progress.
   this workspace; the Tauri surface lives in `apps/observer/src-tauri` and its session test runs under
   the workspace suite. Said here rather than reported as passing.
 
-  Left undone from Stage 6's scope, stated plainly: the near-`MAX_TOTAL_SIZE` case in V18 — a tick
-  whose *later-phase* event crosses the causal store's capacity — is not covered. Pre-tick admission
-  cannot predict it, because it depends on how many events the tick itself produces, and restoring the
-  earlier-phase commits needs a whole-`RuntimeState` snapshot the runtime does not take.
-  `TickStagingGuard` detects that case and reports it as a distinct, louder fault than the original
-  failure, so it cannot pass silently — but the tick is not rolled back. Closing it properly means
-  making `RuntimeState` snapshot-restorable across a tick boundary, which is a runtime-wide change
-  rather than a hydrology one.
+  Left undone at the end of this wave, and closed by wave F: the near-`MAX_TOTAL_SIZE` case in V18.
+
+- **2026-07-30 — Stage 6 wave F: the whole-tick staging transaction and composed size accounting.**
+  Wave E closed Stage 6 with two of its own work items unmet: §10's `RuntimeTickTransaction` had been
+  replaced with a weaker pre-tick admission check, and §11's exact-size preflight did not exist at
+  all — `MAX_HYDROLOGY_SECTION_BYTES` had been declared since Stage 2 and was referenced by nothing.
+  This wave implements both as written.
+
+  Files changed:
+
+  - `crates/causafera-runtime/src/tick_transaction.rs` — rewritten. `RuntimeTickTransaction`
+    stages the complete pre-image, validates the finished tick and computes the exact would-be
+    envelope size, publishes or restores in one infallible move. `require_exportable` is the shared
+    entry for configuration, import and tick. `TickStagingGuard` and `admit_hydrology_tick` removed.
+    Four unit tests.
+  - `crates/causafera-runtime/src/runtime.rs` — `RuntimeState` derives `Clone`; `Runtime` carries
+    `snapshot_budget`; `tick` runs enabled sessions through the transaction and rolls the scheduler
+    back with the state; `RuntimeState::new` and `Runtime::from_snapshot` require exportability; two
+    new refusal variants and a `PersistenceError` conversion; the stricter forcing-residency variant
+    removed.
+  - `crates/causafera-runtime/src/digests.rs` — `HistoryDigestPrefix` derives `Clone`.
+  - `crates/causafera-runtime/src/hydrology_validation.rs` — `validate_imported_hydrology` becomes
+    `validate_hydrology_state`, now also the tick-boundary invariant check; the forcing-target
+    residency rule removed as stricter than §4 and §11.
+  - `crates/causafera-runtime/src/lib.rs` — the transaction is crate-internal, not public API.
+  - `crates/causafera-runtime/tests/hydrology_determinism.rs` — comments corrected to the mechanism
+    that now runs; assertions unchanged.
+  - `tools/audit/test-hydrology-production-boundaries.mjs` — `tick_transaction.rs` added to the
+    audited production set.
+
+  What the gates actually assert:
+
+  - **Near-cap rollback (V18)** — a session with water, actors and a population runs one tick, its
+    budget is lowered one byte below what the next tick needs, and that tick is refused whole. The
+    refusal names the composed size it measured; the snapshot, digests, counters, trace-store length,
+    hydrology state, simulation clock and scheduler clock all equal the pre-tick values; and the same
+    tick commits when given room. Later-phase events are inside the measured total by construction —
+    they are what the population and actor sections and their trace bytes are.
+  - **Exact accounting (V24, V33)** — the computed envelope length equals `encode().len()` exactly on
+    a real evolved session; a real hydrology section is within `MAX_HYDROLOGY_SECTION_BYTES` and its
+    complete envelope within `MAX_TOTAL_SIZE`; production always holds the real cap.
+
+  Commands run and their actual results:
+
+  - `cargo test -p causafera-runtime --all-features` — **341 passed**, 0 failed (4 of them the new
+    `tick_transaction` unit tests).
+  - `cargo test --workspace --all-features` — 82 suites, **847 passed**, 0 failed.
+  - `cargo test --workspace --no-default-features` — 82 suites, **847 passed**, 0 failed.
+  - `cargo clippy --workspace --all-targets --all-features -- -D warnings` — clean.
+  - `cargo fmt --all -- --check` — clean.
+  - `node tools/audit/test-hydrology-production-boundaries.mjs` — 5 passed.
+  - `node tools/audit/run-source-tests.mjs` — **50 passed**, 0 failed.
+  - `node tools/audit/check-entry-points.mjs` — pass (30 entry points, 20 tests).
+  - `git diff --check` — clean.
+
+  One defect this wave found and fixed rather than carried: the composed accounting immediately
+  refused a session whose configuration the same runtime had just accepted, because wave D's
+  forcing-target residency rule made that session unexportable while leaving it tickable. A cap check
+  that cannot be satisfied by a legally constructed world is a contradiction in the contract, not a
+  strictness setting.
 
 Execution must begin by re-reading this Progress section and Decision log, then inspecting
 `git status`. The implementing agent updates both sections whenever scope, contract, verification,

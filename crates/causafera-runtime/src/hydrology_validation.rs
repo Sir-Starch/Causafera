@@ -1,13 +1,17 @@
-//! Import validation for hydrology state.
+//! The cross-cutting invariants of a whole hydrology state.
 //!
 //! Decoding already rebuilds every collection through its validating constructor,
-//! so a malformed section cannot become state. What is left is the cross-cutting
-//! agreement a single constructor cannot see: that the addressing is a bijection
-//! over the carriers it addresses, that every retained ledger closes, that the
-//! forcing schedule is consistent with the runtime time it was imported at, and
-//! that receipts recompute to the aggregates they claim.
+//! so a malformed section cannot become state. What is left is the agreement a
+//! single constructor cannot see: that the addressing is a bijection over the
+//! carriers it addresses, that every retained ledger closes, that the forcing
+//! schedule is consistent with the runtime time it is read at, and that receipts
+//! recompute to the aggregates they claim.
 //!
-//! See `plans/hydrology.md` verification gate V25.
+//! Checked at import, and again at every hydrology-enabled tick boundary. The two
+//! are the same question: a tick that produced a state import would refuse has
+//! produced a state this session could not resume from.
+//!
+//! See `plans/hydrology.md` verification gates V18 and V25.
 
 use causafera_domains::{
     HydrologyReceiptTotals, validate_boundary_transfers, validate_paired_transfers,
@@ -15,9 +19,9 @@ use causafera_domains::{
 
 use crate::{HydrologyRuntimeState, RuntimeError};
 
-/// Check everything about an imported hydrology state that no single constructor
-/// could have checked on its own.
-pub(crate) fn validate_imported_hydrology(
+/// Check everything about a hydrology state that no single constructor could have
+/// checked on its own.
+pub(crate) fn validate_hydrology_state(
     state: &HydrologyRuntimeState,
     configured: bool,
     runtime_time: u64,
@@ -105,10 +109,16 @@ pub(crate) fn validate_imported_hydrology(
         }
     }
 
-    // The forcing schedule against the time it was imported at. A pending record
+    // The forcing schedule against the time it is read at. A pending record
     // scheduled in the past would never apply, and an applied record whose
     // timestamp is not its scheduled tick is a record of something that did not
     // happen.
+    //
+    // Residency of a record's targets is deliberately *not* checked here. The
+    // contract is residency at the record's scheduled tick, which the proposal
+    // enforces when the record fires; requiring it now would reject a pending
+    // record for ground that becomes resident before then, and would make a
+    // legally configured session unexportable while still being tickable.
     let mut seen = std::collections::BTreeSet::new();
     for record in &state.forcing {
         if !seen.insert((record.scheduled_tick(), record.forcing_id())) {
@@ -125,11 +135,6 @@ pub(crate) fn validate_imported_hydrology(
                 return Err(RuntimeError::HydrologyForcingMissedItsTick);
             }
             _ => {}
-        }
-        for member in record.targets() {
-            if !state.fields.is_resident(member.cell) {
-                return Err(RuntimeError::HydrologyForcingTargetNotResident);
-            }
         }
     }
 
