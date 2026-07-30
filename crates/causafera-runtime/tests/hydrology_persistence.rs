@@ -240,3 +240,43 @@ fn retained_typed_batches_survive_export_and_import() {
         );
     }
 }
+
+#[test]
+fn a_promoted_chunks_level_and_anchor_survive_a_round_trip() {
+    // V20 and V24 over resolution state: the engine promotes chunks on its own
+    // schedule, so a long enough run persists a non-zero level and the
+    // representation event that anchors it. Both have to come back exactly, or a
+    // resumed world would evaluate at a detail nobody chose and cite a change
+    // that never happened.
+    let runtime = evolved(12);
+    let before = runtime.hydrology_state();
+    let promoted: Vec<_> = before
+        .resolution
+        .iter()
+        .filter(|(_, entry)| entry.level() > 0)
+        .map(|(chunk, entry)| (*chunk, *entry))
+        .collect();
+    assert!(
+        !promoted.is_empty(),
+        "the run must reach a promotion, or this proves nothing about resolution"
+    );
+
+    let exported = runtime.export_snapshot().expect("export");
+    let resumed = RuntimeState::import_snapshot(
+        disassemble_envelope(&assemble_envelope(&exported).expect("assemble"))
+            .expect("disassemble"),
+    )
+    .expect("import");
+
+    let restored_state = resumed.export_snapshot().hydrology;
+    assert_eq!(restored_state.resolution, before.resolution);
+    for (chunk, entry) in promoted {
+        let restored = restored_state.resolution[&chunk];
+        assert_eq!(restored.level(), entry.level());
+        assert_eq!(
+            restored.last_change(),
+            entry.last_change(),
+            "the anchor is the representation event, not a re-derived guess"
+        );
+    }
+}

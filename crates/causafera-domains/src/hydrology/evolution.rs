@@ -402,7 +402,7 @@ impl HydrologyEvolutionModel {
         )?;
         conservation.require_balanced()?;
 
-        let terminal_leaves = collect_terminal_leaves(&work, &edges);
+        let terminal_leaves = collect_terminal_leaves(&work, &edges, &batch.events);
 
         Ok(HydrologyEvolutionProposal::new(HydrologyProposalParts {
             tick: request.tick,
@@ -3212,8 +3212,25 @@ fn bucket_totals(state: &HydrologyFieldSet) -> Result<(i128, i128, i128), Hydrol
 fn collect_terminal_leaves(
     work: &BTreeMap<ChartChunkCoord, Vec<CellWork>>,
     edges: &BTreeMap<HydrologyEdgeKey, EdgeWork>,
+    events: &[HydrologyEventPlan],
 ) -> Vec<HydrologyTerminalLeaf> {
     let mut leaves = Vec::new();
+    // A record becoming spent is a terminal change like any other. Without its
+    // leaf the conservation event would not reach the event that says the tick's
+    // water was allowed in, and the schedule's consumption would sit outside the
+    // ancestry the ledger closes over.
+    for event in events {
+        if event.kind != HydrologyEventKind::ForcingApplication {
+            continue;
+        }
+        for effect in &event.effects {
+            leaves.push(HydrologyTerminalLeaf {
+                carrier_bytes: effect.carrier.encode(),
+                bucket_tag: HydrologyBucket::ForcingRecord.tag(),
+                event: event.key.clone(),
+            });
+        }
+    }
     for (key, edge) in edges {
         if let Some(event) = &edge.terminal {
             leaves.push(HydrologyTerminalLeaf {

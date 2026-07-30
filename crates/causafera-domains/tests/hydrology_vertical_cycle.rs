@@ -897,7 +897,8 @@ fn terminal_leaves_name_the_last_event_to_touch_each_bucket_in_canonical_order()
     );
 
     // Surface, soil, groundwater, and the forcing input all have a terminal
-    // anchor; nothing else does, because nothing else changed.
+    // anchor, and so does the record that was spent to produce them. Nothing else
+    // does, because nothing else changed.
     let tags: Vec<u8> = proposal
         .terminal_leaves()
         .iter()
@@ -910,6 +911,7 @@ fn terminal_leaves_name_the_last_event_to_touch_each_bucket_in_canonical_order()
             HydrologyBucket::Soil.tag(),
             HydrologyBucket::Groundwater.tag(),
             HydrologyBucket::ForcingInput.tag(),
+            HydrologyBucket::ForcingRecord.tag(),
         ]
     );
 
@@ -939,6 +941,12 @@ fn terminal_leaves_name_the_last_event_to_touch_each_bucket_in_canonical_order()
     );
     assert_eq!(
         terminal(HydrologyBucket::ForcingInput.tag()),
+        substage::FORCING
+    );
+    // And the record's own application event, which is what the conservation tree
+    // reaches to reach the schedule this tick consumed.
+    assert_eq!(
+        terminal(HydrologyBucket::ForcingRecord.tag()),
         substage::FORCING
     );
 }

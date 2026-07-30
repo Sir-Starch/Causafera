@@ -87,7 +87,13 @@ pub fn enabled_hydrology() -> HydrologyConfig {
             potential_et_volume: WaterVolume::new(1_200),
             external_inflow_volume: WaterVolume::ZERO,
         }],
-        resolution_policy: HydrologyResolutionPolicy::enabled(2).expect("level two is valid"),
+        // The engine's own resolution field drives hydrology's level, and its
+        // default policy promotes as far as level three. A hydrology policy below
+        // that would refuse the tick rather than clamp it — which is the contract,
+        // and which `an_engine_level_above_the_policy_refuses_the_tick` covers —
+        // so a fixture meant to run has to admit what the engine can produce.
+        resolution_policy: HydrologyResolutionPolicy::enabled(4)
+            .expect("level four is the maximum"),
         limits_schema: HYDROLOGY_LIMITS_SCHEMA_V1,
     }
 }

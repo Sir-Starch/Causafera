@@ -2696,6 +2696,37 @@ its own evidence-backed follow-up TODO rather than being hidden in Progress.
   test is the cap's magnitude. Everything else — the later-phase events that cross it, the whole-tick
   refusal, the byte-identical pre-image, the retry that succeeds with room — is the real mechanism.
 
+- **2026-07-30 — Stage 6 wave G: the resolution adapter was missing entirely, and `representation_change` had no production caller.** Stage 5 built the promotion/demotion machinery and Stage 6
+  persisted `HydrologyResolutionState`, but nothing ever read the engine's `ResolutionField`:
+  hydrology's levels were written once at bootstrap as zero and never moved again. §9 is explicit
+  that the runtime owns the adapter and supplies the per-chunk level to `HydrologyEvolutionRequest`,
+  and V32 requires an engine-driven change to reach hydrology's grouping on the next tick. The
+  adapter now validates residency and the level ceiling and hands the evaluated levels to the
+  solver; every chunk whose level moved commits its own representation event in the same batch.
+- **2026-07-30 — Stage 6 wave G: representation events belong in the tick batch, not in a batch of
+  their own.** Stage 5's code comments said `Phase::Resolution` commits them separately. §8 says the
+  terminal aggregation tree covers "terminal fine bucket, edge, **resolution**, and
+  forcing-application local event keys" and allocates bucket tag `0x06` for exactly that — and a
+  local key cannot be a leaf of another batch's tree. Both statements are satisfied by committing the
+  event in the Physics batch of the tick where the new level first applies: the engine's change
+  landed in the previous tick's `Phase::Resolution`, and hydrology acts on it the next tick, which is
+  what "applies on the next tick" means. Substage ordinal zero, chosen in Stage 5, is what makes it
+  orderable ahead of every water substage in the same batch.
+- **2026-07-30 — Stage 6 wave G: three classes of terminal leaf were missing from the conservation
+  tree.** Resolution (`0x06`) had no producer, forcing-application (`0x07`) was built as an event but
+  never as a leaf, and coarse-process (`0x08`) was allocated in the batch builder without one. §8 and
+  §9 name all three. Forcing-application leaves are the domain's, because it owns the event;
+  coarse-process leaves are the runtime's, because only the builder knows the synthetic identifier
+  the leaf's carrier names. The builder therefore sorts the union of the two lists rather than
+  trusting the domain's ordering, which was only complete while the domain produced every leaf.
+- **2026-07-30 — Stage 6 wave G: the test fixtures declared a resolution ceiling their own engine
+  exceeds.** The runtime's default resolution policy promotes to level three; the hydrology fixtures
+  declared `max_level = 2`. With the adapter connected, every fixture session refused its own ticks —
+  correctly, since §4 says an above-`max_level` entry rejects rather than clamps. The fixtures now
+  declare level four, and `an_engine_level_above_the_policy_refuses_the_tick` covers the refusal
+  deliberately with a ceiling of zero. This is a real operational constraint, not a test artifact: a
+  hydrology ceiling below what the engine produces stops the session.
+
 ## Progress
 
 - **2026-07-29 — Accepted.** Revision 19 is the authoritative hydrology implementation plan.
@@ -3522,6 +3553,64 @@ its own evidence-backed follow-up TODO rather than being hidden in Progress.
   forcing-target residency rule made that session unexportable while leaving it tickable. A cap check
   that cannot be satisfied by a legally constructed world is a contradiction in the contract, not a
   strictness setting.
+
+- **2026-07-30 — Stage 6 wave G: the runtime resolution adapter, and the three missing terminal-leaf
+  classes.** A re-read of §8, §9 and V32 against the source found that hydrology's detail level was
+  written once at bootstrap and never read from the engine again: `representation_change` had no
+  production caller, and `HYDROLOGY_REPRESENTATION_EVENT_KIND` was never committed outside a domain
+  unit test. The conservation tree was also missing three leaf classes the plan names.
+
+  Files changed:
+
+  - `crates/causafera-runtime/src/hydrology.rs` — `resolution_levels`, `plan_representations` and
+    `evaluated_resolution`: the adapter validates the directly `ChartChunkCoord`-keyed
+    `ResolutionField` against residency and the policy ceiling, hands the evaluated levels to
+    `HydrologyEvolutionRequest`, commits one representation event per moved chunk in the tick's own
+    batch, and installs the committed trace as that chunk's new anchor.
+  - `crates/causafera-runtime/src/hydrology_events.rs` — coarse-process terminal leaves under tag
+    `0x08`, and the union of domain and runtime leaves sorted into canonical order before the tree
+    is built.
+  - `crates/causafera-domains/src/hydrology/evolution.rs` — forcing-application terminal leaves
+    under tag `0x07`.
+  - `crates/causafera-domains/tests/hydrology_vertical_cycle.rs` — the leaf-tag assertion extended to
+    the record's own application event.
+  - `crates/causafera-runtime/tests/hydrology_runtime.rs`, `tests/support_hydrology.rs` — fixture
+    ceiling raised to level four; three new tests.
+  - `crates/causafera-runtime/tests/hydrology_persistence.rs` — one new test.
+
+  What the gates actually assert:
+
+  - **Production resolution transition (V32)** — a twelve-tick closed session reaches at least one
+    engine promotion; every promoted chunk's anchor is a committed representation event of kind 40
+    with exactly one cause (its prior anchor) and one effect (its level); total water, chunk
+    topology and edge topology are unchanged across the transition. The assertion that a promotion
+    happened at all is what keeps the test non-vacuous.
+  - **Above-policy refusal (V32)** — a session whose hydrology ceiling is level zero refuses the
+    tick on which the engine first promotes, with `HydrologyResolutionLevelUnsupported`, and remains
+    readable at the tick it completed. Missing and extra entries are covered at the domain level by
+    `a_resident_chunk_with_no_resolution_entry_is_refused` and
+    `extra_resolution_entries_for_chunks_hydrology_does_not_hold_are_ignored`; the adapter's own
+    residency and coverage refusals are defence in depth, unreachable while hydrology's resident set
+    is built from the active chunk set.
+  - **Observer neutrality (V32, V27's hydrology half)** — a run queried every tick reaches the same
+    physical and history digests as a run nobody observed.
+  - **Resolution persistence (V20, V24)** — a promoted chunk's level *and* its representation-event
+    anchor survive export and import exactly.
+
+  Commands run and their actual results:
+
+  - `cargo test -p causafera-runtime --test hydrology_runtime` — **34 passed**.
+  - `cargo test -p causafera-runtime --test hydrology_persistence` — **10 passed**.
+  - `cargo test --workspace --all-features` — 82 suites, **851 passed**, 0 failed.
+  - `cargo test --workspace --no-default-features` — 82 suites, **851 passed**, 0 failed.
+  - `cargo clippy --workspace --all-targets --all-features -- -D warnings` — clean.
+  - `cargo fmt --all -- --check` — clean.
+  - `node tools/audit/check-entry-points.mjs` — pass (30 entry points, 20 tests).
+  - `node tools/audit/run-source-tests.mjs` — **50 passed**, 0 failed, in three isolated runs. A
+    fourth run, launched while the full `cargo test --workspace` suite held the build lock, reported
+    1 failure; the suite contains an audit that shells out to `cargo` and rust-analyzer under a
+    timeout. Recorded as observed rather than dismissed.
+  - `git diff --check` — clean.
 
 Execution must begin by re-reading this Progress section and Decision log, then inspecting
 `git status`. The implementing agent updates both sections whenever scope, contract, verification,

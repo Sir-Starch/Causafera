@@ -98,9 +98,30 @@ fn enabled_config() -> HydrologyConfig {
             potential_et_volume: WaterVolume::new(1_200),
             external_inflow_volume: WaterVolume::ZERO,
         }],
-        resolution_policy: HydrologyResolutionPolicy::enabled(2).expect("level two is valid"),
+        // Level four, not two: the engine's resolution field drives hydrology's
+        // level and its default policy reaches level three, which a lower
+        // hydrology policy refuses rather than clamps. See
+        // `an_engine_level_above_the_policy_refuses_the_tick`.
+        resolution_policy: HydrologyResolutionPolicy::enabled(4)
+            .expect("level four is the maximum"),
         limits_schema: HYDROLOGY_LIMITS_SCHEMA_V1,
     }
+}
+
+/// Every drop the world holds, cells and conveyance together.
+fn total_water(state: &causafera_runtime::HydrologyRuntimeState) -> i128 {
+    let cells = state
+        .fields
+        .total_storage()
+        .expect("totals stay in range")
+        .get();
+    let edges: i128 = state
+        .conveyance
+        .edges()
+        .values()
+        .map(|edge| edge.storage().as_i128())
+        .sum();
+    cells + edges
 }
 
 fn config_with(hydrology: HydrologyConfig) -> RuntimeConfig {
@@ -1043,4 +1064,140 @@ fn two_configurations_differing_only_in_hydrology_have_different_bootstrap_plans
             .infiltration_rate_mm_per_second += 1;
     });
     assert_ne!(baseline, altered);
+}
+
+#[test]
+fn an_engine_resolution_change_reaches_hydrology_and_is_committed_as_an_event() {
+    // V32. The engine's own `ResolutionField` is what decides a chunk's detail
+    // level; hydrology reads it through the runtime adapter on the next tick,
+    // because `Phase::Resolution` runs after Physics has already completed. What
+    // this asserts is the whole path: a level that actually moved, an event that
+    // records the move, and water that did not change because of it.
+    // A closed world with nothing scheduled: the only thing that can change the
+    // total is a leak, so the conservation assertion below is exact rather than
+    // approximate.
+    let mut hydrology = enabled_config();
+    hydrology.forcing_schedule.clear();
+    let mut runtime = Runtime::new(config_with(hydrology)).expect("construction");
+    let initial = runtime.hydrology_state();
+    assert!(
+        initial.resolution.values().all(|entry| entry.level() == 0),
+        "bootstrap commits no detail level nobody decided"
+    );
+    let initial_water = total_water(&initial);
+
+    runtime.run_ticks(12).expect("twelve ticks must commit");
+
+    let state = runtime.hydrology_state();
+    let promoted: Vec<_> = state
+        .resolution
+        .iter()
+        .filter(|(_, entry)| entry.level() > 0)
+        .collect();
+    assert!(
+        !promoted.is_empty(),
+        "the engine's resolution field must have promoted at least one chunk, \
+         or this test proves nothing"
+    );
+
+    // Every promoted chunk's anchor is a committed representation event whose
+    // cause is the anchor it replaced.
+    let exported = runtime.export_snapshot().expect("export");
+    for (chunk, entry) in &promoted {
+        let event = exported
+            .traces
+            .events
+            .iter()
+            .find(|event| event.trace_id == entry.last_change())
+            .unwrap_or_else(|| panic!("chunk {chunk:?} anchors a trace that does not exist"));
+        assert_eq!(
+            event.kind.raw(),
+            causafera_runtime::HYDROLOGY_REPRESENTATION_EVENT_KIND,
+            "a promoted chunk is anchored to its representation event"
+        );
+        assert_eq!(
+            event.causes.len(),
+            1,
+            "the prior anchor is the cause, and it is the only one"
+        );
+        assert_eq!(
+            event.effects.len(),
+            1,
+            "a level change transitions the level and nothing else"
+        );
+    }
+
+    // Detail changed; water did not. The initial storage is still all there,
+    // because a representation change moves no water and deletes no state.
+    assert_eq!(
+        total_water(&state),
+        initial_water,
+        "a level change is not a source or a sink"
+    );
+    assert_eq!(
+        state.fields.fields().len(),
+        initial.fields.fields().len(),
+        "and it changes no topology"
+    );
+    assert_eq!(state.conveyance.len(), initial.conveyance.len());
+}
+
+#[test]
+fn an_engine_level_above_the_policy_refuses_the_tick() {
+    // V32's third clause. The engine promotes on its own schedule; a hydrology
+    // policy that admits less than the engine produces refuses the tick rather
+    // than quietly evaluating at a level nobody chose.
+    let mut hydrology = enabled_config();
+    hydrology.resolution_policy =
+        HydrologyResolutionPolicy::enabled(0).expect("level zero is a valid ceiling");
+    let mut runtime = Runtime::new(config_with(hydrology)).expect("construction");
+
+    let mut refusal = None;
+    for _ in 0..12 {
+        if let Err(error) = runtime.tick() {
+            refusal = Some(error);
+            break;
+        }
+    }
+    let error = refusal.expect("the engine must eventually promote past level zero");
+    assert!(
+        matches!(
+            error,
+            causafera_runtime::RuntimeError::HydrologyResolutionLevelUnsupported { .. }
+        ),
+        "unexpected refusal: {error}"
+    );
+    // And the refusal is a refusal, not a poisoning: the tick rolled back whole.
+    assert!(
+        runtime.snapshot().is_ok(),
+        "the session stays readable at the tick it completed"
+    );
+}
+
+#[test]
+fn observer_queries_do_not_change_what_the_engine_computes() {
+    // V32's last clause and V27's. Reading is not participating: a run watched
+    // every tick reaches the same digests as a run nobody looked at.
+    let watched = {
+        let mut runtime = Runtime::new(config_with(enabled_config())).expect("construction");
+        for _ in 0..6 {
+            runtime.tick().expect("tick");
+            runtime.observer_world_snapshot().expect("observer read");
+            runtime.hydrology_state();
+        }
+        runtime.snapshot().expect("digest")
+    };
+    let unwatched = {
+        let mut runtime = Runtime::new(config_with(enabled_config())).expect("construction");
+        runtime.run_ticks(6).expect("six ticks");
+        runtime.snapshot().expect("digest")
+    };
+    assert_eq!(
+        watched.physical_state_digest.bytes(),
+        unwatched.physical_state_digest.bytes()
+    );
+    assert_eq!(
+        watched.history_digest.bytes(),
+        unwatched.history_digest.bytes()
+    );
 }

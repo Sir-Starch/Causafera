@@ -611,6 +611,11 @@ pub(crate) fn build_hydrology_batch(
         inputs.coarse_processes.iter().enumerate().collect();
     ordered_coarse.sort_by_key(|(_, coarse)| coarse.identity());
     let mut coarse_keys: BTreeMap<usize, CausalEventProposalKey> = BTreeMap::new();
+    // Coarse-process events are terminal leaves of their own (bucket tag `0x08`),
+    // including the ones that accepted nothing: a group that was evaluated and
+    // moved zero is exactly the evidence that has to survive, or import cannot
+    // tell an evaluated group from one that never ran.
+    let mut coarse_leaves: Vec<(HydrologyTerminalLeaf, Vec<CausalEffect>)> = Vec::new();
     for (index, coarse) in ordered_coarse {
         let mut leaves = Vec::with_capacity(coarse.members.len());
         for member in &coarse.members {
@@ -652,14 +657,23 @@ pub(crate) fn build_hydrology_batch(
             .checked_add(1)
             .ok_or(RuntimeError::HydrologyNodeIdentifiersExhausted)?;
         let key = node_key(coarse.substage_ordinal, process::COARSE_PROCESS, object_id)?;
-        proposals.push(node_proposal(
+        let proposal = node_proposal(
             HYDROLOGY_COARSE_PROCESS_EVENT_KIND,
             HYDROLOGY_COARSE_INPUT_PROPERTY,
             object_id,
             key.clone(),
             vec![CausalEventDagCause::Local(root.key)],
             coarse_process_fingerprint(coarse, root.fingerprint),
-        )?);
+        )?;
+        coarse_leaves.push((
+            HydrologyTerminalLeaf {
+                carrier_bytes: HydrologyCarrierKey::BatchNode(object_id).encode(),
+                bucket_tag: causafera_domains::HydrologyBucket::CoarseProcess.tag(),
+                event: key.clone(),
+            },
+            proposal.effects().to_vec(),
+        ));
+        proposals.push(proposal);
         coarse_keys.insert(index, key);
     }
 
@@ -698,11 +712,22 @@ pub(crate) fn build_hydrology_batch(
 
     // The terminal tree over every leaf record, in the domain's canonical
     // `(carrier bytes, bucket tag, proposal key bytes)` order.
-    let mut terminal = Vec::with_capacity(inputs.terminal_leaves.len());
+    let mut leaf_records: Vec<(HydrologyTerminalLeaf, Vec<CausalEffect>)> =
+        Vec::with_capacity(inputs.terminal_leaves.len() + coarse_leaves.len());
     for leaf in inputs.terminal_leaves {
         let effects = effects_by_event
             .get(&leaf.event)
             .ok_or(RuntimeError::HydrologyTerminalLeafUnknown)?;
+        leaf_records.push((leaf.clone(), effects.clone()));
+    }
+    leaf_records.extend(coarse_leaves);
+    // Sorted here rather than trusted: the domain orders the leaves it knows
+    // about, and the coarse-process leaves only exist once this builder has
+    // allocated their identifiers, so the canonical order is only complete after
+    // the two lists are one list.
+    leaf_records.sort_by(|(left, _), (right, _)| left.cmp(right));
+    let mut terminal = Vec::with_capacity(leaf_records.len());
+    for (leaf, effects) in &leaf_records {
         terminal.push((leaf.event.clone(), batch_leaf_fingerprint(leaf, effects)));
     }
     let root = build_tree(

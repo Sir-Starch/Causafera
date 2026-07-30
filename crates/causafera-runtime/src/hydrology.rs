@@ -13,8 +13,9 @@ use std::sync::{Arc, Mutex};
 use causafera_core::provenance::{CausalDagBatchLimits, StateFingerprint};
 use causafera_core::{Phase, RandomStream, System};
 use causafera_domains::{
-    HydrologyBucket, HydrologyEvolutionLimits, HydrologyEvolutionModel, HydrologyEvolutionProposal,
-    HydrologyEvolutionRequest, HydrologyResolutionPolicy, HydrologyTransferReceipt,
+    HydrologyBucket, HydrologyEventPlan, HydrologyEvolutionLimits, HydrologyEvolutionModel,
+    HydrologyEvolutionProposal, HydrologyEvolutionRequest, HydrologyRepresentationChange,
+    HydrologyResolutionPolicy, HydrologyTerminalLeaf, HydrologyTransferReceipt,
 };
 use causafera_geography::{
     HydrologyActiveRegion, HydrologyBoundaryMap, HydrologyCellKey, HydrologyConveyanceGraph,
@@ -157,6 +158,15 @@ impl HydrologyEvolutionSystem {
             .cloned()
             .collect();
 
+        // The engine's own resolution field, read through the runtime adapter: it
+        // is validated against the resident/active rules and reduced to the level
+        // each chunk evaluates at this tick. A level committed in
+        // `Phase::Resolution` reaches hydrology here, one tick later, because
+        // Physics had already completed when it changed.
+        let levels = resolution_levels(&state)?;
+        let representations = plan_representations(&state.hydrology, &levels)?;
+        let resolution = evaluated_resolution(&state.hydrology, &levels)?;
+
         let proposal = {
             let hydrology = &state.hydrology;
             HydrologyEvolutionModel::propose(
@@ -169,7 +179,7 @@ impl HydrologyEvolutionSystem {
                     conveyance: &hydrology.conveyance,
                     boundaries: &hydrology.boundaries,
                     forcing: &due,
-                    resolution: &hydrology.resolution,
+                    resolution: &resolution,
                     resolution_policy: hydrology.resolution_policy,
                     previous_conservation: hydrology.fields.conservation_last_change(),
                     limits: HydrologyEvolutionLimits::default(),
@@ -177,7 +187,7 @@ impl HydrologyEvolutionSystem {
             )?
         };
 
-        self.commit(&mut state, &proposal)?;
+        self.commit(&mut state, &proposal, &representations)?;
         self.next_time = self.next_time.tick();
         Ok(())
     }
@@ -191,6 +201,7 @@ impl HydrologyEvolutionSystem {
         &self,
         state: &mut RuntimeState,
         proposal: &HydrologyEvolutionProposal,
+        representations: &[(HydrologyRepresentationChange, HydrologyEventPlan)],
     ) -> Result<(), RuntimeError> {
         let origins: Vec<TraceId> = state
             .hydrology
@@ -204,10 +215,29 @@ impl HydrologyEvolutionSystem {
             .map(HydrologyForcingRecord::origin_trace)
             .collect();
 
+        // A level change is a state change like any other: its event travels in
+        // this tick's batch and its leaf is in the same terminal tree, so the
+        // conservation event reaches it. The tick already evaluated at the new
+        // level, which is what makes the event a record of what happened rather
+        // than an announcement of what will.
+        let mut events: Vec<HydrologyEventPlan> = proposal.events().to_vec();
+        let mut terminal_leaves: Vec<HydrologyTerminalLeaf> = proposal.terminal_leaves().to_vec();
+        for (change, event) in representations {
+            terminal_leaves.push(HydrologyTerminalLeaf {
+                carrier_bytes: causafera_geography::HydrologyCarrierKey::ResolutionChunk(
+                    change.chunk,
+                )
+                .encode(),
+                bucket_tag: HydrologyBucket::Resolution.tag(),
+                event: event.key.clone(),
+            });
+            events.push(event.clone());
+        }
+
         let batch = build_hydrology_batch(HydrologyBatchInputs {
             registry: &state.hydrology.registry,
-            events: proposal.events(),
-            terminal_leaves: proposal.terminal_leaves(),
+            events: &events,
+            terminal_leaves: &terminal_leaves,
             coarse_processes: proposal.coarse_processes(),
             conservation: proposal.conservation(),
             batch_sequence: proposal.batch_sequence(),
@@ -282,6 +312,20 @@ impl HydrologyEvolutionSystem {
             record.mark_applied(*scheduled_tick)?;
         }
 
+        // The new anchor is the committed representation event, and the prior one
+        // was its cause. Written after the commit for the same reason every other
+        // anchor is: an anchor naming a trace that does not exist is worse than no
+        // level change at all.
+        for (change, event) in representations {
+            let trace = *traces
+                .get(&event.key)
+                .ok_or(RuntimeError::HydrologyAnchorNotCommitted)?;
+            state.hydrology.resolution.insert(
+                change.chunk,
+                HydrologyResolutionState::new(change.to_level, trace)?,
+            );
+        }
+
         state.hydrology.fields = after_fields;
         state.hydrology.conveyance = after_conveyance;
         state.hydrology.next_node_id = batch.next_node_id;
@@ -310,6 +354,97 @@ impl System for HydrologyEvolutionSystem {
     fn restore_time(&mut self, time: SimulationTime) {
         self.next_time = time;
     }
+}
+
+/// The level each resident hydrology chunk evaluates at this tick.
+///
+/// This is the resolution adapter the plan puts in the runtime. `ResolutionField`
+/// is already keyed directly by `ChartChunkCoord`, so there is no ID mapping to
+/// do; what there is to do is refuse the disagreements a chunk-keyed lookup would
+/// otherwise paper over. Hydrology's resident set must equal the resident terrain
+/// set, every resident chunk must have exactly one entry, and a level above the
+/// policy is refused rather than clamped — a clamped level would silently
+/// evaluate a chunk at a detail nobody chose.
+///
+/// Extra entries for chunks hydrology does not hold are ignored: the field covers
+/// the whole runtime, and a chunk without water is not hydrology's to object to.
+///
+/// See `plans/hydrology.md` §4, §9 and verification gate V32.
+fn resolution_levels(state: &RuntimeState) -> Result<BTreeMap<ChartChunkCoord, u8>, RuntimeError> {
+    let hydrology = &state.hydrology;
+    let policy = hydrology.resolution_policy;
+    let mut levels = BTreeMap::new();
+    for chunk in hydrology.fields.fields().keys() {
+        if !state.active_chunks.contains_key(chunk) {
+            return Err(RuntimeError::HydrologyResidencyMismatch);
+        }
+        if !policy.enabled {
+            // A disabled policy evaluates everything at level zero while keeping
+            // the same canonical fine state. The engine may still be resolving
+            // other subsystems; hydrology simply does not follow it.
+            levels.insert(*chunk, 0);
+            continue;
+        }
+        let entry = state
+            .resolution
+            .entry(*chunk)
+            .ok_or(RuntimeError::HydrologyResolutionEntryMissing)?;
+        if entry.level > policy.max_level {
+            return Err(RuntimeError::HydrologyResolutionLevelUnsupported { level: entry.level });
+        }
+        levels.insert(*chunk, entry.level);
+    }
+    if state.active_chunks.len() != hydrology.fields.fields().len() {
+        return Err(RuntimeError::HydrologyResidencyMismatch);
+    }
+    Ok(levels)
+}
+
+/// One representation change per chunk whose level actually moved.
+fn plan_representations(
+    hydrology: &HydrologyRuntimeState,
+    levels: &BTreeMap<ChartChunkCoord, u8>,
+) -> Result<Vec<(HydrologyRepresentationChange, HydrologyEventPlan)>, RuntimeError> {
+    let mut changes = Vec::new();
+    for (chunk, level) in levels {
+        let current = *hydrology
+            .resolution
+            .get(chunk)
+            .ok_or(RuntimeError::HydrologyResolutionEntryMissing)?;
+        if current.level() == *level {
+            continue;
+        }
+        changes.push(causafera_domains::representation_change(
+            *chunk,
+            current,
+            *level,
+            hydrology.resolution_policy,
+        )?);
+    }
+    Ok(changes)
+}
+
+/// The per-chunk resolution state this tick evaluates against.
+///
+/// The level is the engine's; the anchor is still the persisted one, because the
+/// event that will become the new anchor has not committed yet. Nothing in the
+/// solver reads the anchor — the runtime installs it after the commit.
+fn evaluated_resolution(
+    hydrology: &HydrologyRuntimeState,
+    levels: &BTreeMap<ChartChunkCoord, u8>,
+) -> Result<BTreeMap<ChartChunkCoord, HydrologyResolutionState>, RuntimeError> {
+    let mut evaluated = BTreeMap::new();
+    for (chunk, level) in levels {
+        let current = *hydrology
+            .resolution
+            .get(chunk)
+            .ok_or(RuntimeError::HydrologyResolutionEntryMissing)?;
+        evaluated.insert(
+            *chunk,
+            HydrologyResolutionState::new(*level, current.last_change())?,
+        );
+    }
+    Ok(evaluated)
 }
 
 /// The terrain every resident hydrology chunk sits on.
