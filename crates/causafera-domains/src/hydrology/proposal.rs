@@ -4,13 +4,14 @@ use causafera_core::{CausalEventDagCause, CausalEventProposalKey, StateFingerpri
 use causafera_geography::{
     HydrologyActiveRegion, HydrologyBoundaryMap, HydrologyCarrierKey, HydrologyCellKey,
     HydrologyConveyanceGraph, HydrologyFieldSet, HydrologyForcingRecord, HydrologyGridMetrics,
-    TerrainChunk,
+    HydrologyResolutionState, TerrainChunk,
 };
 use causafera_types::{ChartChunkCoord, TraceId, WaterVolume};
 
 use super::{
-    HydrologyBucket, HydrologyCellChange, HydrologyConservationReceipt, HydrologyEdgeChange,
-    HydrologyEvolutionLimits, HydrologyForcingAllocation, HydrologyForcingSettlement,
+    HydrologyBlockKey, HydrologyBucket, HydrologyCellChange, HydrologyConservationReceipt,
+    HydrologyConstitutiveKey, HydrologyEdgeChange, HydrologyEvolutionLimits,
+    HydrologyForcingAllocation, HydrologyForcingSettlement, HydrologyResolutionPolicy,
     HydrologyTransferReceipt,
 };
 
@@ -35,6 +36,11 @@ pub struct HydrologyEvolutionRequest<'a> {
     /// Records scheduled for this tick that have not been applied, in canonical
     /// `(scheduled_tick, forcing_id)` order.
     pub forcing: &'a [HydrologyForcingRecord],
+    /// The persisted detail level of every resident chunk. A level committed in
+    /// `Phase::Resolution` applies from the next tick, so what arrives here is
+    /// already the level this tick evaluates at.
+    pub resolution: &'a BTreeMap<ChartChunkCoord, HydrologyResolutionState>,
+    pub resolution_policy: HydrologyResolutionPolicy,
     pub previous_conservation: TraceId,
     pub limits: HydrologyEvolutionLimits,
 }
@@ -113,6 +119,15 @@ pub struct HydrologyEventPlan {
     pub kind: HydrologyEventKind,
     pub causes: Vec<CausalEventDagCause>,
     pub effects: Vec<HydrologyEventEffect>,
+    /// Index into `HydrologyEvolutionProposal::coarse_processes` when this event
+    /// is a fine allocation of a coarse group delta.
+    ///
+    /// The coarse-process event's own proposal key contains a synthetic object
+    /// ID drawn from the runtime's persisted counter, so the domain cannot name
+    /// it. It names the *process* instead, and the runtime appends the resolved
+    /// local cause once the ID exists. One extra cause, reserved for it in the
+    /// domain's own cap check.
+    pub coarse_process: Option<usize>,
 }
 
 /// One terminal `(carrier, bucket)` membership of the batch aggregation tree.
@@ -126,6 +141,77 @@ pub struct HydrologyTerminalLeaf {
     pub carrier_bytes: Vec<u8>,
     pub bucket_tag: u8,
     pub event: CausalEventProposalKey,
+}
+
+/// One evaluated coarse vertical process, with everything its ancestry needs.
+///
+/// The plan's coarse-input leaves, input nodes, and process event all draw object
+/// IDs from the runtime's persisted `next_hydrology_batch_node_id` counter, so
+/// the domain computes the *content* — members in canonical cell order with their
+/// exact weights, ceilings, grants, and current references, plus the raw
+/// candidate, the summed ceilings, and the accepted total — and Stage 6 turns it
+/// into the fingerprinted tree. See `plans/hydrology.md` §9.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct HydrologyCoarseProcess {
+    pub tick: u64,
+    pub block: HydrologyBlockKey,
+    pub constitutive: HydrologyConstitutiveKey,
+    pub substage_ordinal: u8,
+    pub process_kind: u32,
+    /// The `(scheduled_tick, forcing_id)` this invocation belongs to, for the
+    /// per-record source and ET passes. `None` for infiltration and percolation,
+    /// which run once per group.
+    pub forcing: Option<(u64, u64)>,
+    pub raw_candidate: i128,
+    pub summed_ceilings: i128,
+    pub accepted_total: i128,
+    pub members: Vec<HydrologyCoarseMember>,
+}
+
+impl HydrologyCoarseProcess {
+    /// The canonical identity that orders synthetic ID allocation.
+    ///
+    /// `plans/hydrology.md` §8 and §9 name `(tick, block_key,
+    /// constitutive_group_key, process_kind)`, which cannot separate two source
+    /// or ET invocations of one group that differ only by forcing record. The
+    /// record identity is therefore part of the key; see the Decision log.
+    pub fn identity(&self) -> (u64, Vec<u8>, Vec<u8>, u32, u64, u64) {
+        let (scheduled_tick, forcing_id) = self.forcing.unwrap_or((0, 0));
+        (
+            self.tick,
+            self.block.encode(),
+            self.constitutive.encode(),
+            self.process_kind,
+            scheduled_tick,
+            forcing_id,
+        )
+    }
+}
+
+/// One fine member's exact part in a coarse process.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct HydrologyCoarseMember {
+    pub cell: HydrologyCellKey,
+    pub weight: i128,
+    pub ceiling: i128,
+    pub granted: i128,
+    /// The bucket references the leaf fingerprint hashes, at most three.
+    pub references: Vec<CausalEventDagCause>,
+}
+
+/// One chunk's detail level changing, as a record the runtime commits.
+///
+/// No storage is deleted and none is synthesised: the level selects how the
+/// retained fine state is evaluated, so the only thing that changes is the
+/// resolution anchor itself.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct HydrologyRepresentationChange {
+    pub chunk: causafera_types::ChartChunkCoord,
+    pub from_level: u8,
+    pub to_level: u8,
+    pub prior_change: TraceId,
+    pub before: StateFingerprint,
+    pub after: StateFingerprint,
 }
 
 /// The complete result of one hydrology Physics execution, before commit.
@@ -143,6 +229,7 @@ pub struct HydrologyEvolutionProposal {
     conservation: HydrologyConservationReceipt,
     events: Vec<HydrologyEventPlan>,
     terminal_leaves: Vec<HydrologyTerminalLeaf>,
+    coarse_processes: Vec<HydrologyCoarseProcess>,
 }
 
 /// Complete constructor input for a proposal.
@@ -160,6 +247,7 @@ pub struct HydrologyProposalParts {
     pub conservation: HydrologyConservationReceipt,
     pub events: Vec<HydrologyEventPlan>,
     pub terminal_leaves: Vec<HydrologyTerminalLeaf>,
+    pub coarse_processes: Vec<HydrologyCoarseProcess>,
 }
 
 impl HydrologyEvolutionProposal {
@@ -177,6 +265,7 @@ impl HydrologyEvolutionProposal {
             conservation: parts.conservation,
             events: parts.events,
             terminal_leaves: parts.terminal_leaves,
+            coarse_processes: parts.coarse_processes,
         }
     }
 
@@ -227,6 +316,12 @@ impl HydrologyEvolutionProposal {
     pub fn terminal_leaves(&self) -> &[HydrologyTerminalLeaf] {
         &self.terminal_leaves
     }
+
+    /// Every coarse vertical process this tick evaluated, in canonical identity
+    /// order. Empty when every chunk was at level zero.
+    pub fn coarse_processes(&self) -> &[HydrologyCoarseProcess] {
+        &self.coarse_processes
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -237,6 +332,7 @@ const DOMAIN_VOLUME: &[u8] = b"causafera.hydrology.volume.v1";
 const DOMAIN_ABSENT: &[u8] = b"causafera.hydrology.absent.v1";
 const DOMAIN_FORCING_INPUT: &[u8] = b"causafera.hydrology.forcing-input.v1";
 const DOMAIN_FORCING_RECORD: &[u8] = b"causafera.hydrology.forcing-record.v1";
+const DOMAIN_RESOLUTION: &[u8] = b"causafera.hydrology.resolution.v1";
 
 fn write_prefixed(hasher: &mut blake3::Hasher, bytes: &[u8]) {
     hasher.update(&(bytes.len() as u64).to_be_bytes());
@@ -302,6 +398,22 @@ pub fn forcing_settlement_fingerprint(
         hasher.update(&allocation.accepted_source.get().to_be_bytes());
         hasher.update(&allocation.accepted_et.get().to_be_bytes());
     }
+    StateFingerprint::new(*hasher.finalize().as_bytes())
+}
+
+/// One chunk's detail level, as a fingerprintable claim.
+///
+/// The level is all that changes: no canonical storage is deleted on demotion and
+/// none is synthesised on promotion, so the resolution anchor is the only state a
+/// representation event transitions.
+pub fn resolution_fingerprint(chunk: ChartChunkCoord, level: u8) -> StateFingerprint {
+    let mut hasher = blake3::Hasher::new();
+    write_prefixed(&mut hasher, DOMAIN_RESOLUTION);
+    write_prefixed(
+        &mut hasher,
+        &HydrologyCarrierKey::ResolutionChunk(chunk).encode(),
+    );
+    hasher.update(&[level]);
     StateFingerprint::new(*hasher.finalize().as_bytes())
 }
 

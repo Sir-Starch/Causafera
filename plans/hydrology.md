@@ -2435,6 +2435,66 @@ its own evidence-backed follow-up TODO rather than being hidden in Progress.
   asserting it stays under sixteen. Found by the cap negative control failing to fire, not by review
   of the passing test.
 
+- **2026-07-30 — Stage 5: level zero is the fine path, not a one-cell coarse path.**
+  `block_edge = 2^min(L, 4)` makes a level-zero block one cell, and running the coarse machinery
+  over one-member groups would produce the same *state* through a completely different causal DAG —
+  a coarse-process event, an input leaf, and an input node per cell per process. Level zero
+  therefore dispatches to the fine substages, and a disabled policy is proven byte-identical to the
+  fine path rather than an imitation of it. Lateral routing needs no such special case: a
+  level-zero cell's block is itself, so every face touching it is a block boundary and is evaluated
+  finely, which is exactly Stage 4's behaviour.
+- **2026-07-30 — Stage 5: a cell's exterior-face signature participates in its constitutive
+  identity.** §9's tuple is `(metric, substrate, boundary-kind)`, and boundary kind is per face, so
+  the key carries all four faces: interior, or exterior with that face's
+  `constitutive_kind`. The consequence is that a perimeter cell never groups with an interior one
+  even when every boundary is closed — a chunk's edge cells fragment into their own groups. That
+  reduces work reduction and is the conservative direction, so it is kept as written. Discovered by
+  three tests failing on a 2x2 fixture placed at the chunk corner; the fixtures moved inside.
+- **2026-07-30 — Stage 5 correction: the coarse total is clamped to the ceilings of members the
+  process actually addressed.** §9 says `T = min(raw_group_candidate, sum(member_ceilings))` and
+  also that "the reducer never receives an unallocatable ordinary candidate". Those two cannot both
+  hold: weight zero means the process never addressed a member — a cell no record rained on, or none
+  asked ET of — and the reducer refuses to hand it water, so counting its room produces a total the
+  reducer must then reject. A single-target record over a coarse group would have failed the whole
+  tick. `clamp_to_allocatable` therefore sums only positive-weight ceilings, which makes
+  `UnallocatableTotal` unreachable for ordinary candidates exactly as §9 promises and keeps the
+  guard for the genuine internal-error case. Capacity is still shared — but only among members the
+  process addressed, which is what makes coarse forcing an approximation of distribution rather than
+  a way to rain on cells nobody aimed at.
+- **2026-07-30 — Stage 5: the coarse-process identity carries the forcing record.** §8 and §9 order
+  synthetic ID allocation by `(tick, block_key, constitutive_group_key, process_kind)`, which cannot
+  separate two source or ET invocations of one group that differ only by which record they came
+  from — and §9 requires each `(scheduled_tick, forcing_id, kind)` to be processed separately. Two
+  invocations would collide on the key and the ID assignment would be ambiguous.
+  `HydrologyCoarseProcess::identity` therefore appends `(scheduled_tick, forcing_id)`, zero for the
+  once-per-group processes. Stage 6 must include the same two fields in the coarse-process
+  fingerprint, since the plan's fingerprint input does not currently distinguish them either.
+- **2026-07-30 — Stage 5: the coarse-input trees are Stage 6, for the same reason the terminal tree
+  is.** §9's input leaves, input nodes, and process events all draw object IDs from the runtime's
+  persisted `next_hydrology_batch_node_id` counter, and the coarse-process event's proposal key
+  contains that ID. The domain therefore emits `HydrologyCoarseProcess` — members in canonical cell
+  order with exact weights, ceilings, grants, and current references, plus the raw candidate, summed
+  ceilings, and accepted total — which is every input the plan's leaf and process fingerprints hash
+  except the IDs. A fine allocation event names its process by index in `coarse_process`, and the
+  runtime appends the resolved local cause; the domain reserves that one extra cause in its own cap
+  check so an event cannot pass here and fail at commit.
+- **2026-07-30 — Stage 5 fix to Stage 3: the forcing settlement fingerprint is computed after
+  substage 4.** §4 and §8 have the settlement fingerprint cover the ordered per-record allocations,
+  and those allocations include `accepted_et`, which substage 4 fills in. Stage 3 computed the
+  fingerprint in substage 1 and then mutated the allocations, so the persisted value was one no
+  recomputation from the same allocations could reproduce — which is precisely what Stage 6's import
+  validation does. The settlement *event* is now pushed after substage 4 while its proposal key stays
+  deterministic, so substages 2 through 4 still cite it as a local cause and its surface effect still
+  carries the substage-1 delta. `a_settlement_fingerprint_is_recomputable_from_the_allocations_it_persists`
+  pins it. `tests/hydrology_vertical_cycle.rs` is on this stage's allowlist for that regression.
+- **2026-07-30 — Stage 5: coarse percolation can never exceed the fine total, by design.** §9 makes a
+  member's percolation ceiling "that result bounded by remaining groundwater capacity" — its own raw
+  fraction result — so the summed ceilings are at most the sum of the fine results while the aggregate
+  candidate `floor(sum/den)` is at least that. The clamp therefore always picks the fine total. This
+  is the plan's quantisation guard working as specified, not a missed opportunity: aggregate rounding
+  is not permitted to create water. Recorded because the first version of the test asserted the
+  larger aggregate and was wrong.
+
 ## Progress
 
 - **2026-07-29 — Accepted.** Revision 19 is the authoritative hydrology implementation plan.
@@ -2812,6 +2872,83 @@ its own evidence-backed follow-up TODO rather than being hidden in Progress.
   `HydrologyEventKind::Representation` and `HydrologyProperty::Resolution` remain unused; the §8
   aggregation tree, the terminal conservation event, and the synthetic-node counter are Stage 6, which
   is where the ordered terminal-leaf list — now including conveyance edges — is consumed.
+
+- **2026-07-30 — Stage 5 complete.** Conservative resolution is implemented: block addressing over
+  global terrain-cell coordinates, exact constitutive grouping, the capped largest-remainder reducer,
+  coarse vertical and forcing aggregation with capacity-aware back-allocation, authoritative fine
+  block-boundary faces, and promotion/demotion records. Checkpoint commit `<pending>`.
+
+  Files changed and why:
+
+  - `crates/causafera-domains/src/hydrology/resolution.rs` (new) — `HydrologyBlockKey`,
+    `HydrologyConstitutiveKey`, `HydrologyResolutionPlan`, `HydrologyResolutionPolicy`,
+    `allocate_capped`, `clamp_to_allocatable`, and `representation_change`.
+  - `crates/causafera-domains/src/hydrology/evolution.rs` — level-aware dispatch for substages 1
+    through 4, the coarse source, infiltration, percolation, and two-pass ET group passes, the
+    block-internal face skip in routing, the deferred settlement fingerprint, and the group-total
+    versus fine-grants agreement check.
+  - `crates/causafera-domains/src/hydrology/proposal.rs` — the request carries the per-chunk
+    resolution state and the policy; the proposal carries `coarse_processes`; `HydrologyEventPlan`
+    carries `coarse_process`; `HydrologyCoarseProcess`, `HydrologyCoarseMember`,
+    `HydrologyRepresentationChange`, and `resolution_fingerprint` are new.
+  - `crates/causafera-domains/src/hydrology/parameters.rs` — `process::REPRESENTATION` and
+    `substage::REPRESENTATION`.
+  - `crates/causafera-domains/src/hydrology/records.rs` — five new refusal variants.
+  - `crates/causafera-domains/tests/support/mod.rs` — `Scenario::at_level` and the resolution fields.
+  - `crates/causafera-domains/tests/hydrology_resolution.rs` (new) — 29 tests.
+  - `crates/causafera-domains/tests/hydrology_vertical_cycle.rs` — the settlement-fingerprint
+    regression.
+
+  `crates/causafera-domains/src/hydrology/receipts.rs` is on the plan's Stage 5 file list but needed
+  no change: every coarse transfer carries one of the process kinds `HydrologyReceiptTotals` already
+  classifies, and the three new suites assert `validate_paired_transfers`,
+  `validate_boundary_transfers`, and the totals cross-check against every proposal they build.
+  Coarse block-boundary aggregate validation is therefore the existing receipt fold rather than a
+  second parallel one, which is what "receipt and validation aggregates of those accepted fine-face
+  transfers only" asks for.
+
+  What the gates actually assert:
+
+  - **Aggregation (V19)** — a uniform block gives bucket-for-bucket the same answer as the fine path;
+    a heterogeneous block splits into one group per exact substrate rather than averaging; coarse
+    percolation is capped at the sum of its members' own results; a group's recorded candidate,
+    summed ceilings, accepted total, and per-member grants agree exactly and its members are in
+    canonical cell order; an evaluated group that moves nothing is still recorded with `T = 0`.
+  - **Block boundaries (V19)** — faces inside a block are not evaluated and faces leaving one are,
+    with the exact skipped and evaluated pair named; an accepted boundary transfer is installed on
+    its own two fine endpoints and a third cell receives nothing; a coarse chunk and a fine chunk
+    exchange across their shared seam.
+  - **Work reduction (V19)** — a non-vacuous uniform 8x8 interior region at level 2 evaluates four
+    process groups where fine mode evaluates 64 cells, and every fine cell still receives its share.
+  - **Forcing and ET (V19)** — a record's total splits by weight and then by group capacity; an
+    untargeted member receives nothing; ET runs surface then soil in that order; two records over one
+    group produce two distinct process identities and every identity in a tick is unique.
+  - **Conservation** — a closed coarse basin closes exactly for 100 consecutive ticks.
+  - **Demotion and promotion (V20)** — a level change preserves every bucket, the substrate, the cell
+    count, and the conveyance topology; the representation event cites the prior anchor as its one
+    cause and transitions only the level; a no-op change and a level above the policy are both
+    refused.
+  - **Allocation failure (V21)** — the reducer refuses a positive total with no eligible member and a
+    total above its summed ceilings; the clamp is shown never to hand it either; a refused tick leaves
+    the input state and its total byte-identical.
+  - **Request validation** — a resident chunk with no resolution entry is refused; a level above the
+    policy is refused rather than clamped; extra entries for chunks hydrology does not hold are
+    ignored; a disabled policy is proven equal to the fine path.
+
+  Commands run and their actual results:
+
+  - `cargo test -p causafera-domains --test hydrology_resolution -- --nocapture` — **29 passed**.
+  - `cargo test -p causafera-domains --all-features` — **191 passed** across 12 binaries, 0 failed.
+  - `cargo clippy --workspace --all-targets --all-features -- -D warnings` — clean.
+  - `cargo fmt --all -- --check` — clean.
+  - `git diff --check` — clean.
+  - `cargo test --workspace --all-features` — all 77 suites passed.
+  - `cargo test --workspace --no-default-features` — all 77 suites passed.
+
+  Not done in this stage, by design: the coarse-input leaf and node trees, the coarse-process event
+  itself, and the synthetic-node ID counter are Stage 6, which is where the persisted counter lives.
+  Nothing yet consumes `HydrologyRepresentationChange` — the runtime's `Phase::Resolution` adapter is
+  Stage 6 as well.
 
 Execution must begin by re-reading this Progress section and Decision log, then inspecting
 `git status`. The implementing agent updates both sections whenever scope, contract, verification,

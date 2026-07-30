@@ -21,6 +21,9 @@ pub mod substage {
     pub const CONVEYANCE_ROUTING: u8 = 7;
     pub const BOUNDARY_EXPORT: u8 = 8;
     pub const CONSERVATION: u8 = 9;
+    /// Not a Physics substage: a representation change is committed in
+    /// `Phase::Resolution`, in a batch of its own.
+    pub const REPRESENTATION: u8 = 0;
 }
 
 /// Opaque process identities carried by transfer receipts and proposal keys.
@@ -63,6 +66,9 @@ pub mod process {
     /// One conveyance receiver's settlement event, which folds every release
     /// allocation that reached it this tick.
     pub const CONVEYANCE_SETTLEMENT: u32 = 23;
+    /// One chunk's detail level changing. Committed in `Phase::Resolution`, not
+    /// in a Physics substage, so its proposal key carries substage ordinal zero.
+    pub const REPRESENTATION: u32 = 24;
 }
 
 /// Structural caps one hydrology batch is validated against.

@@ -15,16 +15,18 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::num::{NonZeroU32, NonZeroU64};
 
 use causafera_core::StateFingerprint;
-use causafera_domains::{HydrologyEvolutionLimits, HydrologyEvolutionRequest};
+use causafera_domains::{
+    HydrologyEvolutionLimits, HydrologyEvolutionRequest, HydrologyResolutionPolicy,
+};
 use causafera_geography::{
     ElevationMm, FaceDirection, FluxBoundary, HydraulicFraction, HydraulicSubstrateCell,
     HydraulicSubstrateParts, HydrologyActiveRegion, HydrologyBoundaryCondition,
     HydrologyBoundaryMap, HydrologyCellKey, HydrologyCellState, HydrologyCellStorage,
     HydrologyConveyanceEdge, HydrologyConveyanceGraph, HydrologyEdgeKey, HydrologyExteriorFaceKey,
     HydrologyField, HydrologyFieldSet, HydrologyForcingMember, HydrologyForcingParts,
-    HydrologyForcingRecord, HydrologyGridMetric, HydrologyGridMetrics, RoughnessMm,
-    SURFACE_CELL_COUNT, TerrainChunk, TerrainGenerationProvenance, TerrainGeneratorFingerprint,
-    TerrainParameterFingerprint,
+    HydrologyForcingRecord, HydrologyGridMetric, HydrologyGridMetrics, HydrologyResolutionState,
+    RoughnessMm, SURFACE_CELL_COUNT, TerrainChunk, TerrainGenerationProvenance,
+    TerrainGeneratorFingerprint, TerrainParameterFingerprint,
 };
 use causafera_types::{
     ChartChunkCoord, ChunkCoord, MaterialId, SpatialChartId, TraceId, WaterVolume,
@@ -418,6 +420,8 @@ pub struct Scenario {
     pub conveyance: HydrologyConveyanceGraph,
     pub boundaries: HydrologyBoundaryMap,
     pub forcing: Vec<HydrologyForcingRecord>,
+    pub resolution: BTreeMap<ChartChunkCoord, HydrologyResolutionState>,
+    pub resolution_policy: HydrologyResolutionPolicy,
 }
 
 impl Scenario {
@@ -429,7 +433,26 @@ impl Scenario {
             conveyance: HydrologyConveyanceGraph::default(),
             boundaries: closed_perimeter(chunks),
             forcing: Vec::new(),
+            resolution: BTreeMap::new(),
+            resolution_policy: HydrologyResolutionPolicy::DISABLED,
         }
+    }
+
+    /// Evaluate every listed chunk at `level`, with resolution enabled.
+    pub fn at_level(mut self, chunks: &[i32], level: u8) -> Self {
+        self.resolution_policy =
+            HydrologyResolutionPolicy::enabled(level.max(1)).expect("the level is representable");
+        self.resolution = chunks
+            .iter()
+            .map(|&x| {
+                (
+                    chunk(x),
+                    HydrologyResolutionState::new(level, BOOTSTRAP_TRACE)
+                        .expect("the level is representable"),
+                )
+            })
+            .collect();
+        self
     }
 
     pub fn with_forcing(mut self, records: Vec<HydrologyForcingRecord>) -> Self {
@@ -461,6 +484,8 @@ impl Scenario {
             conveyance: &self.conveyance,
             boundaries: &self.boundaries,
             forcing: &self.forcing,
+            resolution: &self.resolution,
+            resolution_policy: self.resolution_policy,
             previous_conservation: PREVIOUS_CONSERVATION,
             limits: HydrologyEvolutionLimits::default(),
         }

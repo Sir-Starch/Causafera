@@ -13,6 +13,10 @@ use causafera_types::{
 };
 
 use super::{
+    HydrologyBlockKey, HydrologyCoarseMember, HydrologyCoarseProcess, HydrologyConstitutiveKey,
+    HydrologyResolutionPlan, allocate_capped, clamp_to_allocatable,
+};
+use super::{
     HydrologyBucket, HydrologyCellChange, HydrologyConservationParts, HydrologyConservationReceipt,
     HydrologyEdgeChange, HydrologyError, HydrologyEventEffect, HydrologyEventKind,
     HydrologyEventPlan, HydrologyEvolutionProposal, HydrologyEvolutionRequest,
@@ -109,6 +113,11 @@ struct CellWork {
     surface_ref: CausalEventDagCause,
     soil_ref: CausalEventDagCause,
     groundwater_ref: CausalEventDagCause,
+    /// The anchors the cell arrived with. The forcing settlement cites these
+    /// rather than the running references, because it is a substage-1 event even
+    /// though its fingerprint is completed after substage 4.
+    pre_tick_surface_ref: CausalEventDagCause,
+    pre_tick_soil_ref: CausalEventDagCause,
     forcing_settlement: Option<CausalEventProposalKey>,
     terminal_surface: Option<CausalEventProposalKey>,
     terminal_soil: Option<CausalEventProposalKey>,
@@ -124,6 +133,12 @@ struct SettlementWork {
     allocations: Vec<HydrologyForcingAllocation>,
     accepted_source: WaterVolume,
     rejected_source: WaterVolume,
+    accepted_et: WaterVolume,
+    unmet_et: WaterVolume,
+    /// The substage-1 surface change this settlement delivered, captured before
+    /// any later substage moves the bucket again.
+    surface_before: WaterVolume,
+    surface_after: WaterVolume,
     origins: BTreeSet<TraceId>,
 }
 
@@ -265,20 +280,61 @@ impl HydrologyEvolutionModel {
             return Err(HydrologyError::ResidencyMismatch);
         }
 
+        let plan = HydrologyResolutionPlan::build(
+            state,
+            request.boundaries,
+            request.metrics,
+            request.resolution,
+            request.resolution_policy,
+        )?;
+
         let mut work = build_work(state);
         let mut edges = build_edge_work(request.conveyance);
         let mut applied_forcing = Vec::new();
-        let settlements =
-            substage_forcing(&mut batch, &mut work, state, &request, &mut applied_forcing)?;
-        substage_infiltration(&mut batch, &mut work, state)?;
-        substage_percolation(&mut batch, &mut work, state)?;
-        let settlements = substage_evapotranspiration(&mut batch, &mut work, settlements)?;
+        let mut coarse_processes = Vec::new();
+        let mut settlements = substage_forcing(
+            &mut batch,
+            &mut work,
+            state,
+            &request,
+            &plan,
+            &mut coarse_processes,
+            &mut applied_forcing,
+        )?;
+        substage_infiltration(&mut batch, &mut work, state, &plan)?;
+        coarse_vertical_pass(
+            &mut batch,
+            &mut work,
+            state,
+            &plan,
+            &mut coarse_processes,
+            &COARSE_INFILTRATION,
+        )?;
+        substage_percolation(&mut batch, &mut work, state, &plan)?;
+        coarse_vertical_pass(
+            &mut batch,
+            &mut work,
+            state,
+            &plan,
+            &mut coarse_processes,
+            &COARSE_PERCOLATION,
+        )?;
+        substage_evapotranspiration(&mut batch, &mut work, &mut settlements, &plan)?;
+        coarse_evapotranspiration(
+            &mut batch,
+            &mut work,
+            &plan,
+            &mut settlements,
+            &mut coarse_processes,
+        )?;
+        let settlements = finalise_settlements(&mut batch, &mut work, settlements)?;
         route(
             &mut batch,
             &mut work,
             &mut edges,
             state,
             &request,
+            &plan,
             &SURFACE_CHANNEL,
         )?;
         route(
@@ -287,6 +343,7 @@ impl HydrologyEvolutionModel {
             &mut edges,
             state,
             &request,
+            &plan,
             &GROUNDWATER_CHANNEL,
         )?;
         substage_conveyance(&mut batch, &mut work, &mut edges, state, &request)?;
@@ -302,9 +359,13 @@ impl HydrologyEvolutionModel {
         // atomically. Checking here means a proposal the store cannot possibly
         // commit is never handed back as if it were valid.
         for event in &batch.events {
-            if event.causes.len() > request.limits.max_causes_per_event {
+            // A fine allocation event gains one more cause when the runtime
+            // resolves its coarse process, so the cap is checked against the
+            // committed width and not against the width the domain can see.
+            let causes = event.causes.len() + usize::from(event.coarse_process.is_some());
+            if causes > request.limits.max_causes_per_event {
                 return Err(HydrologyError::EventCauseLimitExceeded {
-                    count: event.causes.len(),
+                    count: causes,
                     max: request.limits.max_causes_per_event,
                 });
             }
@@ -313,6 +374,20 @@ impl HydrologyEvolutionModel {
                     count: event.effects.len(),
                     max: request.limits.max_effects_per_event,
                 });
+            }
+        }
+
+        // The accepted group total and the sum of the fine grants have to agree
+        // exactly. A coarse process that allocated a different amount than it
+        // accepted would be a source or a sink wearing a group's name, and the
+        // terminal residual alone could not say which group produced it.
+        for coarse in &coarse_processes {
+            let mut granted = WaterAccumulator::ZERO;
+            for member in &coarse.members {
+                granted = granted.add(member.granted)?;
+            }
+            if granted.get() != coarse.accepted_total {
+                return Err(HydrologyError::ResolutionAllocationMismatch);
             }
         }
 
@@ -342,6 +417,7 @@ impl HydrologyEvolutionModel {
             conservation,
             events: batch.events,
             terminal_leaves,
+            coarse_processes,
         }))
     }
 }
@@ -360,6 +436,8 @@ fn build_work(state: &HydrologyFieldSet) -> BTreeMap<ChartChunkCoord, Vec<CellWo
                     surface_ref: CausalEventDagCause::Existing(cell.surface_last_change()),
                     soil_ref: CausalEventDagCause::Existing(cell.soil_last_change()),
                     groundwater_ref: CausalEventDagCause::Existing(cell.groundwater_last_change()),
+                    pre_tick_surface_ref: CausalEventDagCause::Existing(cell.surface_last_change()),
+                    pre_tick_soil_ref: CausalEventDagCause::Existing(cell.soil_last_change()),
                     forcing_settlement: None,
                     terminal_surface: None,
                     terminal_soil: None,
@@ -383,16 +461,36 @@ fn cell_work(
 }
 
 // ---------------------------------------------------------------------------
-// Substage 1 — forcing acceptance
+// Substages 1-4 — the vertical cycle, fine and coarse
 // ---------------------------------------------------------------------------
+
+/// One record's share of one cell, as requested before any capacity is consulted.
+#[derive(Clone, Copy, Debug)]
+struct RecordShare {
+    cell: HydrologyCellKey,
+    requested: WaterVolume,
+}
+
+/// A coarse invocation waiting for its group pass: the members that asked for
+/// something, keyed so the map iterates in the plan's canonical order.
+type CoarseQueue =
+    BTreeMap<(u64, u64, u32, HydrologyBlockKey, HydrologyConstitutiveKey), Vec<RecordShare>>;
+
+/// Grants the coarse passes decided, indexed the way the settlements read them.
+#[derive(Default)]
+struct CoarseGrants {
+    source: BTreeMap<(u64, u64, HydrologyCellKey), WaterVolume>,
+}
 
 fn substage_forcing(
     batch: &mut Batch,
     work: &mut BTreeMap<ChartChunkCoord, Vec<CellWork>>,
     state: &HydrologyFieldSet,
     request: &HydrologyEvolutionRequest<'_>,
+    plan: &HydrologyResolutionPlan,
+    coarse: &mut Vec<HydrologyCoarseProcess>,
     applied: &mut Vec<(u64, u64)>,
-) -> Result<Vec<HydrologyForcingSettlement>, HydrologyError> {
+) -> Result<BTreeMap<HydrologyCellKey, SettlementWork>, HydrologyError> {
     // Validate every record and every target before changing anything. A
     // partially applied schedule is not a weaker outcome, it is an
     // unreproducible one: the same inputs would land differently depending on
@@ -416,6 +514,8 @@ fn substage_forcing(
     }
 
     let mut settlements: BTreeMap<HydrologyCellKey, SettlementWork> = BTreeMap::new();
+    let mut queue: CoarseQueue = BTreeMap::new();
+    let mut grants = CoarseGrants::default();
 
     for record in request.forcing {
         let weights: Vec<u128> = record
@@ -437,46 +537,66 @@ fn substage_forcing(
             let precipitation_share = share_volume(precipitation[index])?;
             let external_share = share_volume(external[index])?;
             let demand_share = share_volume(demand[index])?;
+            let coarse_cell = plan.is_coarse(cell);
 
-            // The receiving bucket's own capacity, read from the frozen
-            // substrate. Overlapping records deplete it in canonical
-            // `(scheduled_tick, forcing_id)` order, so what does not fit is
-            // recorded as unaccepted rather than clamped away.
-            let capacity = state
-                .ground(cell)
-                .ok_or(HydrologyError::ForcingTargetNotResident)?
-                .surface_capacity();
-            let accepted_precipitation = accept_source(
-                batch,
-                work,
-                record,
-                cell,
-                capacity,
-                process::PRECIPITATION,
-                precipitation_share,
-            )?;
-            let accepted_external = accept_source(
-                batch,
-                work,
-                record,
-                cell,
-                capacity,
-                process::EXTERNAL_INFLOW,
-                external_share,
-            )?;
-            debug_assert!(accepted_precipitation <= precipitation_share);
-            debug_assert!(accepted_external <= external_share);
+            let (accepted_precipitation, accepted_external) = if coarse_cell {
+                // A coarse member's share is decided by its constitutive group,
+                // not by its own capacity: queue it and settle after every
+                // member of the group has asked.
+                for (process_kind, requested) in [
+                    (process::PRECIPITATION, precipitation_share),
+                    (process::EXTERNAL_INFLOW, external_share),
+                ] {
+                    if requested.is_zero() {
+                        continue;
+                    }
+                    let (block, constitutive) = group_of(plan, cell)?;
+                    queue
+                        .entry((
+                            record.scheduled_tick(),
+                            record.forcing_id(),
+                            process_kind,
+                            block,
+                            constitutive,
+                        ))
+                        .or_default()
+                        .push(RecordShare { cell, requested });
+                }
+                (WaterVolume::ZERO, WaterVolume::ZERO)
+            } else {
+                // The receiving bucket's own capacity, read from the frozen
+                // substrate. Overlapping records deplete it in canonical
+                // `(scheduled_tick, forcing_id)` order, so what does not fit is
+                // recorded as unaccepted rather than clamped away.
+                let capacity = state
+                    .ground(cell)
+                    .ok_or(HydrologyError::ForcingTargetNotResident)?
+                    .surface_capacity();
+                let accepted_precipitation = accept_source(
+                    batch,
+                    work,
+                    record,
+                    cell,
+                    capacity,
+                    process::PRECIPITATION,
+                    precipitation_share,
+                )?;
+                let accepted_external = accept_source(
+                    batch,
+                    work,
+                    record,
+                    cell,
+                    capacity,
+                    process::EXTERNAL_INFLOW,
+                    external_share,
+                )?;
+                debug_assert!(accepted_precipitation <= precipitation_share);
+                debug_assert!(accepted_external <= external_share);
+                (accepted_precipitation, accepted_external)
+            };
 
             let entry = settlements.entry(cell).or_default();
             entry.origins.insert(record.origin_trace());
-            entry.accepted_source = entry
-                .accepted_source
-                .checked_add(accepted_precipitation)?
-                .checked_add(accepted_external)?;
-            entry.rejected_source = entry
-                .rejected_source
-                .checked_add(precipitation_share.checked_sub(accepted_precipitation)?)?
-                .checked_add(external_share.checked_sub(accepted_external)?)?;
             entry.allocations.push(HydrologyForcingAllocation {
                 scheduled_tick: record.scheduled_tick(),
                 forcing_id: record.forcing_id(),
@@ -484,13 +604,33 @@ fn substage_forcing(
                 precipitation: precipitation_share,
                 external_inflow: external_share,
                 potential_et: demand_share,
+                // Both are finalised once the coarse passes and substage 4 have
+                // run; a fine cell's source total is already exact here.
                 accepted_source: accepted_precipitation.checked_add(accepted_external)?,
-                // Filled in by substage 4, which is where ET is actually met.
                 accepted_et: WaterVolume::ZERO,
             });
 
-            let entry = cell_work(work, cell).expect("residency was validated above");
-            entry.et_demand = entry.et_demand.checked_add(demand_share)?;
+            if coarse_cell {
+                if !demand_share.is_zero() {
+                    let (block, constitutive) = group_of(plan, cell)?;
+                    queue
+                        .entry((
+                            record.scheduled_tick(),
+                            record.forcing_id(),
+                            process::EVAPOTRANSPIRATION_SURFACE,
+                            block,
+                            constitutive,
+                        ))
+                        .or_default()
+                        .push(RecordShare {
+                            cell,
+                            requested: demand_share,
+                        });
+                }
+            } else {
+                let entry = cell_work(work, cell).expect("residency was validated above");
+                entry.et_demand = entry.et_demand.checked_add(demand_share)?;
+            }
         }
 
         // The record's own application event: one effect, one cause, its origin.
@@ -506,6 +646,7 @@ fn substage_forcing(
                 0,
             )?,
             kind: HydrologyEventKind::ForcingApplication,
+            coarse_process: None,
             causes: vec![CausalEventDagCause::Existing(record.origin_trace())],
             effects: vec![HydrologyEventEffect {
                 carrier: HydrologyCarrierKey::ForcingRecord {
@@ -528,17 +669,927 @@ fn substage_forcing(
         applied.push((record.scheduled_tick(), record.forcing_id()));
     }
 
-    // One settlement per targeted cell, in canonical cell order.
-    let mut settled = Vec::with_capacity(settlements.len());
-    for (cell, settlement) in settlements {
-        let key = settlement_key(cell)?;
-        let entry = cell_work(work, cell).expect("residency was validated above");
-        let before = entry.forcing_fingerprint;
-        let after = forcing_settlement_fingerprint(batch.tick, cell, &settlement.allocations);
+    coarse_source_pass(batch, work, state, plan, &queue, &mut grants, coarse)?;
+
+    // Every settled cell now knows its exact accepted source, so the surface
+    // delta and the running references can be fixed. The settlement *event* is
+    // pushed by `finalise_settlements` after substage 4, because its fingerprint
+    // covers each allocation's accepted ET and that is not known until then.
+    for (cell, settlement) in &mut settlements {
+        let entry = cell_work(work, *cell).expect("residency was validated above");
+        for allocation in &mut settlement.allocations {
+            if let Some(granted) =
+                grants
+                    .source
+                    .get(&(allocation.scheduled_tick, allocation.forcing_id, *cell))
+            {
+                allocation.accepted_source = *granted;
+            }
+            settlement.accepted_source = settlement
+                .accepted_source
+                .checked_add(allocation.accepted_source)?;
+            settlement.rejected_source = settlement.rejected_source.checked_add(
+                allocation
+                    .precipitation
+                    .checked_add(allocation.external_inflow)?
+                    .checked_sub(allocation.accepted_source)?,
+            )?;
+        }
+        settlement.surface_before = entry.before.surface;
+        settlement.surface_after = entry.storage.surface;
+
+        let key = settlement_key(*cell)?;
+        entry.forcing_settlement = Some(key.clone());
+        entry.terminal_forcing = Some(key.clone());
+        if !settlement.accepted_source.is_zero() {
+            entry.surface_ref = CausalEventDagCause::Local(key.clone());
+            entry.terminal_surface = Some(key);
+        }
+    }
+
+    // Coarse ET is per record and per group, and has to be queued before
+    // substage 4 so the settlements can carry its grants.
+    Ok(settlements)
+}
+
+/// The block and constitutive group one coarse cell belongs to.
+///
+/// Read from the plan's reverse index rather than recomputed, so a coarse cell
+/// cannot end up in one group when it is grouped and another when it is queued.
+fn group_of(
+    plan: &HydrologyResolutionPlan,
+    cell: HydrologyCellKey,
+) -> Result<(HydrologyBlockKey, HydrologyConstitutiveKey), HydrologyError> {
+    plan.group_of(cell)
+        .ok_or(HydrologyError::ResolutionEntryMissing)
+}
+
+/// One coarse group's members, in canonical cell order.
+fn members_of(
+    plan: &HydrologyResolutionPlan,
+    block: HydrologyBlockKey,
+    constitutive: HydrologyConstitutiveKey,
+) -> &[HydrologyCellKey] {
+    plan.groups()
+        .get(&(block, constitutive))
+        .map(Vec::as_slice)
+        .unwrap_or_default()
+}
+
+/// Accept queued coarse source water, one `(record, kind, group)` at a time.
+///
+/// Weight is the member's already allocated fine request and the ceiling is its
+/// remaining surface capacity, so the group accepts `min(sum requests, sum room)`
+/// and the reducer decides which members hold it. That total can differ from what
+/// the fine path would have accepted — that is the approximation resolution
+/// introduces — but it can never differ in *total water*, which is why the
+/// ceiling is a real capacity and not a scaling factor.
+fn coarse_source_pass(
+    batch: &mut Batch,
+    work: &mut BTreeMap<ChartChunkCoord, Vec<CellWork>>,
+    state: &HydrologyFieldSet,
+    plan: &HydrologyResolutionPlan,
+    queue: &CoarseQueue,
+    grants: &mut CoarseGrants,
+    coarse: &mut Vec<HydrologyCoarseProcess>,
+) -> Result<(), HydrologyError> {
+    for ((scheduled_tick, forcing_id, process_kind, block, constitutive), shares) in queue {
+        if *process_kind != process::PRECIPITATION && *process_kind != process::EXTERNAL_INFLOW {
+            continue;
+        }
+        let members = members_of(plan, *block, *constitutive);
+        let mut weights = Vec::with_capacity(members.len());
+        let mut ceilings = Vec::with_capacity(members.len());
+        for member in members {
+            let requested = shares
+                .iter()
+                .filter(|share| share.cell == *member)
+                .map(|share| share.requested.as_i128())
+                .sum::<i128>();
+            let capacity = state
+                .ground(*member)
+                .ok_or(HydrologyError::ForcingTargetNotResident)?
+                .surface_capacity();
+            let held = cell_work(work, *member)
+                .expect("a group member is resident")
+                .storage
+                .surface;
+            weights.push(requested);
+            ceilings.push(held.remaining_below(capacity).as_i128());
+        }
+        let candidate = weights.iter().try_fold(0_i128, |total, weight| {
+            WaterAccumulator::new(total)
+                .add(*weight)
+                .map(|sum| sum.get())
+        })?;
+        let accepted_total = clamp_to_allocatable(candidate, &weights, &ceilings)?;
+        let allocated = allocate_capped(accepted_total, &weights, &ceilings)?;
+
+        let mut record_members = Vec::with_capacity(members.len());
+        for (member, share) in members.iter().zip(&allocated) {
+            let granted = WaterVolume::from_i128(share.granted)?;
+            let entry = cell_work(work, *member).expect("a group member is resident");
+            let before = entry.storage.surface;
+            entry.storage.surface = before.checked_add(granted)?;
+            let after = entry.storage.surface;
+
+            let key = grants.source.entry((*scheduled_tick, *forcing_id, *member));
+            let running = key.or_insert(WaterVolume::ZERO);
+            *running = running.checked_add(granted)?;
+
+            let requested = WaterVolume::from_i128(share.weight)?;
+            if !requested.is_zero() || !granted.is_zero() {
+                batch
+                    .receipts
+                    .push(HydrologyTransferReceipt::new(HydrologyTransferParts {
+                        batch_sequence: batch.batch_sequence,
+                        tick: batch.tick,
+                        process_kind: *process_kind,
+                        source: HydrologyCarrierKey::ForcingRecord {
+                            scheduled_tick: *scheduled_tick,
+                            forcing_id: *forcing_id,
+                        },
+                        source_bucket: HydrologyBucket::External,
+                        target: HydrologyCarrierKey::Cell(*member),
+                        target_bucket: HydrologyBucket::Surface,
+                        requested,
+                        accepted: granted,
+                        source_before: WaterVolume::ZERO,
+                        source_after: WaterVolume::ZERO,
+                        target_before: before,
+                        target_after: after,
+                        causal_parents: Vec::new(),
+                        forcing_origin: None,
+                        transfer_event: None,
+                        storage_event: (!granted.is_zero())
+                            .then(|| settlement_key(*member))
+                            .transpose()?,
+                    })?);
+            }
+            match *process_kind {
+                process::PRECIPITATION => {
+                    batch.accepted_precipitation =
+                        batch.accepted_precipitation.add_volume(granted)?;
+                }
+                _ => {
+                    batch.accepted_external_inflow =
+                        batch.accepted_external_inflow.add_volume(granted)?;
+                }
+            }
+            record_members.push(HydrologyCoarseMember {
+                cell: *member,
+                weight: share.weight,
+                ceiling: share.ceiling,
+                granted: share.granted,
+                references: vec![
+                    cell_work(work, *member)
+                        .expect("a group member is resident")
+                        .surface_ref
+                        .clone(),
+                ],
+            });
+        }
+        coarse.push(HydrologyCoarseProcess {
+            tick: batch.tick,
+            block: *block,
+            constitutive: *constitutive,
+            substage_ordinal: substage::FORCING,
+            process_kind: *process_kind,
+            forcing: Some((*scheduled_tick, *forcing_id)),
+            raw_candidate: candidate,
+            summed_ceilings: ceilings.iter().sum(),
+            accepted_total,
+            members: record_members,
+        });
+    }
+    Ok(())
+}
+
+fn substage_infiltration(
+    batch: &mut Batch,
+    work: &mut BTreeMap<ChartChunkCoord, Vec<CellWork>>,
+    state: &HydrologyFieldSet,
+    plan: &HydrologyResolutionPlan,
+) -> Result<(), HydrologyError> {
+    for (chunk, field) in state.fields() {
+        if plan.level(*chunk) > 0 {
+            continue;
+        }
+        for (ordinal, ground) in field.substrate().iter().enumerate() {
+            let cell = HydrologyCellKey::new(*chunk, ordinal as u16)?;
+            let entry = cell_work(work, cell).expect("the work map mirrors the field set");
+
+            // What the process wants, before the receiving bucket is consulted.
+            let requested = entry
+                .storage
+                .surface
+                .min(ground.infiltration_limit_per_tick());
+            if requested.is_zero() {
+                continue;
+            }
+            let room = entry.storage.soil.remaining_below(ground.soil_capacity());
+            let accepted = requested.min(room);
+            let event = vertical_key(substage::INFILTRATION, process::INFILTRATION, cell)?;
+
+            let surface_before = entry.storage.surface;
+            let soil_before = entry.storage.soil;
+            entry.storage.surface = surface_before.checked_sub(accepted)?;
+            entry.storage.soil = soil_before.checked_add(accepted)?;
+
+            batch
+                .receipts
+                .push(HydrologyTransferReceipt::new(HydrologyTransferParts {
+                    batch_sequence: batch.batch_sequence,
+                    tick: batch.tick,
+                    process_kind: process::INFILTRATION,
+                    source: HydrologyCarrierKey::Cell(cell),
+                    source_bucket: HydrologyBucket::Surface,
+                    target: HydrologyCarrierKey::Cell(cell),
+                    target_bucket: HydrologyBucket::Soil,
+                    requested,
+                    accepted,
+                    source_before: surface_before,
+                    source_after: entry.storage.surface,
+                    target_before: soil_before,
+                    target_after: entry.storage.soil,
+                    causal_parents: Vec::new(),
+                    forcing_origin: None,
+                    transfer_event: (!accepted.is_zero()).then(|| event.clone()),
+                    storage_event: (!accepted.is_zero()).then(|| event.clone()),
+                })?);
+
+            if accepted.is_zero() {
+                continue;
+            }
+            // Cites the forcing settlement when this cell had one, because that
+            // is the event that produced the surface water being infiltrated;
+            // otherwise the surface bucket's own prior trace.
+            let surface_source = entry
+                .forcing_settlement
+                .clone()
+                .map(CausalEventDagCause::Local)
+                .unwrap_or_else(|| entry.surface_ref.clone());
+            emit_vertical_event(
+                batch,
+                entry,
+                cell,
+                VerticalEvent {
+                    substage_ordinal: substage::INFILTRATION,
+                    process_kind: process::INFILTRATION,
+                    causes: vec![surface_source, entry.soil_ref.clone()],
+                    from: (HydrologyProperty::Surface, surface_before),
+                    to: (HydrologyProperty::Soil, soil_before),
+                },
+            )?;
+        }
+    }
+    Ok(())
+}
+
+fn substage_percolation(
+    batch: &mut Batch,
+    work: &mut BTreeMap<ChartChunkCoord, Vec<CellWork>>,
+    state: &HydrologyFieldSet,
+    plan: &HydrologyResolutionPlan,
+) -> Result<(), HydrologyError> {
+    for (chunk, field) in state.fields() {
+        if plan.level(*chunk) > 0 {
+            continue;
+        }
+        for (ordinal, ground) in field.substrate().iter().enumerate() {
+            let cell = HydrologyCellKey::new(*chunk, ordinal as u16)?;
+            let entry = cell_work(work, cell).expect("the work map mirrors the field set");
+
+            let requested = ground
+                .percolation_fraction()
+                .apply_to_volume(entry.storage.soil)?;
+            if requested.is_zero() {
+                continue;
+            }
+            let room = entry
+                .storage
+                .groundwater
+                .remaining_below(ground.groundwater_capacity());
+            let accepted = requested.min(room);
+            let event = vertical_key(substage::PERCOLATION, process::PERCOLATION, cell)?;
+
+            let soil_before = entry.storage.soil;
+            let groundwater_before = entry.storage.groundwater;
+            entry.storage.soil = soil_before.checked_sub(accepted)?;
+            entry.storage.groundwater = groundwater_before.checked_add(accepted)?;
+
+            batch
+                .receipts
+                .push(HydrologyTransferReceipt::new(HydrologyTransferParts {
+                    batch_sequence: batch.batch_sequence,
+                    tick: batch.tick,
+                    process_kind: process::PERCOLATION,
+                    source: HydrologyCarrierKey::Cell(cell),
+                    source_bucket: HydrologyBucket::Soil,
+                    target: HydrologyCarrierKey::Cell(cell),
+                    target_bucket: HydrologyBucket::Groundwater,
+                    requested,
+                    accepted,
+                    source_before: soil_before,
+                    source_after: entry.storage.soil,
+                    target_before: groundwater_before,
+                    target_after: entry.storage.groundwater,
+                    causal_parents: Vec::new(),
+                    forcing_origin: None,
+                    transfer_event: (!accepted.is_zero()).then(|| event.clone()),
+                    storage_event: (!accepted.is_zero()).then(|| event.clone()),
+                })?);
+
+            if accepted.is_zero() {
+                continue;
+            }
+            emit_vertical_event(
+                batch,
+                entry,
+                cell,
+                VerticalEvent {
+                    substage_ordinal: substage::PERCOLATION,
+                    process_kind: process::PERCOLATION,
+                    causes: vec![entry.soil_ref.clone(), entry.groundwater_ref.clone()],
+                    from: (HydrologyProperty::Soil, soil_before),
+                    to: (HydrologyProperty::Groundwater, groundwater_before),
+                },
+            )?;
+        }
+    }
+    Ok(())
+}
+
+/// One coarse within-cell transfer: infiltration or percolation over a group.
+struct CoarseVertical {
+    substage_ordinal: u8,
+    process_kind: u32,
+    from: HydrologyProperty,
+    to: HydrologyProperty,
+}
+
+const COARSE_INFILTRATION: CoarseVertical = CoarseVertical {
+    substage_ordinal: substage::INFILTRATION,
+    process_kind: process::INFILTRATION,
+    from: HydrologyProperty::Surface,
+    to: HydrologyProperty::Soil,
+};
+
+const COARSE_PERCOLATION: CoarseVertical = CoarseVertical {
+    substage_ordinal: substage::PERCOLATION,
+    process_kind: process::PERCOLATION,
+    from: HydrologyProperty::Soil,
+    to: HydrologyProperty::Groundwater,
+};
+
+/// Run one coarse within-cell transfer over every constitutive group.
+///
+/// The group's raw candidate comes from the Section 5 equation applied to the
+/// group's totals, and each member's weight and ceiling come from the same
+/// equation applied to that member — so the aggregate can round to a unit no
+/// single member could receive, which `clamp_to_ceilings` is what stops from
+/// becoming an invented transfer.
+fn coarse_vertical_pass(
+    batch: &mut Batch,
+    work: &mut BTreeMap<ChartChunkCoord, Vec<CellWork>>,
+    state: &HydrologyFieldSet,
+    plan: &HydrologyResolutionPlan,
+    coarse: &mut Vec<HydrologyCoarseProcess>,
+    spec: &CoarseVertical,
+) -> Result<(), HydrologyError> {
+    for ((block, constitutive), members) in plan.groups() {
+        let mut weights = Vec::with_capacity(members.len());
+        let mut ceilings = Vec::with_capacity(members.len());
+        let mut group_from = WaterAccumulator::ZERO;
+        let mut group_limit = WaterAccumulator::ZERO;
+        let mut group_room = WaterAccumulator::ZERO;
+        let mut fraction = None;
+
+        for member in members {
+            let ground = state
+                .ground(*member)
+                .ok_or(HydrologyError::ForcingTargetNotResident)?;
+            let entry = cell_work(work, *member).expect("a group member is resident");
+            let held = bucket_value(&entry.storage, spec.from);
+            let room = bucket_value(&entry.storage, spec.to)
+                .remaining_below(bucket_capacity(ground, spec.to));
+            let (weight, ceiling) = match spec.process_kind {
+                process::INFILTRATION => {
+                    let limit = ground.infiltration_limit_per_tick();
+                    group_limit = group_limit.add_volume(limit)?;
+                    let candidate = held.min(limit).min(room);
+                    (candidate.as_i128(), candidate.as_i128())
+                }
+                _ => {
+                    // All members of a group share one substrate, so one fraction.
+                    fraction = Some(ground.percolation_fraction());
+                    let raw = ground.percolation_fraction().apply_to_volume(held)?;
+                    (raw.as_i128(), raw.min(room).as_i128())
+                }
+            };
+            group_from = group_from.add_volume(held)?;
+            group_room = group_room.add_volume(room)?;
+            weights.push(weight);
+            ceilings.push(ceiling);
+        }
+
+        let candidate = match spec.process_kind {
+            process::INFILTRATION => group_from
+                .get()
+                .min(group_limit.get())
+                .min(group_room.get()),
+            _ => match fraction {
+                Some(fraction) => fraction.apply_floor(group_from.get())?,
+                None => 0,
+            },
+        };
+        let accepted_total = clamp_to_allocatable(candidate, &weights, &ceilings)?;
+        let allocated = allocate_capped(accepted_total, &weights, &ceilings)?;
+
+        let mut record_members = Vec::with_capacity(members.len());
+        for (member, share) in members.iter().zip(&allocated) {
+            let granted = WaterVolume::from_i128(share.granted)?;
+            let requested = WaterVolume::from_i128(share.weight)?;
+            let entry = cell_work(work, *member).expect("a group member is resident");
+            let from_before = bucket_value(&entry.storage, spec.from);
+            let to_before = bucket_value(&entry.storage, spec.to);
+            *bucket_slot(&mut entry.storage, spec.from) = from_before.checked_sub(granted)?;
+            *bucket_slot(&mut entry.storage, spec.to) = to_before.checked_add(granted)?;
+            let event = vertical_key(spec.substage_ordinal, spec.process_kind, *member)?;
+
+            record_members.push(HydrologyCoarseMember {
+                cell: *member,
+                weight: share.weight,
+                ceiling: share.ceiling,
+                granted: share.granted,
+                references: vec![
+                    cell_bucket_reference(entry, spec.from),
+                    cell_bucket_reference(entry, spec.to),
+                ],
+            });
+
+            if requested.is_zero() && granted.is_zero() {
+                continue;
+            }
+            batch
+                .receipts
+                .push(HydrologyTransferReceipt::new(HydrologyTransferParts {
+                    batch_sequence: batch.batch_sequence,
+                    tick: batch.tick,
+                    process_kind: spec.process_kind,
+                    source: HydrologyCarrierKey::Cell(*member),
+                    source_bucket: spec.from.bucket(),
+                    target: HydrologyCarrierKey::Cell(*member),
+                    target_bucket: spec.to.bucket(),
+                    requested,
+                    accepted: granted,
+                    source_before: from_before,
+                    source_after: bucket_value(&entry.storage, spec.from),
+                    target_before: to_before,
+                    target_after: bucket_value(&entry.storage, spec.to),
+                    causal_parents: Vec::new(),
+                    forcing_origin: None,
+                    transfer_event: (!granted.is_zero()).then(|| event.clone()),
+                    storage_event: (!granted.is_zero()).then(|| event.clone()),
+                })?);
+            if granted.is_zero() {
+                continue;
+            }
+            let causes = vec![
+                cell_bucket_reference(entry, spec.from),
+                cell_bucket_reference(entry, spec.to),
+            ];
+            emit_coarse_allocation(
+                batch,
+                entry,
+                *member,
+                VerticalEvent {
+                    substage_ordinal: spec.substage_ordinal,
+                    process_kind: spec.process_kind,
+                    causes,
+                    from: (spec.from, from_before),
+                    to: (spec.to, to_before),
+                },
+                coarse.len(),
+            )?;
+        }
+        coarse.push(HydrologyCoarseProcess {
+            tick: batch.tick,
+            block: *block,
+            constitutive: *constitutive,
+            substage_ordinal: spec.substage_ordinal,
+            process_kind: spec.process_kind,
+            forcing: None,
+            raw_candidate: candidate,
+            summed_ceilings: ceilings.iter().sum(),
+            accepted_total,
+            members: record_members,
+        });
+    }
+    Ok(())
+}
+
+fn substage_evapotranspiration(
+    batch: &mut Batch,
+    work: &mut BTreeMap<ChartChunkCoord, Vec<CellWork>>,
+    settlements: &mut BTreeMap<HydrologyCellKey, SettlementWork>,
+    plan: &HydrologyResolutionPlan,
+) -> Result<(), HydrologyError> {
+    for (cell, settlement) in settlements.iter_mut() {
+        if plan.is_coarse(*cell) {
+            continue;
+        }
+        let entry = cell_work(work, *cell).expect("a settled cell is resident");
+        let demand = entry.et_demand;
+        if demand.is_zero() {
+            continue;
+        }
+
+        // Surface first, then soil. Groundwater is never withdrawn directly in
+        // this tranche: reaching it would need a root-zone model that does not
+        // exist, and taking it anyway would be an invented process.
+        let surface_before = entry.storage.surface;
+        let surface_taken = demand.min(surface_before);
+        entry.storage.surface = surface_before.checked_sub(surface_taken)?;
+
+        let remaining = demand.checked_sub(surface_taken)?;
+        let soil_before = entry.storage.soil;
+        let soil_taken = remaining.min(soil_before);
+        entry.storage.soil = soil_before.checked_sub(soil_taken)?;
+
+        let accepted = surface_taken.checked_add(soil_taken)?;
+        let unmet = demand.checked_sub(accepted)?;
+        let key = vertical_key(
+            substage::EVAPOTRANSPIRATION,
+            process::EVAPOTRANSPIRATION,
+            *cell,
+        )?;
+
+        push_et_receipt(
+            batch,
+            EtReceipt {
+                cell: *cell,
+                process_kind: process::EVAPOTRANSPIRATION_SURFACE,
+                bucket: HydrologyBucket::Surface,
+                requested: demand,
+                accepted: surface_taken,
+                before: surface_before,
+                after: entry.storage.surface,
+                event: key.clone(),
+            },
+        )?;
+        push_et_receipt(
+            batch,
+            EtReceipt {
+                cell: *cell,
+                process_kind: process::EVAPOTRANSPIRATION_SOIL,
+                bucket: HydrologyBucket::Soil,
+                requested: remaining,
+                accepted: soil_taken,
+                before: soil_before,
+                after: entry.storage.soil,
+                event: key.clone(),
+            },
+        )?;
+        batch.accepted_evapotranspiration =
+            batch.accepted_evapotranspiration.add_volume(accepted)?;
+
+        settlement.accepted_et = accepted;
+        settlement.unmet_et = unmet;
+        // Attribute the met demand back to the records that asked for it, in
+        // canonical order, so a receipt stays traceable to its origin without
+        // every origin becoming a cause.
+        attribute_evapotranspiration(&mut settlement.allocations, accepted)?;
+
+        if accepted.is_zero() {
+            continue;
+        }
 
         let mut causes: BTreeSet<CausalEventDagCause> = BTreeSet::new();
         causes.insert(entry.surface_ref.clone());
         causes.insert(entry.soil_ref.clone());
+        if let Some(settlement_event) = &entry.forcing_settlement {
+            causes.insert(CausalEventDagCause::Local(settlement_event.clone()));
+        }
+
+        let mut effects = Vec::new();
+        if !surface_taken.is_zero() {
+            effects.push(bucket_effect(
+                *cell,
+                HydrologyProperty::Surface,
+                surface_before,
+                entry.storage.surface,
+            ));
+            entry.surface_ref = CausalEventDagCause::Local(key.clone());
+            entry.terminal_surface = Some(key.clone());
+            batch.cell_changes.push(HydrologyCellChange {
+                cell: *cell,
+                bucket: HydrologyBucket::Surface,
+                before: surface_before,
+                after: entry.storage.surface,
+                settlement_event: key.clone(),
+            });
+        }
+        if !soil_taken.is_zero() {
+            effects.push(bucket_effect(
+                *cell,
+                HydrologyProperty::Soil,
+                soil_before,
+                entry.storage.soil,
+            ));
+            entry.soil_ref = CausalEventDagCause::Local(key.clone());
+            entry.terminal_soil = Some(key.clone());
+            batch.cell_changes.push(HydrologyCellChange {
+                cell: *cell,
+                bucket: HydrologyBucket::Soil,
+                before: soil_before,
+                after: entry.storage.soil,
+                settlement_event: key.clone(),
+            });
+        }
+        batch.events.push(HydrologyEventPlan {
+            key,
+            kind: HydrologyEventKind::CellChange,
+            coarse_process: None,
+            causes: causes.into_iter().collect(),
+            effects,
+        });
+    }
+    Ok(())
+}
+
+/// Coarse evapotranspiration: a surface pass then a soil pass, per record and
+/// per group, exactly as the plan orders them.
+#[allow(clippy::too_many_arguments)]
+fn coarse_evapotranspiration(
+    batch: &mut Batch,
+    work: &mut BTreeMap<ChartChunkCoord, Vec<CellWork>>,
+    plan: &HydrologyResolutionPlan,
+    settlements: &mut BTreeMap<HydrologyCellKey, SettlementWork>,
+    coarse: &mut Vec<HydrologyCoarseProcess>,
+) -> Result<(), HydrologyError> {
+    // Rebuild the per-record demand queue from the settlements, which already
+    // carry every allocated fine ET demand in canonical record order.
+    let mut queue: BTreeMap<
+        (u64, u64, HydrologyBlockKey, HydrologyConstitutiveKey),
+        BTreeMap<HydrologyCellKey, WaterVolume>,
+    > = BTreeMap::new();
+    for (cell, settlement) in settlements.iter() {
+        if !plan.is_coarse(*cell) {
+            continue;
+        }
+        let (block, constitutive) = group_of(plan, *cell)?;
+        for allocation in &settlement.allocations {
+            if allocation.potential_et.is_zero() {
+                continue;
+            }
+            *queue
+                .entry((
+                    allocation.scheduled_tick,
+                    allocation.forcing_id,
+                    block,
+                    constitutive,
+                ))
+                .or_default()
+                .entry(*cell)
+                .or_insert(WaterVolume::ZERO) = allocation.potential_et;
+        }
+    }
+
+    let mut met: BTreeMap<(u64, u64, HydrologyCellKey), WaterVolume> = BTreeMap::new();
+    // Which event settles each cell's evapotranspiration. One event per cell
+    // covers both bucket passes, and finding it by scanning the batch would be
+    // quadratic in the number of coarse cells.
+    let mut et_events: BTreeMap<HydrologyCellKey, usize> = BTreeMap::new();
+    for ((scheduled_tick, forcing_id, block, constitutive), demands) in &queue {
+        let members = members_of(plan, *block, *constitutive);
+        let mut remaining_demand: Vec<i128> = members
+            .iter()
+            .map(|member| {
+                demands
+                    .get(member)
+                    .copied()
+                    .unwrap_or(WaterVolume::ZERO)
+                    .as_i128()
+            })
+            .collect();
+
+        for (process_kind, property) in [
+            (
+                process::EVAPOTRANSPIRATION_SURFACE,
+                HydrologyProperty::Surface,
+            ),
+            (process::EVAPOTRANSPIRATION_SOIL, HydrologyProperty::Soil),
+        ] {
+            let mut ceilings = Vec::with_capacity(members.len());
+            for member in members {
+                let entry = cell_work(work, *member).expect("a group member is resident");
+                ceilings.push(bucket_value(&entry.storage, property).as_i128());
+            }
+            let candidate = remaining_demand.iter().try_fold(0_i128, |total, demand| {
+                WaterAccumulator::new(total)
+                    .add(*demand)
+                    .map(|sum| sum.get())
+            })?;
+            let accepted_total = clamp_to_allocatable(candidate, &remaining_demand, &ceilings)?;
+            let allocated = allocate_capped(accepted_total, &remaining_demand, &ceilings)?;
+
+            let mut record_members = Vec::with_capacity(members.len());
+            for (index, (member, share)) in members.iter().zip(&allocated).enumerate() {
+                let granted = WaterVolume::from_i128(share.granted)?;
+                let requested = WaterVolume::from_i128(share.weight)?;
+                let entry = cell_work(work, *member).expect("a group member is resident");
+                let before = bucket_value(&entry.storage, property);
+                *bucket_slot(&mut entry.storage, property) = before.checked_sub(granted)?;
+                let after = bucket_value(&entry.storage, property);
+                remaining_demand[index] -= share.granted;
+
+                let event = vertical_key(
+                    substage::EVAPOTRANSPIRATION,
+                    process::EVAPOTRANSPIRATION,
+                    *member,
+                )?;
+                record_members.push(HydrologyCoarseMember {
+                    cell: *member,
+                    weight: share.weight,
+                    ceiling: share.ceiling,
+                    granted: share.granted,
+                    references: vec![cell_bucket_reference(entry, property)],
+                });
+                if requested.is_zero() && granted.is_zero() {
+                    continue;
+                }
+                push_et_receipt(
+                    batch,
+                    EtReceipt {
+                        cell: *member,
+                        process_kind,
+                        bucket: property.bucket(),
+                        requested,
+                        accepted: granted,
+                        before,
+                        after,
+                        event: event.clone(),
+                    },
+                )?;
+                if granted.is_zero() {
+                    continue;
+                }
+                batch.accepted_evapotranspiration =
+                    batch.accepted_evapotranspiration.add_volume(granted)?;
+                let running = met
+                    .entry((*scheduled_tick, *forcing_id, *member))
+                    .or_insert(WaterVolume::ZERO);
+                *running = running.checked_add(granted)?;
+
+                let causes = vec![cell_bucket_reference(entry, property)];
+                emit_coarse_withdrawal(
+                    batch,
+                    &mut et_events,
+                    entry,
+                    *member,
+                    property,
+                    before,
+                    after,
+                    event,
+                    causes,
+                    coarse.len(),
+                )?;
+            }
+            coarse.push(HydrologyCoarseProcess {
+                tick: batch.tick,
+                block: *block,
+                constitutive: *constitutive,
+                substage_ordinal: substage::EVAPOTRANSPIRATION,
+                process_kind,
+                forcing: Some((*scheduled_tick, *forcing_id)),
+                raw_candidate: candidate,
+                summed_ceilings: ceilings.iter().sum(),
+                accepted_total,
+                members: record_members,
+            });
+        }
+    }
+
+    for (cell, settlement) in settlements.iter_mut() {
+        if !plan.is_coarse(*cell) {
+            continue;
+        }
+        let mut accepted = WaterVolume::ZERO;
+        let mut demanded = WaterVolume::ZERO;
+        for allocation in &mut settlement.allocations {
+            let granted = met
+                .get(&(allocation.scheduled_tick, allocation.forcing_id, *cell))
+                .copied()
+                .unwrap_or(WaterVolume::ZERO);
+            allocation.accepted_et = granted;
+            accepted = accepted.checked_add(granted)?;
+            demanded = demanded.checked_add(allocation.potential_et)?;
+        }
+        settlement.accepted_et = accepted;
+        settlement.unmet_et = demanded.checked_sub(accepted)?;
+    }
+    Ok(())
+}
+
+/// Emit one fine allocation event for a coarse within-cell transfer.
+fn emit_coarse_allocation(
+    batch: &mut Batch,
+    entry: &mut CellWork,
+    cell: HydrologyCellKey,
+    event: VerticalEvent,
+    coarse_index: usize,
+) -> Result<(), HydrologyError> {
+    emit_vertical_event(batch, entry, cell, event)?;
+    if let Some(last) = batch.events.last_mut() {
+        last.coarse_process = Some(coarse_index);
+    }
+    Ok(())
+}
+
+/// Emit one fine allocation event for a coarse withdrawal to the outside world.
+#[allow(clippy::too_many_arguments)]
+fn emit_coarse_withdrawal(
+    batch: &mut Batch,
+    index: &mut BTreeMap<HydrologyCellKey, usize>,
+    entry: &mut CellWork,
+    cell: HydrologyCellKey,
+    property: HydrologyProperty,
+    before: WaterVolume,
+    after: WaterVolume,
+    key: CausalEventProposalKey,
+    causes: Vec<CausalEventDagCause>,
+    coarse_index: usize,
+) -> Result<(), HydrologyError> {
+    // One event per cell settles whichever buckets the two ET passes drew from,
+    // so a second pass extends the existing event rather than adding one that
+    // would claim a separate change to the same bucket.
+    if let Some(existing) = index.get(&cell).map(|at| &mut batch.events[*at]) {
+        if let Some(effect) = existing
+            .effects
+            .iter_mut()
+            .find(|effect| effect.property == property)
+        {
+            effect.after = volume_fingerprint(&HydrologyCarrierKey::Cell(cell), property, after);
+        } else {
+            existing
+                .effects
+                .push(bucket_effect(cell, property, before, after));
+        }
+        for cause in causes {
+            if !existing.causes.contains(&cause) {
+                existing.causes.push(cause);
+            }
+        }
+        existing.causes.sort();
+        existing.coarse_process = Some(coarse_index);
+    } else {
+        let mut ordered: BTreeSet<CausalEventDagCause> = BTreeSet::new();
+        for cause in causes {
+            ordered.insert(cause);
+        }
+        index.insert(cell, batch.events.len());
+        batch.events.push(HydrologyEventPlan {
+            key: key.clone(),
+            kind: HydrologyEventKind::CellChange,
+            coarse_process: Some(coarse_index),
+            causes: ordered.into_iter().collect(),
+            effects: vec![bucket_effect(cell, property, before, after)],
+        });
+    }
+    set_reference(entry, property, key.clone());
+    batch.cell_changes.push(HydrologyCellChange {
+        cell,
+        bucket: property.bucket(),
+        before,
+        after,
+        settlement_event: key,
+    });
+    Ok(())
+}
+
+/// Push every settlement event, now that accepted ET is known.
+///
+/// The settlement fingerprint covers each allocation's accepted ET, so computing
+/// it in substage 1 — before substage 4 has run — would persist a value that a
+/// later recomputation from the same allocations could not reproduce. The event's
+/// proposal key is deterministic, so substages 2 through 4 can cite it as a local
+/// cause before it is pushed; only the fingerprint has to wait.
+fn finalise_settlements(
+    batch: &mut Batch,
+    work: &mut BTreeMap<ChartChunkCoord, Vec<CellWork>>,
+    settlements: BTreeMap<HydrologyCellKey, SettlementWork>,
+) -> Result<Vec<HydrologyForcingSettlement>, HydrologyError> {
+    let mut settled = Vec::with_capacity(settlements.len());
+    for (cell, settlement) in settlements {
+        let key = settlement_key(cell)?;
+        let entry = cell_work(work, cell).expect("a settled cell is resident");
+        let before = entry.forcing_fingerprint;
+        let after = forcing_settlement_fingerprint(batch.tick, cell, &settlement.allocations);
+
+        let mut causes: BTreeSet<CausalEventDagCause> = BTreeSet::new();
+        causes.insert(entry.pre_tick_surface_ref.clone());
+        causes.insert(entry.pre_tick_soil_ref.clone());
         for origin in &settlement.origins {
             causes.insert(CausalEventDagCause::Existing(*origin));
         }
@@ -558,19 +1609,17 @@ fn substage_forcing(
             after,
         }];
         if !settlement.accepted_source.is_zero() {
-            let surface_before = entry.before.surface;
-            let surface_after = entry.storage.surface;
             effects.push(bucket_effect(
                 cell,
                 HydrologyProperty::Surface,
-                surface_before,
-                surface_after,
+                settlement.surface_before,
+                settlement.surface_after,
             ));
             batch.cell_changes.push(HydrologyCellChange {
                 cell,
                 bucket: HydrologyBucket::Surface,
-                before: surface_before,
-                after: surface_after,
+                before: settlement.surface_before,
+                after: settlement.surface_after,
                 settlement_event: key.clone(),
             });
         }
@@ -578,25 +1627,19 @@ fn substage_forcing(
         batch.events.push(HydrologyEventPlan {
             key: key.clone(),
             kind: HydrologyEventKind::ForcingSettlement,
+            coarse_process: None,
             causes: causes.into_iter().collect(),
             effects,
         });
-
         entry.forcing_fingerprint = after;
-        entry.forcing_settlement = Some(key.clone());
-        entry.terminal_forcing = Some(key.clone());
-        if !settlement.accepted_source.is_zero() {
-            entry.surface_ref = CausalEventDagCause::Local(key.clone());
-            entry.terminal_surface = Some(key.clone());
-        }
 
         settled.push(HydrologyForcingSettlement {
             cell,
             allocations: settlement.allocations,
             accepted_source: settlement.accepted_source,
             rejected_source: settlement.rejected_source,
-            accepted_et: WaterVolume::ZERO,
-            unmet_et: WaterVolume::ZERO,
+            accepted_et: settlement.accepted_et,
+            unmet_et: settlement.unmet_et,
             fingerprint_before: before,
             fingerprint_after: after,
             settlement_event: key,
@@ -685,282 +1728,6 @@ fn accept_source(
         _ => unreachable!("accept_source is only called for the two source processes"),
     }
     Ok(accepted)
-}
-
-// ---------------------------------------------------------------------------
-// Substages 2-4 — the vertical cycle
-// ---------------------------------------------------------------------------
-
-fn substage_infiltration(
-    batch: &mut Batch,
-    work: &mut BTreeMap<ChartChunkCoord, Vec<CellWork>>,
-    state: &HydrologyFieldSet,
-) -> Result<(), HydrologyError> {
-    for (chunk, field) in state.fields() {
-        for (ordinal, ground) in field.substrate().iter().enumerate() {
-            let cell = HydrologyCellKey::new(*chunk, ordinal as u16)?;
-            let entry = cell_work(work, cell).expect("the work map mirrors the field set");
-
-            // What the process wants, before the receiving bucket is consulted.
-            let requested = entry
-                .storage
-                .surface
-                .min(ground.infiltration_limit_per_tick());
-            if requested.is_zero() {
-                continue;
-            }
-            let room = entry.storage.soil.remaining_below(ground.soil_capacity());
-            let accepted = requested.min(room);
-            let event = vertical_key(substage::INFILTRATION, process::INFILTRATION, cell)?;
-
-            let surface_before = entry.storage.surface;
-            let soil_before = entry.storage.soil;
-            entry.storage.surface = surface_before.checked_sub(accepted)?;
-            entry.storage.soil = soil_before.checked_add(accepted)?;
-
-            batch
-                .receipts
-                .push(HydrologyTransferReceipt::new(HydrologyTransferParts {
-                    batch_sequence: batch.batch_sequence,
-                    tick: batch.tick,
-                    process_kind: process::INFILTRATION,
-                    source: HydrologyCarrierKey::Cell(cell),
-                    source_bucket: HydrologyBucket::Surface,
-                    target: HydrologyCarrierKey::Cell(cell),
-                    target_bucket: HydrologyBucket::Soil,
-                    requested,
-                    accepted,
-                    source_before: surface_before,
-                    source_after: entry.storage.surface,
-                    target_before: soil_before,
-                    target_after: entry.storage.soil,
-                    causal_parents: Vec::new(),
-                    forcing_origin: None,
-                    transfer_event: (!accepted.is_zero()).then(|| event.clone()),
-                    storage_event: (!accepted.is_zero()).then(|| event.clone()),
-                })?);
-
-            if accepted.is_zero() {
-                continue;
-            }
-            // Cites the forcing settlement when this cell had one, because that
-            // is the event that produced the surface water being infiltrated;
-            // otherwise the surface bucket's own prior trace.
-            let surface_source = entry
-                .forcing_settlement
-                .clone()
-                .map(CausalEventDagCause::Local)
-                .unwrap_or_else(|| entry.surface_ref.clone());
-            emit_vertical_event(
-                batch,
-                entry,
-                cell,
-                VerticalEvent {
-                    substage_ordinal: substage::INFILTRATION,
-                    process_kind: process::INFILTRATION,
-                    causes: vec![surface_source, entry.soil_ref.clone()],
-                    from: (HydrologyProperty::Surface, surface_before),
-                    to: (HydrologyProperty::Soil, soil_before),
-                },
-            )?;
-        }
-    }
-    Ok(())
-}
-
-fn substage_percolation(
-    batch: &mut Batch,
-    work: &mut BTreeMap<ChartChunkCoord, Vec<CellWork>>,
-    state: &HydrologyFieldSet,
-) -> Result<(), HydrologyError> {
-    for (chunk, field) in state.fields() {
-        for (ordinal, ground) in field.substrate().iter().enumerate() {
-            let cell = HydrologyCellKey::new(*chunk, ordinal as u16)?;
-            let entry = cell_work(work, cell).expect("the work map mirrors the field set");
-
-            let requested = ground
-                .percolation_fraction()
-                .apply_to_volume(entry.storage.soil)?;
-            if requested.is_zero() {
-                continue;
-            }
-            let room = entry
-                .storage
-                .groundwater
-                .remaining_below(ground.groundwater_capacity());
-            let accepted = requested.min(room);
-            let event = vertical_key(substage::PERCOLATION, process::PERCOLATION, cell)?;
-
-            let soil_before = entry.storage.soil;
-            let groundwater_before = entry.storage.groundwater;
-            entry.storage.soil = soil_before.checked_sub(accepted)?;
-            entry.storage.groundwater = groundwater_before.checked_add(accepted)?;
-
-            batch
-                .receipts
-                .push(HydrologyTransferReceipt::new(HydrologyTransferParts {
-                    batch_sequence: batch.batch_sequence,
-                    tick: batch.tick,
-                    process_kind: process::PERCOLATION,
-                    source: HydrologyCarrierKey::Cell(cell),
-                    source_bucket: HydrologyBucket::Soil,
-                    target: HydrologyCarrierKey::Cell(cell),
-                    target_bucket: HydrologyBucket::Groundwater,
-                    requested,
-                    accepted,
-                    source_before: soil_before,
-                    source_after: entry.storage.soil,
-                    target_before: groundwater_before,
-                    target_after: entry.storage.groundwater,
-                    causal_parents: Vec::new(),
-                    forcing_origin: None,
-                    transfer_event: (!accepted.is_zero()).then(|| event.clone()),
-                    storage_event: (!accepted.is_zero()).then(|| event.clone()),
-                })?);
-
-            if accepted.is_zero() {
-                continue;
-            }
-            emit_vertical_event(
-                batch,
-                entry,
-                cell,
-                VerticalEvent {
-                    substage_ordinal: substage::PERCOLATION,
-                    process_kind: process::PERCOLATION,
-                    causes: vec![entry.soil_ref.clone(), entry.groundwater_ref.clone()],
-                    from: (HydrologyProperty::Soil, soil_before),
-                    to: (HydrologyProperty::Groundwater, groundwater_before),
-                },
-            )?;
-        }
-    }
-    Ok(())
-}
-
-fn substage_evapotranspiration(
-    batch: &mut Batch,
-    work: &mut BTreeMap<ChartChunkCoord, Vec<CellWork>>,
-    mut settlements: Vec<HydrologyForcingSettlement>,
-) -> Result<Vec<HydrologyForcingSettlement>, HydrologyError> {
-    for settlement in &mut settlements {
-        let cell = settlement.cell;
-        let entry = cell_work(work, cell).expect("a settled cell is resident");
-        let demand = entry.et_demand;
-        if demand.is_zero() {
-            continue;
-        }
-
-        // Surface first, then soil. Groundwater is never withdrawn directly in
-        // this tranche: reaching it would need a root-zone model that does not
-        // exist, and taking it anyway would be an invented process.
-        let surface_before = entry.storage.surface;
-        let surface_taken = demand.min(surface_before);
-        entry.storage.surface = surface_before.checked_sub(surface_taken)?;
-
-        let remaining = demand.checked_sub(surface_taken)?;
-        let soil_before = entry.storage.soil;
-        let soil_taken = remaining.min(soil_before);
-        entry.storage.soil = soil_before.checked_sub(soil_taken)?;
-
-        let accepted = surface_taken.checked_add(soil_taken)?;
-        let unmet = demand.checked_sub(accepted)?;
-        let key = vertical_key(
-            substage::EVAPOTRANSPIRATION,
-            process::EVAPOTRANSPIRATION,
-            cell,
-        )?;
-
-        push_et_receipt(
-            batch,
-            EtReceipt {
-                cell,
-                process_kind: process::EVAPOTRANSPIRATION_SURFACE,
-                bucket: HydrologyBucket::Surface,
-                requested: demand,
-                accepted: surface_taken,
-                before: surface_before,
-                after: entry.storage.surface,
-                event: key.clone(),
-            },
-        )?;
-        push_et_receipt(
-            batch,
-            EtReceipt {
-                cell,
-                process_kind: process::EVAPOTRANSPIRATION_SOIL,
-                bucket: HydrologyBucket::Soil,
-                requested: remaining,
-                accepted: soil_taken,
-                before: soil_before,
-                after: entry.storage.soil,
-                event: key.clone(),
-            },
-        )?;
-        batch.accepted_evapotranspiration =
-            batch.accepted_evapotranspiration.add_volume(accepted)?;
-
-        settlement.accepted_et = accepted;
-        settlement.unmet_et = unmet;
-        // Attribute the met demand back to the records that asked for it, in
-        // canonical order, so a receipt stays traceable to its origin without
-        // every origin becoming a cause.
-        attribute_evapotranspiration(&mut settlement.allocations, accepted)?;
-
-        if accepted.is_zero() {
-            continue;
-        }
-
-        let mut causes: BTreeSet<CausalEventDagCause> = BTreeSet::new();
-        causes.insert(entry.surface_ref.clone());
-        causes.insert(entry.soil_ref.clone());
-        if let Some(settlement_event) = &entry.forcing_settlement {
-            causes.insert(CausalEventDagCause::Local(settlement_event.clone()));
-        }
-
-        let mut effects = Vec::new();
-        if !surface_taken.is_zero() {
-            effects.push(bucket_effect(
-                cell,
-                HydrologyProperty::Surface,
-                surface_before,
-                entry.storage.surface,
-            ));
-            entry.surface_ref = CausalEventDagCause::Local(key.clone());
-            entry.terminal_surface = Some(key.clone());
-            batch.cell_changes.push(HydrologyCellChange {
-                cell,
-                bucket: HydrologyBucket::Surface,
-                before: surface_before,
-                after: entry.storage.surface,
-                settlement_event: key.clone(),
-            });
-        }
-        if !soil_taken.is_zero() {
-            effects.push(bucket_effect(
-                cell,
-                HydrologyProperty::Soil,
-                soil_before,
-                entry.storage.soil,
-            ));
-            entry.soil_ref = CausalEventDagCause::Local(key.clone());
-            entry.terminal_soil = Some(key.clone());
-            batch.cell_changes.push(HydrologyCellChange {
-                cell,
-                bucket: HydrologyBucket::Soil,
-                before: soil_before,
-                after: entry.storage.soil,
-                settlement_event: key.clone(),
-            });
-        }
-        batch.events.push(HydrologyEventPlan {
-            key,
-            kind: HydrologyEventKind::CellChange,
-            causes: causes.into_iter().collect(),
-            effects,
-        });
-    }
-    Ok(settlements)
 }
 
 /// Spread accepted ET back over the records that demanded it, largest first by
@@ -1087,6 +1854,7 @@ fn emit_vertical_event(
     batch.events.push(HydrologyEventPlan {
         key: key.clone(),
         kind: HydrologyEventKind::CellChange,
+        coarse_process: None,
         causes: causes.into_iter().collect(),
         effects: vec![
             bucket_effect(cell, from_property, from_before, from_after),
@@ -1361,12 +2129,14 @@ fn cell_bucket_reference(entry: &CellWork, property: HydrologyProperty) -> Causa
 /// is what makes a chunk seam an ordinary face, a three-cell chain unable to move
 /// one unit through two faces, and the result independent of the order the cells
 /// happen to be visited in.
+#[allow(clippy::too_many_arguments)]
 fn route(
     batch: &mut Batch,
     work: &mut BTreeMap<ChartChunkCoord, Vec<CellWork>>,
     edges: &mut BTreeMap<HydrologyEdgeKey, EdgeWork>,
     state: &HydrologyFieldSet,
     request: &HydrologyEvolutionRequest<'_>,
+    plan: &HydrologyResolutionPlan,
     channel: &RoutingChannel,
 ) -> Result<(), HydrologyError> {
     let mut heads: BTreeMap<HydrologyCellKey, i128> = BTreeMap::new();
@@ -1394,7 +2164,7 @@ fn route(
         }
     }
 
-    let mut outflows = collect_demands(state, request, channel, &heads, &frozen, edges)?;
+    let mut outflows = collect_demands(state, request, plan, channel, &heads, &frozen, edges)?;
     outflows.sort_by_key(Outflow::order);
     reduce_donors(&mut outflows, &frozen)?;
     reduce_receivers(&mut outflows, state, edges, channel, &frozen)?;
@@ -1404,9 +2174,11 @@ fn route(
 }
 
 /// Every raw demand of one channel, computed from the frozen state.
+#[allow(clippy::too_many_arguments)]
 fn collect_demands(
     state: &HydrologyFieldSet,
     request: &HydrologyEvolutionRequest<'_>,
+    plan: &HydrologyResolutionPlan,
     channel: &RoutingChannel,
     heads: &BTreeMap<HydrologyCellKey, i128>,
     frozen: &BTreeMap<HydrologyCellKey, WaterVolume>,
@@ -1425,6 +2197,15 @@ fn collect_demands(
                         // low endpoint. Visiting it from both sides would give
                         // one face two demands and move the water twice.
                         if cell != edge_key.low() {
+                            continue;
+                        }
+                        // A face internal to one coarse block is not evaluated:
+                        // that is where the work reduction comes from. Every
+                        // other face — including every block boundary and every
+                        // face touching a level-zero cell — stays authoritative
+                        // and is computed from its own fine endpoints, so
+                        // heterogeneous boundary conductance is never averaged.
+                        if plan.is_internal_face(cell, neighbor)? {
                             continue;
                         }
                         let neighbor_head = heads[&neighbor];
@@ -1806,6 +2587,7 @@ fn emit_routing_events(
         batch.events.push(HydrologyEventPlan {
             key: key.clone(),
             kind: HydrologyEventKind::CellChange,
+            coarse_process: None,
             causes: causes.into_iter().collect(),
             effects: vec![bucket_effect(*cell, channel.property, *before, *after)],
         });
@@ -1852,6 +2634,7 @@ fn emit_routing_events(
         batch.events.push(HydrologyEventPlan {
             key: key.clone(),
             kind: HydrologyEventKind::EdgeTransfer,
+            coarse_process: None,
             causes: causes.into_iter().collect(),
             effects: vec![edge_effect(edge_key, before, after)],
         });
@@ -2134,6 +2917,7 @@ fn substage_conveyance(
         batch.events.push(HydrologyEventPlan {
             key: key.clone(),
             kind: HydrologyEventKind::EdgeTransfer,
+            coarse_process: None,
             causes: causes.into_iter().collect(),
             effects: vec![edge_effect(
                 release.source,
@@ -2205,6 +2989,7 @@ fn substage_conveyance(
         batch.events.push(HydrologyEventPlan {
             key: key.clone(),
             kind: HydrologyEventKind::EdgeTransfer,
+            coarse_process: None,
             causes: causes.into_iter().collect(),
             effects,
         });

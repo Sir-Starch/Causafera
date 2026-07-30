@@ -1054,3 +1054,51 @@ fn the_proposal_is_identical_across_chunk_and_record_construction_orders() {
         "the fixture must actually move water, or this proves nothing"
     );
 }
+
+#[test]
+fn a_settlement_fingerprint_is_recomputable_from_the_allocations_it_persists() {
+    // The fingerprint covers each allocation's accepted evapotranspiration, and
+    // that is not known until substage 4. Computing it in substage 1 would persist
+    // a value no later recomputation from the same allocations could reproduce —
+    // which is exactly what import validation does.
+    let ground = Ground {
+        infiltration_limit: 0,
+        percolation: (0, 1),
+        ..Ground::default()
+    };
+    let field = ChunkBuilder::new(0)
+        .with(0, ground.build(), storage(5_000, 0, 0))
+        .build();
+    let state = field_set(vec![field]);
+    let scenario = Scenario::new(&[0]).with_forcing(vec![
+        Forcing::new(1, 1)
+            .target(cell(0, 0), 1)
+            .precipitation(1_000)
+            .potential_et(400)
+            .build(),
+    ]);
+    let proposal = HydrologyEvolutionModel::propose(&state, scenario.request(1)).unwrap();
+
+    let settlement = &proposal.forcing_settlements()[0];
+    assert_eq!(settlement.accepted_et, WaterVolume::new(400));
+    assert_eq!(
+        settlement.allocations[0].accepted_et,
+        WaterVolume::new(400),
+        "the allocation records the met demand"
+    );
+    assert_eq!(
+        settlement.fingerprint_after,
+        causafera_domains::forcing_settlement_fingerprint(1, cell(0, 0), &settlement.allocations),
+        "the persisted fingerprint is the one the allocations produce"
+    );
+    // And the after-state carries that same fingerprint as the cell's durable
+    // forcing anchor, so a reload recomputes it rather than a stale one.
+    assert_eq!(
+        proposal
+            .after_state()
+            .cell(cell(0, 0))
+            .unwrap()
+            .forcing_input_fingerprint(),
+        settlement.fingerprint_after
+    );
+}

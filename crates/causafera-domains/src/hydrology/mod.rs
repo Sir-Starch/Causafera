@@ -18,14 +18,16 @@ mod parameters;
 mod proposal;
 mod receipts;
 mod records;
+mod resolution;
 
 pub use evolution::{HydrologyEvolutionModel, allocate_largest_remainder};
 pub use parameters::{HYDROLOGY_AGGREGATION_ARITY, HydrologyEvolutionLimits, process, substage};
 pub use proposal::{
-    HydrologyEventEffect, HydrologyEventKind, HydrologyEventPlan, HydrologyEvolutionProposal,
-    HydrologyEvolutionRequest, HydrologyProperty, HydrologyProposalParts, HydrologyTerminalLeaf,
+    HydrologyCoarseMember, HydrologyCoarseProcess, HydrologyEventEffect, HydrologyEventKind,
+    HydrologyEventPlan, HydrologyEvolutionProposal, HydrologyEvolutionRequest, HydrologyProperty,
+    HydrologyProposalParts, HydrologyRepresentationChange, HydrologyTerminalLeaf,
     absent_fingerprint, forcing_applied_fingerprint, forcing_settlement_fingerprint,
-    volume_fingerprint,
+    resolution_fingerprint, volume_fingerprint,
 };
 pub use receipts::{
     HydrologyConservationParts, HydrologyConservationReceipt, HydrologyReceiptTotals,
@@ -35,4 +37,9 @@ pub use records::{
     HydrologyBucket, HydrologyCellChange, HydrologyEdgeChange, HydrologyError,
     HydrologyForcingAllocation, HydrologyForcingSettlement, HydrologyTransferParts,
     HydrologyTransferReceipt,
+};
+pub use resolution::{
+    CappedShare, HydrologyBlockKey, HydrologyConstitutiveKey, HydrologyResolutionPlan,
+    HydrologyResolutionPolicy, allocate_capped, block_edge, clamp_to_allocatable,
+    representation_change,
 };

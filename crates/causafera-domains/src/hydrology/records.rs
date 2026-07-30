@@ -317,6 +317,16 @@ pub enum HydrologyError {
     EventCauseLimitExceeded { count: usize, max: usize },
     #[error("a hydrology event carries {count} effects, at most {max} are allowed")]
     EventEffectLimitExceeded { count: usize, max: usize },
+    #[error("a resident hydrology chunk has no resolution entry")]
+    ResolutionEntryMissing,
+    #[error("a hydrology chunk is at resolution level {level}, the policy allows at most {max}")]
+    ResolutionLevelAbovePolicy { level: u8, max: u8 },
+    #[error("a hydrology coarse allocation was given weights and ceilings of different lengths")]
+    ResolutionShapeMismatch,
+    #[error("a hydrology coarse group delta does not match the sum of its fine allocations")]
+    ResolutionAllocationMismatch,
+    #[error("a hydrology representation change would not change the level")]
+    ResolutionUnchanged,
 }
 
 #[cfg(test)]
