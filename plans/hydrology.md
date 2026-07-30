@@ -3081,7 +3081,7 @@ its own evidence-backed follow-up TODO rather than being hidden in Progress.
   a world from configured numbers and real terrain, advances it every tick in `Phase::Physics`, maps
   the domain's logical DAG onto the runtime's causal schema, builds the §8 terminal aggregation tree
   and the §9 coarse-input trees from one shared node counter, and installs the after-state only after
-  the whole batch commits. Checkpoint commit `<pending>`.
+  the whole batch commits. Checkpoint commit `a738619`.
 
   Files changed and why:
 
