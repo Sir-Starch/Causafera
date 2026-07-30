@@ -2522,6 +2522,47 @@ its own evidence-backed follow-up TODO rather than being hidden in Progress.
   statement about the world the snapshot describes. The 24-byte cost is asserted by name so future
   state cannot accumulate there unnoticed.
 
+- **2026-07-30 — Stage 6 wave B correction to Stage 4: a pass-through cell anchors nothing.**
+  `CausalEffect::new` refuses an effect whose before and after agree, and it is right to: an effect
+  asserting no change is not a state change. Stage 4 had made a cell that passed water through — ten
+  in, ten out — emit a routing settlement so its transfers would have an event to name; that event's
+  effect would have been exactly such a claim. The rule is now what §8's alias rule says: no bucket
+  change, no bucket-change event. Neither transfer is orphaned — the inbound one names the donor's
+  event and the outbound one names the receiver's — and the cell's `last_change` correctly still
+  points at whenever its stored volume last differed. Found by the core contract, not by review.
+- **2026-07-30 — Stage 6 wave B: the coarse-input leaf fingerprint hashes reference *descriptors*,
+  not trace IDs.** §9 step 1 hashes "the ordered current-reference trace IDs". A local reference has
+  no trace ID until the batch commits, and the leaf fingerprint is an input to that batch — so
+  hashing trace IDs is not computable where it must be computed. Each reference is hashed as a kind
+  tag plus either the existing trace ID or the sibling's canonical proposal key, which is
+  deterministic before commit and strictly more specific than an ID that depends on how much history
+  the store already holds. The referenced event's own effect payload is also omitted: it is
+  unreachable for a local sibling pre-commit, and the weight and ceiling the leaf already hashes are
+  the quantities that state produced.
+- **2026-07-30 — Stage 6 wave B: synthetic node IDs start at one.** Object ID zero is reserved for
+  the batch-sequence object the conservation event settles. A tree node and the conservation event
+  sharing an object ID would make two different claims about one target.
+- **2026-07-30 — Stage 6 wave B: the conservation effect fingerprints the whole ledger.** §8 says the
+  conservation event transitions the batch-sequence property but does not say what the fingerprint
+  covers. It covers every ledger term, so the effect is a statement about the tick's water budget
+  rather than about a counter that happened to advance.
+- **2026-07-30 — Stage 6 wave B: the stream-keying ID and the system schema ID are different
+  numbers.** `HYDROLOGY_SYSTEM_ID = 13` is the schema identity the persisted manifest declares;
+  the scheduler's assigned ID — what `StreamKey` uses — is the registration order, which is 11.
+  Risk R7 is about the second. The legacy fixture now asserts both: the first eleven registrations
+  keep their phase and their stream ID, exactly one system was added, it runs in `Phase::Physics` at
+  stream ID 11, and it declares schema 13.
+- **2026-07-30 — Stage 6 wave B: `thermal_determinism`'s registration count became a lower bound.**
+  Its contract is that legacy registrations are untouched and thermal occupies positions nine and
+  ten, not that nothing may ever follow thermal. The consecutive-from-zero assertion is what would
+  still catch an insertion, and it is kept.
+- **2026-07-30 — Stage 6 wave B: overrides are validated against what they resolve to.** §4 requires
+  every initial storage to fit its *resolved* capacity. An override that lowers only a capacity still
+  inherits the default storage, and that pair has to be consistent. The check applies cell-then-chart-
+  then-default precedence — the same order bootstrap applies — so what configuration validation
+  rejects is what bootstrap would have failed to build, named rather than surfacing as a bare
+  capacity error from whichever cell tripped over it first.
+
 ## Progress
 
 - **2026-07-29 — Accepted.** Revision 19 is the authoritative hydrology implementation plan.
@@ -3035,6 +3076,78 @@ its own evidence-backed follow-up TODO rather than being hidden in Progress.
   validates, persists, and reloads without producing water. Waves B through E remain, in the order
   recorded in the Decision log; the digest schema is still 7 and section `0x000F` does not exist yet,
   so the plan's schema-8 and required-section changes are still ahead.
+
+- **2026-07-30 — Stage 6 wave B complete: the runtime commits hydrology.** An enabled session builds
+  a world from configured numbers and real terrain, advances it every tick in `Phase::Physics`, maps
+  the domain's logical DAG onto the runtime's causal schema, builds the §8 terminal aggregation tree
+  and the §9 coarse-input trees from one shared node counter, and installs the after-state only after
+  the whole batch commits. Checkpoint commit `<pending>`.
+
+  Files changed and why:
+
+  - `crates/causafera-runtime/src/hydrology_events.rs` (new) — the allocated schema identifiers, the
+    dense `HydrologyObjectRegistry`, carrier and property mapping, the batch-leaf, node, coarse-leaf,
+    coarse-process, and batch-sequence fingerprints, the shared 16-ary tree builder, and the batch
+    assembler.
+  - `crates/causafera-runtime/src/hydrology.rs` (new) — `HydrologyRuntimeState` with whole-batch
+    receipt retention, `HydrologyEvolutionSystem`, and causal initialization from configuration
+    including the §4 per-second-to-per-tick conversions, downhill conveyance construction, and the
+    explicit boundary perimeter.
+  - `crates/causafera-runtime/src/runtime.rs` — the appended registration, the state field, the
+    manifest declaration, `hydrology_state()`, and eight refusal variants.
+  - `crates/causafera-runtime/src/hydrology_config.rs` — resolved-override validation.
+  - `crates/causafera-runtime/Cargo.toml` — `blake3` moved to the main dependencies.
+  - `crates/causafera-geography/src/hydrology/state.rs` — per-bucket anchor installers, the edge
+    installer, and `Default` for the empty field set.
+  - `crates/causafera-geography/src/hydrology/metric.rs` — `Default` for the empty registry.
+  - `crates/causafera-geography/src/hydrology/forcing.rs` — `applied_at`.
+  - `crates/causafera-geography/src/hydrology/mod.rs` — two error variants.
+  - `crates/causafera-domains/src/hydrology/evolution.rs`,
+    `crates/causafera-domains/tests/hydrology_routing.rs` — the pass-through correction above.
+  - `crates/causafera-runtime/tests/hydrology_runtime.rs` — 9 further tests.
+  - `crates/causafera-runtime/tests/hydrology_legacy_compatibility.rs`,
+    `crates/causafera-runtime/tests/thermal_determinism.rs` — the append assertions above.
+
+  What the gates actually assert:
+
+  - **Causal initialization** — every resident chunk holds a full surface lattice; the per-tick
+    infiltration limit is the exact product of the configured rate, the cell area, and the timestep;
+    roughness-adjusted transmissivity survives the conversion as a positive conductance; every
+    exterior face carries a record; every registry table is a bijection onto a dense range and covers
+    every cell and every edge.
+  - **Conveyance construction** — every edge joins two orthogonally adjacent resident cells, runs
+    strictly downhill, and there is at most one outgoing edge per cell, so the graph is acyclic and a
+    local minimum keeps its water.
+  - **The committed tick** — an enabled session commits one retained batch per tick, each with a
+    residual of exactly zero and a non-empty receipt set; a closed world's cells and edges together
+    hold the same total after six ticks as before; every bucket that moved names a new trace and the
+    conservation anchor advances; the terminal tree consumes synthetic node identifiers.
+  - **Retention** — twelve ticks leave exactly eight retained batches, each with both its transfer
+    and its conservation receipts, so eviction is whole-batch.
+  - **Determinism** — two runs of the same configuration produce identical fields, conveyance, node
+    counter, retained batch list, and conservation receipts.
+  - **A disabled session** — holds no field, ticks, and produces no batch.
+  - **Risk R7** — asserted as described in the Decision log.
+
+  Commands run and their actual results:
+
+  - `cargo test -p causafera-runtime --test hydrology_runtime` — **24 passed**.
+  - `cargo test -p causafera-runtime --test hydrology_legacy_compatibility` — **7 passed**.
+  - `cargo clippy --workspace --all-targets --all-features -- -D warnings` — clean.
+  - `cargo fmt --all -- --check` — clean.
+  - `git diff --check` — clean.
+  - `cargo test --workspace --all-features` — all 78 suites passed.
+  - `cargo test --workspace --no-default-features` — all 78 suites passed.
+  - `node tools/audit/check-entry-points.mjs` — pass.
+  - `node tools/audit/run-source-tests.mjs` — 35 passed, 0 failed.
+
+  Not done in this wave, by design: causal initialization runs from `RuntimeState::new` rather than
+  from a seventh bootstrap stage, so there is no origin event and therefore no forcing yet — the
+  schedule is validated and persisted in the recipe but no record is installed, which is why nothing
+  rains. Wave C adds the stage, its seven aggregate effects, and the forcing installation. The
+  whole-tick staging transaction and near-cap later-phase rollback are also still ahead: a hydrology
+  failure currently records itself in `state.failure` like every other system's, which stops the run
+  but does not yet roll back a partially advanced tick.
 
 Execution must begin by re-reading this Progress section and Decision log, then inspecting
 `git status`. The implementing agent updates both sections whenever scope, contract, verification,

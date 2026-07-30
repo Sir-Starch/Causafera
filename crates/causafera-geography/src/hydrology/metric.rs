@@ -138,7 +138,9 @@ pub struct HydrologyDepthSplit {
 /// Cross-chart transport is outside this tranche, so charts share nothing but
 /// this registry: each has its own area, edge length, and timestep, and a
 /// chunk whose chart is not registered is rejected rather than defaulted.
-#[derive(Clone, Debug, PartialEq, Eq)]
+/// `Default` is the empty registry a session without hydrology holds; every
+/// lookup on it reports an unregistered chart rather than inventing a scale.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct HydrologyGridMetrics {
     metrics: BTreeMap<SpatialChartId, HydrologyGridMetric>,
 }

@@ -214,11 +214,31 @@ impl Runtime {
             Phase::Physics,
             Box::new(ThermalEvolutionSystem::new(Arc::clone(&state))),
         );
+        // Appended after every existing registration. Although hydrology runs in
+        // `Phase::Physics`, appending is what preserves the implicit IDs and
+        // therefore the RNG stream keys of every system already registered
+        // (plan risk R7, §10).
+        register(
+            &mut scheduler,
+            Phase::Physics,
+            Box::new(crate::HydrologyEvolutionSystem::new(Arc::clone(&state))),
+        );
         Ok(Self {
             scheduler,
             state,
             scheduler_registrations,
         })
+    }
+
+    /// A read-only copy of the runtime's hydrology state.
+    ///
+    /// Cloned rather than borrowed because the state lives behind the tick loop's
+    /// mutex; nothing downstream may hold that lock or mutate what it guards.
+    pub fn hydrology_state(&self) -> crate::HydrologyRuntimeState {
+        self.state
+            .lock()
+            .map(|state| state.hydrology.clone())
+            .unwrap_or_default()
     }
 
     /// The phase and stream-keying ID the scheduler assigned each system, in
@@ -561,6 +581,38 @@ pub enum RuntimeError {
     HydrologyInitialStorageExceedsCapacity,
     #[error("hydrology configures groundwater capacity without a specific yield")]
     HydrologyZeroSpecificYield,
+    /// `CausalTarget` has one `u64` object slot, so every addressable hydrology
+    /// carrier needs a registered dense ordinal. Hashing a 22-byte cell key into
+    /// the slot would let two cells collide and the causal record would then say
+    /// one thing about two places.
+    #[error("a hydrology carrier has no registered object ordinal")]
+    HydrologyCarrierNotRegistered,
+    #[error("a hydrology carrier is not an addressable causal target")]
+    HydrologyCarrierNotAddressable,
+    #[error("a hydrology fine allocation names a coarse process that was not built")]
+    HydrologyCoarseProcessUnknown,
+    #[error("a hydrology terminal leaf names an event that is not in the batch")]
+    HydrologyTerminalLeafUnknown,
+    #[error("hydrology synthetic aggregation node identifiers are exhausted")]
+    HydrologyNodeIdentifiersExhausted,
+    #[error("the hydrology conservation event is not in the committed batch")]
+    HydrologyConservationNotCommitted,
+    #[error("a hydrology anchor names an event that is not in the committed batch")]
+    HydrologyAnchorNotCommitted,
+    #[error("a hydrology forcing record marked applied is not in the schedule")]
+    HydrologyForcingRecordUnknown,
+    #[error("hydrology bucket tag {0:#04x} is not cell storage and has no anchor")]
+    HydrologyBucketNotCellStorage(u8),
+    /// A derived per-tick coefficient did not fit its destination type. Clamping
+    /// it would execute a different world than the one that was configured.
+    #[error("a derived hydrology coefficient does not fit its destination type")]
+    HydrologyCoefficientOverflow,
+    #[error("hydrology state is invalid: {0}")]
+    HydrologyState(#[from] causafera_geography::HydrologyStateError),
+    #[error("hydrology causal commit failed: {0}")]
+    HydrologyCommit(#[from] causafera_core::provenance::CausalDagCommitError),
+    #[error("hydrology evolution failed: {0}")]
+    Hydrology(#[from] causafera_domains::HydrologyError),
 }
 
 impl From<ManaError> for RuntimeError {
@@ -598,6 +650,9 @@ pub struct RuntimeState {
     pub(crate) thermal_reservoirs: BTreeMap<ThermalReservoirId, ThermalReservoir>,
     pub(crate) thermal_parameters: ThermalParameters,
     pub(crate) pending_thermal_injections: Vec<ThermalInjectionProposal>,
+    /// Everything hydrology holds, grouped so unrelated state does not accumulate
+    /// here (the plan's modular-architecture rule).
+    pub(crate) hydrology: crate::HydrologyRuntimeState,
     pub(crate) thermal_receipts: BTreeMap<TraceId, Vec<ThermalCellTransferReceipt>>,
     pub(crate) thermal_conservation_receipts: BTreeMap<TraceId, ThermalConservationReceipt>,
     pub(crate) resolution: ResolutionField,
@@ -717,6 +772,16 @@ impl RuntimeState {
         let active_thermal_chunks = active_chunk_keys.iter().copied().collect::<BTreeSet<_>>();
         let thermal_active_region =
             ThermalActiveRegion::new(active_thermal_chunks.clone(), active_thermal_chunks)?;
+        // Causal initialization from the configured numbers and the real ground.
+        // Wave C moves this call into the seventh production bootstrap stage,
+        // which adds the origin event and the stage receipt; the numbers it
+        // derives are the same either way.
+        let hydrology = crate::build_hydrology_state(
+            &config.hydrology,
+            config.deterministic.world_seed,
+            &active_chunk_keys,
+            root_trace,
+        )?;
         let resolution = ResolutionField::new(
             ResolutionFieldId::new(1),
             SimulationTime::new(0),
@@ -750,6 +815,7 @@ impl RuntimeState {
             thermal_reservoirs: BTreeMap::new(),
             thermal_parameters,
             pending_thermal_injections: Vec::new(),
+            hydrology,
             thermal_receipts: BTreeMap::new(),
             thermal_conservation_receipts: BTreeMap::new(),
             resolution,
@@ -1149,6 +1215,10 @@ impl RuntimeState {
             thermal_reservoirs,
             thermal_parameters,
             pending_thermal_injections: Vec::new(),
+            // Wave D restores this from the persisted hydrology section; a
+            // snapshot taken before that section exists reloads a disabled domain,
+            // which is what every pre-hydrology snapshot describes.
+            hydrology: crate::HydrologyRuntimeState::disabled(),
             thermal_receipts,
             thermal_conservation_receipts,
             resolution,
@@ -3136,6 +3206,16 @@ fn runtime_system_registrations() -> Vec<SystemRegistrationSnapshot> {
             system_schema_id: THERMAL_EVOLUTION_SYSTEM_ID,
             revision: 1,
             registration_order: 10,
+        },
+        // Appended, never inserted. `hydrology_legacy_compatibility` asserts the
+        // live scheduler and this declaration agree *and* that the first eleven
+        // entries are byte-identical to the pre-hydrology capture, which is what
+        // makes an accidental insertion a test failure rather than silent RNG drift.
+        SystemRegistrationSnapshot {
+            phase: Phase::Physics,
+            system_schema_id: crate::HYDROLOGY_SYSTEM_ID,
+            revision: 1,
+            registration_order: 11,
         },
     ]
 }

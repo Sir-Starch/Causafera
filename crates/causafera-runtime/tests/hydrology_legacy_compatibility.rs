@@ -37,8 +37,8 @@ use causafera_core::{Phase, RandomStream, StreamKey};
 use causafera_persistence::SnapshotEnvelope;
 use causafera_runtime::snapshot_sections::{SECTION_RUNTIME_RECIPE, assemble_envelope};
 use causafera_runtime::{
-    ActiveChunkShape, CURRENT_DIGEST_SCHEMA_VERSION, Runtime, RuntimeConfig, RuntimeSnapshotData,
-    SchedulerRegistration,
+    ActiveChunkShape, CURRENT_DIGEST_SCHEMA_VERSION, HYDROLOGY_SYSTEM_ID, Runtime, RuntimeConfig,
+    RuntimeSnapshotData, SchedulerRegistration,
 };
 use causafera_types::SimulationTime;
 
@@ -128,12 +128,46 @@ fn scheduler_assigns_the_ids_the_persisted_recipe_declares() {
         })
         .collect();
 
-    // Then: the live scheduler, the persisted manifest, and the captured
-    // baseline all agree. `runtime_system_registrations` is a declaration; on
-    // its own it cannot notice a registration inserted ahead of the systems it
-    // numbers, because the declaration would move with the insertion.
-    assert_eq!(observed, PRE_HYDROLOGY_REGISTRATIONS, "live scheduler IDs");
-    assert_eq!(declared, PRE_HYDROLOGY_REGISTRATIONS, "persisted manifest");
+    // Then: the live scheduler and the persisted manifest agree with each other,
+    // and both begin with the captured pre-hydrology table unchanged.
+    // `runtime_system_registrations` is a declaration; on its own it cannot notice
+    // a registration inserted ahead of the systems it numbers, because the
+    // declaration would move with the insertion.
+    assert_eq!(observed, declared, "live scheduler and persisted manifest");
+    assert_eq!(
+        &observed[..PRE_HYDROLOGY_REGISTRATIONS.len()],
+        PRE_HYDROLOGY_REGISTRATIONS,
+        "every pre-hydrology registration keeps its phase and its ID"
+    );
+
+    // And: hydrology was appended, not inserted. That is the whole of risk R7 —
+    // a registration anywhere but last renumbers every later system and silently
+    // reseeds its stream.
+    assert_eq!(
+        observed.len(),
+        PRE_HYDROLOGY_REGISTRATIONS.len() + 1,
+        "exactly one system was added"
+    );
+    // The stream-keying ID is the registration order, which is distinct from the
+    // system's schema ID: one says where in the sequence a system sits, the other
+    // says which system it is.
+    assert_eq!(
+        observed[PRE_HYDROLOGY_REGISTRATIONS.len()],
+        (Phase::Physics, PRE_HYDROLOGY_REGISTRATIONS.len() as u64),
+        "hydrology runs in Physics and takes the next free stream ID"
+    );
+    assert_eq!(
+        runtime
+            .export_snapshot()
+            .expect("state must export")
+            .recipe
+            .system_registrations
+            .last()
+            .expect("the manifest is not empty")
+            .system_schema_id,
+        HYDROLOGY_SYSTEM_ID,
+        "the appended system declares its own schema identity"
+    );
     assert_eq!(CURRENT_DIGEST_SCHEMA_VERSION.raw(), 7);
 }
 
@@ -176,9 +210,26 @@ fn registered_stream_keys_are_pinned() {
         .map(stream_sample)
         .collect();
 
-    // Then: the sample table is exactly the captured baseline.
-    assert_eq!(samples, PRE_HYDROLOGY_STREAM_SAMPLES);
+    // Then: every pre-hydrology system draws exactly what it drew before. The
+    // appended system has a stream of its own, which is an addition rather than a
+    // perturbation — nothing that existed was reseeded.
+    assert_eq!(
+        &samples[..PRE_HYDROLOGY_STREAM_SAMPLES.len()],
+        PRE_HYDROLOGY_STREAM_SAMPLES
+    );
+    assert_eq!(samples.len(), PRE_HYDROLOGY_STREAM_SAMPLES.len() + 1);
+    assert_eq!(
+        samples[PRE_HYDROLOGY_STREAM_SAMPLES.len()],
+        APPENDED_HYDROLOGY_STREAM_SAMPLE
+    );
 }
+
+/// The sample the appended hydrology system's stream yields at tick zero.
+///
+/// Recorded so the appended system's own key is pinned too: hydrology draws no
+/// randomness today, and the day it does, this is what says whether its stream
+/// moved.
+const APPENDED_HYDROLOGY_STREAM_SAMPLE: u64 = 12_494_574_395_528_867_065;
 
 #[test]
 fn a_one_step_id_shift_would_change_every_later_stream() {
@@ -432,9 +483,9 @@ fn pre_hydrology_section_payloads_are_pinned() {
     assert_eq!(recipe.1, HYDROLOGY_RECIPE_MAJOR);
     assert_eq!(
         recipe.5,
-        recipe_before.5 + DISABLED_HYDROLOGY_RECIPE_BYTES,
-        "a disabled hydrology configuration must encode exactly its version fields \
-         and its empty collections"
+        recipe_before.5 + DISABLED_HYDROLOGY_RECIPE_BYTES + APPENDED_REGISTRATION_RECIPE_BYTES,
+        "the recipe grew by exactly the disabled hydrology block and one appended \
+         system registration"
     );
     assert_ne!(recipe.6, recipe_before.6, "the recipe payload changed");
 
@@ -536,10 +587,14 @@ const HYDROLOGY_RECIPE_MAJOR: u16 = 7;
 /// explicitly, because "off" and "absent" are different claims about a snapshot.
 const DISABLED_HYDROLOGY_RECIPE_BYTES: usize = 2 + 1 + 2 + 1 + 1 + 8 + 1 + 8;
 
+/// Bytes the appended system registration adds to the runtime recipe: a phase, a
+/// schema ID, a revision, and a registration order.
+const APPENDED_REGISTRATION_RECIPE_BYTES: usize = 2 + 8 + 2 + 2;
+
 /// The full-envelope digest of the same pre-hydrology world once its recipe
 /// records a disabled hydrology configuration.
 const DISABLED_HYDROLOGY_ENVELOPE_DIGEST: &str =
-    "35b4489e35ad7e09b0f371f35b125864f2c999594b287d249e3229bf379ddb0b";
+    "d7964912c0fdbb39e469cbaf4e31dc1783a8707e3c6248045f1ffb5184fe73e8";
 
 // ---------------------------------------------------------------------------
 // Resume equivalence

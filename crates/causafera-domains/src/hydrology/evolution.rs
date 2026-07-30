@@ -2536,38 +2536,24 @@ fn emit_routing_events(
         .map(|(key, edge)| (*key, edge.reference.clone()))
         .collect();
 
-    // A cell settles when it took part in an accepted transfer, not merely when
-    // its total moved. A cell that passed ten units through — ten in, ten out —
-    // ends the substage holding what it started with, and if that were taken as
-    // "nothing happened" both of its transfers would have no committed event to
-    // point at, leaving them orphans the moment their trace was asked for.
-    let mut participants: BTreeSet<HydrologyCellKey> = BTreeSet::new();
-    for flow in outflows {
-        if flow.accepted == 0 {
-            continue;
-        }
-        participants.insert(flow.donor);
-        if let FlowTarget::Cell(receiver) = flow.target {
-            participants.insert(receiver);
-        }
-    }
+    // Only cells whose bucket actually moved settle. A cell that passed ten units
+    // through — ten in, ten out — holds what it started with, so it has no state
+    // change to anchor and `CausalEffect` refuses an effect that claims one. Its
+    // two transfers are still attributable: the inbound one names the donor's
+    // event and the outbound one names the receiver's, so neither is an orphan,
+    // and the cell's `last_change` correctly still points at whenever its stored
+    // volume last differed.
     let mut changed: BTreeMap<HydrologyCellKey, (WaterVolume, WaterVolume)> = BTreeMap::new();
     for (chunk, entries) in work.iter() {
         for (ordinal, entry) in entries.iter().enumerate() {
             let cell = HydrologyCellKey::new(*chunk, ordinal as u16)?;
             let after = bucket_value(&entry.storage, channel.property);
             let before = frozen[&cell];
-            if before != after || participants.contains(&cell) {
+            if before != after {
                 changed.insert(cell, (before, after));
             }
         }
     }
-    debug_assert!(
-        changed
-            .iter()
-            .all(|(cell, (before, after))| before == after || participants.contains(cell)),
-        "a bucket cannot move without an accepted transfer moving it"
-    );
 
     let mut emitted: BTreeMap<HydrologyCellKey, CausalEventProposalKey> = BTreeMap::new();
     for (cell, (before, after)) in &changed {

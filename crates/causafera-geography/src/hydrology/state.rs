@@ -604,7 +604,11 @@ impl HydrologyField {
 }
 
 /// Every resident hydrology chunk, keyed canonically.
-#[derive(Clone, Debug, PartialEq, Eq)]
+/// `Default` is the empty field set a session without hydrology holds. It is not
+/// a usable world — every constructor that builds a real one validates metrics,
+/// residency, and capacity — but "no water anywhere" has to be representable so a
+/// disabled domain is a state rather than an absence.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct HydrologyFieldSet {
     fields: BTreeMap<ChartChunkCoord, HydrologyField>,
     batch_sequence: u64,
@@ -711,6 +715,63 @@ impl HydrologyFieldSet {
 
     pub fn cell_count(&self) -> usize {
         self.fields.len() * SURFACE_CELL_COUNT
+    }
+
+    /// Install the committed trace of one bucket's settlement.
+    ///
+    /// Separate methods per bucket rather than one taking a discriminator: the
+    /// buckets are named fields of `HydrologyCellState`, and a caller that could
+    /// pass the wrong tag would be able to anchor a surface change to soil. The
+    /// pre-change storage is written by the solver's after-state, so only the
+    /// trace arrives here.
+    pub fn install_surface_trace(
+        &mut self,
+        cell: HydrologyCellKey,
+        trace: TraceId,
+    ) -> Result<(), HydrologyStateError> {
+        self.cell_mut(cell)?.surface_last_change = trace;
+        Ok(())
+    }
+
+    pub fn install_soil_trace(
+        &mut self,
+        cell: HydrologyCellKey,
+        trace: TraceId,
+    ) -> Result<(), HydrologyStateError> {
+        self.cell_mut(cell)?.soil_last_change = trace;
+        Ok(())
+    }
+
+    pub fn install_groundwater_trace(
+        &mut self,
+        cell: HydrologyCellKey,
+        trace: TraceId,
+    ) -> Result<(), HydrologyStateError> {
+        self.cell_mut(cell)?.groundwater_last_change = trace;
+        Ok(())
+    }
+
+    pub fn install_forcing_trace(
+        &mut self,
+        cell: HydrologyCellKey,
+        trace: TraceId,
+    ) -> Result<(), HydrologyStateError> {
+        self.cell_mut(cell)?.forcing_last_change = trace;
+        Ok(())
+    }
+
+    pub fn install_conservation_trace(&mut self, trace: TraceId) {
+        self.conservation_last_change = trace;
+    }
+
+    fn cell_mut(
+        &mut self,
+        cell: HydrologyCellKey,
+    ) -> Result<&mut HydrologyCellState, HydrologyStateError> {
+        self.fields
+            .get_mut(&cell.chunk())
+            .and_then(|field| field.cells.get_mut(usize::from(cell.cell_ordinal())))
+            .ok_or(HydrologyStateError::CellNotResident)
     }
 
     pub fn total_storage(&self) -> Result<WaterAccumulator, HydrologyStateError> {
@@ -888,6 +949,19 @@ impl HydrologyConveyanceGraph {
             total = total.add_volume(edge.storage())?;
         }
         Ok(total)
+    }
+
+    /// Install one edge's committed settlement trace.
+    pub fn install_edge_trace(
+        &mut self,
+        edge: HydrologyEdgeKey,
+        trace: TraceId,
+    ) -> Result<(), HydrologyStateError> {
+        self.edges
+            .get_mut(&edge)
+            .ok_or(HydrologyStateError::UnknownEdge)?
+            .last_change = trace;
+        Ok(())
     }
 }
 

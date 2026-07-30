@@ -102,6 +102,10 @@ pub enum HydrologyStateError {
     FractionOutOfRange { numerator: u32, denominator: u32 },
     #[error("initial storage exceeds its declared capacity")]
     StorageExceedsCapacity,
+    #[error("a hydrology cell is not resident")]
+    CellNotResident,
+    #[error("a hydrology conveyance edge is not in the graph")]
+    UnknownEdge,
     #[error("specific yield must be positive when groundwater storage is enabled")]
     ZeroSpecificYield,
 

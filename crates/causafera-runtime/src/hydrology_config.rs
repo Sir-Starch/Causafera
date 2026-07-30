@@ -293,12 +293,99 @@ impl HydrologyBootstrapParameters {
         if !self.default_groundwater_capacity.is_zero() && self.specific_yield_num == 0 {
             return Err(RuntimeError::HydrologyZeroSpecificYield);
         }
-        for override_record in self
-            .chart_overrides
-            .values()
-            .chain(self.cell_overrides.values())
-        {
+        // Overrides are validated against what they *resolve* to, not only against
+        // themselves: an override that lowers a capacity below the initial storage
+        // it inherits is a configuration no field can be built from, and catching
+        // it here names the problem instead of surfacing a bare capacity error
+        // from whichever cell tripped over it first.
+        for override_record in self.chart_overrides.values() {
             override_record.validate()?;
+            self.check_resolved(override_record, None)?;
+        }
+        for (cell, override_record) in &self.cell_overrides {
+            override_record.validate()?;
+            self.check_resolved(override_record, self.chart_overrides.get(&cell.chart()))?;
+        }
+        Ok(())
+    }
+
+    /// Check one override's resolved storage against its resolved capacity.
+    ///
+    /// Precedence is cell, then chart, then default — the same order bootstrap
+    /// applies, so what is checked here is what bootstrap will build.
+    fn check_resolved(
+        &self,
+        override_record: &HydrologyBootstrapOverride,
+        chart: Option<&HydrologyBootstrapOverride>,
+    ) -> Result<(), RuntimeError> {
+        let resolve =
+            |cell: Option<WaterVolume>, chart_value: Option<WaterVolume>, default: WaterVolume| {
+                cell.or(chart_value).unwrap_or(default)
+            };
+        let groundwater_capacity = resolve(
+            override_record.groundwater_capacity,
+            chart.and_then(|o| o.groundwater_capacity),
+            self.default_groundwater_capacity,
+        );
+        let pairs = [
+            (
+                resolve(
+                    override_record.initial_surface,
+                    chart.and_then(|o| o.initial_surface),
+                    self.initial_surface,
+                ),
+                resolve(
+                    override_record.surface_capacity,
+                    chart.and_then(|o| o.surface_capacity),
+                    self.default_surface_capacity,
+                ),
+            ),
+            (
+                resolve(
+                    override_record.initial_soil,
+                    chart.and_then(|o| o.initial_soil),
+                    self.initial_soil,
+                ),
+                resolve(
+                    override_record.soil_capacity,
+                    chart.and_then(|o| o.soil_capacity),
+                    self.default_soil_capacity,
+                ),
+            ),
+            (
+                resolve(
+                    override_record.initial_groundwater,
+                    chart.and_then(|o| o.initial_groundwater),
+                    self.initial_groundwater,
+                ),
+                groundwater_capacity,
+            ),
+            (
+                resolve(
+                    override_record.conveyance_initial_storage,
+                    chart.and_then(|o| o.conveyance_initial_storage),
+                    self.conveyance_initial_storage,
+                ),
+                resolve(
+                    override_record.conveyance_capacity,
+                    chart.and_then(|o| o.conveyance_capacity),
+                    self.conveyance_capacity,
+                ),
+            ),
+        ];
+        for (initial, capacity) in pairs {
+            if initial > capacity {
+                return Err(RuntimeError::HydrologyInitialStorageExceedsCapacity);
+            }
+        }
+        // A resolved groundwater capacity still needs a resolved specific yield,
+        // for the same reason the defaults do: saturated depth divides by it.
+        let yield_numerator = override_record
+            .specific_yield_num
+            .or(chart.and_then(|o| o.specific_yield_num))
+            .unwrap_or(self.specific_yield_num);
+        if !groundwater_capacity.is_zero() && yield_numerator == 0 {
+            return Err(RuntimeError::HydrologyZeroSpecificYield);
         }
         Ok(())
     }

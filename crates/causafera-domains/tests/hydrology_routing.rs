@@ -359,9 +359,11 @@ fn one_unit_cannot_cross_two_faces_in_one_routing_substage() {
 }
 
 #[test]
-fn a_cell_that_both_donates_and_receives_settles_once() {
-    // The middle cell's routing event carries its net change, not one event per
-    // face, and its bucket ends at exactly `before - out + in`.
+fn a_cell_that_passes_water_through_anchors_nothing_and_orphans_nothing() {
+    // Ten units in, ten out: the middle cell's bucket is unchanged, so it has no
+    // state change to anchor and emits no bucket-change event — an effect claiming
+    // `before == after` is not a state change and the causal contract refuses one.
+    // Its two transfers stay attributable through the other endpoint of each.
     let ground = conductive(1, 0);
     let field = ChunkBuilder::new(0)
         .with(0, ground.build(), storage(1_000_000, 0, 0))
@@ -377,19 +379,25 @@ fn a_cell_that_both_donates_and_receives_settles_once() {
         }));
     let proposal = HydrologyEvolutionModel::propose(&state, scenario.request(1)).unwrap();
 
-    let middle_events: Vec<_> = proposal
-        .cell_changes()
-        .iter()
-        .filter(|change| change.cell == cell(0, 1))
-        .collect();
-    assert_eq!(middle_events.len(), 1, "one settlement, not one per face");
-    assert_eq!(middle_events[0].before, WaterVolume::new(1_000_000));
-    assert_eq!(middle_events[0].after, WaterVolume::new(1_000_000));
+    assert!(
+        !proposal
+            .cell_changes()
+            .iter()
+            .any(|change| change.cell == cell(0, 1)),
+        "an unchanged bucket has no change to record"
+    );
     assert_eq!(
         surface_of(&proposal, cell(0, 1)),
         1_000_000,
         "ten in, ten out"
     );
+
+    // Neither transfer across the middle cell is an orphan: the inbound one names
+    // the donor's event and the outbound one names the receiver's.
+    let inbound = lateral(&proposal, cell(0, 0), cell(0, 1));
+    assert!(inbound.transfer_event().is_some(), "the donor settled");
+    let outbound = lateral(&proposal, cell(0, 1), cell(0, 2));
+    assert!(outbound.storage_event().is_some(), "the receiver settled");
     assert_conserved(&proposal);
 }
 

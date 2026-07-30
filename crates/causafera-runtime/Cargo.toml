@@ -26,9 +26,9 @@ causafera-explanation = { workspace = true }
 causafera-observer-api = { workspace = true }
 causafera-observer-wire = { workspace = true }
 thiserror = { workspace = true }
+# The hydrology aggregation trees fingerprint their own nodes, and Stage 1's
+# fixtures pin pre-hydrology section payloads by digest because
+# `causafera-persistence` keeps its own `compute_integrity` private.
+blake3 = "1"
 
 [dev-dependencies]
-# Test-only. `plans/hydrology.md` Stage 1 pins pre-hydrology section payloads by
-# digest rather than by literal bytes; `causafera-persistence` keeps its own
-# `compute_integrity` private.
-blake3 = "1"
