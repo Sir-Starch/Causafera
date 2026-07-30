@@ -86,12 +86,6 @@ Progress
 
 This section lists only accepted or in-progress work with genuinely unfinished implementation stages, acceptance criteria, or close-out work.
 
-- [`plans/hydrology.md`](plans/hydrology.md) — Accepted conserved multi-resolution hydrology:
-  explicit grid metrics and forcing, fixed-point surface/soil/groundwater/conveyance storage,
-  deterministic terrain-aware routing, exact conservation/provenance, persistence, resolution, and
-  bounded observer/Explanation inspection. Implementation is in progress on
-  `feat/conserved-hydrology`; Stage 1 (contract freeze and pre-hydrology legacy evidence) is
-  complete and checkpointed. `TODO-HYDRO-001` is open; `docs/rfc/RFC-HYDRO-001.md` is Accepted.
 
 ## Blocked and Paused Work
 
@@ -110,6 +104,7 @@ This section lists proposals that have not yet been accepted.
 
 These plans have been accepted and implemented. They are preserved as implementation and decision records rather than current guidance.
 
+- [`plans/hydrology.md`](plans/hydrology.md) — completed and implemented; conserved multi-resolution hydrology. Geography-owned fixed-point surface/soil/groundwater/conveyance storage with derived hydraulic coefficients, explicit persisted forcing, a fixed nine-substage tick with head-driven routing across same-chart seams, an exactly-zero conservation residual per tick, conservative block-level resolution driven by the engine's resolution field, a seventh canonical bootstrap stage, snapshot section `0x000F` v1, a whole-tick staging transaction, additive observer protocol-V1 fields with a lossless unsigned raster band, and ten typed Explanation claim schemas. Moves `CURRENT_DIGEST_SCHEMA_VERSION` 7→8 and `RUNTIME_RECIPE_SECTION_MAJOR` 6→7; closes `TODO-HYDRO-001`. `docs/rfc/RFC-HYDRO-001.md` is Accepted. Measured ceilings are in `docs/performance/benchmarks.md`.
 - [`plans/production-bootstrap-receipt-closure.md`](plans/production-bootstrap-receipt-closure.md) — completed and implemented; binds the six runtime bootstrap stages to the canonical `causafera-world` historical DAG/receipt contract, emits one terminal receipt per stage anchored to a real bounded stage-result transition, persists and fail-closed validates the record, exposes bounded observer/Explanation evidence, and removes the last fixture actor constructors. Moves `CURRENT_DIGEST_SCHEMA_VERSION` 6→7, population/bootstrap section major 1→2, and `RUNTIME_RECIPE_SECTION_MAJOR` 5→6; advances `TODO-RUNTIME-001`, `TODO-OBSERVER-003`, and `TODO-EXPLAIN-003` without closing any of them.
 - [`plans/thermal-conservation-aggregate-validation.md`](plans/thermal-conservation-aggregate-validation.md) — completed and implemented; cross-validates every `ThermalConservationReceipt`'s aggregate literals against materialized state and per-receipt data on snapshot import, closes `TODO-THERMAL-006`, and leaves `THERMAL_SECTION_MAJOR`, `MATERIAL_SURFACE_SECTION_MAJOR`, and `CURRENT_DIGEST_SCHEMA_VERSION` unchanged.
 - [`plans/conserved-thermal-energy-carrier.md`](plans/conserved-thermal-energy-carrier.md) — completed and implemented; bounded conserved thermal storage and same-chart transfer tranche.

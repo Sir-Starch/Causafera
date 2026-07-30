@@ -15,5 +15,12 @@ causafera-runtime.workspace = true
 causafera-types.workspace = true
 thiserror.workspace = true
 
+# Examples only. `hydrology_bench` builds explicit metrics, substrate, and
+# forcing schedules, which are geography and domain types; the shipped binary
+# links neither.
+[dev-dependencies]
+causafera-domains.workspace = true
+causafera-geography.workspace = true
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

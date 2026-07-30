@@ -88,7 +88,8 @@ The runtime's production bootstrap now executes that canonical contract rather t
 model of its own. `causafera-runtime::RuntimeBootstrapRecipe` is the executable adapter around one
 `causafera_world::HistoricalBootstrapPlan`; there is no second plan type.
 
-The plan the runtime builds today declares exactly six stages, in this fixed dependency chain:
+The plan the runtime builds today declares six stages, and a seventh when a session enables
+hydrology, in this fixed dependency chain:
 
 | Stage | Process schema | Canonical span | What the adapter commits |
 | --- | --- | --- | --- |
@@ -98,6 +99,7 @@ The plan the runtime builds today declares exactly six stages, in this fixed dep
 | 4 | `0x0B04` | `[3, 4]` | actor promotion out of that aggregate |
 | 5 | `0x0B05` | `[4, 5]` | material activity on the aggregate |
 | 6 | `0x0B06` | `[5, 6]` | thermal fields and reservoirs |
+| 7 | `0x0B07` | `[6, 7]` | hydrology metrics, substrate, storage, edges, boundaries, resolution anchors, and forcing records — appended only for a hydrology-enabled session |
 
 Process schema IDs are opaque numeric identities. They are not names, and nothing downstream may
 translate them into one.
@@ -129,7 +131,7 @@ record is validated through the canonical contract before the constructed runtim
 
 - `SECTION_POPULATION_BOOTSTRAP` carries the complete plan, the bounded per-stage result state, and
   the receipts at section major 2. Major 1 carried neither a plan nor a result and fails closed.
-- `CURRENT_DIGEST_SCHEMA_VERSION` is 7: the record is authoritative `physical_state_digest` input.
+- `CURRENT_DIGEST_SCHEMA_VERSION` is 8: the record is authoritative `physical_state_digest` input.
 - Import re-derives the plan from the persisted configuration and requires it to match, then
   re-derives each stage's committed window from the persisted trace store and recomputes every
   result from it; a completion's causes must equal exactly its stage effects plus its predecessor.
@@ -143,14 +145,20 @@ record is validated through the canonical contract before the constructed runtim
   [`RFC-PERSIST-001`](../rfc/RFC-PERSIST-001.md) for the full scoping.
 - The observer receives a bounded read-only summary of at most six receipts on the existing runtime
   summary, and two typed Explanation claims (schemas 18 and 19) for completeness and canonical
-  window. Neither renders a process name.
+  window. Neither renders a process name. The seventh receipt is projected separately in optional
+  field 48 rather than as a seventh entry: the six-receipt cap, the projected stage count, and the
+  completion flag are frozen V1 contract, and a seventh entry would change what an existing consumer
+  reads. New clients define complete hydrology bootstrap as the legacy six-stage completion predicate
+  plus a valid field-48 stage-seven receipt; they never reinterpret the stage count or the completion
+  flag as seven-stage metadata.
 
 ### What this is not
 
-Six stages is the complete implementation surface today. It is a bound on what the runtime executes,
-not a claim that historical synthesis is only ever six steps and not evidence of deep history. No
-geology, climate, ecology, language, settlement, institution, or economy synthesis is implemented,
-and none of the Bootstrap Outputs above is produced.
+Six stages, or seven with hydrology, is the complete implementation surface today. It is a bound on
+what the runtime executes, not a claim that historical synthesis is only ever that many steps and
+not evidence of deep history. The seventh stage initializes water; it does not synthesize a
+hydrological history. No geology, climate, ecology, language, settlement, institution, or economy
+synthesis is implemented, and none of the Bootstrap Outputs above is produced.
 
 ## Performance
 

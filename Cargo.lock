@@ -495,7 +495,9 @@ dependencies = [
 name = "causafera-observer"
 version = "0.1.0"
 dependencies = [
+ "causafera-domains",
  "causafera-explanation",
+ "causafera-geography",
  "causafera-lab",
  "causafera-observer-api",
  "causafera-observer-wire",
