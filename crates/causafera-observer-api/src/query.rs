@@ -272,6 +272,13 @@ pub struct ObserverBootstrapSummary {
     pub configured_population: u64,
     pub configured_promotion_limit: u32,
     pub receipts: Vec<ObserverBootstrapReceipt>,
+    /// The appended hydrology stage's receipt, when a session ran one.
+    ///
+    /// Carried separately rather than as a seventh entry in `receipts`: the
+    /// six-summary cap, the projected `stage_count`, and `complete` are all frozen
+    /// V1 contract, and a seventh entry would change what an existing consumer
+    /// reads. An additive optional field is something a frozen decoder skips.
+    pub stage_seven: Option<ObserverBootstrapReceipt>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

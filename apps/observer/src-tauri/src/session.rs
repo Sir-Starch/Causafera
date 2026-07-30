@@ -229,6 +229,11 @@ mod tests {
         // against the cap that produced the list — the cap would agree with a
         // truncated list.
         assert_eq!(bootstrap.receipts.len(), BOOTSTRAP_STAGE_COUNT);
+        // The six-summary surface is frozen V1 contract. A session that ran the
+        // appended hydrology stage reports it in the separately bounded optional
+        // field, not as a seventh entry here — this session did not run one.
+        assert_eq!(bootstrap.stage_count as usize, BOOTSTRAP_STAGE_COUNT);
+        assert!(bootstrap.stage_seven.is_none());
         assert_eq!(bootstrap.world_seed, 9);
         assert_eq!(bootstrap.configured_population, DEFAULT_POPULATION);
         assert_eq!(

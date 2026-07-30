@@ -230,6 +230,7 @@ mod bootstrap_summary {
             thermal_active_chunk_count: 9,
             thermal_active_cell_count: 243,
             bootstrap: ObserverBootstrapSummary {
+                stage_seven: None,
                 schema_version: BOOTSTRAP_SUMMARY_SCHEMA_V1,
                 plan_id: 0x0123_4567_89AB_CDEF,
                 world_seed: 4_242,

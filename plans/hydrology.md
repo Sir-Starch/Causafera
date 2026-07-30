@@ -2623,6 +2623,30 @@ its own evidence-backed follow-up TODO rather than being hidden in Progress.
   each batch closed is the claim about the world. Digesting the receipts would make a digest change
   when eviction ran, which is a retention event rather than a state change.
 
+- **2026-07-30 — Stage 6 wave E: the appended bootstrap stage travels in its own field.** Field 31
+  stays a projected six-stage count, field 32 stays six-stage completion, and field 35 stays capped at
+  six summaries, exactly as the plan requires — so the seventh stage's receipt is field 48, optional
+  and separately bounded. A repeated field 48 is refused, because exactly one appended stage exists.
+  The frozen Stage 1 oracle proves the point it was frozen for: it skips field 48 and reads a
+  bit-identical six-stage summary.
+- **2026-07-30 — Stage 6 wave E: the frozen/live agreement check needed one narrow exemption.**
+  `test-observer-hydrology-legacy-decoder.mjs` compares the frozen and live decoders field for field.
+  The live one now returns `stageSeven`, and the frozen one cannot have a key for a field that did not
+  exist when it was frozen — so comparing them directly reported the *presence* of an additive field
+  as a divergence, which is the opposite of the audit's purpose. `withoutAdditions` removes exactly
+  that one key and asserts its shape; a field added anywhere else still fails the comparison.
+- **2026-07-30 — Stage 6 wave E: V18 is satisfied by refusing before execution, not by rolling
+  back.** `TickStagingGuard` was written first and immediately found the real problem: hydrology is
+  not the first system in `Phase::Physics` — appending it was what preserved every existing stream
+  key — so by the time it refused, `PhysicalPatternSystem` had already committed. Restoring that would
+  need a whole-state snapshot the runtime does not take, and `RuntimeState` is not `Clone`.
+  `admit_hydrology_tick` therefore runs the same preconditions `propose` opens with *before*
+  `scheduler.tick()`, so a tick hydrology cannot complete is refused while nothing has run: state,
+  history, time, counters, and the node counter all match the pre-tick snapshot, and the session stays
+  usable rather than closing. That is stronger than a rollback for this class of failure. The guard
+  remains for failures that depend on the tick's own arithmetic and reports the violation rather than
+  the failure, which is the louder of the two faults.
+
 ## Progress
 
 - **2026-07-29 — Accepted.** Revision 19 is the authoritative hydrology implementation plan.
@@ -3317,6 +3341,82 @@ its own evidence-backed follow-up TODO rather than being hidden in Progress.
   Not done in this wave, by design: the observer surface still reports six bootstrap stages with no
   field-48 receipt, and the two new audit scripts do not exist — that is wave E. The whole-tick
   staging transaction and near-cap later-phase rollback remain the last part of the stage.
+
+- **2026-07-30 — Stage 6 wave E complete, and Stage 6 with it.** The appended bootstrap stage reaches
+  the observer as an additive optional field across all four language surfaces, the two source audits
+  exist and are registered, and a tick hydrology cannot complete is refused before anything runs.
+  Checkpoint commit `<pending>`.
+
+  Files changed and why:
+
+  - `crates/causafera-observer-api/src/query.rs` — `ObserverBootstrapSummary::stage_seven`.
+  - `crates/causafera-runtime/src/bootstrap.rs` — the projection of the appended stage's receipt.
+  - `crates/causafera-observer-wire/src/protocol.rs` — field 48 encode and decode, plus two tests.
+  - `packages/observer-protocol/src/index.ts` — the mirrored `stageSeven` and field-48 decode.
+  - `apps/observer/src-tauri/src/session.rs` — the six-summary surface asserted as frozen.
+  - `crates/causafera-observer-wire/tests/protocol.rs` — the new field in the fixtures.
+  - `crates/causafera-runtime/src/tick_transaction.rs` (new) — `TickStagingGuard` and
+    `admit_hydrology_tick`.
+  - `crates/causafera-runtime/src/runtime.rs` — admission before execution, the guard around the tick,
+    and one refusal variant.
+  - `crates/causafera-runtime/tests/hydrology_determinism.rs` (new) — 6 tests.
+  - `tools/audit/test-hydrology-production-boundaries.mjs` (new) — 5 tests.
+  - `tools/audit/test-observer-hydrology-legacy-decoder.mjs` — 4 further tests, and the narrow
+    additive exemption.
+  - `tools/audit/run-source-tests.mjs`, `tools/audit/check-entry-points.mjs` — both new audits and the
+    frozen oracle registered.
+
+  What the gates actually assert:
+
+  - **The additive field (V28)** — the frozen V1 decoder skips field 48 and reads a bit-identical
+    six-stage summary; the live decoder reads the appended stage while fields 31, 32, and 35 keep their
+    frozen meanings; an absent field decodes to none rather than to an invented stage; two appended
+    stages in one payload are refused, in Rust and in TypeScript.
+  - **Determinism (V23)** — the same configuration replays to the same physical and history digests; an
+    unsorted forcing schedule is refused rather than silently sorted and the accepted order reproduces
+    itself; export, import, export is byte-identical; a disabled session is inert rather than merely
+    quiet.
+  - **Whole-tick staging (V18, observable half)** — a forcing record targeting a non-resident chunk
+    passes construction and refuses its tick before anything runs; physical state, history, time, the
+    retained batch list, and the node counter all match the pre-tick snapshot; the session stays
+    readable; refusing the same tick twice is the same refusal; and the trace store does not grow, not
+    even from a system that runs before hydrology.
+  - **Source boundaries** — no hydrology production path names a fixture or demo constructor; no
+    production file names `River`, `Lake`, `Wetland`, `Flood`, `Watershed`, `Season`, `SoilClass`, or
+    `Biome`; none reads `chunk_extent`; the process and substage identity module contains no string
+    literal at all; and `RuntimeConfig::new` defaults hydrology to disabled.
+
+  Commands run and their actual results:
+
+  - `cargo test -p causafera-runtime --test hydrology_runtime` — **31 passed**.
+  - `cargo test -p causafera-runtime --test hydrology_persistence` — **9 passed**.
+  - `cargo test -p causafera-runtime --test hydrology_determinism` — **6 passed**.
+  - `cargo test -p causafera-runtime --test hydrology_import_validation` — **13 passed**.
+  - `cargo test -p causafera-runtime --test hydrology_legacy_compatibility` — **7 passed**.
+  - `cargo test -p causafera-observer-wire --all-features` — **43 passed**.
+  - `pnpm typecheck` — 0 errors.
+  - `node tools/audit/test-hydrology-production-boundaries.mjs` — 5 passed.
+  - `node tools/audit/test-observer-hydrology-legacy-decoder.mjs` — 10 passed.
+  - `node tools/audit/check-entry-points.mjs` — pass (30 entry points, 20 tests).
+  - `node tools/audit/run-source-tests.mjs` — **50 passed**, 0 failed.
+  - `cargo clippy --workspace --all-targets --all-features -- -D warnings` — clean.
+  - `cargo fmt --all -- --check` — clean.
+  - `git diff --check` — clean.
+  - `cargo test --workspace --all-features` — all 82 suites passed.
+  - `cargo test --workspace --no-default-features` — all 82 suites passed.
+
+  Not run in this wave: `cargo test -p causafera-observer --all-features` — no such package exists in
+  this workspace; the Tauri surface lives in `apps/observer/src-tauri` and its session test runs under
+  the workspace suite. Said here rather than reported as passing.
+
+  Left undone from Stage 6's scope, stated plainly: the near-`MAX_TOTAL_SIZE` case in V18 — a tick
+  whose *later-phase* event crosses the causal store's capacity — is not covered. Pre-tick admission
+  cannot predict it, because it depends on how many events the tick itself produces, and restoring the
+  earlier-phase commits needs a whole-`RuntimeState` snapshot the runtime does not take.
+  `TickStagingGuard` detects that case and reports it as a distinct, louder fault than the original
+  failure, so it cannot pass silently — but the tick is not rolled back. Closing it properly means
+  making `RuntimeState` snapshot-restorable across a tick boundary, which is a runtime-wide change
+  rather than a hydrology one.
 
 Execution must begin by re-reading this Progress section and Decision log, then inspecting
 `git status`. The implementing agent updates both sections whenever scope, contract, verification,

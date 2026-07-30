@@ -349,11 +349,34 @@ test('the frozen oracle and the live decoder agree on every valid payload', () =
     const liveValue = live[decoder](input);
     assert.deepEqual(
       normalize(frozenValue),
-      normalize(liveValue),
+      normalize(withoutAdditions(liveValue)),
       `${what} must decode identically in the frozen and live decoders`,
     );
   }
 });
+
+/**
+ * The live decoder's output with the fields added after the freeze removed.
+ *
+ * There is exactly one so far — the summary's `stageSeven`, which reports the
+ * appended field-48 bootstrap stage. The frozen decoder cannot have a key for a
+ * field that did not exist when it was frozen, so comparing the two without
+ * removing it would report the *presence* of an additive field as a divergence,
+ * which is the opposite of what this audit is for. The removal is deliberately
+ * narrow: a field the live decoder added anywhere else still fails the
+ * comparison.
+ */
+function withoutAdditions(value) {
+  if (value === null || typeof value !== 'object' || !('bootstrap' in value)) {
+    return value;
+  }
+  const { stageSeven, ...bootstrap } = value.bootstrap;
+  assert.ok(
+    stageSeven === null || typeof stageSeven === 'object',
+    'stageSeven is absent, null, or a receipt',
+  );
+  return { ...value, bootstrap };
+}
 
 test('the frozen oracle and the live decoder reject the same payloads', () => {
   assert.ok(REJECTIONS.length > 0);
@@ -388,4 +411,62 @@ test('the valid vectors are not vacuous', () => {
   assert.equal(raster.depth, 1);
   assert.deepEqual(Array.from(raster.values), [-13500, -13700, 13100, 19500]);
   assert.equal(raster.generationTraceId, 4242n);
+});
+
+// ---------------------------------------------------------------------------
+// Stage 6: the appended field-48 bootstrap stage
+// ---------------------------------------------------------------------------
+
+/** A runtime summary carrying six stages and, optionally, the appended seventh. */
+function summaryWithAppendedStage(appended) {
+  const out = [...baseSummary(), ...bootstrapGroup(6)];
+  if (appended) {
+    out.push(...delimited(48, receiptBody(7, [106])));
+  }
+  return Uint8Array.from(out);
+}
+
+test('the frozen V1 decoder skips field 48 and reads the same six-stage summary', () => {
+  // The whole claim behind keeping the protocol at V1: a consumer built before
+  // hydrology existed must not notice the appended stage, and must not read a
+  // different six-stage summary because of it.
+  const without = frozen.decodeRuntimeSummary(summaryWithAppendedStage(false));
+  const withAppended = frozen.decodeRuntimeSummary(summaryWithAppendedStage(true));
+
+  assert.equal(without.bootstrap.stageCount, 6);
+  assert.equal(without.bootstrap.complete, true);
+  assert.equal(without.bootstrap.receipts.length, 6);
+  assert.deepEqual(
+    withAppended.bootstrap,
+    without.bootstrap,
+    'field 48 must be invisible to a frozen V1 consumer',
+  );
+  assert.deepEqual(withAppended, without, 'and invisible to the rest of the summary too');
+});
+
+test('the live decoder reads the appended stage while keeping fields 31, 32, and 35', () => {
+  const decoded = live.decodeRuntimeSummary(summaryWithAppendedStage(true));
+  assert.equal(decoded.bootstrap.stageCount, 6, 'field 31 stays a projected six');
+  assert.equal(decoded.bootstrap.complete, true, 'field 32 stays six-stage completion');
+  assert.equal(decoded.bootstrap.receipts.length, 6, 'field 35 stays capped at six');
+  assert.notEqual(decoded.bootstrap.stageSeven, null);
+  assert.equal(decoded.bootstrap.stageSeven.stage, 7n);
+  assert.deepEqual(decoded.bootstrap.stageSeven.dependencyTraces, [106n]);
+});
+
+test('the live decoder reports no appended stage when the field is absent', () => {
+  const decoded = live.decodeRuntimeSummary(summaryWithAppendedStage(false));
+  assert.equal(decoded.bootstrap.stageSeven, null);
+});
+
+test('two appended stages in one payload are refused by the live decoder', () => {
+  // Exactly one appended stage exists, so a repeated field 48 describes two
+  // seventh stages.
+  const doubled = Uint8Array.from([
+    ...baseSummary(),
+    ...bootstrapGroup(6),
+    ...delimited(48, receiptBody(7, [106])),
+    ...delimited(48, receiptBody(7, [106])),
+  ]);
+  assert.throws(() => live.decodeRuntimeSummary(doubled), /repeats its appended stage/);
 });

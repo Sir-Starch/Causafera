@@ -135,6 +135,15 @@ export interface BootstrapSummary {
   configuredPopulation: bigint;
   configuredPromotionLimit: number;
   receipts: BootstrapReceipt[];
+  /**
+   * The appended hydrology stage's receipt, when a session ran one.
+   *
+   * Carried separately from `receipts`: the six-summary bound, `stageCount`, and
+   * `complete` are frozen V1 contract, and a seventh entry would change what an
+   * existing consumer reads. A frozen decoder skips field 48 entirely, which is
+   * what makes this additive.
+   */
+  stageSeven: BootstrapReceipt | null;
 }
 
 export interface BootstrapReceipt {
@@ -480,6 +489,7 @@ export function decodeRuntimeSummary(input: Uint8Array): RuntimeSummary {
   let thermalTotalCellEnergy = 0n;
   let thermalTotalReservoirBudget = 0n;
   const bootstrapReceipts: BootstrapReceipt[] = [];
+  let bootstrapStageSeven: BootstrapReceipt | null = null;
   while (!cursor.empty) {
     const [field, wire] = cursor.key();
     // Checked before the generic varint branch, or field 35 on a varint wire
@@ -509,6 +519,14 @@ export function decodeRuntimeSummary(input: Uint8Array): RuntimeSummary {
         throw new Error("observer bootstrap summary exceeds its receipt bound");
       }
       bootstrapReceipts.push(decodeBootstrapReceipt(cursor.bytes()));
+    }
+    else if (wire === 2 && field === 48) {
+      // Separately bounded: exactly one appended stage, so a second occurrence
+      // describes two seventh stages.
+      if (bootstrapStageSeven !== null) {
+        throw new Error("observer bootstrap summary repeats its appended stage");
+      }
+      bootstrapStageSeven = decodeBootstrapReceipt(cursor.bytes());
     }
     else cursor.skip(wire);
   }
@@ -544,7 +562,7 @@ export function decodeRuntimeSummary(input: Uint8Array): RuntimeSummary {
     thermalTotalReservoirBudget,
     thermalActiveChunkCount: requireU32(values.get(26) ?? 0n, 26),
     thermalActiveCellCount: requireU32(values.get(27) ?? 0n, 27),
-    bootstrap: decodeBootstrapSummary(values, bootstrapReceipts),
+    bootstrap: decodeBootstrapSummary(values, bootstrapReceipts, bootstrapStageSeven),
   };
 }
 
@@ -568,6 +586,7 @@ function bootstrapWireType(field: number): number {
 function decodeBootstrapSummary(
   values: Map<number, bigint>,
   receipts: BootstrapReceipt[],
+  stageSeven: BootstrapReceipt | null,
 ): BootstrapSummary {
   const group = [28, 29, 30, 31, 32, 33, 34];
   const declared = group.some((field) => values.has(field));
@@ -586,6 +605,7 @@ function decodeBootstrapSummary(
       configuredPopulation: 0n,
       configuredPromotionLimit: 0,
       receipts: [],
+      stageSeven: null,
     };
   }
   for (const field of group) {
@@ -637,6 +657,7 @@ function decodeBootstrapSummary(
     configuredPopulation: values.get(33)!,
     configuredPromotionLimit,
     receipts,
+    stageSeven,
   };
 }
 

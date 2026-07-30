@@ -23,6 +23,7 @@ mod terrain_regions;
 mod thermal;
 mod thermal_conservation_validation;
 mod thermal_events;
+mod tick_transaction;
 
 pub use actors::*;
 pub use benchmark::*;
@@ -44,3 +45,4 @@ pub use runtime::*;
 pub use snapshot_sections::*;
 pub use snapshots::*;
 pub(crate) use thermal::*;
+pub use tick_transaction::*;

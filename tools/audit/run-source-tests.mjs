@@ -3,8 +3,10 @@ import { spawnSync } from 'node:child_process';
 
 const SELF_CONTAINED_TESTS = [
   'tools/audit/test-capture-cargo-dispatch.mjs',
+  'tools/audit/test-hydrology-production-boundaries.mjs',
   'tools/audit/test-m2-class-eligibility.mjs',
   'tools/audit/test-observer-bootstrap-decoder.mjs',
+  'tools/audit/test-observer-hydrology-legacy-decoder.mjs',
   'tools/audit/test-provenance-hardening.mjs',
   'tools/audit/test-source-definition-capture.mjs',
   'tools/audit/test-task4-direct-rust-carrier-location.mjs',

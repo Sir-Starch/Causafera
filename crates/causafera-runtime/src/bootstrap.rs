@@ -268,6 +268,25 @@ impl BootstrapRuntimeState {
                         .collect(),
                 })
                 .collect(),
+            // The appended stage's receipt, carried separately. `stage_count`,
+            // `complete`, and the six-summary cap above are frozen V1 contract, so
+            // a seventh entry in `receipts` would change what an existing consumer
+            // reads; an additive optional field is something it skips.
+            stage_seven: record
+                .receipts()
+                .get(MAX_BOOTSTRAP_RECEIPT_SUMMARIES)
+                .map(|receipt| ObserverBootstrapReceipt {
+                    stage: receipt.stage().raw(),
+                    completed_at: receipt.completed_at(),
+                    result: receipt.result().bytes(),
+                    completion_trace: receipt.trace(),
+                    dependency_traces: receipt
+                        .causes()
+                        .iter()
+                        .take(MAX_BOOTSTRAP_RECEIPT_DEPENDENCIES)
+                        .copied()
+                        .collect(),
+                }),
         }
     }
 

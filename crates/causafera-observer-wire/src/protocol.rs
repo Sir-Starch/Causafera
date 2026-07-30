@@ -350,6 +350,25 @@ pub fn encode_observer_snapshot(snapshot: &ObserverSnapshot) -> Vec<u8> {
         }
         field_bytes(&mut out, 35, &nested);
     }
+    // Field 48: the appended hydrology stage's receipt, optional and separately
+    // bounded. Fields 31, 32, and 35 keep their frozen V1 meanings — a projected
+    // six-stage count, six-stage completion, and at most six summaries — so a
+    // frozen V1 decoder skips this field and reads exactly what it always did.
+    if let Some(receipt) = &bootstrap.stage_seven {
+        let mut nested = Vec::with_capacity(64);
+        field_varint(&mut nested, 1, receipt.stage);
+        field_varint(&mut nested, 2, receipt.completed_at.raw());
+        field_bytes(&mut nested, 3, &receipt.result);
+        field_varint(&mut nested, 4, receipt.completion_trace.raw());
+        for dependency in receipt
+            .dependency_traces
+            .iter()
+            .take(MAX_BOOTSTRAP_RECEIPT_DEPENDENCIES)
+        {
+            field_varint(&mut nested, 5, dependency.raw());
+        }
+        field_bytes(&mut out, 48, &nested);
+    }
     out
 }
 
@@ -367,6 +386,7 @@ fn decode_bootstrap_summary(
     values: &[u64; 34],
     present: &[bool; 34],
     receipts: Vec<ObserverBootstrapReceipt>,
+    stage_seven: Option<ObserverBootstrapReceipt>,
 ) -> Result<ObserverBootstrapSummary, WireError> {
     const GROUP: std::ops::RangeInclusive<usize> = 28..=34;
     let declared = GROUP.clone().any(|field| present[field - 1]);
@@ -421,6 +441,7 @@ fn decode_bootstrap_summary(
         configured_population: values[32],
         configured_promotion_limit: to_u32(values[33])?,
         receipts,
+        stage_seven,
     })
 }
 
@@ -487,6 +508,7 @@ pub fn decode_observer_snapshot(bytes: &[u8]) -> Result<ObserverSnapshot, WireEr
     let mut thermal_total_cell_energy = 0;
     let mut thermal_total_reservoir_budget = 0;
     let mut bootstrap_receipts = Vec::new();
+    let mut bootstrap_stage_seven = None;
     while !c.is_empty() {
         let (field, wire) = c.key()?;
         match (field, wire) {
@@ -502,6 +524,14 @@ pub fn decode_observer_snapshot(bytes: &[u8]) -> Result<ObserverSnapshot, WireEr
                     return Err(WireError::PayloadTooLarge);
                 }
                 bootstrap_receipts.push(decode_bootstrap_receipt(c.bytes()?)?);
+            }
+            (48, WIRE_LEN) => {
+                // Separately bounded: exactly one appended stage, so a second
+                // occurrence is a payload describing two seventh stages.
+                if bootstrap_stage_seven.is_some() {
+                    return Err(WireError::DuplicateField(48));
+                }
+                bootstrap_stage_seven = Some(decode_bootstrap_receipt(c.bytes()?)?);
             }
             (28..=34, WIRE_VARINT) => {
                 // The summary's scalars are single-valued. Elsewhere in this
@@ -537,7 +567,8 @@ pub fn decode_observer_snapshot(bytes: &[u8]) -> Result<ObserverSnapshot, WireEr
             return Err(WireError::MissingField(field as u32));
         }
     }
-    let bootstrap = decode_bootstrap_summary(&values, &present, bootstrap_receipts)?;
+    let bootstrap =
+        decode_bootstrap_summary(&values, &present, bootstrap_receipts, bootstrap_stage_seven)?;
     Ok(ObserverSnapshot {
         time: SimulationTime::new(values[0]),
         digest_schema_version: to_u32(values[1])?,
@@ -1840,6 +1871,7 @@ mod tests {
             thermal_active_chunk_count: 2,
             thermal_active_cell_count: 54,
             bootstrap: ObserverBootstrapSummary {
+                stage_seven: None,
                 schema_version: causafera_observer_api::BOOTSTRAP_SUMMARY_SCHEMA_V1,
                 plan_id: 0xDEAD_BEEF,
                 world_seed: 44,
@@ -2295,6 +2327,73 @@ mod tests {
             report
         );
         assert!(!response.payload.is_empty());
+    }
+
+    #[test]
+    fn the_appended_bootstrap_stage_travels_in_its_own_optional_field() {
+        // Field 48 is additive: a payload carrying it keeps fields 31, 32, and 35
+        // at their frozen V1 meanings — a projected six-stage count, six-stage
+        // completion, and at most six summaries — so a frozen decoder reads
+        // exactly what it always did and skips the rest.
+        let mut original = snapshot();
+        let seventh = ObserverBootstrapReceipt {
+            stage: 7,
+            completed_at: SimulationTime::new(7),
+            result: [9_u8; 32],
+            completion_trace: TraceId::new(4_242),
+            dependency_traces: vec![TraceId::new(4_241)],
+        };
+        original.bootstrap.stage_seven = Some(seventh.clone());
+
+        let encoded = encode_observer_snapshot(&original);
+        let decoded = decode_observer_snapshot(&encoded).expect("the payload must decode");
+        assert_eq!(decoded.bootstrap.stage_seven, Some(seventh));
+        assert_eq!(
+            decoded.bootstrap.stage_count, original.bootstrap.stage_count,
+            "the projected stage count is unchanged"
+        );
+        assert_eq!(decoded.bootstrap.receipts, original.bootstrap.receipts);
+        assert_eq!(decoded, original);
+
+        // A payload without the field decodes to `None` rather than to an
+        // invented seventh stage, and its bytes are a strict prefix-free subset:
+        // the only difference is the absent field.
+        let mut without = original.clone();
+        without.bootstrap.stage_seven = None;
+        let shorter = encode_observer_snapshot(&without);
+        assert!(shorter.len() < encoded.len());
+        assert_eq!(
+            decode_observer_snapshot(&shorter)
+                .expect("the payload must decode")
+                .bootstrap
+                .stage_seven,
+            None
+        );
+    }
+
+    #[test]
+    fn two_appended_bootstrap_stages_in_one_payload_are_refused() {
+        // Exactly one appended stage exists, so a repeated field 48 describes two
+        // seventh stages.
+        let mut original = snapshot();
+        original.bootstrap.stage_seven = Some(ObserverBootstrapReceipt {
+            stage: 7,
+            completed_at: SimulationTime::new(7),
+            result: [1_u8; 32],
+            completion_trace: TraceId::new(11),
+            dependency_traces: Vec::new(),
+        });
+        let encoded = encode_observer_snapshot(&original);
+        let mut without = original.clone();
+        without.bootstrap.stage_seven = None;
+        let baseline = encode_observer_snapshot(&without);
+
+        let mut doubled = encoded.clone();
+        doubled.extend_from_slice(&encoded[baseline.len()..]);
+        assert!(matches!(
+            decode_observer_snapshot(&doubled),
+            Err(WireError::DuplicateField(48))
+        ));
     }
 }
 

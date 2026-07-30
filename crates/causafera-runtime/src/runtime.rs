@@ -262,11 +262,26 @@ impl Runtime {
         if self.scheduler.current_time().raw() >= MAX_RUNTIME_TICKS {
             return Err(RuntimeError::TickLimitExceeded);
         }
+        // Opened before the phases run and closed after: on failure it asserts the
+        // tick left nothing observable behind, which is what makes a refused tick a
+        // tick that did not happen rather than one that half did.
+        let guard = {
+            let state = self.lock_state()?;
+            if let Some(error) = state.failure.clone() {
+                return Err(error);
+            }
+            // Admission before execution: a tick hydrology cannot complete is
+            // refused while nothing has run, which is what makes it a tick that
+            // did not happen rather than one that half did.
+            crate::tick_transaction::admit_hydrology_tick(
+                &state,
+                self.scheduler.current_time().raw() + 1,
+            )?;
+            crate::TickStagingGuard::open(&state)
+        };
         self.scheduler.tick();
         let mut state = self.lock_state()?;
-        if let Some(error) = state.failure.clone() {
-            return Err(error);
-        }
+        guard.close(&state)?;
         if state.advanced_through != self.scheduler.current_time() {
             return Err(RuntimeError::PhaseDesynchronized);
         }
@@ -639,6 +654,11 @@ pub enum RuntimeError {
     HydrologyReceiptsDisagreeWithLedger,
     #[error("an imported hydrology section and its recipe disagree about whether water exists")]
     HydrologyStateDisagreesWithRecipe,
+    /// A failed tick left something observable behind. The failure itself is
+    /// reported instead whenever the staging held; this variant means the staging
+    /// guarantee was broken, which is a worse fault than whatever failed.
+    #[error("a failed tick violated its staging guarantee: {what}")]
+    TickStagingViolated { what: &'static str },
     #[error("hydrology state is invalid: {0}")]
     HydrologyState(#[from] causafera_geography::HydrologyStateError),
     #[error("hydrology causal commit failed: {0}")]
