@@ -102,6 +102,23 @@ test("no hydrology carrier is a semantic water body", () => {
   }
 });
 
+test("hydrology never reads a surface material identity", () => {
+  // The plan is explicit: "Surface material identity has no hydraulic meaning in
+  // this tranche and is not mapped to permeability or a soil class." A domain
+  // counterfactual proves two worlds differing only in material behave
+  // identically; only the source can prove no production path reads it at all,
+  // including the bootstrap derivation the solver never sees.
+  for (const relative of PRODUCTION) {
+    const source = productionSource(relative);
+    for (const needle of ["surface_material", "MaterialId"]) {
+      assert.ok(
+        !source.includes(needle),
+        `${relative} reads ${needle}, which has no hydraulic meaning`,
+      );
+    }
+  }
+});
+
 test("hydrology never reads chunk_extent as a metric scale", () => {
   // `chunk_extent` sizes the mana volume. Using it as a hydrology length would
   // make a chunk a metric unit, which it is not (INV-036, INV-037, INV-043).

@@ -313,6 +313,19 @@ pub fn terrain_from(
     chunks: &[i32],
     elevation_of: impl Fn(i32, u16) -> i32,
 ) -> BTreeMap<ChartChunkCoord, TerrainChunk> {
+    terrain_of_material(chunks, elevation_of, MaterialId::new(1))
+}
+
+/// The same terrain under a named surface material.
+///
+/// Surface material identity has no hydraulic meaning in this tranche and is not
+/// mapped to permeability or a soil class, so this exists to prove the negative:
+/// two worlds that differ only here behave identically.
+pub fn terrain_of_material(
+    chunks: &[i32],
+    elevation_of: impl Fn(i32, u16) -> i32,
+    material: MaterialId,
+) -> BTreeMap<ChartChunkCoord, TerrainChunk> {
     chunks
         .iter()
         .map(|&chunk_x| {
@@ -330,7 +343,7 @@ pub fn terrain_from(
                     Vec::new(),
                 ),
                 elevations,
-                vec![MaterialId::new(1); SURFACE_CELL_COUNT],
+                vec![material; SURFACE_CELL_COUNT],
                 // Roughness has no hydraulic meaning inside the solver: it
                 // adjusts transmissivity at bootstrap, which is Stage 6.
                 vec![RoughnessMm::new(0); SURFACE_CELL_COUNT],

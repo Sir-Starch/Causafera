@@ -2727,6 +2727,25 @@ its own evidence-backed follow-up TODO rather than being hidden in Progress.
   deliberately with a ceiling of zero. This is a real operational constraint, not a test artifact: a
   hydrology ceiling below what the engine produces stops the session.
 
+- **2026-07-30 — Stage 6 wave H: V31 had no coverage at all, and the fixture that would have carried
+  it conducts nothing.** No test held any of the metric or parameter counterfactuals. Writing them
+  surfaced why they were easy to miss: the runtime fixture's transmissivities are small enough that
+  `floor(5 mm3/s * 1000 ms / (1000 * 1000 mm))` is zero, so every conductance in those sessions was
+  zero and no assertion about conductance could have failed. The counterfactual cases start from
+  numbers the derivation can show, and each one asserts its baseline is non-zero before comparing.
+- **2026-07-30 — Stage 6 wave H: doubling the timestep doubles conductance only up to the floor.**
+  V31 says doubling the timestep doubles the derived coefficient and that halving by edge length is
+  "subject to integer remainder". The same remainder applies to the timestep whenever roughness
+  adjustment leaves a non-exact numerator: `2 * floor(x)` and `floor(2x)` differ by one unit. The
+  case asserts the bound across every cell of the chunk *and* that the exact case is reached, rather
+  than weakening to an inequality that a broken derivation could also satisfy. Infiltration and
+  groundwater conductance carry no such remainder and are asserted exactly.
+- **2026-07-30 — Stage 6 wave H: material identity is proved absent in two places, because one is not
+  enough.** A domain counterfactual shows two worlds differing only in `MaterialId` produce an
+  identical proposal — that covers the solver. It cannot cover the bootstrap derivation, which the
+  solver never sees, so the source audit now asserts that no hydrology production file names
+  `surface_material` or `MaterialId` at all. An absence is what the audit instrument is for.
+
 ## Progress
 
 - **2026-07-29 — Accepted.** Revision 19 is the authoritative hydrology implementation plan.
@@ -3613,6 +3632,47 @@ its own evidence-backed follow-up TODO rather than being hidden in Progress.
   - `git diff --check` — clean.
 
   Checkpoint: `e4d0505`.
+
+- **2026-07-30 — Stage 6 wave H: the metric and parameter counterfactuals (V31).** The gate had no
+  coverage in any stage; the derivations it constrains are Stage 3's and Stage 4's, and its evidence
+  is engine-produced substrate rather than recomputed arithmetic.
+
+  Files changed:
+
+  - `crates/causafera-runtime/tests/hydrology_runtime.rs` — six counterfactual cases over the
+    substrate causal initialization derives.
+  - `crates/causafera-domains/tests/hydrology_routing.rs`,
+    `crates/causafera-domains/tests/support/mod.rs` — the surface-material counterfactual and the
+    terrain builder it needs.
+  - `tools/audit/test-hydrology-production-boundaries.mjs` — the material-identity absence audit.
+
+  What the gates actually assert:
+
+  - doubling the timestep doubles the infiltration limit and both conductances, exactly where the
+    division is exact and within the floored unit where it is not;
+  - doubling the orthogonal edge length halves both conductances and leaves infiltration alone;
+  - doubling the cell area doubles the infiltration *volume* and leaves both conductances alone;
+  - lowering the roughness reference lowers surface conductance cell by cell and chunk-wide, leaves
+    groundwater conductance identical, and leaves infiltration identical — with an assertion that
+    the fixture terrain's roughness actually varies;
+  - doubling base groundwater transmissivity doubles only groundwater conductance;
+  - a derived per-tick infiltration limit above the receiving soil's capacity moves the room and not
+    the limit, so the bound is a solver constraint rather than a silent clamp;
+  - two worlds differing only in surface material identity produce an identical proposal, and no
+    hydrology production file names a material identity at all.
+
+  Commands run and their actual results:
+
+  - `cargo test -p causafera-runtime --test hydrology_runtime` — **40 passed**.
+  - `cargo test -p causafera-domains --test hydrology_routing` — **19 passed**.
+  - `cargo test --workspace --all-features` — 82 suites, **858 passed**, 0 failed.
+  - `cargo test --workspace --no-default-features` — 82 suites, **858 passed**, 0 failed.
+  - `cargo clippy --workspace --all-targets --all-features -- -D warnings` — clean.
+  - `cargo fmt --all -- --check` — clean.
+  - `node tools/audit/test-hydrology-production-boundaries.mjs` — 6 passed.
+  - `node tools/audit/run-source-tests.mjs` — **51 passed**, 0 failed.
+  - `node tools/audit/check-entry-points.mjs` — pass (30 entry points, 20 tests).
+  - `git diff --check` — clean.
 
 Execution must begin by re-reading this Progress section and Decision log, then inspecting
 `git status`. The implementing agent updates both sections whenever scope, contract, verification,

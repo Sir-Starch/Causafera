@@ -1201,3 +1201,316 @@ fn observer_queries_do_not_change_what_the_engine_computes() {
         unwatched.history_digest.bytes()
     );
 }
+
+// ---------------------------------------------------------------------------
+// Metric and parameter counterfactuals (V31)
+// ---------------------------------------------------------------------------
+
+/// The substrate one configuration produces for the cell every case reads.
+///
+/// Engine-produced, not hand-built: these are assertions about what causal
+/// initialization derives from the configured numbers, so deriving them a second
+/// way in the test would assert nothing about production.
+fn derived(
+    mutate: impl FnOnce(&mut HydrologyConfig),
+) -> causafera_geography::HydraulicSubstrateCell {
+    let mut hydrology = conductive_config();
+    mutate(&mut hydrology);
+    let runtime = Runtime::new(config_with(hydrology)).expect("construction");
+    let state = runtime.hydrology_state();
+    *state
+        .fields
+        .ground(cell(0))
+        .expect("the fixture chunk is resident")
+}
+
+/// The fixture's transmissivities are small enough that a one-second tick over a
+/// one-metre face floors every conductance to zero. These cases are about the
+/// derivation, so they start from numbers the derivation can show.
+fn conductive_config() -> HydrologyConfig {
+    let mut hydrology = enabled_config();
+    hydrology.forcing_schedule.clear();
+    let parameters = hydrology.bootstrap_parameters.as_mut().expect("enabled");
+    parameters.base_surface_transmissivity_mm3_per_second = 5_000_000;
+    parameters.base_groundwater_transmissivity_mm3_per_second = 1_000_000;
+    parameters.roughness_reference_mm = nz64(1_000_000);
+    hydrology
+}
+
+/// Every cell of the fixture chunk, so a case about terrain can read terrain that
+/// actually varies instead of whichever cell ordinal zero happens to be.
+fn derived_chunk(
+    mutate: impl FnOnce(&mut HydrologyConfig),
+) -> Vec<causafera_geography::HydraulicSubstrateCell> {
+    let mut hydrology = conductive_config();
+    mutate(&mut hydrology);
+    let runtime = Runtime::new(config_with(hydrology)).expect("construction");
+    let state = runtime.hydrology_state();
+    state
+        .fields
+        .fields()
+        .values()
+        .next()
+        .expect("the fixture holds one chunk")
+        .substrate()
+        .to_vec()
+}
+
+fn with_metric_chunk(
+    cell_area: u64,
+    edge_length: u64,
+    timestep: u64,
+) -> Vec<causafera_geography::HydraulicSubstrateCell> {
+    derived_chunk(|hydrology| {
+        hydrology.grid_metrics = [(
+            chart(),
+            HydrologyGridMetric::new(nz64(cell_area), nz64(edge_length), nz64(timestep)),
+        )]
+        .into_iter()
+        .collect();
+    })
+}
+
+fn with_metric(
+    cell_area: u64,
+    edge_length: u64,
+    timestep: u64,
+) -> causafera_geography::HydraulicSubstrateCell {
+    derived(|hydrology| {
+        hydrology.grid_metrics = [(
+            chart(),
+            HydrologyGridMetric::new(nz64(cell_area), nz64(edge_length), nz64(timestep)),
+        )]
+        .into_iter()
+        .collect();
+    })
+}
+
+#[test]
+fn doubling_the_timestep_doubles_the_derived_per_tick_coefficients() {
+    // `infiltration_limit_per_tick = floor(rate * area * millis / 1000)` and both
+    // conductances carry `millis` in the numerator, so twice the tick is twice the
+    // budget — exactly where the division is exact, and within the one unit the
+    // floor can withhold where it is not. This is what makes the timestep a causal
+    // input rather than metadata.
+    let base = with_metric_chunk(1_000_000, 1_000, 1_000);
+    let doubled = with_metric_chunk(1_000_000, 1_000, 2_000);
+
+    let mut exact = 0;
+    for (base, doubled) in base.iter().zip(doubled.iter()) {
+        assert_eq!(
+            doubled.infiltration_limit_per_tick().get(),
+            base.infiltration_limit_per_tick().get() * 2,
+            "the infiltration equation divides by a constant, so it doubles exactly"
+        );
+        let expected = base.surface_conductance_mm2_per_tick() * 2;
+        let actual = doubled.surface_conductance_mm2_per_tick();
+        assert!(
+            actual == expected || actual == expected + 1,
+            "twice the tick is twice the conductance, up to the floored remainder: \
+             {actual} against {expected}"
+        );
+        exact += u32::from(actual == expected);
+        assert_eq!(
+            doubled.groundwater_conductance_mm2_per_tick(),
+            base.groundwater_conductance_mm2_per_tick() * 2,
+            "groundwater conductance is not roughness-adjusted, so it has no remainder to carry"
+        );
+    }
+    assert!(
+        base[0].infiltration_limit_per_tick().get() > 0,
+        "non-vacuous"
+    );
+    assert!(
+        base[0].surface_conductance_mm2_per_tick() > 0,
+        "non-vacuous"
+    );
+    assert!(
+        exact > 0,
+        "and the exact case is reached, not merely bounded"
+    );
+}
+
+#[test]
+fn doubling_the_edge_length_halves_the_derived_conductance() {
+    // Conductance divides by `orthogonal_edge_length_mm`, and the division floors,
+    // so the assertion is exact for a base value that halves exactly and bounded
+    // by one unit otherwise. Both conductances share the divisor.
+    let base = with_metric(1_000_000, 1_000, 1_000_000);
+    let longer = with_metric(1_000_000, 2_000, 1_000_000);
+
+    assert!(base.surface_conductance_mm2_per_tick() > 1, "non-vacuous");
+    assert_eq!(
+        longer.surface_conductance_mm2_per_tick(),
+        base.surface_conductance_mm2_per_tick() / 2
+    );
+    assert_eq!(
+        longer.groundwater_conductance_mm2_per_tick(),
+        base.groundwater_conductance_mm2_per_tick() / 2
+    );
+    // Edge length is not part of the infiltration equation.
+    assert_eq!(
+        longer.infiltration_limit_per_tick(),
+        base.infiltration_limit_per_tick()
+    );
+}
+
+#[test]
+fn cell_area_changes_the_infiltration_volume_and_nothing_else_derived() {
+    // `infiltration_limit_per_tick` is a volume, so it scales with the area the
+    // rate is applied over. Conductance is an area-per-tick coefficient of the
+    // face, not of the cell, and does not.
+    let base = with_metric(1_000_000, 1_000, 1_000);
+    let wider = with_metric(2_000_000, 1_000, 1_000);
+
+    assert!(base.infiltration_limit_per_tick().get() > 0, "non-vacuous");
+    assert_eq!(
+        wider.infiltration_limit_per_tick().get(),
+        base.infiltration_limit_per_tick().get() * 2
+    );
+    assert_eq!(
+        wider.surface_conductance_mm2_per_tick(),
+        base.surface_conductance_mm2_per_tick()
+    );
+    assert_eq!(
+        wider.groundwater_conductance_mm2_per_tick(),
+        base.groundwater_conductance_mm2_per_tick()
+    );
+}
+
+#[test]
+fn rougher_ground_conducts_less_and_leaves_groundwater_alone() {
+    // `adjusted = floor(base * reference / (reference + cell_roughness))`. The
+    // reference is the roughness at which half the base transmissivity survives,
+    // so lowering it makes the same terrain weigh far more heavily — every cell
+    // conducts at most what it did before, and the rough ones conduct much less.
+    // Read across the whole chunk, because terrain roughness varies across it and
+    // one ordinal is not evidence about the equation.
+    let slick = derived_chunk(|hydrology| {
+        hydrology
+            .bootstrap_parameters
+            .as_mut()
+            .expect("enabled")
+            .roughness_reference_mm = nz64(1_000_000);
+    });
+    let rough = derived_chunk(|hydrology| {
+        hydrology
+            .bootstrap_parameters
+            .as_mut()
+            .expect("enabled")
+            .roughness_reference_mm = nz64(1);
+    });
+
+    let total = |cells: &[causafera_geography::HydraulicSubstrateCell]| -> u128 {
+        cells
+            .iter()
+            .map(|cell| u128::from(cell.surface_conductance_mm2_per_tick()))
+            .sum()
+    };
+    assert!(total(&slick) > 0, "non-vacuous");
+    assert!(
+        total(&rough) < total(&slick),
+        "terrain roughness weighs against surface conductance"
+    );
+    for (slick, rough) in slick.iter().zip(rough.iter()) {
+        assert!(
+            rough.surface_conductance_mm2_per_tick() <= slick.surface_conductance_mm2_per_tick(),
+            "and it does so cell by cell, never the other way"
+        );
+        assert_eq!(
+            rough.groundwater_conductance_mm2_per_tick(),
+            slick.groundwater_conductance_mm2_per_tick(),
+            "groundwater transmissivity is not roughness-adjusted"
+        );
+        assert_eq!(
+            rough.infiltration_limit_per_tick(),
+            slick.infiltration_limit_per_tick(),
+            "and roughness is not part of the infiltration equation"
+        );
+    }
+    assert!(
+        rough
+            .iter()
+            .zip(slick.iter())
+            .any(|(rough, slick)| rough.surface_conductance_mm2_per_tick()
+                < slick.surface_conductance_mm2_per_tick()),
+        "the fixture terrain must actually vary in roughness"
+    );
+}
+
+#[test]
+fn doubling_groundwater_transmissivity_doubles_only_its_own_conductance() {
+    let base = derived(|_| {});
+    let doubled = derived(|hydrology| {
+        let parameters = hydrology.bootstrap_parameters.as_mut().expect("enabled");
+        parameters.base_groundwater_transmissivity_mm3_per_second *= 2;
+    });
+
+    assert!(
+        base.groundwater_conductance_mm2_per_tick() > 0,
+        "non-vacuous"
+    );
+    assert_eq!(
+        doubled.groundwater_conductance_mm2_per_tick(),
+        base.groundwater_conductance_mm2_per_tick() * 2
+    );
+    assert_eq!(
+        doubled.surface_conductance_mm2_per_tick(),
+        base.surface_conductance_mm2_per_tick(),
+        "the two transmissivities are independent inputs"
+    );
+}
+
+#[test]
+fn an_explicit_bound_engages_before_the_derived_coefficient_passes_it() {
+    // "until an explicit bound engages": infiltration is bounded by the receiving
+    // soil's remaining room, so a per-tick limit far above that room moves the
+    // room and not the limit. The limit itself keeps scaling with the timestep —
+    // the bound is a solver constraint, not a silent clamp on the coefficient.
+    let generous = with_metric(1_000_000, 1_000, 1_000_000);
+    assert!(
+        generous.infiltration_limit_per_tick().get() > generous.soil_capacity().get(),
+        "the derived limit exceeds the room, or the bound would not be the binding one"
+    );
+
+    let mut hydrology = enabled_config();
+    hydrology.forcing_schedule.clear();
+    hydrology.grid_metrics = [(
+        chart(),
+        HydrologyGridMetric::new(nz64(1_000_000), nz64(1_000), nz64(1_000_000)),
+    )]
+    .into_iter()
+    .collect();
+    let mut runtime = Runtime::new(config_with(hydrology)).expect("construction");
+    let before = runtime.hydrology_state();
+    let soil_before = before
+        .fields
+        .cell(cell(0))
+        .expect("resident")
+        .storage()
+        .soil
+        .get();
+    runtime.run_ticks(1).expect("one tick must commit");
+    let after = runtime.hydrology_state();
+    let soil_after = after
+        .fields
+        .cell(cell(0))
+        .expect("resident")
+        .storage()
+        .soil
+        .get();
+    assert!(
+        soil_after
+            <= after
+                .fields
+                .ground(cell(0))
+                .expect("resident")
+                .soil_capacity()
+                .get(),
+        "the soil never passes its capacity however large the per-tick limit is"
+    );
+    assert!(
+        soil_after >= soil_before,
+        "and the tick moved water into it rather than out"
+    );
+}

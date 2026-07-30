@@ -694,3 +694,40 @@ fn an_event_past_the_effect_cap_is_refused_too() {
         Err(HydrologyError::EventEffectLimitExceeded { max: 0, .. })
     ));
 }
+
+#[test]
+fn surface_material_identity_alone_changes_nothing() {
+    // V31's negative: terrain carries a surface material identity, and hydrology
+    // gives it no hydraulic meaning in this tranche — no permeability, no soil
+    // class, no conductance. Two worlds identical but for that identity produce
+    // the same proposal, byte for byte, which is what keeps a material name from
+    // becoming authoritative simulation meaning through the back door.
+    let ground = surface_ground(1_000, 1_000_000_000);
+    let field = ChunkBuilder::new(0)
+        .with(0, ground.build(), storage(10_000_000, 0, 0))
+        .with(1, ground.build(), storage(0, 0, 0))
+        .build();
+    let state = field_set(vec![field]);
+
+    let proposal_of = |material: u64| {
+        let scenario = Scenario::new(&[0]).with_terrain(support::terrain_of_material(
+            &[0],
+            |_, ordinal| match ordinal {
+                0 => 100,
+                1 => 0,
+                _ => 0,
+            },
+            causafera_types::MaterialId::new(material),
+        ));
+        HydrologyEvolutionModel::propose(&state, scenario.request(1)).unwrap()
+    };
+
+    let one = proposal_of(1);
+    let other = proposal_of(7_919);
+    assert_ne!(
+        one.transfer_receipts(),
+        [] as [causafera_domains::HydrologyTransferReceipt; 0],
+        "the fixture must actually move water, or this proves nothing"
+    );
+    assert_eq!(one, other);
+}
