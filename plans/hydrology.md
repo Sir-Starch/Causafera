@@ -3345,7 +3345,7 @@ its own evidence-backed follow-up TODO rather than being hidden in Progress.
 - **2026-07-30 — Stage 6 wave E complete, and Stage 6 with it.** The appended bootstrap stage reaches
   the observer as an additive optional field across all four language surfaces, the two source audits
   exist and are registered, and a tick hydrology cannot complete is refused before anything runs.
-  Checkpoint commit `<pending>`.
+  Checkpoint commit `5cd5293`.
 
   Files changed and why:
 
