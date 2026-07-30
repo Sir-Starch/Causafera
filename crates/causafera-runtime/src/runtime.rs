@@ -2358,6 +2358,7 @@ impl RuntimeState {
             thermal_active_chunk_count,
             thermal_active_cell_count,
             bootstrap: self.bootstrap.observer_summary(&self.config),
+            hydrology: self.hydrology.observer_summary(),
         }
     }
 
@@ -2571,6 +2572,7 @@ impl RuntimeState {
                 delta.cell_ordinal,
             )
         });
+        let hydrology = self.hydrology.observer_world_projection();
         ObserverWorldSnapshot {
             time,
             chunks,
@@ -2591,6 +2593,12 @@ impl RuntimeState {
                 THERMAL_DELTA_SCHEMA_V1
             },
             thermal_deltas,
+            hydrology_deltas: hydrology.deltas,
+            hydrology_delta_schema_version: hydrology.delta_schema_version,
+            hydrology_transfer_summaries: hydrology.transfers,
+            hydrology_transfer_schema_version: hydrology.transfer_schema_version,
+            hydrology_conveyance_summaries: hydrology.conveyance,
+            hydrology_conveyance_schema_version: hydrology.conveyance_schema_version,
         }
     }
 

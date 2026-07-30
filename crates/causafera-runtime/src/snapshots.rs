@@ -43,6 +43,7 @@ pub struct RuntimeSnapshot {
     pub thermal_active_chunk_count: u32,
     pub thermal_active_cell_count: u32,
     pub bootstrap: ObserverBootstrapSummary,
+    pub hydrology: ObserverHydrologySummary,
 }
 
 impl RuntimeSnapshot {
@@ -78,6 +79,7 @@ impl RuntimeSnapshot {
             thermal_active_chunk_count: self.thermal_active_chunk_count,
             thermal_active_cell_count: self.thermal_active_cell_count,
             bootstrap: self.bootstrap.clone(),
+            hydrology: self.hydrology,
         }
     }
 }

@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use causafera_explanation::{
     ClaimConfidence, ClaimEvidenceState, ComparisonCohortId, ComparisonContext, ExplanationClaim,
@@ -7,13 +7,19 @@ use causafera_explanation::{
 };
 use causafera_observer_api::{
     BOOTSTRAP_SUMMARY_SCHEMA_V1, FieldRasterKind, FieldRasterRequest,
-    MATERIAL_SURFACE_DELTA_SCHEMA_V3, MATERIAL_SURFACE_DELTA_SCHEMA_V4,
-    MAX_BOOTSTRAP_RECEIPT_DEPENDENCIES, MAX_BOOTSTRAP_RECEIPT_SUMMARIES,
-    MAX_MATERIAL_SURFACE_DELTAS, MAX_THERMAL_DELTAS, MaterialSurfaceDelta,
+    HYDROLOGY_CONVEYANCE_SUMMARY_SCHEMA_V1, HYDROLOGY_DELTA_SCHEMA_V1,
+    HYDROLOGY_RASTER_VALUES_SCHEMA_V1, HYDROLOGY_SUMMARY_SCHEMA_ABSENT,
+    HYDROLOGY_SUMMARY_SCHEMA_V1, HYDROLOGY_TRANSFER_SUMMARY_SCHEMA_V1, HydrologyCellDelta,
+    HydrologyConveyanceSummary, HydrologyTransferSummary, MATERIAL_SURFACE_DELTA_SCHEMA_V3,
+    MATERIAL_SURFACE_DELTA_SCHEMA_V4, MAX_BOOTSTRAP_RECEIPT_DEPENDENCIES,
+    MAX_BOOTSTRAP_RECEIPT_SUMMARIES, MAX_HYDROLOGY_CONVEYANCE_SUMMARIES, MAX_HYDROLOGY_DELTAS,
+    MAX_HYDROLOGY_TRANSFER_SUMMARIES, MAX_MATERIAL_SURFACE_DELTAS,
+    MAX_QUERY_RESPONSE_PAYLOAD_BYTES, MAX_THERMAL_DELTAS, MaterialSurfaceDelta,
     MaterialSurfaceGateDelta, MaterialSurfaceThermalDelta, OBSERVER_PROTOCOL_V1,
     ObserverBootstrapReceipt, ObserverBootstrapSummary, ObserverChunkSummary, ObserverFieldRaster,
-    ObserverQuery, ObserverResponse, ObserverSnapshot, ObserverWorldSnapshot, QueryKind,
-    QueryStatus, StreamEnvelope, StreamKind, THERMAL_DELTA_SCHEMA_V1, ThermalFieldDelta,
+    ObserverHydrologyForcing, ObserverHydrologySummary, ObserverQuery, ObserverResponse,
+    ObserverSnapshot, ObserverWorldSnapshot, QueryKind, QueryStatus, StreamEnvelope, StreamKind,
+    THERMAL_DELTA_SCHEMA_V1, ThermalFieldDelta, validate_hydrology_carrier_key,
 };
 use causafera_types::{ChunkId, ExperimentId, SimulationTime, TraceId};
 use thiserror::Error;
@@ -110,13 +116,17 @@ impl ProtocolHandler {
                 payload: Vec::new(),
             },
         };
-        Ok(encode_response(&response))
+        encode_response(&response)
     }
 }
 
 /// Answer one query that carries parameters, which the payload cache cannot
 /// serve because its answer depends on what was asked rather than on when.
-pub fn encode_query_response(request_id: u64, status: QueryStatus, payload: Vec<u8>) -> Vec<u8> {
+pub fn encode_query_response(
+    request_id: u64,
+    status: QueryStatus,
+    payload: Vec<u8>,
+) -> Result<Vec<u8>, WireError> {
     encode_response(&ObserverResponse {
         request_id,
         protocol_version: OBSERVER_PROTOCOL_V1,
@@ -166,7 +176,15 @@ pub fn decode_query(bytes: &[u8]) -> Result<ObserverQuery, WireError> {
     })
 }
 
-pub fn encode_response(response: &ObserverResponse) -> Vec<u8> {
+/// Serialize a response, refusing to emit one past the response cap.
+///
+/// Fallible where the request encoder is not, because this is the side that
+/// produces the bytes: a bounded projection that outgrew its budget is a bug in
+/// the producer, and a peer must never be the first to find out about it.
+pub fn encode_response(response: &ObserverResponse) -> Result<Vec<u8>, WireError> {
+    if response.payload.len() > MAX_QUERY_RESPONSE_PAYLOAD_BYTES {
+        return Err(WireError::PayloadTooLarge);
+    }
     let mut out = Vec::new();
     field_varint(&mut out, 1, response.request_id);
     field_varint(&mut out, 2, u64::from(response.protocol_version));
@@ -174,7 +192,7 @@ pub fn encode_response(response: &ObserverResponse) -> Vec<u8> {
     if !response.payload.is_empty() {
         field_bytes(&mut out, 4, &response.payload);
     }
-    out
+    Ok(out)
 }
 
 pub fn decode_response(bytes: &[u8]) -> Result<ObserverResponse, WireError> {
@@ -197,7 +215,16 @@ pub fn decode_response(bytes: &[u8]) -> Result<ObserverResponse, WireError> {
                     value => return Err(WireError::UnknownStatus(value)),
                 })
             }
-            (4, WIRE_LEN) => payload = cursor.bytes()?.to_vec(),
+            (4, WIRE_LEN) => {
+                // Bounded before the copy, not after: `bytes()` only reborrows
+                // the input, and the response cap exists so a client never has
+                // to allocate a payload it did not agree to receive.
+                let bytes = cursor.bytes()?;
+                if bytes.len() > MAX_QUERY_RESPONSE_PAYLOAD_BYTES {
+                    return Err(WireError::PayloadTooLarge);
+                }
+                payload = bytes.to_vec();
+            }
             _ => cursor.skip(wire)?,
         }
     }
@@ -369,7 +396,133 @@ pub fn encode_observer_snapshot(snapshot: &ObserverSnapshot) -> Vec<u8> {
         }
         field_bytes(&mut out, 48, &nested);
     }
+    encode_hydrology_summary(&mut out, &snapshot.hydrology);
     out
+}
+
+/// Write fields 36..=47, or nothing at all.
+///
+/// Nothing at all only for a summary that decoded from a pre-hydrology payload:
+/// a live session writes the whole group even when it holds no water, because
+/// "this build has no hydrology" and "this world has none" are different facts
+/// and a reader that cannot tell them apart cannot report either.
+fn encode_hydrology_summary(out: &mut Vec<u8>, hydrology: &ObserverHydrologySummary) {
+    if hydrology.schema_version == HYDROLOGY_SUMMARY_SCHEMA_ABSENT {
+        return;
+    }
+    field_varint(out, 36, u64::from(hydrology.schema_version));
+    field_bytes(out, 37, &encode_u128(hydrology.total_surface));
+    field_bytes(out, 38, &encode_u128(hydrology.total_soil));
+    field_bytes(out, 39, &encode_u128(hydrology.total_groundwater));
+    field_bytes(out, 40, &encode_u128(hydrology.total_conveyance));
+    field_bytes(out, 41, &encode_i128_zigzag(hydrology.latest_residual));
+    field_varint(out, 42, u64::from(hydrology.active_chunk_count));
+    if let Some(forcing) = &hydrology.latest_forcing {
+        field_varint(out, 43, forcing.tick);
+        field_varint(out, 44, forcing.forcing_id);
+        field_varint(out, 45, forcing.origin_trace.raw());
+        field_bytes(out, 46, &encode_u128(forcing.accepted_source));
+        field_bytes(out, 47, &encode_u64(forcing.accepted_et));
+    }
+}
+
+/// The scalars and byte integers fields 36..=47 carry, before grouping.
+///
+/// Collected rather than assigned directly so presence can be judged for the
+/// group as a whole: half a summary is not a smaller summary, and the decision
+/// about what half means belongs in one place.
+#[derive(Default)]
+struct HydrologyGroupFields {
+    schema_version: Option<u64>,
+    total_surface: Option<u128>,
+    total_soil: Option<u128>,
+    total_groundwater: Option<u128>,
+    total_conveyance: Option<u128>,
+    latest_residual: Option<i128>,
+    active_chunk_count: Option<u64>,
+    forcing_tick: Option<u64>,
+    forcing_id: Option<u64>,
+    forcing_origin: Option<u64>,
+    accepted_source: Option<u128>,
+    accepted_et: Option<u64>,
+}
+
+impl HydrologyGroupFields {
+    /// Which of fields 36..=47 arrived, in field order.
+    fn present(&self) -> [bool; 12] {
+        [
+            self.schema_version.is_some(),
+            self.total_surface.is_some(),
+            self.total_soil.is_some(),
+            self.total_groundwater.is_some(),
+            self.total_conveyance.is_some(),
+            self.latest_residual.is_some(),
+            self.active_chunk_count.is_some(),
+            self.forcing_tick.is_some(),
+            self.forcing_id.is_some(),
+            self.forcing_origin.is_some(),
+            self.accepted_source.is_some(),
+            self.accepted_et.is_some(),
+        ]
+    }
+}
+
+/// Decode fields 36..=47 as one required group and one optional subgroup.
+///
+/// Absence is tolerated only wholesale: a payload carrying none of 36..=47 was
+/// written before hydrology existed. Every other incompleteness fails closed,
+/// because a partially present group is not an older peer — it is a summary
+/// whose missing halves would otherwise be filled in with zeroes and read as
+/// measurements.
+fn decode_hydrology_summary(
+    fields: &HydrologyGroupFields,
+) -> Result<ObserverHydrologySummary, WireError> {
+    let present = fields.present();
+    let required = &present[0..7];
+    let forcing = &present[7..12];
+    if !required.iter().any(|seen| *seen) {
+        if forcing.iter().any(|seen| *seen) {
+            // A forcing record with no summary to attribute it to.
+            return Err(WireError::MissingField(36));
+        }
+        return Ok(ObserverHydrologySummary::default());
+    }
+    for (offset, seen) in required.iter().enumerate() {
+        if !seen {
+            return Err(WireError::MissingField(36 + offset as u32));
+        }
+    }
+    let schema_version = to_u32(fields.schema_version.unwrap_or_default())?;
+    if schema_version != HYDROLOGY_SUMMARY_SCHEMA_V1 {
+        return Err(WireError::UnexpectedFieldForSchema(schema_version));
+    }
+    let latest_forcing = if forcing.iter().all(|seen| *seen) {
+        Some(ObserverHydrologyForcing {
+            tick: fields.forcing_tick.unwrap_or_default(),
+            forcing_id: fields.forcing_id.unwrap_or_default(),
+            origin_trace: TraceId::new(fields.forcing_origin.unwrap_or_default()),
+            accepted_source: fields.accepted_source.unwrap_or_default(),
+            accepted_et: fields.accepted_et.unwrap_or_default(),
+        })
+    } else if forcing.iter().any(|seen| *seen) {
+        let offset = forcing
+            .iter()
+            .position(|seen| !seen)
+            .expect("a partially present group has a missing member");
+        return Err(WireError::MissingField(43 + offset as u32));
+    } else {
+        None
+    };
+    Ok(ObserverHydrologySummary {
+        schema_version,
+        total_surface: fields.total_surface.unwrap_or_default(),
+        total_soil: fields.total_soil.unwrap_or_default(),
+        total_groundwater: fields.total_groundwater.unwrap_or_default(),
+        total_conveyance: fields.total_conveyance.unwrap_or_default(),
+        latest_residual: fields.latest_residual.unwrap_or_default(),
+        active_chunk_count: to_u32(fields.active_chunk_count.unwrap_or_default())?,
+        latest_forcing,
+    })
 }
 
 /// Decode the bounded bootstrap summary as one atomic optional group.
@@ -509,6 +662,7 @@ pub fn decode_observer_snapshot(bytes: &[u8]) -> Result<ObserverSnapshot, WireEr
     let mut thermal_total_reservoir_budget = 0;
     let mut bootstrap_receipts = Vec::new();
     let mut bootstrap_stage_seven = None;
+    let mut hydrology = HydrologyGroupFields::default();
     while !c.is_empty() {
         let (field, wire) = c.key()?;
         match (field, wire) {
@@ -516,6 +670,40 @@ pub fn decode_observer_snapshot(bytes: &[u8]) -> Result<ObserverSnapshot, WireEr
             (4, WIRE_LEN) => history_digest = Some(array32(c.bytes()?)?),
             (24, WIRE_LEN) => thermal_total_cell_energy = decode_i128_zigzag(c.bytes()?)?,
             (25, WIRE_LEN) => thermal_total_reservoir_budget = decode_i128_zigzag(c.bytes()?)?,
+            // Fields 36..=47 are the hydrology group. Every one of them is
+            // single-valued: two different water totals in one payload is a
+            // contradiction rather than a later value winning, exactly as for the
+            // bootstrap group above.
+            (36, WIRE_VARINT) => set_once(&mut hydrology.schema_version, 36, c.varint()?)?,
+            (37, WIRE_LEN) => set_once(&mut hydrology.total_surface, 37, decode_u128(c.bytes()?)?)?,
+            (38, WIRE_LEN) => set_once(&mut hydrology.total_soil, 38, decode_u128(c.bytes()?)?)?,
+            (39, WIRE_LEN) => set_once(
+                &mut hydrology.total_groundwater,
+                39,
+                decode_u128(c.bytes()?)?,
+            )?,
+            (40, WIRE_LEN) => set_once(
+                &mut hydrology.total_conveyance,
+                40,
+                decode_u128(c.bytes()?)?,
+            )?,
+            (41, WIRE_LEN) => set_once(
+                &mut hydrology.latest_residual,
+                41,
+                decode_i128_zigzag_canonical(c.bytes()?)?,
+            )?,
+            (42, WIRE_VARINT) => set_once(&mut hydrology.active_chunk_count, 42, c.varint()?)?,
+            (43, WIRE_VARINT) => set_once(&mut hydrology.forcing_tick, 43, c.varint()?)?,
+            (44, WIRE_VARINT) => set_once(&mut hydrology.forcing_id, 44, c.varint()?)?,
+            (45, WIRE_VARINT) => set_once(&mut hydrology.forcing_origin, 45, c.varint()?)?,
+            (46, WIRE_LEN) => {
+                set_once(&mut hydrology.accepted_source, 46, decode_u128(c.bytes()?)?)?
+            }
+            (47, WIRE_LEN) => set_once(&mut hydrology.accepted_et, 47, decode_u64(c.bytes()?)?)?,
+            // A hydrology field on the wrong wire type is malformed, not unknown:
+            // skipping it would let a summary whose every member is mistyped fall
+            // through to "this payload predates hydrology".
+            (36..=47, _) => return Err(WireError::UnexpectedFieldForSchema(field)),
             (35, WIRE_LEN) => {
                 // Bounded before allocation: a payload claiming more receipts
                 // than this build's bootstrap can produce is rejected rather
@@ -598,7 +786,17 @@ pub fn decode_observer_snapshot(bytes: &[u8]) -> Result<ObserverSnapshot, WireEr
         thermal_active_chunk_count: to_u32(values[25])?,
         thermal_active_cell_count: to_u32(values[26])?,
         bootstrap,
+        hydrology: decode_hydrology_summary(&hydrology)?,
     })
+}
+
+/// Record a single-valued field, refusing a second occurrence.
+fn set_once<T>(slot: &mut Option<T>, field: u32, value: T) -> Result<(), WireError> {
+    if slot.is_some() {
+        return Err(WireError::DuplicateField(field));
+    }
+    *slot = Some(value);
+    Ok(())
 }
 
 pub fn encode_world_snapshot(snapshot: &ObserverWorldSnapshot) -> Vec<u8> {
@@ -677,7 +875,298 @@ pub fn encode_world_snapshot(snapshot: &ObserverWorldSnapshot) -> Vec<u8> {
             field_bytes(&mut out, 8, &encode_material_surface_thermal_delta(delta));
         }
     }
+    if snapshot.hydrology_delta_schema_version >= HYDROLOGY_DELTA_SCHEMA_V1 {
+        for delta in snapshot.hydrology_deltas.iter().take(MAX_HYDROLOGY_DELTAS) {
+            field_bytes(&mut out, 9, &encode_hydrology_cell_delta(delta));
+        }
+    }
+    if snapshot.hydrology_delta_schema_version != 0 {
+        field_varint(
+            &mut out,
+            10,
+            u64::from(snapshot.hydrology_delta_schema_version),
+        );
+    }
+    if snapshot.hydrology_transfer_schema_version >= HYDROLOGY_TRANSFER_SUMMARY_SCHEMA_V1 {
+        for summary in snapshot
+            .hydrology_transfer_summaries
+            .iter()
+            .take(MAX_HYDROLOGY_TRANSFER_SUMMARIES)
+        {
+            field_bytes(&mut out, 11, &encode_hydrology_transfer_summary(summary));
+        }
+    }
+    if snapshot.hydrology_transfer_schema_version != 0 {
+        field_varint(
+            &mut out,
+            12,
+            u64::from(snapshot.hydrology_transfer_schema_version),
+        );
+    }
+    if snapshot.hydrology_conveyance_schema_version >= HYDROLOGY_CONVEYANCE_SUMMARY_SCHEMA_V1 {
+        for summary in snapshot
+            .hydrology_conveyance_summaries
+            .iter()
+            .take(MAX_HYDROLOGY_CONVEYANCE_SUMMARIES)
+        {
+            field_bytes(&mut out, 13, &encode_hydrology_conveyance_summary(summary));
+        }
+    }
+    if snapshot.hydrology_conveyance_schema_version != 0 {
+        field_varint(
+            &mut out,
+            14,
+            u64::from(snapshot.hydrology_conveyance_schema_version),
+        );
+    }
     out
+}
+
+fn encode_hydrology_cell_delta(delta: &HydrologyCellDelta) -> Vec<u8> {
+    let mut nested = Vec::with_capacity(96);
+    field_varint(&mut nested, 1, delta.chart_id);
+    field_varint(&mut nested, 2, zigzag(i64::from(delta.chunk_x)));
+    field_varint(&mut nested, 3, zigzag(i64::from(delta.chunk_y)));
+    field_varint(&mut nested, 4, zigzag(i64::from(delta.chunk_z)));
+    field_varint(&mut nested, 5, u64::from(delta.cell_ordinal));
+    for (field, volume) in [
+        (6, delta.surface_before),
+        (7, delta.surface_after),
+        (8, delta.soil_before),
+        (9, delta.soil_after),
+        (10, delta.groundwater_before),
+        (11, delta.groundwater_after),
+    ] {
+        field_bytes(&mut nested, field, &encode_u64(volume));
+    }
+    field_bytes(&mut nested, 12, &encode_i128_zigzag(delta.net_forcing));
+    field_bytes(&mut nested, 13, &encode_i128_zigzag(delta.net_lateral_flow));
+    field_varint(&mut nested, 14, delta.transition_trace.raw());
+    field_varint(&mut nested, 15, delta.conservation_trace.raw());
+    field_varint(&mut nested, 16, delta.transition_tick);
+    nested
+}
+
+fn decode_hydrology_cell_delta(bytes: &[u8]) -> Result<HydrologyCellDelta, WireError> {
+    let mut c = Cursor::new(bytes);
+    let mut scalars: [Option<u64>; 5] = [None; 5];
+    let mut volumes: [Option<u64>; 6] = [None; 6];
+    let mut net_forcing = None;
+    let mut net_lateral_flow = None;
+    let mut traces: [Option<u64>; 3] = [None; 3];
+    while !c.is_empty() {
+        let (field, wire) = c.key()?;
+        match (field, wire) {
+            (1..=5, WIRE_VARINT) => set_once(&mut scalars[field as usize - 1], field, c.varint()?)?,
+            (6..=11, WIRE_LEN) => set_once(
+                &mut volumes[field as usize - 6],
+                field,
+                decode_u64(c.bytes()?)?,
+            )?,
+            (12, WIRE_LEN) => set_once(
+                &mut net_forcing,
+                12,
+                decode_i128_zigzag_canonical(c.bytes()?)?,
+            )?,
+            (13, WIRE_LEN) => set_once(
+                &mut net_lateral_flow,
+                13,
+                decode_i128_zigzag_canonical(c.bytes()?)?,
+            )?,
+            (14..=16, WIRE_VARINT) => {
+                set_once(&mut traces[field as usize - 14], field, c.varint()?)?
+            }
+            (1..=16, _) => return Err(WireError::UnexpectedFieldForSchema(field)),
+            _ => c.skip(wire)?,
+        }
+    }
+    for (index, value) in scalars.iter().enumerate() {
+        if value.is_none() {
+            return Err(WireError::MissingField(index as u32 + 1));
+        }
+    }
+    for (index, value) in volumes.iter().enumerate() {
+        if value.is_none() {
+            return Err(WireError::MissingField(index as u32 + 6));
+        }
+    }
+    for (index, value) in traces.iter().enumerate() {
+        if value.is_none() {
+            return Err(WireError::MissingField(index as u32 + 14));
+        }
+    }
+    let scalar = |index: usize| scalars[index].unwrap_or_default();
+    let volume = |index: usize| volumes[index].unwrap_or_default();
+    let trace = |index: usize| TraceId::new(traces[index].unwrap_or_default());
+    Ok(HydrologyCellDelta {
+        chart_id: scalar(0),
+        chunk_x: to_i32(unzigzag(scalar(1)))?,
+        chunk_y: to_i32(unzigzag(scalar(2)))?,
+        chunk_z: to_i32(unzigzag(scalar(3)))?,
+        cell_ordinal: u16::try_from(scalar(4)).map_err(|_| WireError::IntegerOverflow)?,
+        surface_before: volume(0),
+        surface_after: volume(1),
+        soil_before: volume(2),
+        soil_after: volume(3),
+        groundwater_before: volume(4),
+        groundwater_after: volume(5),
+        net_forcing: net_forcing.ok_or(WireError::MissingField(12))?,
+        net_lateral_flow: net_lateral_flow.ok_or(WireError::MissingField(13))?,
+        transition_trace: trace(0),
+        conservation_trace: trace(1),
+        transition_tick: traces[2].unwrap_or_default(),
+    })
+}
+
+fn encode_hydrology_transfer_summary(summary: &HydrologyTransferSummary) -> Vec<u8> {
+    let mut nested = Vec::with_capacity(128);
+    field_varint(&mut nested, 1, u64::from(summary.process_kind));
+    field_bytes(&mut nested, 2, &summary.source_key);
+    field_bytes(&mut nested, 3, &summary.target_key);
+    field_bytes(&mut nested, 4, &encode_u64(summary.requested_volume));
+    field_bytes(&mut nested, 5, &encode_u64(summary.accepted_volume));
+    field_bytes(&mut nested, 6, &encode_u64(summary.unaccepted_volume));
+    field_varint(&mut nested, 7, summary.transfer_trace.raw());
+    field_varint(&mut nested, 8, summary.conservation_trace.raw());
+    field_varint(&mut nested, 9, summary.tick);
+    if let Some(origin) = summary.forcing_origin_trace {
+        field_varint(&mut nested, 10, origin.raw());
+    }
+    nested
+}
+
+fn decode_hydrology_transfer_summary(bytes: &[u8]) -> Result<HydrologyTransferSummary, WireError> {
+    let mut c = Cursor::new(bytes);
+    let mut process_kind = None;
+    let mut source_key = None;
+    let mut target_key = None;
+    let mut volumes: [Option<u64>; 3] = [None; 3];
+    let mut traces: [Option<u64>; 3] = [None; 3];
+    let mut forcing_origin_trace = None;
+    while !c.is_empty() {
+        let (field, wire) = c.key()?;
+        match (field, wire) {
+            (1, WIRE_VARINT) => set_once(&mut process_kind, 1, c.varint()?)?,
+            (2, WIRE_LEN) => set_once(&mut source_key, 2, c.bytes()?.to_vec())?,
+            (3, WIRE_LEN) => set_once(&mut target_key, 3, c.bytes()?.to_vec())?,
+            (4..=6, WIRE_LEN) => set_once(
+                &mut volumes[field as usize - 4],
+                field,
+                decode_u64(c.bytes()?)?,
+            )?,
+            (7..=9, WIRE_VARINT) => set_once(&mut traces[field as usize - 7], field, c.varint()?)?,
+            (10, WIRE_VARINT) => set_once(&mut forcing_origin_trace, 10, c.varint()?)?,
+            (1..=10, _) => return Err(WireError::UnexpectedFieldForSchema(field)),
+            _ => c.skip(wire)?,
+        }
+    }
+    let source_key = source_key.ok_or(WireError::MissingField(2))?;
+    let target_key = target_key.ok_or(WireError::MissingField(3))?;
+    let source_variant = validate_hydrology_carrier_key(&source_key)?;
+    validate_hydrology_carrier_key(&target_key)?;
+    // A cell is the one carrier a transfer may name twice: infiltration,
+    // percolation, and evapotranspiration move water between buckets *inside*
+    // one cell, and the buckets are not part of the key. Every other carrier is
+    // a single store or a single face, so naming it as both ends describes a
+    // transfer to nowhere. Judging that on the carrier's own structure rather
+    // than on a table of process meanings keeps the wire out of the business of
+    // classifying simulation processes.
+    if source_key == target_key && source_variant != causafera_observer_api::HYDROLOGY_CARRIER_CELL
+    {
+        return Err(WireError::HydrologyCarrierNotDistinct);
+    }
+    for (index, value) in volumes.iter().enumerate() {
+        if value.is_none() {
+            return Err(WireError::MissingField(index as u32 + 4));
+        }
+    }
+    for (index, value) in traces.iter().enumerate() {
+        if value.is_none() {
+            return Err(WireError::MissingField(index as u32 + 7));
+        }
+    }
+    let requested_volume = volumes[0].unwrap_or_default();
+    let accepted_volume = volumes[1].unwrap_or_default();
+    let unaccepted_volume = volumes[2].unwrap_or_default();
+    // The three volumes are one statement, not three: a payload where they do
+    // not close has either invented water or lost some, and the limiter evidence
+    // it claims to carry would be a fabrication.
+    if requested_volume
+        .checked_sub(accepted_volume)
+        .is_none_or(|remainder| remainder != unaccepted_volume)
+    {
+        return Err(WireError::InconsistentHydrologyTransfer);
+    }
+    Ok(HydrologyTransferSummary {
+        process_kind: to_u32(process_kind.ok_or(WireError::MissingField(1))?)?,
+        source_key,
+        target_key,
+        requested_volume,
+        accepted_volume,
+        unaccepted_volume,
+        transfer_trace: TraceId::new(traces[0].unwrap_or_default()),
+        conservation_trace: TraceId::new(traces[1].unwrap_or_default()),
+        tick: traces[2].unwrap_or_default(),
+        forcing_origin_trace: forcing_origin_trace.map(TraceId::new),
+    })
+}
+
+fn encode_hydrology_conveyance_summary(summary: &HydrologyConveyanceSummary) -> Vec<u8> {
+    let mut nested = Vec::with_capacity(96);
+    field_bytes(&mut nested, 1, &summary.edge_key);
+    field_bytes(&mut nested, 2, &encode_u64(summary.storage));
+    field_bytes(&mut nested, 3, &encode_u64(summary.capacity));
+    field_bytes(&mut nested, 4, &encode_u64(summary.accepted_inflow));
+    field_bytes(&mut nested, 5, &encode_u64(summary.accepted_release));
+    field_varint(&mut nested, 6, summary.last_change_trace.raw());
+    field_varint(&mut nested, 7, summary.tick);
+    nested
+}
+
+fn decode_hydrology_conveyance_summary(
+    bytes: &[u8],
+) -> Result<HydrologyConveyanceSummary, WireError> {
+    let mut c = Cursor::new(bytes);
+    let mut edge_key = None;
+    let mut volumes: [Option<u64>; 4] = [None; 4];
+    let mut last_change_trace = None;
+    let mut tick = None;
+    while !c.is_empty() {
+        let (field, wire) = c.key()?;
+        match (field, wire) {
+            (1, WIRE_LEN) => set_once(&mut edge_key, 1, c.bytes()?.to_vec())?,
+            (2..=5, WIRE_LEN) => set_once(
+                &mut volumes[field as usize - 2],
+                field,
+                decode_u64(c.bytes()?)?,
+            )?,
+            (6, WIRE_VARINT) => set_once(&mut last_change_trace, 6, c.varint()?)?,
+            (7, WIRE_VARINT) => set_once(&mut tick, 7, c.varint()?)?,
+            (1..=7, _) => return Err(WireError::UnexpectedFieldForSchema(field)),
+            _ => c.skip(wire)?,
+        }
+    }
+    let edge_key = edge_key.ok_or(WireError::MissingField(1))?;
+    // A conveyance summary describes one edge. Any other carrier here would be
+    // a storage-and-discharge report about something that has neither.
+    if validate_hydrology_carrier_key(&edge_key)? != causafera_observer_api::HYDROLOGY_CARRIER_EDGE
+    {
+        return Err(WireError::UnexpectedFieldForSchema(1));
+    }
+    for (index, value) in volumes.iter().enumerate() {
+        if value.is_none() {
+            return Err(WireError::MissingField(index as u32 + 2));
+        }
+    }
+    Ok(HydrologyConveyanceSummary {
+        edge_key,
+        storage: volumes[0].unwrap_or_default(),
+        capacity: volumes[1].unwrap_or_default(),
+        accepted_inflow: volumes[2].unwrap_or_default(),
+        accepted_release: volumes[3].unwrap_or_default(),
+        last_change_trace: TraceId::new(last_change_trace.ok_or(WireError::MissingField(6))?),
+        tick: tick.ok_or(WireError::MissingField(7))?,
+    })
 }
 
 pub fn decode_world_snapshot(bytes: &[u8]) -> Result<ObserverWorldSnapshot, WireError> {
@@ -692,6 +1181,15 @@ pub fn decode_world_snapshot(bytes: &[u8]) -> Result<ObserverWorldSnapshot, Wire
     let mut schema_version_seen = false;
     let mut thermal_delta_schema_version = 0;
     let mut thermal_schema_version_seen = false;
+    let mut hydrology_delta_bytes: Vec<Vec<u8>> = Vec::new();
+    let mut hydrology_transfer_bytes: Vec<Vec<u8>> = Vec::new();
+    let mut hydrology_conveyance_bytes: Vec<Vec<u8>> = Vec::new();
+    let mut hydrology_delta_schema_version = 0;
+    let mut hydrology_delta_schema_seen = false;
+    let mut hydrology_transfer_schema_version = 0;
+    let mut hydrology_transfer_schema_seen = false;
+    let mut hydrology_conveyance_schema_version = 0;
+    let mut hydrology_conveyance_schema_seen = false;
     while !cursor.is_empty() {
         let (field, wire) = cursor.key()?;
         match (field, wire) {
@@ -746,6 +1244,44 @@ pub fn decode_world_snapshot(bytes: &[u8]) -> Result<ObserverWorldSnapshot, Wire
                 cursor.bytes()?;
             }
             (8, _) => return Err(WireError::UnexpectedFieldForSchema(8)),
+            // Hydrology's three bounded lists reject at `limit + 1` rather than
+            // skipping past it. The older lists above silently drop the excess,
+            // which reports a truncated projection as a complete one; a bound
+            // that a peer can exceed without being told is not a bound.
+            (9, WIRE_LEN) => {
+                if hydrology_delta_bytes.len() == MAX_HYDROLOGY_DELTAS {
+                    return Err(WireError::PayloadTooLarge);
+                }
+                hydrology_delta_bytes.push(cursor.bytes()?.to_vec());
+            }
+            (10, WIRE_VARINT) if !hydrology_delta_schema_seen => {
+                hydrology_delta_schema_version = to_u32(cursor.varint()?)?;
+                hydrology_delta_schema_seen = true;
+            }
+            (10, _) => return Err(WireError::DuplicateField(10)),
+            (11, WIRE_LEN) => {
+                if hydrology_transfer_bytes.len() == MAX_HYDROLOGY_TRANSFER_SUMMARIES {
+                    return Err(WireError::PayloadTooLarge);
+                }
+                hydrology_transfer_bytes.push(cursor.bytes()?.to_vec());
+            }
+            (12, WIRE_VARINT) if !hydrology_transfer_schema_seen => {
+                hydrology_transfer_schema_version = to_u32(cursor.varint()?)?;
+                hydrology_transfer_schema_seen = true;
+            }
+            (12, _) => return Err(WireError::DuplicateField(12)),
+            (13, WIRE_LEN) => {
+                if hydrology_conveyance_bytes.len() == MAX_HYDROLOGY_CONVEYANCE_SUMMARIES {
+                    return Err(WireError::PayloadTooLarge);
+                }
+                hydrology_conveyance_bytes.push(cursor.bytes()?.to_vec());
+            }
+            (14, WIRE_VARINT) if !hydrology_conveyance_schema_seen => {
+                hydrology_conveyance_schema_version = to_u32(cursor.varint()?)?;
+                hydrology_conveyance_schema_seen = true;
+            }
+            (14, _) => return Err(WireError::DuplicateField(14)),
+            (9 | 11 | 13, _) => return Err(WireError::UnexpectedFieldForSchema(field)),
             _ => cursor.skip(wire)?,
         }
     }
@@ -760,6 +1296,40 @@ pub fn decode_world_snapshot(bytes: &[u8]) -> Result<ObserverWorldSnapshot, Wire
         .iter()
         .map(|bytes| decode_thermal_field_delta(bytes, thermal_delta_schema_version))
         .collect::<Result<Vec<_>, _>>()?;
+    // Entries with no schema to interpret them are parsed and then read under a
+    // contract the payload never declared.
+    if !hydrology_delta_bytes.is_empty()
+        && hydrology_delta_schema_version < HYDROLOGY_DELTA_SCHEMA_V1
+    {
+        return Err(WireError::UnexpectedFieldForSchema(9));
+    }
+    if !hydrology_transfer_bytes.is_empty()
+        && hydrology_transfer_schema_version < HYDROLOGY_TRANSFER_SUMMARY_SCHEMA_V1
+    {
+        return Err(WireError::UnexpectedFieldForSchema(11));
+    }
+    if !hydrology_conveyance_bytes.is_empty()
+        && hydrology_conveyance_schema_version < HYDROLOGY_CONVEYANCE_SUMMARY_SCHEMA_V1
+    {
+        return Err(WireError::UnexpectedFieldForSchema(13));
+    }
+    let hydrology_deltas = hydrology_delta_bytes
+        .iter()
+        .map(|bytes| decode_hydrology_cell_delta(bytes))
+        .collect::<Result<Vec<_>, _>>()?;
+    let hydrology_transfer_summaries = hydrology_transfer_bytes
+        .iter()
+        .map(|bytes| decode_hydrology_transfer_summary(bytes))
+        .collect::<Result<Vec<_>, _>>()?;
+    let hydrology_conveyance_summaries = hydrology_conveyance_bytes
+        .iter()
+        .map(|bytes| decode_hydrology_conveyance_summary(bytes))
+        .collect::<Result<Vec<_>, _>>()?;
+    require_distinct_hydrology_keys(
+        &hydrology_deltas,
+        &hydrology_transfer_summaries,
+        &hydrology_conveyance_summaries,
+    )?;
     Ok(ObserverWorldSnapshot {
         time: time.ok_or(WireError::MissingField(1))?,
         chunks,
@@ -769,7 +1339,53 @@ pub fn decode_world_snapshot(bytes: &[u8]) -> Result<ObserverWorldSnapshot, Wire
         material_surface_thermal_deltas,
         thermal_delta_schema_version,
         thermal_deltas,
+        hydrology_deltas,
+        hydrology_delta_schema_version,
+        hydrology_transfer_summaries,
+        hydrology_transfer_schema_version,
+        hydrology_conveyance_summaries,
+        hydrology_conveyance_schema_version,
     })
+}
+
+/// Refuse a projection that describes the same thing twice.
+///
+/// A duplicate is not a redundant row. Two deltas for one cell in one tick
+/// disagree about what that cell did, and a reader summing accepted volumes
+/// over a repeated transfer counts water that moved once as water that moved
+/// twice.
+fn require_distinct_hydrology_keys(
+    deltas: &[HydrologyCellDelta],
+    transfers: &[HydrologyTransferSummary],
+    conveyance: &[HydrologyConveyanceSummary],
+) -> Result<(), WireError> {
+    let mut cells = BTreeSet::new();
+    for delta in deltas {
+        let key = (
+            delta.transition_tick,
+            delta.chart_id,
+            delta.chunk_x,
+            delta.chunk_y,
+            delta.chunk_z,
+            delta.cell_ordinal,
+        );
+        if !cells.insert(key) {
+            return Err(WireError::DuplicateKey);
+        }
+    }
+    let mut keys = BTreeSet::new();
+    for summary in transfers {
+        if !keys.insert(summary.canonical_key()) {
+            return Err(WireError::DuplicateKey);
+        }
+    }
+    let mut edges = BTreeSet::new();
+    for summary in conveyance {
+        if !edges.insert((summary.tick, summary.edge_key.as_slice())) {
+            return Err(WireError::DuplicateKey);
+        }
+    }
+    Ok(())
 }
 
 /* ------------------------------------------------------------ field raster -- */
@@ -848,6 +1464,18 @@ pub fn encode_field_raster(raster: &ObserverFieldRaster) -> Vec<u8> {
         field_bytes(&mut out, 11, &packed);
     }
     field_varint(&mut out, 12, raster.generation_trace);
+    if raster.unsigned_values_schema_version != 0 {
+        let mut packed = Vec::new();
+        for value in &raster.unsigned_values {
+            varint(&mut packed, *value);
+        }
+        field_bytes(&mut out, 13, &packed);
+        field_varint(
+            &mut out,
+            14,
+            u64::from(raster.unsigned_values_schema_version),
+        );
+    }
     out
 }
 
@@ -865,6 +1493,10 @@ pub fn decode_field_raster(bytes: &[u8]) -> Result<ObserverFieldRaster, WireErro
     let mut auxiliary = Vec::new();
     let mut cell_traces = Vec::new();
     let mut generation_trace = 0_u64;
+    let mut unsigned_values = Vec::new();
+    let mut unsigned_values_schema_version = 0_u32;
+    let mut unsigned_seen = false;
+    let mut unsigned_schema_seen = false;
     while !cursor.is_empty() {
         let (number, wire) = cursor.key()?;
         match (number, wire) {
@@ -888,6 +1520,24 @@ pub fn decode_field_raster(bytes: &[u8]) -> Result<ObserverFieldRaster, WireErro
                 }
             }
             (12, WIRE_VARINT) => generation_trace = cursor.varint()?,
+            (13, WIRE_LEN) => {
+                if unsigned_seen {
+                    return Err(WireError::DuplicateField(13));
+                }
+                unsigned_seen = true;
+                let mut packed = Cursor::new(cursor.bytes()?);
+                while !packed.is_empty() {
+                    unsigned_values.push(packed.varint_shortest()?);
+                }
+            }
+            (14, WIRE_VARINT) => {
+                if unsigned_schema_seen {
+                    return Err(WireError::DuplicateField(14));
+                }
+                unsigned_schema_seen = true;
+                unsigned_values_schema_version = to_u32(cursor.varint()?)?;
+            }
+            (13 | 14, _) => return Err(WireError::UnexpectedFieldForSchema(number)),
             _ => cursor.skip(wire)?,
         }
     }
@@ -904,6 +1554,8 @@ pub fn decode_field_raster(bytes: &[u8]) -> Result<ObserverFieldRaster, WireErro
         auxiliary,
         cell_traces,
         generation_trace,
+        unsigned_values,
+        unsigned_values_schema_version,
     };
     // A raster whose declared lattice does not match its payload cannot be drawn
     // at real positions, and a renderer must never be left to guess the shape.
@@ -915,11 +1567,38 @@ pub fn decode_field_raster(bytes: &[u8]) -> Result<ObserverFieldRaster, WireErro
             edge: raster.edge,
             depth: raster.depth,
         })?;
-    if raster.values.len() != cell_count {
-        return Err(WireError::InvalidFieldRasterLattice {
-            expected: cell_count,
-            received: raster.values.len(),
-        });
+    // The two bands are mutually exclusive, and which one a raster carries is
+    // decided by its kind rather than by what arrived: a hydrology lattice in the
+    // signed band would have wrapped every volume above `i64::MAX`, and any other
+    // lattice in the unsigned one would have lost every negative elevation.
+    if raster.field.carries_unsigned_values() {
+        if unsigned_schema_seen
+            && unsigned_values_schema_version != HYDROLOGY_RASTER_VALUES_SCHEMA_V1
+        {
+            return Err(WireError::UnexpectedFieldForSchema(14));
+        }
+        if !unsigned_schema_seen {
+            return Err(WireError::MissingField(14));
+        }
+        if !raster.values.is_empty() || !raster.auxiliary.is_empty() {
+            return Err(WireError::UnexpectedFieldForSchema(9));
+        }
+        if raster.unsigned_values.len() != cell_count {
+            return Err(WireError::InvalidFieldRasterLattice {
+                expected: cell_count,
+                received: raster.unsigned_values.len(),
+            });
+        }
+    } else {
+        if unsigned_seen || unsigned_schema_seen {
+            return Err(WireError::UnexpectedFieldForSchema(13));
+        }
+        if raster.values.len() != cell_count {
+            return Err(WireError::InvalidFieldRasterLattice {
+                expected: cell_count,
+                received: raster.values.len(),
+            });
+        }
     }
     if !raster.auxiliary.is_empty() && raster.auxiliary.len() != cell_count {
         return Err(WireError::InvalidFieldRasterLattice {
@@ -1627,6 +2306,93 @@ fn decode_i128_zigzag(bytes: &[u8]) -> Result<i128, WireError> {
     Err(WireError::InvalidVarint)
 }
 
+fn encode_u128(value: u128) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    varint_u128(&mut bytes, value);
+    bytes
+}
+
+fn encode_u64(value: u64) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    varint(&mut bytes, value);
+    bytes
+}
+
+/// Reject a length-delimited LEB128 integer that is not in shortest form.
+///
+/// A byte integer that admits several encodings admits several byte strings for
+/// one payload, and the digest of a payload is an identity. The check is one
+/// byte wide: an encoding whose last byte is `0x00` completed one byte earlier,
+/// and the only value whose shortest form ends in `0x00` is zero itself.
+fn require_shortest_form(bytes: &[u8]) -> Result<(), WireError> {
+    match bytes.last() {
+        None => Err(WireError::InvalidVarint),
+        Some(0) if bytes.len() > 1 => Err(WireError::NonCanonicalInteger),
+        Some(byte) if byte & 0x80 != 0 => Err(WireError::InvalidVarint),
+        Some(_) => Ok(()),
+    }
+}
+
+fn decode_u128(bytes: &[u8]) -> Result<u128, WireError> {
+    require_shortest_form(bytes)?;
+    let mut value = 0_u128;
+    for (index, byte) in bytes.iter().copied().enumerate() {
+        let shift = index
+            .checked_mul(7)
+            .and_then(|shift| u32::try_from(shift).ok())
+            .ok_or(WireError::IntegerOverflow)?;
+        if shift >= 128 {
+            return Err(WireError::InvalidVarint);
+        }
+        let part = u128::from(byte & 0x7f);
+        if part > (u128::MAX >> shift) {
+            return Err(WireError::IntegerOverflow);
+        }
+        value |= part << shift;
+        if byte & 0x80 == 0 {
+            if index + 1 != bytes.len() {
+                return Err(WireError::InvalidVarint);
+            }
+            return Ok(value);
+        }
+    }
+    Err(WireError::InvalidVarint)
+}
+
+fn decode_u64(bytes: &[u8]) -> Result<u64, WireError> {
+    require_shortest_form(bytes)?;
+    let mut value = 0_u64;
+    for (index, byte) in bytes.iter().copied().enumerate() {
+        let shift = index
+            .checked_mul(7)
+            .and_then(|shift| u32::try_from(shift).ok())
+            .ok_or(WireError::IntegerOverflow)?;
+        if shift >= 64 {
+            return Err(WireError::InvalidVarint);
+        }
+        let part = u64::from(byte & 0x7f);
+        if part > (u64::MAX >> shift) {
+            return Err(WireError::IntegerOverflow);
+        }
+        value |= part << shift;
+        if byte & 0x80 == 0 {
+            if index + 1 != bytes.len() {
+                return Err(WireError::InvalidVarint);
+            }
+            return Ok(value);
+        }
+    }
+    Err(WireError::InvalidVarint)
+}
+
+/// The thermal totals in fields 24 and 25 predate the shortest-form rule and
+/// keep their existing tolerance; every hydrology byte integer decodes through
+/// this instead, so a second encoding of the same water total is not accepted.
+fn decode_i128_zigzag_canonical(bytes: &[u8]) -> Result<i128, WireError> {
+    require_shortest_form(bytes)?;
+    decode_i128_zigzag(bytes)
+}
+
 fn field_varint(out: &mut Vec<u8>, field: u32, value: u64) {
     varint(out, u64::from(field) << 3);
     varint(out, value);
@@ -1717,6 +2483,18 @@ impl<'a> Cursor<'a> {
             }
         }
         Err(WireError::InvalidVarint)
+    }
+    /// A varint that must be in shortest canonical form.
+    ///
+    /// Used for the packed unsigned raster band, where a redundant continuation
+    /// byte would give one lattice more than one byte string and make the same
+    /// measurement hash two ways.
+    fn varint_shortest(&mut self) -> Result<u64, WireError> {
+        let start = self.at;
+        let value = self.varint()?;
+        let encoded = &self.bytes[start..self.at];
+        require_shortest_form(encoded)?;
+        Ok(value)
     }
     fn key(&mut self) -> Result<(u32, u8), WireError> {
         let key = self.varint()?;
@@ -1827,6 +2605,14 @@ pub enum WireError {
     PayloadTooLarge,
     #[error("bounded observer payload is not in canonical order")]
     NonCanonicalOrder,
+    #[error("a byte integer is not in shortest canonical form")]
+    NonCanonicalInteger,
+    #[error("a bounded observer projection carries the same key twice")]
+    DuplicateKey,
+    #[error("a hydrology transfer names the same carrier as source and target")]
+    HydrologyCarrierNotDistinct,
+    #[error("a hydrology transfer's requested, accepted, and unaccepted volumes do not close")]
+    InconsistentHydrologyTransfer,
     #[error(transparent)]
     Api(#[from] causafera_observer_api::ObserverApiError),
 }
@@ -1896,6 +2682,7 @@ mod tests {
                     },
                 ],
             },
+            hydrology: ObserverHydrologySummary::default(),
         }
     }
 
@@ -1937,6 +2724,8 @@ mod tests {
             auxiliary: Vec::new(),
             cell_traces: Vec::new(),
             generation_trace: 88,
+            unsigned_values: Vec::new(),
+            unsigned_values_schema_version: 0,
         }
     }
 
@@ -2170,6 +2959,12 @@ mod tests {
             material_surface_thermal_deltas: Vec::new(),
             material_surface_gate_deltas: Vec::new(),
             thermal_delta_schema_version: 0,
+            hydrology_deltas: Vec::new(),
+            hydrology_delta_schema_version: 0,
+            hydrology_transfer_summaries: Vec::new(),
+            hydrology_transfer_schema_version: 0,
+            hydrology_conveyance_summaries: Vec::new(),
+            hydrology_conveyance_schema_version: 0,
             thermal_deltas: Vec::new(),
         };
         let mut handler = ProtocolHandler::default();
@@ -2248,6 +3043,12 @@ mod tests {
                 transition_tick: 9,
             }],
             thermal_delta_schema_version: 0,
+            hydrology_deltas: Vec::new(),
+            hydrology_delta_schema_version: 0,
+            hydrology_transfer_summaries: Vec::new(),
+            hydrology_transfer_schema_version: 0,
+            hydrology_conveyance_summaries: Vec::new(),
+            hydrology_conveyance_schema_version: 0,
             thermal_deltas: Vec::new(),
         };
         let mut handler = ProtocolHandler::default();
@@ -2427,6 +3228,12 @@ fn world_query_roundtrips_material_delta_mana_transition_trace() {
         material_surface_thermal_deltas: Vec::new(),
         material_surface_gate_deltas: Vec::new(),
         thermal_delta_schema_version: 0,
+        hydrology_deltas: Vec::new(),
+        hydrology_delta_schema_version: 0,
+        hydrology_transfer_summaries: Vec::new(),
+        hydrology_transfer_schema_version: 0,
+        hydrology_conveyance_summaries: Vec::new(),
+        hydrology_conveyance_schema_version: 0,
         thermal_deltas: Vec::new(),
     };
     let mut handler = ProtocolHandler::default();
@@ -2474,6 +3281,12 @@ fn decode_world_snapshot_rejects_gate_deltas_under_v2_schema() {
         material_surface_thermal_deltas: Vec::new(),
         material_surface_gate_deltas: Vec::new(),
         thermal_delta_schema_version: 0,
+        hydrology_deltas: Vec::new(),
+        hydrology_delta_schema_version: 0,
+        hydrology_transfer_summaries: Vec::new(),
+        hydrology_transfer_schema_version: 0,
+        hydrology_conveyance_summaries: Vec::new(),
+        hydrology_conveyance_schema_version: 0,
         thermal_deltas: Vec::new(),
     };
     let mut encoded = encode_world_snapshot(&v2);
@@ -2577,6 +3390,12 @@ fn decode_world_snapshot_rejects_duplicate_schema_version() {
             transition_tick: 10,
         }],
         thermal_delta_schema_version: 0,
+        hydrology_deltas: Vec::new(),
+        hydrology_delta_schema_version: 0,
+        hydrology_transfer_summaries: Vec::new(),
+        hydrology_transfer_schema_version: 0,
+        hydrology_conveyance_summaries: Vec::new(),
+        hydrology_conveyance_schema_version: 0,
         thermal_deltas: Vec::new(),
     };
     let mut encoded = encode_world_snapshot(&v3);
@@ -2614,6 +3433,12 @@ fn world_query_roundtrips_material_surface_thermal_deltas() {
             transition_tick: 9,
         }],
         thermal_delta_schema_version: 0,
+        hydrology_deltas: Vec::new(),
+        hydrology_delta_schema_version: 0,
+        hydrology_transfer_summaries: Vec::new(),
+        hydrology_transfer_schema_version: 0,
+        hydrology_conveyance_summaries: Vec::new(),
+        hydrology_conveyance_schema_version: 0,
         thermal_deltas: Vec::new(),
     };
     let mut handler = ProtocolHandler::default();
@@ -2643,6 +3468,12 @@ fn decode_world_snapshot_rejects_thermal_material_deltas_under_v3_schema() {
         material_surface_gate_deltas: Vec::new(),
         material_surface_thermal_deltas: Vec::new(),
         thermal_delta_schema_version: 0,
+        hydrology_deltas: Vec::new(),
+        hydrology_delta_schema_version: 0,
+        hydrology_transfer_summaries: Vec::new(),
+        hydrology_transfer_schema_version: 0,
+        hydrology_conveyance_summaries: Vec::new(),
+        hydrology_conveyance_schema_version: 0,
         thermal_deltas: Vec::new(),
     };
     let mut encoded = encode_world_snapshot(&v3);

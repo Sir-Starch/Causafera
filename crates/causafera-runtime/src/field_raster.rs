@@ -14,7 +14,9 @@
 //! contain.
 
 use causafera_geography::TERRAIN_CELLS_PER_CHUNK;
-use causafera_observer_api::{FieldRasterKind, FieldRasterRequest, ObserverFieldRaster};
+use causafera_observer_api::{
+    FieldRasterKind, FieldRasterRequest, HYDROLOGY_RASTER_VALUES_SCHEMA_V1, ObserverFieldRaster,
+};
 use causafera_types::{CHUNK_SIZE, ChartChunkCoord, ChunkCoord, SpatialChartId};
 
 use crate::{RuntimeState, TerrainCarrierAdapter};
@@ -39,7 +41,57 @@ impl RuntimeState {
                 self.terrain_raster(request, chunk)
             }
             FieldRasterKind::ManaIntensity => self.mana_raster(request, chunk),
+            FieldRasterKind::HydrologySurfaceWater
+            | FieldRasterKind::HydrologySoilWater
+            | FieldRasterKind::HydrologyGroundwater => self.hydrology_raster(request, chunk),
         }
+    }
+
+    /// One chunk of one water bucket, as exact `u64` volumes.
+    ///
+    /// Projected whole, exactly as the mana volume is: a block mean of volumes
+    /// would report a quantity no cell holds, and changing hydrology's detail is
+    /// a conservative resolution transition inside the simulation rather than a
+    /// reduction an observer may ask for.
+    fn hydrology_raster(
+        &self,
+        request: &FieldRasterRequest,
+        chunk: ChartChunkCoord,
+    ) -> Option<ObserverFieldRaster> {
+        let field = self.hydrology.fields.field(chunk)?;
+        let mut unsigned_values = Vec::with_capacity(field.cells().len());
+        let mut cell_traces = Vec::with_capacity(field.cells().len());
+        for cell in field.cells() {
+            let (volume, trace) = match request.field {
+                FieldRasterKind::HydrologySurfaceWater => {
+                    (cell.surface_water(), cell.surface_last_change())
+                }
+                FieldRasterKind::HydrologySoilWater => (cell.soil_water(), cell.soil_last_change()),
+                _ => (cell.groundwater(), cell.groundwater_last_change()),
+            };
+            unsigned_values.push(volume.get());
+            cell_traces.push(trace.raw());
+        }
+        Some(ObserverFieldRaster {
+            chart_id: chunk.chart.raw(),
+            chunk_x: chunk.chunk.x,
+            chunk_y: chunk.chunk.y,
+            chunk_z: chunk.chunk.z,
+            field: request.field,
+            detail_level: 0,
+            edge: u32::from(CHUNK_SIZE),
+            depth: 1,
+            // The signed bands stay empty: a water volume is a `u64` and the
+            // upper half of its range has no signed image.
+            values: Vec::new(),
+            auxiliary: Vec::new(),
+            cell_traces,
+            // The batch that last closed the ledger is the whole field's anchor;
+            // per-cell provenance is carried per cell above.
+            generation_trace: self.hydrology.fields.conservation_last_change().raw(),
+            unsigned_values,
+            unsigned_values_schema_version: HYDROLOGY_RASTER_VALUES_SCHEMA_V1,
+        })
     }
 
     fn terrain_raster(
@@ -92,6 +144,8 @@ impl RuntimeState {
             // whole provenance of every cell in the chunk.
             cell_traces: Vec::new(),
             generation_trace: terrain.generation_trace.raw(),
+            unsigned_values: Vec::new(),
+            unsigned_values_schema_version: 0,
         })
     }
 
@@ -125,6 +179,8 @@ impl RuntimeState {
             auxiliary: field.last_change_before().to_vec(),
             cell_traces,
             generation_trace,
+            unsigned_values: Vec::new(),
+            unsigned_values_schema_version: 0,
         })
     }
 }

@@ -3,6 +3,13 @@ use serde::{Deserialize, Serialize};
 
 pub const OBSERVER_PROTOCOL_V1: u32 = 1;
 pub const MAX_QUERY_PAYLOAD_BYTES: usize = 1 << 20;
+/// The cap on a *response* payload, distinct from the request cap above.
+///
+/// The two happen to be the same size and are still two constants: one bounds
+/// what a peer may ask this runtime to parse, the other bounds what this runtime
+/// may emit and what a client must be willing to allocate. Sharing one name
+/// would make a later change to either silently move the other.
+pub const MAX_QUERY_RESPONSE_PAYLOAD_BYTES: usize = 1 << 20;
 pub const MATERIAL_SURFACE_DELTA_SCHEMA_V1: u32 = 1;
 pub const MATERIAL_SURFACE_DELTA_SCHEMA_V2: u32 = 2;
 pub const MATERIAL_SURFACE_DELTA_SCHEMA_V3: u32 = 3;
@@ -10,6 +17,19 @@ pub const MATERIAL_SURFACE_DELTA_SCHEMA_V4: u32 = 4;
 pub const MAX_MATERIAL_SURFACE_DELTAS: usize = 64;
 pub const THERMAL_DELTA_SCHEMA_V1: u32 = 1;
 pub const MAX_THERMAL_DELTAS: usize = 64;
+/// Zero is not a hydrology summary version: it is what a payload written before
+/// hydrology existed decodes to, and it means "no hydrology evidence in this
+/// payload" rather than "a session holding no water".
+pub const HYDROLOGY_SUMMARY_SCHEMA_ABSENT: u32 = 0;
+pub const HYDROLOGY_SUMMARY_SCHEMA_V1: u32 = 1;
+pub const HYDROLOGY_DELTA_SCHEMA_V1: u32 = 1;
+pub const HYDROLOGY_TRANSFER_SUMMARY_SCHEMA_V1: u32 = 1;
+pub const HYDROLOGY_CONVEYANCE_SUMMARY_SCHEMA_V1: u32 = 1;
+/// The schema of the lossless unsigned raster band.
+pub const HYDROLOGY_RASTER_VALUES_SCHEMA_V1: u32 = 1;
+pub const MAX_HYDROLOGY_DELTAS: usize = 64;
+pub const MAX_HYDROLOGY_TRANSFER_SUMMARIES: usize = 64;
+pub const MAX_HYDROLOGY_CONVEYANCE_SUMMARIES: usize = 64;
 /// Schema of the bounded bootstrap summary carried by the runtime summary.
 ///
 /// Zero is not a version: it is what a payload written before the summary
@@ -68,6 +88,12 @@ pub enum FieldRasterKind {
     TerrainRoughness = 2,
     /// Mana intensity over the field's own volumetric lattice.
     ManaIntensity = 3,
+    /// Surface water volume in cubic millimetres.
+    HydrologySurfaceWater = 4,
+    /// Soil water volume in cubic millimetres.
+    HydrologySoilWater = 5,
+    /// Groundwater volume in cubic millimetres.
+    HydrologyGroundwater = 6,
 }
 
 impl TryFrom<u32> for FieldRasterKind {
@@ -78,8 +104,27 @@ impl TryFrom<u32> for FieldRasterKind {
             1 => Ok(Self::TerrainElevation),
             2 => Ok(Self::TerrainRoughness),
             3 => Ok(Self::ManaIntensity),
+            4 => Ok(Self::HydrologySurfaceWater),
+            5 => Ok(Self::HydrologySoilWater),
+            6 => Ok(Self::HydrologyGroundwater),
             value => Err(ObserverApiError::UnknownFieldRasterKind(value)),
         }
+    }
+}
+
+impl FieldRasterKind {
+    /// Whether this lattice carries unsigned water volumes.
+    ///
+    /// The distinction is not cosmetic. A water volume is a `u64` and half of
+    /// its range is unrepresentable in the signed `values` band, so hydrology
+    /// rasters travel in their own band and the two are mutually exclusive:
+    /// a hydrology raster with signed values, or any other raster with unsigned
+    /// ones, describes a lattice neither producer writes.
+    pub const fn carries_unsigned_values(self) -> bool {
+        matches!(
+            self,
+            Self::HydrologySurfaceWater | Self::HydrologySoilWater | Self::HydrologyGroundwater
+        )
     }
 }
 
@@ -129,6 +174,17 @@ pub struct ObserverFieldRaster {
     pub cell_traces: Vec<u64>,
     /// The event that produced the field, so a drawn cell has an anchor.
     pub generation_trace: u64,
+    /// The lossless unsigned band, carried only by hydrology lattices.
+    ///
+    /// A `u64` water volume above `i64::MAX` is a real state this engine can
+    /// reach, and routing it through the signed band would either wrap it or
+    /// force a lossy narrowing at the boundary. It travels as its own band
+    /// rather than as a widened `values`, so a decoder written against the
+    /// signed contract keeps reading exactly what it always did.
+    pub unsigned_values: Vec<u64>,
+    /// `HYDROLOGY_RASTER_VALUES_SCHEMA_V1` when the unsigned band is present,
+    /// zero when it is not.
+    pub unsigned_values_schema_version: u32,
 }
 
 impl ObserverFieldRaster {
@@ -217,6 +273,28 @@ pub struct ObserverResponse {
     pub payload: Vec<u8>,
 }
 
+impl ObserverResponse {
+    /// The response's own bound, checked before it is emitted.
+    ///
+    /// A request cap protects this runtime from a peer; this one protects a peer
+    /// from this runtime, and is the reason a bounded projection that grew past
+    /// its budget fails loudly here rather than arriving as an allocation the
+    /// client did not agree to.
+    pub fn validate(&self) -> Result<(), ObserverApiError> {
+        if self.protocol_version != OBSERVER_PROTOCOL_V1 {
+            return Err(ObserverApiError::UnsupportedProtocolVersion(
+                self.protocol_version,
+            ));
+        }
+        if self.payload.len() > MAX_QUERY_RESPONSE_PAYLOAD_BYTES {
+            return Err(ObserverApiError::ResponsePayloadTooLarge(
+                self.payload.len(),
+            ));
+        }
+        Ok(())
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ObserverSnapshot {
     pub time: SimulationTime,
@@ -247,6 +325,7 @@ pub struct ObserverSnapshot {
     pub thermal_active_chunk_count: u32,
     pub thermal_active_cell_count: u32,
     pub bootstrap: ObserverBootstrapSummary,
+    pub hydrology: ObserverHydrologySummary,
 }
 
 /// The bounded, read-only projection of the canonical production bootstrap
@@ -300,6 +379,210 @@ pub struct ObserverWorldSnapshot {
     pub material_surface_thermal_deltas: Vec<MaterialSurfaceThermalDelta>,
     pub thermal_delta_schema_version: u32,
     pub thermal_deltas: Vec<ThermalFieldDelta>,
+    pub hydrology_deltas: Vec<HydrologyCellDelta>,
+    pub hydrology_delta_schema_version: u32,
+    pub hydrology_transfer_summaries: Vec<HydrologyTransferSummary>,
+    pub hydrology_transfer_schema_version: u32,
+    pub hydrology_conveyance_summaries: Vec<HydrologyConveyanceSummary>,
+    pub hydrology_conveyance_schema_version: u32,
+}
+
+/// The bounded whole-session water summary carried by the runtime summary.
+///
+/// Totals are `u128` because they sum `u64` per-carrier volumes over an
+/// unbounded number of carriers; the residual is `i128` and signed because the
+/// interesting value is the one that is not zero.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ObserverHydrologySummary {
+    /// `HYDROLOGY_SUMMARY_SCHEMA_ABSENT` for a pre-hydrology payload.
+    pub schema_version: u32,
+    pub total_surface: u128,
+    pub total_soil: u128,
+    pub total_groundwater: u128,
+    pub total_conveyance: u128,
+    /// The residual of the latest committed batch. Exactly zero for every state
+    /// this runtime commits; carried so an observer can see that rather than
+    /// assume it.
+    pub latest_residual: i128,
+    pub active_chunk_count: u32,
+    /// The greatest applied `(scheduled_tick, forcing_id)`, absent when none has
+    /// been applied.
+    pub latest_forcing: Option<ObserverHydrologyForcing>,
+}
+
+/// The latest applied forcing record's identity and accepted totals.
+///
+/// One optional group rather than five independently optional scalars: a tick
+/// with no forcing ID names nothing, and an accepted volume with no record to
+/// attribute it to is a number with no provenance.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ObserverHydrologyForcing {
+    pub tick: u64,
+    pub forcing_id: u64,
+    pub origin_trace: TraceId,
+    /// Precipitation plus external inflow, as accepted.
+    pub accepted_source: u128,
+    pub accepted_et: u64,
+}
+
+/// One cell's committed storage change over one tick.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HydrologyCellDelta {
+    pub chart_id: u64,
+    pub chunk_x: i32,
+    pub chunk_y: i32,
+    pub chunk_z: i32,
+    pub cell_ordinal: u16,
+    pub surface_before: u64,
+    pub surface_after: u64,
+    pub soil_before: u64,
+    pub soil_after: u64,
+    pub groundwater_before: u64,
+    pub groundwater_after: u64,
+    /// Signed: precipitation and inflow are positive, evapotranspiration is not.
+    pub net_forcing: i128,
+    /// Signed: what the cell gained from and lost to its neighbours.
+    pub net_lateral_flow: i128,
+    pub transition_trace: TraceId,
+    pub conservation_trace: TraceId,
+    pub transition_tick: u64,
+}
+
+/// One accepted, partly accepted, or wholly rejected movement of water.
+///
+/// `requested`, `accepted`, and `unaccepted` all travel because a limiter that
+/// engaged is evidence, and a process with nothing to do must stay
+/// distinguishable from one that was refused.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HydrologyTransferSummary {
+    pub process_kind: u32,
+    /// The canonical carrier-key encoding, opaque at this boundary.
+    pub source_key: Vec<u8>,
+    pub target_key: Vec<u8>,
+    pub requested_volume: u64,
+    pub accepted_volume: u64,
+    pub unaccepted_volume: u64,
+    pub transfer_trace: TraceId,
+    pub conservation_trace: TraceId,
+    pub tick: u64,
+    pub forcing_origin_trace: Option<TraceId>,
+}
+
+impl HydrologyTransferSummary {
+    /// The unique identity of one summary within a projection.
+    ///
+    /// The tuple the plan declares, in its declared order. Two summaries sharing
+    /// it are the same transfer described twice, which a projection must never
+    /// contain and a decoder must never accept.
+    pub fn canonical_key(&self) -> (u64, u32, &[u8], &[u8], TraceId) {
+        (
+            self.tick,
+            self.process_kind,
+            &self.source_key,
+            &self.target_key,
+            self.transfer_trace,
+        )
+    }
+}
+
+/// One conveyance edge's current storage and this tick's accepted exchange.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HydrologyConveyanceSummary {
+    pub edge_key: Vec<u8>,
+    pub storage: u64,
+    pub capacity: u64,
+    pub accepted_inflow: u64,
+    pub accepted_release: u64,
+    pub last_change_trace: TraceId,
+    pub tick: u64,
+}
+
+/* -------------------------------------------------- hydrology carrier keys -- */
+
+pub const HYDROLOGY_CARRIER_CELL: u8 = 0x01;
+pub const HYDROLOGY_CARRIER_EDGE: u8 = 0x02;
+pub const HYDROLOGY_CARRIER_EXTERIOR_FACE: u8 = 0x03;
+pub const HYDROLOGY_CARRIER_FORCING_RECORD: u8 = 0x04;
+pub const HYDROLOGY_CARRIER_RESOLUTION_CHUNK: u8 = 0x05;
+pub const HYDROLOGY_CARRIER_BATCH_NODE: u8 = 0x06;
+
+/// A cell body: chart, chunk x/y/z, ordinal — all big-endian.
+const HYDROLOGY_CELL_BODY_LEN: usize = 22;
+
+/// The exact encoded length of a carrier-key variant.
+///
+/// Every variant is fixed-length by construction, so a length is a complete
+/// structural check rather than a lower bound: a key of the wrong size is not a
+/// truncated key, it is a key for a different variant or for nothing at all.
+pub const fn hydrology_carrier_key_len(variant: u8) -> Result<usize, ObserverApiError> {
+    match variant {
+        HYDROLOGY_CARRIER_CELL => Ok(1 + HYDROLOGY_CELL_BODY_LEN),
+        HYDROLOGY_CARRIER_EDGE => Ok(1 + 2 * HYDROLOGY_CELL_BODY_LEN),
+        HYDROLOGY_CARRIER_EXTERIOR_FACE => Ok(1 + HYDROLOGY_CELL_BODY_LEN + 1),
+        HYDROLOGY_CARRIER_FORCING_RECORD => Ok(1 + 8 + 8),
+        HYDROLOGY_CARRIER_RESOLUTION_CHUNK => Ok(1 + 8 + 12),
+        HYDROLOGY_CARRIER_BATCH_NODE => Ok(1 + 8),
+        other => Err(ObserverApiError::UnknownHydrologyCarrierVariant(other)),
+    }
+}
+
+/// The ordering identity of a cell body, as its own fields rather than its bytes.
+///
+/// A byte-wise comparison would be wrong here and quietly so: the chunk
+/// coordinates are two's-complement `i32`, so a negative coordinate's leading
+/// byte sorts *above* a positive one's. Two peers disagreeing about which
+/// endpoint of an edge is canonical would give one face two identities.
+fn hydrology_cell_body_order(body: &[u8]) -> (u64, i32, i32, i32, u16) {
+    debug_assert_eq!(body.len(), HYDROLOGY_CELL_BODY_LEN);
+    let word = |at: usize| u32::from_be_bytes([body[at], body[at + 1], body[at + 2], body[at + 3]]);
+    (
+        u64::from_be_bytes([
+            body[0], body[1], body[2], body[3], body[4], body[5], body[6], body[7],
+        ]),
+        word(8) as i32,
+        word(12) as i32,
+        word(16) as i32,
+        u16::from_be_bytes([body[20], body[21]]),
+    )
+}
+
+/// Validate one canonical carrier key and return its variant.
+///
+/// The observer boundary parses keys produced by the simulation but must not
+/// depend on it: this decoder is written against the declared encoding alone, so
+/// a payload from an untrusted peer is checked structurally rather than trusted
+/// to have come from a well-behaved producer. Its agreement with the producing
+/// encoder is a tested fact rather than a shared implementation.
+pub fn validate_hydrology_carrier_key(bytes: &[u8]) -> Result<u8, ObserverApiError> {
+    let Some(&variant) = bytes.first() else {
+        return Err(ObserverApiError::UnknownHydrologyCarrierVariant(0));
+    };
+    let expected = hydrology_carrier_key_len(variant)?;
+    if bytes.len() != expected {
+        return Err(ObserverApiError::InvalidHydrologyCarrierLength {
+            variant,
+            expected,
+            actual: bytes.len(),
+        });
+    }
+    match variant {
+        HYDROLOGY_CARRIER_EDGE => {
+            let low = hydrology_cell_body_order(&bytes[1..23]);
+            let high = hydrology_cell_body_order(&bytes[23..45]);
+            // Equal endpoints are an edge from a cell to itself, and reversed
+            // ones are the same face under a second name.
+            if low >= high {
+                return Err(ObserverApiError::NoncanonicalHydrologyCarrierOrder);
+            }
+        }
+        // Four faces, coded `0=-X, 1=+X, 2=-Y, 3=+Y`. A fifth direction names a
+        // face this lattice does not have.
+        HYDROLOGY_CARRIER_EXTERIOR_FACE if bytes[23] > 3 => {
+            return Err(ObserverApiError::UnknownHydrologyFaceDirection(bytes[23]));
+        }
+        _ => {}
+    }
+    Ok(variant)
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -403,4 +686,18 @@ pub enum ObserverApiError {
     InvalidDetailLevel(u8),
     #[error("observer payload is too large: {0} bytes")]
     PayloadTooLarge(usize),
+    #[error("observer response payload is too large: {0} bytes")]
+    ResponsePayloadTooLarge(usize),
+    #[error("unknown hydrology carrier key variant {0:#04x}")]
+    UnknownHydrologyCarrierVariant(u8),
+    #[error("hydrology carrier key variant {variant:#04x} must be {expected} bytes, got {actual}")]
+    InvalidHydrologyCarrierLength {
+        variant: u8,
+        expected: usize,
+        actual: usize,
+    },
+    #[error("unknown hydrology exterior face direction {0}")]
+    UnknownHydrologyFaceDirection(u8),
+    #[error("a hydrology edge carrier key is not in canonical endpoint order")]
+    NoncanonicalHydrologyCarrierOrder,
 }

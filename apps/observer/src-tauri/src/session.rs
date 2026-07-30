@@ -64,14 +64,17 @@ impl ObserverSession {
                     request_id,
                     QueryStatus::InvalidRequest,
                     Vec::new(),
-                ));
+                )?);
             }
         };
+        // A raster that outgrew the response cap is refused here rather than
+        // sent: the encoder now checks its own budget, and a lattice that cannot
+        // fit is a producer error the client must not have to discover.
         Ok(match self.runtime.observer_field_raster(&request)? {
             Some(raster) => {
-                encode_query_response(request_id, QueryStatus::Ok, encode_field_raster(&raster))
+                encode_query_response(request_id, QueryStatus::Ok, encode_field_raster(&raster))?
             }
-            None => encode_query_response(request_id, QueryStatus::NotAvailable, Vec::new()),
+            None => encode_query_response(request_id, QueryStatus::NotAvailable, Vec::new())?,
         })
     }
 
