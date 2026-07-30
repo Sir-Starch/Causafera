@@ -202,6 +202,30 @@ what the session is paying for. No threshold is declared and no regression is
 flagged: this is the first hydrology series and a threshold chosen before one
 exists would be a guess.
 
+### Re-measured after the import fail-closed additions
+
+The snapshot import path gained agreement checks against the persisted
+configuration and a trace-existence pass over every bucket, edge, resolution
+entry and retained receipt (`plans/hydrology.md` §11, V25). The whole series was
+re-run on a quiet machine at commit `4a99c26`+ to see what it cost:
+
+| Workload | `4f56b5d` mean ms | after mean ms | change |
+| --- | ---: | ---: | ---: |
+| 1. one chunk | 2,489.401 | 2,375.303 | −4.6% |
+| 2. three line chunks | 8,848.186 | 8,944.305 | +1.1% |
+| 3. nine chunks | 15,690.245 | 15,110.326 | −3.7% |
+| 5. snapshot export | 8.521 | 7.776 | −8.7% |
+| 5. snapshot import | 154.245 | 153.108 | −0.7% |
+| 6. run length 100 | 31,699.029 | 31,002.075 | −2.2% |
+
+Every export-cap ceiling is identical — 221, 59 and 15 ticks — which is expected
+of a deterministic bound and is the check that the additions changed no accepted
+state. Import, the figure the additions actually touch, moved by less than its
+own stddev. The scope of that claim is what was measured: workload 5 imports a
+one-chunk session, so the anchor pass is 4,096 lookups against 153 ms of import.
+The pass is linear in cells and retained receipts, and no nine-chunk import was
+measured.
+
 ### The fine/coarse comparison was not obtained
 
 `plans/hydrology.md` accepts the retained-fine/coarse design as a performance

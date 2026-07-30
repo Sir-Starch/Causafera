@@ -4204,32 +4204,47 @@ its own evidence-backed follow-up TODO rather than being hidden in Progress.
     receipt slots against a retention contract that allows 262,144 across all of them.
   - `crates/causafera-runtime/src/hydrology_validation.rs` — conveyance endpoint and outlet
     residency, and batch continuity, added to the tick-boundary set; a new
-    `validate_imported_hydrology` for configuration agreement, forcing ancestry, and trace existence.
+    `validate_imported_hydrology` for configuration agreement — grid metrics, resolution policy, and
+    forcing records — plus forcing ancestry and trace existence. The resolution policy belongs in
+    that set for a reason worth naming: it is what every imported level is checked *against*, so a
+    section carrying its own was the only thing deciding whether its own detail was acceptable, and
+    raising it to fit is the clamp §9 refuses, moved one layer earlier.
   - `crates/causafera-runtime/src/runtime.rs` — nine new specific `RuntimeError` variants, the
     import-only validator called from `validate_snapshot_references`, and the lowerable
     `hydrology_section_budget`.
   - `crates/causafera-runtime/src/tick_transaction.rs` — the section budget threaded through the
     transaction, and `a_state_over_the_hydrology_section_bound_is_refused` rewritten to cause the
     refusal it is named for.
-  - `crates/causafera-runtime/tests/hydrology_import_validation.rs` — 13 → **26** tests, covering
+  - `crates/causafera-runtime/tests/hydrology_import_validation.rs` — 13 → **27** tests, covering
     every V25 clause that had no negative control: an off-map conveyance edge, an unknown forcing
     origin, a forcing origin that exists but is not a bootstrap event, a bucket anchored to an
-    unknown trace, a batch keyed to a non-conservation event, a grid metric and a forcing record that
-    disagree with the persisted configuration, a gap in the retained window, a window that does not
-    reach the current batch, a receipt filed under another batch, and both composed caps refused
-    before allocation.
+    unknown trace, a batch keyed to a non-conservation event, a grid metric, a resolution policy and
+    a forcing record that disagree with the persisted configuration, a gap in the retained window, a
+    window that does not reach the current batch, a receipt filed under another batch, and both
+    composed caps refused before allocation.
 
   Verification, all run and all green at this checkpoint:
 
   - `cargo fmt --all -- --check` — clean.
   - `cargo clippy --workspace --all-targets --all-features -- -D warnings` — clean.
-  - `cargo test --workspace --all-features` — 84 suites, **927 passed**, 0 failed.
-  - `cargo test --workspace --no-default-features` — 84 suites, **927 passed**, 0 failed.
+  - `cargo test --workspace --all-features` — 84 suites, **928 passed**, 0 failed.
+  - `cargo test --workspace --no-default-features` — 84 suites, **928 passed**, 0 failed.
   - `cargo run -p xtask -- ci` — CI checks passed.
   - `pnpm lint` — pass. `pnpm typecheck` — pass. `pnpm build` — pass.
   - `git diff --check` — clean.
   - `node tools/audit/check-entry-points.mjs` — pass (32 entry points, 22 tests).
   - `node tools/audit/run-source-tests.mjs` — **90 passed**, 0 failed.
+  - `node tools/audit/test-hydrology-production-boundaries.mjs` — **6 passed**, 0 failed.
+  - `node tools/audit/test-observer-hydrology-decoder.mjs` — **26 passed**, 0 failed.
+  - `node tools/audit/test-observer-hydrology-legacy-decoder.mjs` — **14 passed**, 0 failed.
+  - `node tools/audit/test-observer-proto-schema.mjs` — **9 passed**, 0 failed.
+  - `cargo test -p causafera-observer --all-features` — **12 passed**, 0 failed.
+  - The release benchmark re-run on a quiet machine, to confirm the import-path additions cost
+    nothing measurable. Import moved 154.245 ms → **153.108 ms**, less than its own stddev; the
+    other five workloads moved between −4.6% and +1.1%; and all three export-cap ceilings are
+    identical at **221 / 59 / 15** ticks, which is the check that no accepted state changed. The
+    comparison is recorded in `docs/performance/benchmarks.md` with its scope stated: workload 5
+    imports a one-chunk session, and the anchor pass is linear in cells and retained receipts.
 
   Left undone deliberately, and named rather than silently skipped: the review's eighth remark, that
   `evolution.rs` and its sibling hydrology modules are large enough to strain the modular-architecture

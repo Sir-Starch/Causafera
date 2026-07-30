@@ -848,3 +848,28 @@ fn retained_receipts_past_the_retention_cap_are_refused_before_allocation() {
         "unexpected refusal: {error}"
     );
 }
+
+#[test]
+fn a_resolution_policy_that_disagrees_with_the_configuration_is_refused() {
+    // Every imported level is checked against the policy, so a section carrying
+    // its own would be the only thing deciding whether its own detail is
+    // acceptable. Raising it to fit is the clamp the contract refuses, moved one
+    // layer earlier.
+    let mut runtime = Runtime::new(wet_runtime_config()).expect("construction");
+    runtime.run_ticks(2).expect("the run must commit");
+    let mut snapshot = runtime.export_snapshot().expect("export");
+
+    let policy = snapshot.hydrology.resolution_policy;
+    assert!(policy.enabled, "the fixture runs with a policy");
+    snapshot.hydrology.resolution_policy = causafera_domains::HydrologyResolutionPolicy {
+        max_level: policy.max_level - 1,
+        ..policy
+    };
+
+    let bytes = encode_hydrology_section(&snapshot.hydrology);
+    let error = import_with_section(bytes).expect_err("a rewritten policy must be refused");
+    assert!(
+        error.contains("resolution policy"),
+        "unexpected refusal: {error}"
+    );
+}

@@ -187,8 +187,10 @@ pub(crate) fn validate_hydrology_state(
             return Err(RuntimeError::HydrologyReceiptsDisagreeWithLedger);
         }
 
+        // Checked, because the sequence arrives from a snapshot: a forged
+        // `u64::MAX` would otherwise decide the question by overflowing here.
         if let Some((sequence, tick)) = previous
-            && (ledger.batch_sequence() != sequence + 1 || ledger.tick() <= tick)
+            && (Some(ledger.batch_sequence()) != sequence.checked_add(1) || ledger.tick() <= tick)
         {
             return Err(RuntimeError::HydrologyBatchSequenceNotContinuous);
         }
@@ -257,6 +259,17 @@ pub(crate) fn validate_imported_hydrology(
     if state.metrics.entries() != &config.grid_metrics {
         return Err(RuntimeError::HydrologyStateDisagreesWithConfiguration {
             what: "grid metrics",
+        });
+    }
+
+    // The resolution policy is what every imported level is checked against, so
+    // a section carrying its own would be the only thing deciding whether its
+    // own detail is acceptable. The contract is that a level above the policy
+    // refuses the tick rather than being clamped; a section that raises the
+    // policy to fit is the same clamp, done one layer earlier.
+    if state.resolution_policy != config.resolution_policy {
+        return Err(RuntimeError::HydrologyStateDisagreesWithConfiguration {
+            what: "resolution policy",
         });
     }
 
@@ -336,7 +349,14 @@ pub(crate) fn validate_imported_hydrology(
         if event.phase != Phase::Physics || event.kind.raw() != HYDROLOGY_CONSERVATION_EVENT_KIND {
             return Err(RuntimeError::HydrologyBatchTraceNotConservation);
         }
-        for receipt in &state.receipts[trace] {
+        // Looked up rather than indexed. `validate_hydrology_state` runs first
+        // and would already have refused a batch with no receipt list, but a
+        // panic guarded only by call order is a panic waiting for a caller.
+        let receipts = state
+            .receipts
+            .get(trace)
+            .ok_or(RuntimeError::HydrologyRetainedBatchIncomplete)?;
+        for receipt in receipts {
             for parent in receipt.causal_parents() {
                 require_trace(traces, *parent)?;
             }
