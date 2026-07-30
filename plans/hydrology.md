@@ -2873,6 +2873,21 @@ its own evidence-backed follow-up TODO rather than being hidden in Progress.
   snapshot, where a frozen consumer keeps reading exactly what it read before; a raster kind it does
   not know is a kind it never requests.
 
+- **2026-07-30 — Stage 7 wave D: the TypeScript decoder is tested against a captured engine
+  payload.** Stage 7 requires round-tripping "Rust and TypeScript codecs with real engine payloads".
+  The Rust side ticks a runtime directly; a Node audit cannot, and building one inside
+  `run-source-tests.mjs` would put a cargo invocation into the self-contained set — the same shape
+  that produced Stage 6's one flaky audit run. Instead the payload is captured once into
+  `tools/audit/fixtures/observer-hydrology-engine-payload.json` and a Rust test regenerates it from
+  the same deterministic fixture and fails on any divergence. The capture is real engine output, and
+  it cannot drift away from the engine without the Rust suite saying so.
+
+- **2026-07-30 — Stage 7: `stream.rs` and `classification.rs` needed no change.** Stage 7's file list
+  names both. Streams carry payloads produced by the same encoders and are unaffected by which
+  fields those payloads contain; `AnalyticalClassification` is an observer-side label type that §12
+  does not extend, and extending it would be the semantic classification the plan forbids feeding
+  back. Recorded rather than silently skipped.
+
 ## Progress
 
 - **2026-07-29 — Accepted.** Revision 19 is the authoritative hydrology implementation plan.
@@ -3995,6 +4010,45 @@ its own evidence-backed follow-up TODO rather than being hidden in Progress.
   - `node tools/audit/test-observer-proto-schema.mjs` — **9 passed**, 0 failed.
   - `cargo test -p causafera-observer --all-features` — **12 passed**, 0 failed.
   - `git diff --check` — clean.
+
+- **2026-07-30 — Stage 7 wave D complete: the TypeScript decoder on real engine bytes. Stage 7
+  closed.**
+
+  Files changed:
+
+  - `tools/audit/fixtures/observer-hydrology-engine-payload.json` — new; a summary, a world
+    projection, and a water raster captured from a production-bootstrapped runtime after three
+    committed hydrology ticks, with their provenance.
+  - `crates/causafera-runtime/tests/hydrology_observer.rs` — a guard test that regenerates the
+    capture and fails on divergence; now **11 tests**.
+  - `tools/audit/test-observer-hydrology-decoder.mjs` — **3 new tests** that decode the capture; now
+    **26 tests**.
+
+  What the tests establish:
+
+  - The TypeScript decoder reads a real engine summary, world projection, and water raster: the
+    residual is exactly zero, the bootstrap projection beside it is the frozen six-stage one plus the
+    field-48 seventh receipt, every projected carrier key passes the decoder's own independent
+    validator, every transfer's three volumes close, every delta carries committed traces, and the
+    raster's unsigned band fills its lattice and holds water.
+  - The capture cannot drift: the Rust guard re-encodes from the same deterministic fixture and
+    compares byte for byte.
+
+  Commands run and their actual results:
+
+  - `cargo test --workspace --all-features` — 84 suites, **914 passed**, 0 failed.
+  - `node tools/audit/run-source-tests.mjs` — **90 passed**, 0 failed.
+  - `cargo clippy --workspace --all-targets --all-features -- -D warnings` — clean.
+  - `cargo fmt --all -- --check` — clean. `git diff --check` — clean.
+
+  **Stage 7 is complete.** Every work item in its list is done: the bootstrap mirror backfilled
+  before hydrology was added, bounded typed state/flux/forcing/conservation/insufficiency evidence,
+  lossless unsigned raster bands with atomic presence rules and the distinct response cap, exact
+  Explanation values through existing numeric variants with insufficiency instead of narrowing,
+  protocol V1 kept additive and verified against the frozen oracle, both codecs round-tripped against
+  real engine payloads, exact `.proto` schema-conformance coverage, adversarial decoding of malformed
+  and unsupported payloads, and proof that query cadence, projection choice, locale, and observer
+  absence leave the authoritative digests unchanged.
 
 Execution must begin by re-reading this Progress section and Decision log, then inspecting
 `git status`. The implementing agent updates both sections whenever scope, contract, verification,
