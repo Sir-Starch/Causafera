@@ -10,7 +10,7 @@
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
-use causafera_core::provenance::CausalDagBatchLimits;
+use causafera_core::provenance::{CausalDagBatchLimits, StateFingerprint};
 use causafera_core::{Phase, RandomStream, System};
 use causafera_domains::{
     HydrologyBucket, HydrologyEvolutionLimits, HydrologyEvolutionModel, HydrologyEvolutionProposal,
@@ -764,4 +764,338 @@ fn floor_div(numerator: u128, denominator: u128) -> Result<u64, RuntimeError> {
         return Err(RuntimeError::HydrologyCoefficientOverflow);
     }
     u64::try_from(numerator / denominator).map_err(|_| RuntimeError::HydrologyCoefficientOverflow)
+}
+
+// ---------------------------------------------------------------------------
+// The seventh production bootstrap stage
+// ---------------------------------------------------------------------------
+
+const DOMAIN_BOOTSTRAP_METRICS: &[u8] = b"causafera.hydrology.bootstrap-metrics.v1";
+const DOMAIN_BOOTSTRAP_SUBSTRATE: &[u8] = b"causafera.hydrology.bootstrap-substrate.v1";
+const DOMAIN_BOOTSTRAP_STORAGE: &[u8] = b"causafera.hydrology.bootstrap-storage.v1";
+const DOMAIN_BOOTSTRAP_EDGES: &[u8] = b"causafera.hydrology.bootstrap-edges.v1";
+const DOMAIN_BOOTSTRAP_RESOLUTION: &[u8] = b"causafera.hydrology.bootstrap-resolution.v1";
+const DOMAIN_BOOTSTRAP_FORCING: &[u8] = b"causafera.hydrology.bootstrap-forcing.v1";
+const DOMAIN_BOOTSTRAP_BOUNDARIES: &[u8] = b"causafera.hydrology.bootstrap-boundaries.v1";
+
+fn hash_prefixed(hasher: &mut blake3::Hasher, bytes: &[u8]) {
+    hasher.update(&(bytes.len() as u64).to_be_bytes());
+    hasher.update(bytes);
+}
+
+/// The seven canonical payloads the bootstrap event's effects digest.
+///
+/// Seven aggregates rather than one effect per cell: bootstrap initialises up to
+/// 131 072 cells and the eight-effect cap is a hard bound, so each payload covers
+/// one whole collection in canonical order. Every initialised carrier still has a
+/// verifiable path to its exact bytes, because its bytes are in one of these.
+fn bootstrap_payloads(
+    state: &HydrologyRuntimeState,
+    specs: &[crate::HydrologyForcingSpec],
+) -> [(u64, StateFingerprint); 7] {
+    use causafera_geography::FluxBoundary;
+
+    let mut metrics = blake3::Hasher::new();
+    hash_prefixed(&mut metrics, DOMAIN_BOOTSTRAP_METRICS);
+    metrics.update(&(state.metrics.len() as u64).to_be_bytes());
+    for (chart, metric) in state.metrics.entries() {
+        metrics.update(&chart.raw().to_be_bytes());
+        metrics.update(&metric.schema_version().to_be_bytes());
+        metrics.update(&metric.cell_area_mm2().get().to_be_bytes());
+        metrics.update(&metric.orthogonal_edge_length_mm().get().to_be_bytes());
+        metrics.update(&metric.timestep_millis().get().to_be_bytes());
+    }
+
+    let mut substrate = blake3::Hasher::new();
+    hash_prefixed(&mut substrate, DOMAIN_BOOTSTRAP_SUBSTRATE);
+    let mut storage = blake3::Hasher::new();
+    hash_prefixed(&mut storage, DOMAIN_BOOTSTRAP_STORAGE);
+    substrate.update(&(state.fields.cell_count() as u64).to_be_bytes());
+    storage.update(&(state.fields.cell_count() as u64).to_be_bytes());
+    for (chunk, field) in state.fields.fields() {
+        for (ordinal, ground) in field.substrate().iter().enumerate() {
+            let cell = field.cells()[ordinal];
+            hash_prefixed(&mut substrate, &chunk_bytes(*chunk));
+            substrate.update(&(ordinal as u16).to_be_bytes());
+            hash_prefixed(&mut substrate, ground.constitutive_key().bytes());
+            hash_prefixed(&mut storage, &chunk_bytes(*chunk));
+            storage.update(&(ordinal as u16).to_be_bytes());
+            storage.update(&cell.surface_water().get().to_be_bytes());
+            storage.update(&cell.soil_water().get().to_be_bytes());
+            storage.update(&cell.groundwater().get().to_be_bytes());
+        }
+    }
+
+    let mut edges = blake3::Hasher::new();
+    hash_prefixed(&mut edges, DOMAIN_BOOTSTRAP_EDGES);
+    edges.update(&(state.conveyance.len() as u64).to_be_bytes());
+    for (key, edge) in state.conveyance.edges() {
+        hash_prefixed(
+            &mut edges,
+            &causafera_geography::HydrologyCarrierKey::Edge(*key).encode(),
+        );
+        hash_prefixed(
+            &mut edges,
+            &causafera_geography::HydrologyCarrierKey::Cell(edge.outlet()).encode(),
+        );
+        edges.update(&edge.storage().get().to_be_bytes());
+        edges.update(&edge.capacity().get().to_be_bytes());
+        edges.update(&edge.release().numerator().to_be_bytes());
+        edges.update(&edge.release().denominator().get().to_be_bytes());
+        edges.update(&edge.inlet_capacity_per_tick().get().to_be_bytes());
+    }
+
+    let mut resolution = blake3::Hasher::new();
+    hash_prefixed(&mut resolution, DOMAIN_BOOTSTRAP_RESOLUTION);
+    resolution.update(&(state.resolution.len() as u64).to_be_bytes());
+    for (chunk, entry) in &state.resolution {
+        hash_prefixed(&mut resolution, &chunk_bytes(*chunk));
+        resolution.update(&[entry.level()]);
+    }
+    resolution.update(&[u8::from(state.resolution_policy.enabled)]);
+    resolution.update(&[state.resolution_policy.max_level]);
+    resolution.update(&(state.active.active_chunks().len() as u64).to_be_bytes());
+    for chunk in state.active.active_chunks() {
+        hash_prefixed(&mut resolution, &chunk_bytes(*chunk));
+    }
+
+    let mut boundaries = blake3::Hasher::new();
+    hash_prefixed(&mut boundaries, DOMAIN_BOOTSTRAP_BOUNDARIES);
+    boundaries.update(&(state.boundaries.len() as u64).to_be_bytes());
+    for (face, condition) in state.boundaries.records() {
+        hash_prefixed(
+            &mut boundaries,
+            &causafera_geography::HydrologyCarrierKey::ExteriorFace(*face).encode(),
+        );
+        for channel in [condition.surface, condition.groundwater] {
+            match channel {
+                FluxBoundary::NoFlux => boundaries.update(&[0]),
+                FluxBoundary::Open {
+                    external_head_mm,
+                    conductance_mm2_per_tick,
+                } => {
+                    boundaries.update(&[1]);
+                    boundaries.update(&external_head_mm.to_be_bytes());
+                    boundaries.update(&conductance_mm2_per_tick.to_be_bytes())
+                }
+            };
+        }
+    }
+
+    // The *spec* schedule, not the installed records: the records carry the origin
+    // trace of the very event this digest is an effect of, so hashing them would
+    // require the event to exist before it could be built. The specs are the
+    // configuration's whole bounded contribution, which is what the plan says this
+    // aggregate covers.
+    let mut forcing = blake3::Hasher::new();
+    hash_prefixed(&mut forcing, DOMAIN_BOOTSTRAP_FORCING);
+    forcing.update(&(specs.len() as u64).to_be_bytes());
+    for spec in specs {
+        forcing.update(&spec.scheduled_tick.to_be_bytes());
+        forcing.update(&spec.forcing_id.to_be_bytes());
+        forcing.update(&spec.precipitation_volume.get().to_be_bytes());
+        forcing.update(&spec.potential_et_volume.get().to_be_bytes());
+        forcing.update(&spec.external_inflow_volume.get().to_be_bytes());
+        forcing.update(&(spec.targets.len() as u64).to_be_bytes());
+        for (cell, weight) in &spec.targets {
+            hash_prefixed(
+                &mut forcing,
+                &causafera_geography::HydrologyCarrierKey::Cell(*cell).encode(),
+            );
+            forcing.update(&weight.get().to_be_bytes());
+        }
+    }
+    // The policy is the bootstrap producer's, fixed rather than chosen, so it is
+    // hashed once for the schedule instead of once per record.
+    forcing.update(&causafera_geography::BOOTSTRAP_HYDROLOGY_FORCING_POLICY_V1.to_be_bytes());
+
+    [
+        (
+            crate::HYDROLOGY_BOOTSTRAP_METRICS_PROPERTY,
+            StateFingerprint::new(*metrics.finalize().as_bytes()),
+        ),
+        (
+            crate::HYDROLOGY_BOOTSTRAP_SUBSTRATE_PROPERTY,
+            StateFingerprint::new(*substrate.finalize().as_bytes()),
+        ),
+        (
+            crate::HYDROLOGY_BOOTSTRAP_STORAGE_PROPERTY,
+            StateFingerprint::new(*storage.finalize().as_bytes()),
+        ),
+        (
+            crate::HYDROLOGY_BOOTSTRAP_EDGES_PROPERTY,
+            StateFingerprint::new(*edges.finalize().as_bytes()),
+        ),
+        (
+            crate::HYDROLOGY_BOOTSTRAP_RESOLUTION_PROPERTY,
+            StateFingerprint::new(*resolution.finalize().as_bytes()),
+        ),
+        (
+            crate::HYDROLOGY_BOOTSTRAP_FORCING_PROPERTY,
+            StateFingerprint::new(*forcing.finalize().as_bytes()),
+        ),
+        (
+            crate::HYDROLOGY_BOOTSTRAP_BOUNDARIES_PROPERTY,
+            StateFingerprint::new(*boundaries.finalize().as_bytes()),
+        ),
+    ]
+}
+
+fn chunk_bytes(chunk: ChartChunkCoord) -> Vec<u8> {
+    let mut out = Vec::with_capacity(20);
+    out.extend_from_slice(&chunk.chart.raw().to_be_bytes());
+    out.extend_from_slice(&chunk.chunk.x.to_be_bytes());
+    out.extend_from_slice(&chunk.chunk.y.to_be_bytes());
+    out.extend_from_slice(&chunk.chunk.z.to_be_bytes());
+    out
+}
+
+/// The fingerprint a bootstrap aggregate target holds before bootstrap runs.
+fn bootstrap_absent(property: u64) -> StateFingerprint {
+    let mut hasher = blake3::Hasher::new();
+    hash_prefixed(&mut hasher, b"causafera.hydrology.bootstrap-absent.v1");
+    hasher.update(&property.to_be_bytes());
+    StateFingerprint::new(*hasher.finalize().as_bytes())
+}
+
+/// The seventh production bootstrap stage.
+///
+/// Runs only when hydrology is enabled. A disabled session keeps the legacy
+/// six-stage plan byte for byte, which is what lets every pre-hydrology snapshot
+/// stay comparable (V22).
+pub(crate) struct HydrologyBootstrapStage;
+
+impl HydrologyBootstrapStage {
+    /// Preflight the whole proposal, commit one origin event, then install.
+    ///
+    /// In that order and no other: the installation step after the commit is
+    /// infallible, so a failed preflight or a refused origin event installs no
+    /// hydrology state at all rather than half of it.
+    pub(crate) fn run(
+        state: &mut RuntimeState,
+        previous_receipt: Option<TraceId>,
+    ) -> Result<Vec<TraceId>, RuntimeError> {
+        let config = state.config.hydrology.clone();
+        if !config.enabled {
+            return Ok(Vec::new());
+        }
+        let cause = previous_receipt.ok_or(RuntimeError::HydrologyBootstrapWithoutPredecessor)?;
+
+        // Built with the origin trace it is about to be anchored to, so no anchor
+        // ever names a placeholder that later has to be rewritten.
+        let world_seed = state.config.deterministic.world_seed;
+        let active: Vec<ChartChunkCoord> = state.active_chunks.keys().copied().collect();
+        let mut hydrology = build_hydrology_state(&config, world_seed, &active, cause)?;
+        hydrology.registry = HydrologyObjectRegistry::assign(
+            registry_cells(&hydrology.fields),
+            hydrology.conveyance.edges().keys().copied(),
+            config
+                .forcing_schedule
+                .iter()
+                .map(|spec| (spec.scheduled_tick, spec.forcing_id)),
+            hydrology.resolution.keys().copied(),
+        );
+
+        let payloads = bootstrap_payloads(&hydrology, &config.forcing_schedule);
+        let effects = payloads
+            .iter()
+            .map(|(property, fingerprint)| {
+                causafera_core::provenance::CausalEffect::new(
+                    causafera_core::provenance::CausalTarget::new(
+                        causafera_types::StateObjectKindId::new(
+                            crate::HYDROLOGY_BOOTSTRAP_OBJECT_KIND,
+                        ),
+                        0,
+                        causafera_types::StatePropertyId::new(*property),
+                    ),
+                    bootstrap_absent(*property),
+                    *fingerprint,
+                )
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let proposal = causafera_core::provenance::CausalEventProposal::new(
+            causafera_core::EventProposalKey::new(
+                crate::HYDROLOGY_SYSTEM_ID,
+                crate::HYDROLOGY_STAGE.raw(),
+                0,
+            ),
+            causafera_types::EventKindId::new(crate::HYDROLOGY_BOOTSTRAP_EVENT_KIND),
+            vec![cause],
+            effects,
+        )?;
+        let origin = state
+            .traces
+            .commit_batch(SimulationTime::new(0), Phase::Lifecycle, vec![proposal])?
+            .first()
+            .copied()
+            .ok_or(RuntimeError::HydrologyConservationNotCommitted)?;
+
+        // The event committed, so the origin exists. Everything after this point is
+        // installation against a trace that is already durable: specs become
+        // canonical records — configuration never contains a trace, and letting it
+        // choose its own producer policy would let a session declare itself an
+        // authorized producer — and every initialised carrier is re-anchored from
+        // the cause it was built against to the origin event that created it.
+        hydrology.forcing = install_forcing(&config, origin)?;
+        reanchor(&mut hydrology, origin)?;
+        state.hydrology = hydrology;
+        Ok(vec![origin])
+    }
+}
+
+/// Turn configured specs into canonical records under the bootstrap policy.
+fn install_forcing(
+    config: &crate::HydrologyConfig,
+    origin: TraceId,
+) -> Result<Vec<HydrologyForcingRecord>, RuntimeError> {
+    use causafera_geography::{
+        BOOTSTRAP_HYDROLOGY_FORCING_POLICY_V1, HydrologyForcingMember, HydrologyForcingParts,
+    };
+
+    let mut records = Vec::with_capacity(config.forcing_schedule.len());
+    for spec in &config.forcing_schedule {
+        records.push(HydrologyForcingRecord::new(HydrologyForcingParts {
+            forcing_id: spec.forcing_id,
+            scheduled_tick: spec.scheduled_tick,
+            targets: spec
+                .targets
+                .iter()
+                .map(|(cell, weight)| HydrologyForcingMember::new(*cell, *weight))
+                .collect(),
+            precipitation_volume: spec.precipitation_volume,
+            potential_et_volume: spec.potential_et_volume,
+            external_inflow_volume: spec.external_inflow_volume,
+            origin_trace: origin,
+            producer_policy_schema: BOOTSTRAP_HYDROLOGY_FORCING_POLICY_V1,
+            // Canonical records start pending and transition exactly once.
+            applied_at: None,
+        })?);
+    }
+    Ok(records)
+}
+
+/// Point every initial anchor at the committed origin event.
+///
+/// Fallible on purpose. An anchor that could not be written is a carrier whose
+/// provenance would silently still name the stage that preceded its creation, and
+/// discarding that error would leave the world describing itself incorrectly.
+fn reanchor(state: &mut HydrologyRuntimeState, origin: TraceId) -> Result<(), RuntimeError> {
+    let cells: Vec<HydrologyCellKey> = registry_cells(&state.fields);
+    for cell in cells {
+        state.fields.install_surface_trace(cell, origin)?;
+        state.fields.install_soil_trace(cell, origin)?;
+        state.fields.install_groundwater_trace(cell, origin)?;
+        state.fields.install_forcing_trace(cell, origin)?;
+    }
+    state.fields.install_conservation_trace(origin);
+    let edges: Vec<causafera_geography::HydrologyEdgeKey> =
+        state.conveyance.edges().keys().copied().collect();
+    for edge in edges {
+        state.conveyance.install_edge_trace(edge, origin)?;
+    }
+    for entry in state.resolution.values_mut() {
+        *entry = HydrologyResolutionState::new(entry.level(), origin)?;
+    }
+    Ok(())
 }

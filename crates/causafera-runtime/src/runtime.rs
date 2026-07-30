@@ -607,6 +607,11 @@ pub enum RuntimeError {
     /// it would execute a different world than the one that was configured.
     #[error("a derived hydrology coefficient does not fit its destination type")]
     HydrologyCoefficientOverflow,
+    /// The hydrology bootstrap stage's origin event cites the preceding stage's
+    /// completion. Without one there is nothing to attribute the initialised world
+    /// to, and an origin with no ancestry is not an origin.
+    #[error("the hydrology bootstrap stage has no preceding stage to cite")]
+    HydrologyBootstrapWithoutPredecessor,
     #[error("hydrology state is invalid: {0}")]
     HydrologyState(#[from] causafera_geography::HydrologyStateError),
     #[error("hydrology causal commit failed: {0}")]
@@ -772,16 +777,6 @@ impl RuntimeState {
         let active_thermal_chunks = active_chunk_keys.iter().copied().collect::<BTreeSet<_>>();
         let thermal_active_region =
             ThermalActiveRegion::new(active_thermal_chunks.clone(), active_thermal_chunks)?;
-        // Causal initialization from the configured numbers and the real ground.
-        // Wave C moves this call into the seventh production bootstrap stage,
-        // which adds the origin event and the stage receipt; the numbers it
-        // derives are the same either way.
-        let hydrology = crate::build_hydrology_state(
-            &config.hydrology,
-            config.deterministic.world_seed,
-            &active_chunk_keys,
-            root_trace,
-        )?;
         let resolution = ResolutionField::new(
             ResolutionFieldId::new(1),
             SimulationTime::new(0),
@@ -815,7 +810,10 @@ impl RuntimeState {
             thermal_reservoirs: BTreeMap::new(),
             thermal_parameters,
             pending_thermal_injections: Vec::new(),
-            hydrology,
+            // The seventh production bootstrap stage builds this, so that every
+            // initialised carrier is anchored to the origin event that created it
+            // rather than to a placeholder a later step has to rewrite.
+            hydrology: crate::HydrologyRuntimeState::disabled(),
             thermal_receipts: BTreeMap::new(),
             thermal_conservation_receipts: BTreeMap::new(),
             resolution,
@@ -1540,9 +1538,25 @@ impl RuntimeState {
             .bootstrap
             .record()
             .ok_or(RuntimeError::InvalidSnapshot("missing bootstrap record"))?;
-        if record.plan().stages().len() > BOOTSTRAP_STAGE_COUNT {
+        // Six without hydrology, seven with it. The bound is on the largest plan
+        // any accepted configuration can declare, and the exact count is checked
+        // against the configuration below.
+        if record.plan().stages().len() > MAX_BOOTSTRAP_STAGE_COUNT {
             return Err(RuntimeError::InvalidSnapshot(
-                "bootstrap record exceeds the current six-stage envelope",
+                "bootstrap record exceeds the current stage envelope",
+            ));
+        }
+        // And the exact count the configuration implies. A snapshot claiming seven
+        // stages while its recipe says hydrology is off would be a record of a run
+        // that configuration could not have produced.
+        let expected = if self.config.hydrology.enabled {
+            HYDROLOGY_BOOTSTRAP_STAGE_COUNT
+        } else {
+            BOOTSTRAP_STAGE_COUNT
+        };
+        if record.plan().stages().len() != expected {
+            return Err(RuntimeError::InvalidSnapshot(
+                "bootstrap record's stage count does not match the recipe's configuration",
             ));
         }
 
@@ -1907,10 +1921,14 @@ impl RuntimeState {
 
         // The reservoir stage's window carries the transition each reservoir was
         // created with; the budget and target are recomputed from it rather than
-        // believed.
-        let reservoir_effects = windows.last().ok_or(RuntimeError::InvalidSnapshot(
-            "bootstrap record has no stages",
-        ))?;
+        // believed. Indexed by that stage rather than taken as the last window:
+        // stages are appended after thermal, and "the last one" stopped meaning
+        // "the reservoir one" the moment hydrology arrived.
+        let reservoir_effects = windows
+            .get(THERMAL_RESERVOIR_STAGE.raw() as usize - 1)
+            .ok_or(RuntimeError::InvalidSnapshot(
+                "bootstrap record has no thermal reservoir stage",
+            ))?;
         for reservoir in self.thermal_reservoirs.values() {
             if !self.active_chunks.contains_key(&reservoir.target.chunk)
                 || usize::from(reservoir.target.cell_index)

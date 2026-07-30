@@ -2563,6 +2563,37 @@ its own evidence-backed follow-up TODO rather than being hidden in Progress.
   rejects is what bootstrap would have failed to build, named rather than surfacing as a bare
   capacity error from whichever cell tripped over it first.
 
+- **2026-07-30 — Stage 6 wave C: the seventh stage exists only when hydrology is enabled.** V22
+  requires a disabled session's legacy section payloads to stay byte-identical, and the bootstrap
+  record is one of them. A disabled session therefore keeps the six-stage plan exactly, and
+  `BOOTSTRAP_STAGE_COUNT` stays at six as the legacy count; `HYDROLOGY_BOOTSTRAP_STAGE_COUNT` is
+  seven and `MAX_BOOTSTRAP_STAGE_COUNT` bounds import. Import also checks the *exact* count against
+  the recipe's configuration, because a record claiming seven stages while its recipe says hydrology
+  is off would describe a run that configuration could not have produced.
+- **2026-07-30 — Stage 6 wave C: the adapter trait now receives the preceding stage's receipt.** The
+  hydrology stage's origin event cites the sixth stage's completion trace, and the coordinator was the
+  only thing that knew it. Passing it is more honest than having a stage rummage through the trace
+  store for the most recent completion it can find; the other six adapters ignore it.
+- **2026-07-30 — Stage 6 wave C: the forcing aggregate digests the *specs*, not the installed
+  records.** The records carry the origin trace of the very event this digest is an effect of, so
+  hashing them would require the event to exist before it could be built. §4's own sequencing says
+  the same thing: the event commits over the bounded spec schedule, and the infallible installation
+  step afterwards converts specs to records with that event as their origin. The producer policy is
+  hashed once for the schedule rather than once per record, because bootstrap's policy is fixed rather
+  than chosen.
+- **2026-07-30 — Stage 6 wave C: state is built against the cause and re-anchored to the origin.**
+  Causal initialization moved out of `RuntimeState::new` into the stage, so no anchor names a
+  placeholder that a later step has to rewrite — except for one unavoidable step: the state must exist
+  to be digested, and the digest is an effect of the event the anchors need. It is built against the
+  sixth stage's completion, then re-anchored after the commit. `reanchor` propagates its errors; an
+  anchor that could not be written is a carrier whose provenance would silently still name the stage
+  that preceded its creation.
+- **2026-07-30 — Stage 6 wave C found a latent fragility in thermal's import validation.**
+  `validate_bootstrap_materialized_state` read the reservoir stage's effect window as
+  `windows.last()`. That was correct only while thermal was the final stage; appending hydrology made
+  "the last one" stop meaning "the reservoir one". It now indexes by `THERMAL_RESERVOIR_STAGE`. Found
+  by an enabled session failing to assemble an envelope, not by review.
+
 ## Progress
 
 - **2026-07-29 — Accepted.** Revision 19 is the authoritative hydrology implementation plan.
@@ -3148,6 +3179,57 @@ its own evidence-backed follow-up TODO rather than being hidden in Progress.
   whole-tick staging transaction and near-cap later-phase rollback are also still ahead: a hydrology
   failure currently records itself in `state.failure` like every other system's, which stops the run
   but does not yet roll back a partially advanced tick.
+
+- **2026-07-30 — Stage 6 wave C complete: the seventh production bootstrap stage.** An enabled session
+  runs seven stages; the appended one commits one origin event with seven aggregate effects, installs
+  the configured forcing schedule as canonical records under the bootstrap policy, and anchors every
+  initialised carrier to that event. Checkpoint commit `<pending>`.
+
+  Files changed and why:
+
+  - `crates/causafera-runtime/src/bootstrap.rs` — `HYDROLOGY_STAGE`, `HYDROLOGY_PROCESS_SCHEMA`, the
+    three stage-count constants, the config-dependent plan and adapter list, the adapter trait's new
+    `previous_receipt` parameter, the hydrology adapter, and the stage's parameter fingerprint.
+  - `crates/causafera-runtime/src/hydrology.rs` — the seven canonical bootstrap payloads, the origin
+    event, forcing installation, and re-anchoring.
+  - `crates/causafera-runtime/src/runtime.rs` — causal initialization moved out of `RuntimeState::new`,
+    the widened and now exact stage-count validation, the thermal window fix, and one refusal variant.
+  - `crates/causafera-runtime/src/snapshot_sections.rs` — the recipe encoder reused for the stage's
+    parameter fingerprint, so the two cannot disagree about what a session was configured to be.
+  - `crates/causafera-runtime/tests/hydrology_runtime.rs` — 7 further tests.
+
+  What the gates actually assert:
+
+  - **A disabled session** keeps six stages and six receipts, unchanged.
+  - **An enabled session** has seven of each; every stage keeps its ID; the appended one is last,
+    carries the hydrology process schema, and depends on the sixth.
+  - **The origin event** is exactly one event with exactly seven effects, all on one fixed object,
+    each transitioning from absent to a distinct canonical digest, covering the seven named
+    properties; its sole cause is the sixth stage's committed completion.
+  - **Anchoring** — every cell bucket, every forcing anchor, every edge, every resolution entry, and
+    the conservation anchor name the origin event, and so does every installed forcing record.
+  - **Forcing installation** — records carry the bootstrap producer policy and start pending; a record
+    scheduled for tick two is untouched at tick one, transitions exactly once at tick two in the same
+    tick as the water it delivered, delivers nothing afterwards, and stays persisted.
+  - **Plan identity** — two configurations differing only in one hydrology number do not share a
+    canonical plan.
+
+  Commands run and their actual results:
+
+  - `cargo test -p causafera-runtime --test hydrology_runtime` — **31 passed**.
+  - `cargo test -p causafera-runtime --test historical_bootstrap` — **58 passed**.
+  - `cargo clippy --workspace --all-targets --all-features -- -D warnings` — clean.
+  - `cargo fmt --all -- --check` — clean.
+  - `git diff --check` — clean.
+  - `cargo test --workspace --all-features` — all 78 suites passed.
+  - `cargo test --workspace --no-default-features` — all 78 suites passed.
+  - `node tools/audit/check-entry-points.mjs` — pass.
+  - `node tools/audit/run-source-tests.mjs` — 0 failures.
+
+  Not done in this wave, by design: hydrology state is still not persisted, so an enabled session's
+  water does not survive export and reload — section `0x000F`, digest schema 8, and import validation
+  are wave D. The whole-tick staging transaction and the near-cap later-phase rollback are also still
+  ahead.
 
 Execution must begin by re-reading this Progress section and Decision log, then inspecting
 `git status`. The implementing agent updates both sections whenever scope, contract, verification,

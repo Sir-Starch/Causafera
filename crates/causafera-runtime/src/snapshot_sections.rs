@@ -1519,6 +1519,19 @@ fn encode_runtime_config(enc: &mut LittleEndianEncoder<'_>, config: &RuntimeConf
 /// Encoding nothing would make "hydrology was off" and "this snapshot predates
 /// hydrology" the same bytes, and only one of those is a statement about the
 /// world the snapshot describes.
+/// The canonical hydrology configuration bytes, for the bootstrap stage's own
+/// parameter fingerprint.
+///
+/// Reuses the recipe encoder rather than deriving a second form, so the plan's
+/// parameter fingerprint and the persisted recipe can never disagree about what a
+/// session was configured to be.
+pub(crate) fn encode_hydrology_config_for_digest(
+    enc: &mut LittleEndianEncoder<'_>,
+    config: &HydrologyConfig,
+) {
+    encode_hydrology_config(enc, config);
+}
+
 fn encode_hydrology_config(enc: &mut LittleEndianEncoder<'_>, config: &HydrologyConfig) {
     enc.write_u16(config.limits_schema);
     encode_bool(enc, config.enabled);

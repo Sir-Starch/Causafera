@@ -16,10 +16,17 @@ use causafera_runtime::snapshot_sections::{
     assemble_envelope, decode_runtime_recipe_section, encode_runtime_recipe_section,
 };
 use causafera_runtime::{
-    HYDROLOGY_BOOTSTRAP_PARAMETERS_SCHEMA_V1, HYDROLOGY_LIMITS_SCHEMA_V1,
+    BOOTSTRAP_STAGE_COUNT, HYDROLOGY_BOOTSTRAP_BOUNDARIES_PROPERTY,
+    HYDROLOGY_BOOTSTRAP_EDGES_PROPERTY, HYDROLOGY_BOOTSTRAP_EVENT_KIND,
+    HYDROLOGY_BOOTSTRAP_FORCING_PROPERTY, HYDROLOGY_BOOTSTRAP_METRICS_PROPERTY,
+    HYDROLOGY_BOOTSTRAP_OBJECT_KIND, HYDROLOGY_BOOTSTRAP_PARAMETERS_SCHEMA_V1,
+    HYDROLOGY_BOOTSTRAP_RESOLUTION_PROPERTY, HYDROLOGY_BOOTSTRAP_STAGE_COUNT,
+    HYDROLOGY_BOOTSTRAP_STORAGE_PROPERTY, HYDROLOGY_BOOTSTRAP_SUBSTRATE_PROPERTY,
+    HYDROLOGY_LIMITS_SCHEMA_V1, HYDROLOGY_PROCESS_SCHEMA, HYDROLOGY_STAGE,
     HydrologyBootstrapOverride, HydrologyBootstrapParameters, HydrologyConfig,
-    HydrologyForcingSpec, Runtime, RuntimeConfig, RuntimeError,
+    HydrologyForcingSpec, Runtime, RuntimeConfig, RuntimeError, THERMAL_RESERVOIR_STAGE,
 };
+use causafera_types::HistoricalStageId;
 use causafera_types::{ChartChunkCoord, ChunkCoord, SpatialChartId, WaterVolume};
 
 fn chart() -> SpatialChartId {
@@ -803,4 +810,237 @@ fn a_cell_override_inherits_from_its_chart_override_before_the_default() {
         },
     );
     Runtime::new(config_with(hydrology)).expect("chart storage inside cell capacity is valid");
+}
+
+// ---------------------------------------------------------------------------
+// The seventh production bootstrap stage
+// ---------------------------------------------------------------------------
+
+#[test]
+fn a_disabled_session_keeps_the_legacy_six_stage_plan() {
+    // Appending a stage to an enabled session must not change what a disabled one
+    // records — that is what keeps every pre-hydrology snapshot comparable (V22).
+    let snapshot = Runtime::new(RuntimeConfig::new(31))
+        .expect("construction")
+        .export_snapshot()
+        .expect("export");
+    assert_eq!(snapshot.bootstrap.plan.stages.len(), BOOTSTRAP_STAGE_COUNT);
+    assert_eq!(snapshot.bootstrap.receipts.len(), BOOTSTRAP_STAGE_COUNT);
+}
+
+#[test]
+fn an_enabled_session_appends_a_seventh_stage_after_all_six() {
+    let snapshot = Runtime::new(config_with(enabled_config()))
+        .expect("construction")
+        .export_snapshot()
+        .expect("export");
+
+    assert_eq!(
+        snapshot.bootstrap.plan.stages.len(),
+        HYDROLOGY_BOOTSTRAP_STAGE_COUNT
+    );
+    assert_eq!(
+        snapshot.bootstrap.receipts.len(),
+        HYDROLOGY_BOOTSTRAP_STAGE_COUNT
+    );
+
+    // Every existing stage keeps its ID and its process schema; the appended one
+    // is last and depends on the sixth.
+    let stages = &snapshot.bootstrap.plan.stages;
+    for (index, stage) in stages.iter().enumerate() {
+        assert_eq!(stage.stage, HistoricalStageId::new(index as u64 + 1));
+    }
+    let hydrology = stages.last().expect("the plan is not empty");
+    assert_eq!(hydrology.stage, HYDROLOGY_STAGE);
+    assert_eq!(hydrology.process, HYDROLOGY_PROCESS_SCHEMA);
+    assert_eq!(hydrology.dependencies, vec![THERMAL_RESERVOIR_STAGE]);
+}
+
+#[test]
+fn the_seventh_stage_commits_one_origin_event_with_seven_aggregate_effects() {
+    let runtime = Runtime::new(config_with(enabled_config())).expect("construction");
+    let snapshot = runtime.export_snapshot().expect("export");
+
+    // The stage's own effect is exactly one event. Bootstrap initialises up to
+    // 131 072 cells and the effect cap is eight, so the payloads are seven
+    // aggregates rather than one effect per carrier.
+    let origin = snapshot
+        .traces
+        .events
+        .iter()
+        .find(|event| event.kind.raw() == HYDROLOGY_BOOTSTRAP_EVENT_KIND)
+        .expect("the origin event was committed");
+    assert_eq!(origin.effects.len(), 7);
+
+    let mut properties: Vec<u64> = origin
+        .effects
+        .iter()
+        .map(|effect| {
+            assert_eq!(
+                effect.target().object_kind().raw(),
+                HYDROLOGY_BOOTSTRAP_OBJECT_KIND
+            );
+            assert_eq!(
+                effect.target().object_id(),
+                0,
+                "the seven aggregates share one fixed object"
+            );
+            assert_ne!(
+                effect.before(),
+                effect.after(),
+                "each aggregate transitions from absent to its canonical digest"
+            );
+            effect.target().property().raw()
+        })
+        .collect();
+    properties.sort_unstable();
+    assert_eq!(
+        properties,
+        vec![
+            HYDROLOGY_BOOTSTRAP_METRICS_PROPERTY,
+            HYDROLOGY_BOOTSTRAP_SUBSTRATE_PROPERTY,
+            HYDROLOGY_BOOTSTRAP_STORAGE_PROPERTY,
+            HYDROLOGY_BOOTSTRAP_EDGES_PROPERTY,
+            HYDROLOGY_BOOTSTRAP_RESOLUTION_PROPERTY,
+            HYDROLOGY_BOOTSTRAP_FORCING_PROPERTY,
+            HYDROLOGY_BOOTSTRAP_BOUNDARIES_PROPERTY,
+        ]
+        .into_iter()
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>()
+    );
+
+    // Its sole cause is the sixth stage's already committed completion.
+    assert_eq!(origin.causes.len(), 1);
+    let sixth = snapshot
+        .bootstrap
+        .receipts
+        .iter()
+        .find(|receipt| receipt.stage == THERMAL_RESERVOIR_STAGE)
+        .expect("the sixth stage has a receipt");
+    assert_eq!(origin.causes[0], sixth.trace);
+}
+
+#[test]
+fn every_initialized_carrier_is_anchored_to_the_origin_event() {
+    let runtime = Runtime::new(config_with(enabled_config())).expect("construction");
+    let snapshot = runtime.export_snapshot().expect("export");
+    let origin = snapshot
+        .traces
+        .events
+        .iter()
+        .find(|event| event.kind.raw() == HYDROLOGY_BOOTSTRAP_EVENT_KIND)
+        .expect("the origin event was committed")
+        .trace_id;
+
+    let state = runtime.hydrology_state();
+    assert_eq!(state.fields.conservation_last_change(), origin);
+    for field in state.fields.fields().values() {
+        for cell in field.cells() {
+            assert_eq!(cell.surface_last_change(), origin);
+            assert_eq!(cell.soil_last_change(), origin);
+            assert_eq!(cell.groundwater_last_change(), origin);
+            assert_eq!(cell.forcing_last_change(), origin);
+        }
+    }
+    for edge in state.conveyance.edges().values() {
+        assert_eq!(edge.last_change(), origin);
+    }
+    for entry in state.resolution.values() {
+        assert_eq!(entry.last_change(), origin);
+    }
+    for record in &state.forcing {
+        assert_eq!(record.origin_trace(), origin);
+    }
+}
+
+#[test]
+fn installed_forcing_records_carry_the_bootstrap_policy_and_start_pending() {
+    // Configuration never contains a trace, and letting it choose its own producer
+    // policy would let a session declare itself an authorized producer.
+    let runtime = Runtime::new(config_with(enabled_config())).expect("construction");
+    let state = runtime.hydrology_state();
+    assert_eq!(state.forcing.len(), 1);
+    let record = &state.forcing[0];
+    assert_eq!(
+        record.producer_policy_schema(),
+        causafera_geography::BOOTSTRAP_HYDROLOGY_FORCING_POLICY_V1
+    );
+    assert_eq!(
+        record.applied_at(),
+        None,
+        "a canonical record starts pending"
+    );
+    assert_eq!(record.scheduled_tick(), 3);
+    assert_eq!(record.targets().len(), 2);
+}
+
+#[test]
+fn a_scheduled_record_is_applied_exactly_once_at_its_tick() {
+    let mut hydrology = enabled_config();
+    hydrology.forcing_schedule[0].scheduled_tick = 2;
+    let mut runtime = Runtime::new(config_with(hydrology)).expect("construction");
+
+    runtime.run_ticks(1).expect("tick one must commit");
+    assert_eq!(
+        runtime.hydrology_state().forcing[0].applied_at(),
+        None,
+        "a record scheduled for tick two is untouched at tick one"
+    );
+
+    runtime.run_ticks(1).expect("tick two must commit");
+    assert_eq!(
+        runtime.hydrology_state().forcing[0].applied_at(),
+        Some(2),
+        "the record transitions in the same tick as the water it delivered"
+    );
+    let precipitated = {
+        let state = runtime.hydrology_state();
+        let trace = *state.retained_batches.last().expect("a batch was retained");
+        state.conservation_receipts[&trace].accepted_precipitation()
+    };
+    assert!(precipitated > 0, "the record actually delivered water");
+
+    // And it is not applied again, nor does it keep delivering.
+    runtime.run_ticks(3).expect("later ticks must commit");
+    assert_eq!(runtime.hydrology_state().forcing[0].applied_at(), Some(2));
+    let state = runtime.hydrology_state();
+    let trace = *state.retained_batches.last().expect("a batch was retained");
+    assert_eq!(
+        state.conservation_receipts[&trace].accepted_precipitation(),
+        0,
+        "a spent record delivers nothing on a later tick"
+    );
+    assert_eq!(
+        state.forcing.len(),
+        1,
+        "the record stays persisted so its origin and allocations remain inspectable"
+    );
+}
+
+#[test]
+fn two_configurations_differing_only_in_hydrology_have_different_bootstrap_plans() {
+    // The stage's parameter fingerprint covers the configured numbers, so two
+    // worlds initialised differently cannot share a canonical plan.
+    let plan_of = |mutate: fn(&mut HydrologyConfig)| {
+        let mut hydrology = enabled_config();
+        mutate(&mut hydrology);
+        Runtime::new(config_with(hydrology))
+            .expect("construction")
+            .export_snapshot()
+            .expect("export")
+            .bootstrap
+            .plan
+            .id
+    };
+    let baseline = plan_of(|_| {});
+    let altered = plan_of(|hydrology| {
+        hydrology
+            .bootstrap_parameters
+            .as_mut()
+            .expect("enabled")
+            .infiltration_rate_mm_per_second += 1;
+    });
+    assert_ne!(baseline, altered);
 }
