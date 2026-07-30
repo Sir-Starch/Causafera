@@ -376,6 +376,34 @@ impl Runtime {
         state.thermal_conservation_explanation(self.scheduler.current_time())
     }
 
+    /// Typed hydrology evidence for one chunk, or for the whole resident scope.
+    ///
+    /// A chunk that holds no water, a session that never enabled hydrology, and
+    /// a batch that retention has evicted all answer with insufficiency claims
+    /// rather than with an error, so an observer can tell "no evidence" apart
+    /// from "a failed query" (`plans/hydrology.md` V29).
+    pub fn observer_hydrology_explanation(
+        &self,
+        scope: Option<ChartChunkCoord>,
+    ) -> Result<ExplanationReport, RuntimeError> {
+        let state = self.lock_state()?;
+        if let Some(error) = state.failure.clone() {
+            return Err(error);
+        }
+        let time = self.scheduler.current_time();
+        let claims = state
+            .hydrology
+            .explanation_claims(scope)
+            .map_err(|_| RuntimeError::InvalidSnapshot("invalid hydrology Explanation claim"))?;
+        let frame = ExplanationFrame::new(time, claims)
+            .map_err(|_| RuntimeError::InvalidSnapshot("invalid hydrology Explanation frame"))?;
+        ExplanationReport::new(
+            ExperimentId::new(state.config.deterministic.world_seed),
+            vec![frame],
+        )
+        .map_err(|_| RuntimeError::InvalidSnapshot("invalid hydrology Explanation report"))
+    }
+
     /// The queried surface's most recent retained-heat exchange (`TODO-THERMAL-002`), independent
     /// of its mana/contact history: an unknown surface ID is rejected, while a real surface with
     /// no exchange evidence in the bounded transition history yields an `Unknown` claim rather

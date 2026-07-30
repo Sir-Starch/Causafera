@@ -17,7 +17,11 @@
 
 use std::collections::BTreeMap;
 
-use causafera_domains::{HydrologyBucket, HydrologyTransferReceipt, process};
+use causafera_domains::{HydrologyBucket, HydrologyTransferReceipt, groundwater_head_mm, process};
+use causafera_explanation::{
+    ExplanationClaim, ExplanationIrError, HydrologyConservationClaim, HydrologyForcingClaim,
+    HydrologyStorageClaim, HydrologyTransferPathClaim,
+};
 use causafera_geography::{HydrologyCarrierKey, HydrologyCellKey};
 use causafera_observer_api::{
     HYDROLOGY_CONVEYANCE_SUMMARY_SCHEMA_V1, HYDROLOGY_DELTA_SCHEMA_V1, HYDROLOGY_SUMMARY_SCHEMA_V1,
@@ -25,7 +29,15 @@ use causafera_observer_api::{
     HydrologyTransferSummary, MAX_HYDROLOGY_CONVEYANCE_SUMMARIES, MAX_HYDROLOGY_DELTAS,
     MAX_HYDROLOGY_TRANSFER_SUMMARIES, ObserverHydrologyForcing, ObserverHydrologySummary,
 };
-use causafera_types::TraceId;
+use causafera_types::{ChartChunkCoord, TraceId};
+
+/// How many trace anchors one claim carries.
+///
+/// A claim is evidence, not a log: an unbounded ancestry would make one query's
+/// answer grow with the size of the batch it describes. The anchors that survive
+/// are the smallest ones, which is a deterministic choice rather than whichever
+/// arrived first.
+const MAX_EXPLANATION_EVIDENCE_TRACES: usize = 64;
 
 use crate::HydrologyRuntimeState;
 
@@ -363,4 +375,237 @@ fn is_evapotranspiration(receipt: &HydrologyTransferReceipt) -> bool {
         receipt.process_kind(),
         process::EVAPOTRANSPIRATION_SURFACE | process::EVAPOTRANSPIRATION_SOIL
     )
+}
+
+/* ------------------------------------------------------------- explanation -- */
+
+impl HydrologyRuntimeState {
+    /// Typed hydrology evidence for one chunk, or for the whole resident scope.
+    ///
+    /// Insufficiency rather than error is the rule throughout: a chunk that is
+    /// not resident, a session with no water, and a batch that retention has
+    /// evicted all answer with `Unknown` claims. An observer must be able to
+    /// tell "no evidence" apart from "a failed query", and neither may be
+    /// answered with a fabricated classification (V29).
+    pub(crate) fn explanation_claims(
+        &self,
+        scope: Option<ChartChunkCoord>,
+    ) -> Result<Vec<ExplanationClaim>, ExplanationIrError> {
+        let mut claims = Vec::new();
+        claims.extend(self.storage_claim(scope)?.to_explanation_claims()?);
+        claims.extend(self.forcing_claims()?);
+        claims.extend(self.conservation_claims()?);
+        claims.extend(self.transfer_claims(scope)?);
+        Ok(claims)
+    }
+
+    /// Storage bounds, whole total, and water-table span over the scope.
+    fn storage_claim(
+        &self,
+        scope: Option<ChartChunkCoord>,
+    ) -> Result<HydrologyStorageClaim, ExplanationIrError> {
+        let mut claim = HydrologyStorageClaim {
+            carrier_count: 0,
+            minimum_volume: u64::MAX,
+            maximum_volume: 0,
+            total_volume: 0,
+            water_table_minimum_mm: i64::MAX,
+            water_table_maximum_mm: i64::MIN,
+            evidence_traces: Vec::new(),
+        };
+        for (chunk, field) in self.fields.fields() {
+            if scope.is_some_and(|wanted| wanted != *chunk) {
+                continue;
+            }
+            let Ok(metric) = self.metrics.get(chunk.chart) else {
+                continue;
+            };
+            for (ordinal, cell) in field.cells().iter().enumerate() {
+                let Some(ground) = field.ground(ordinal as u16) else {
+                    continue;
+                };
+                // The water table comes from the solver's own formula rather
+                // than from a second copy of it, so the claim describes the
+                // number routing actually used.
+                let Ok(head) = groundwater_head_mm(metric, ground, cell.groundwater()) else {
+                    continue;
+                };
+                let Ok(head) = i64::try_from(head) else {
+                    continue;
+                };
+                for volume in [
+                    cell.surface_water().get(),
+                    cell.soil_water().get(),
+                    cell.groundwater().get(),
+                ] {
+                    claim.carrier_count += 1;
+                    claim.minimum_volume = claim.minimum_volume.min(volume);
+                    claim.maximum_volume = claim.maximum_volume.max(volume);
+                    claim.total_volume += u128::from(volume);
+                }
+                claim.water_table_minimum_mm = claim.water_table_minimum_mm.min(head);
+                claim.water_table_maximum_mm = claim.water_table_maximum_mm.max(head);
+                for trace in [
+                    cell.surface_last_change(),
+                    cell.soil_last_change(),
+                    cell.groundwater_last_change(),
+                ] {
+                    claim.evidence_traces.push(trace);
+                }
+            }
+        }
+        if claim.carrier_count == 0 {
+            // Leave the sentinels behind: an empty scope reports itself empty
+            // rather than as a set of extreme measurements.
+            claim.minimum_volume = 0;
+            claim.water_table_minimum_mm = 0;
+            claim.water_table_maximum_mm = 0;
+            claim.evidence_traces.clear();
+        }
+        claim.evidence_traces.sort_unstable();
+        claim.evidence_traces.dedup();
+        claim
+            .evidence_traces
+            .truncate(MAX_EXPLANATION_EVIDENCE_TRACES);
+        Ok(claim)
+    }
+
+    /// The latest applied record's accepted and unmet volumes, with ancestry.
+    fn forcing_claims(&self) -> Result<Vec<ExplanationClaim>, ExplanationIrError> {
+        let Some(record) = self
+            .forcing
+            .iter()
+            .filter(|record| record.is_applied())
+            .max_by_key(|record| record.key())
+        else {
+            return HydrologyForcingClaim::unknown();
+        };
+        let Some(applied_at) = record.applied_at() else {
+            return HydrologyForcingClaim::unknown();
+        };
+        let Some(receipts) = self.retained_receipts_at(applied_at) else {
+            // The record still applied; its typed detail has been evicted.
+            return HydrologyForcingClaim::unknown();
+        };
+        let carrier = HydrologyCarrierKey::ForcingRecord {
+            scheduled_tick: record.scheduled_tick(),
+            forcing_id: record.forcing_id(),
+        };
+        let mut claim = HydrologyForcingClaim {
+            scheduled_tick: record.scheduled_tick(),
+            forcing_id: record.forcing_id(),
+            accepted_source: 0,
+            unmet_source: 0,
+            accepted_evapotranspiration: 0,
+            unmet_evapotranspiration: 0,
+            origin_trace: record.origin_trace(),
+            settlement_traces: Vec::new(),
+        };
+        for receipt in receipts {
+            if receipt.source() == carrier {
+                claim.accepted_source += u128::from(receipt.accepted().get());
+                claim.unmet_source = claim
+                    .unmet_source
+                    .saturating_add(receipt.unaccepted().get());
+                claim
+                    .settlement_traces
+                    .push(self.settlement_trace(receipt, TraceId::new(0)));
+            }
+            if is_evapotranspiration(receipt)
+                && receipt.forcing_origin() == Some(record.origin_trace())
+            {
+                claim.accepted_evapotranspiration = claim
+                    .accepted_evapotranspiration
+                    .saturating_add(receipt.accepted().get());
+                claim.unmet_evapotranspiration = claim
+                    .unmet_evapotranspiration
+                    .saturating_add(receipt.unaccepted().get());
+            }
+        }
+        claim.settlement_traces.sort_unstable();
+        claim.settlement_traces.dedup();
+        claim
+            .settlement_traces
+            .truncate(MAX_EXPLANATION_EVIDENCE_TRACES);
+        claim.to_explanation_claims()
+    }
+
+    /// The latest retained batch's residual and boundary export.
+    fn conservation_claims(&self) -> Result<Vec<ExplanationClaim>, ExplanationIrError> {
+        let Some(trace) = self.latest_batch() else {
+            return HydrologyConservationClaim::unknown();
+        };
+        let Some(receipt) = self.conservation_receipts.get(&trace) else {
+            return HydrologyConservationClaim::unknown();
+        };
+        let mut transfer_traces = self
+            .receipts
+            .get(&trace)
+            .map(|receipts| {
+                receipts
+                    .iter()
+                    .map(|receipt| self.settlement_trace(receipt, trace))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        transfer_traces.sort_unstable();
+        transfer_traces.dedup();
+        transfer_traces.truncate(MAX_EXPLANATION_EVIDENCE_TRACES);
+        HydrologyConservationClaim {
+            residual: receipt.residual(),
+            boundary_exports: receipt.boundary_exports(),
+            conservation_trace: trace,
+            transfer_traces,
+        }
+        .to_explanation_claims()
+    }
+
+    /// One accepted/limited pair per transfer in the latest retained batch.
+    fn transfer_claims(
+        &self,
+        scope: Option<ChartChunkCoord>,
+    ) -> Result<Vec<ExplanationClaim>, ExplanationIrError> {
+        let Some(conservation_trace) = self.latest_batch() else {
+            return Ok(Vec::new());
+        };
+        let Some(receipts) = self.receipts.get(&conservation_trace) else {
+            return Ok(Vec::new());
+        };
+        let mut claims = Vec::new();
+        for receipt in receipts.iter().take(MAX_HYDROLOGY_TRANSFER_SUMMARIES) {
+            if let Some(wanted) = scope
+                && !touches_chunk(receipt, wanted)
+            {
+                continue;
+            }
+            claims.extend(
+                HydrologyTransferPathClaim {
+                    process_kind: receipt.process_kind(),
+                    requested_volume: receipt.requested().get(),
+                    accepted_volume: receipt.accepted().get(),
+                    unaccepted_volume: receipt.unaccepted().get(),
+                    transfer_trace: self.settlement_trace(receipt, conservation_trace),
+                    conservation_trace,
+                    forcing_origin_trace: receipt.forcing_origin(),
+                }
+                .to_explanation_claims()?,
+            );
+        }
+        Ok(claims)
+    }
+}
+
+/// Whether either endpoint of a transfer sits in the requested chunk.
+fn touches_chunk(receipt: &HydrologyTransferReceipt, chunk: ChartChunkCoord) -> bool {
+    [receipt.source(), receipt.target()]
+        .into_iter()
+        .any(|key| match key {
+            HydrologyCarrierKey::Cell(cell) => cell.chunk() == chunk,
+            HydrologyCarrierKey::Edge(edge) => {
+                edge.low().chunk() == chunk || edge.high().chunk() == chunk
+            }
+            HydrologyCarrierKey::ExteriorFace(face) => face.cell().chunk() == chunk,
+            HydrologyCarrierKey::ResolutionChunk(coord) => coord == chunk,
+            _ => false,
+        })
 }

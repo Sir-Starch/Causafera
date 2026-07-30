@@ -2037,42 +2037,54 @@ impl RoutingChannel {
         value: WaterVolume,
     ) -> Result<i128, HydrologyError> {
         match self.property {
-            HydrologyProperty::Groundwater => {
-                if ground.groundwater_capacity().is_zero() && value.is_zero() {
-                    // No aquifer and nothing in it: the head is the base, and
-                    // nothing can flow because the conductance rule needs both
-                    // endpoints anyway.
-                    return Ok(i128::from(ground.aquifer_base_elevation_mm()));
-                }
-                let yield_fraction = ground.specific_yield();
-                if yield_fraction.numerator() == 0 {
-                    // Defence in depth with no reachable case: the substrate
-                    // constructor refuses a zero yield over real capacity, and
-                    // the field constructor refuses storage above capacity, so
-                    // stored groundwater always arrives with a yield. Kept as
-                    // the divisor's precondition rather than as an assumption.
-                    return Err(HydrologyError::GroundwaterWithoutSpecificYield);
-                }
-                let scaled = checked_water_mul(
-                    value.as_i128(),
-                    i128::from(yield_fraction.denominator().get()),
-                )?;
-                let divisor = checked_water_mul(
-                    i128::from(metric.cell_area_mm2().get()),
-                    i128::from(yield_fraction.numerator()),
-                )?;
-                let saturated_depth = causafera_types::checked_water_div_floor(scaled, divisor)?;
-                Ok(
-                    WaterAccumulator::new(i128::from(ground.aquifer_base_elevation_mm()))
-                        .add(saturated_depth)?
-                        .get(),
-                )
-            }
+            HydrologyProperty::Groundwater => groundwater_head_mm(metric, ground, value),
             _ => Ok(WaterAccumulator::new(i128::from(elevation_mm))
                 .add(metric.depth_of(value)?.as_i128())?
                 .get()),
         }
     }
+}
+
+/// The water table implied by a stored groundwater volume, in millimetres.
+///
+/// Public because the routing solver and the Explanation projection must not
+/// each carry their own copy of this formula: a water-table claim derived from a
+/// second implementation would be evidence about a number the solver never used.
+/// Measured against the same absolute reference as terrain, so a face between a
+/// water table and a ponded surface is a comparison of two elevations.
+pub fn groundwater_head_mm(
+    metric: HydrologyGridMetric,
+    ground: &HydraulicSubstrateCell,
+    value: WaterVolume,
+) -> Result<i128, HydrologyError> {
+    if ground.groundwater_capacity().is_zero() && value.is_zero() {
+        // No aquifer and nothing in it: the head is the base, and nothing can
+        // flow because the conductance rule needs both endpoints anyway.
+        return Ok(i128::from(ground.aquifer_base_elevation_mm()));
+    }
+    let yield_fraction = ground.specific_yield();
+    if yield_fraction.numerator() == 0 {
+        // Defence in depth with no reachable case: the substrate constructor
+        // refuses a zero yield over real capacity, and the field constructor
+        // refuses storage above capacity, so stored groundwater always arrives
+        // with a yield. Kept as the divisor's precondition rather than as an
+        // assumption.
+        return Err(HydrologyError::GroundwaterWithoutSpecificYield);
+    }
+    let scaled = checked_water_mul(
+        value.as_i128(),
+        i128::from(yield_fraction.denominator().get()),
+    )?;
+    let divisor = checked_water_mul(
+        i128::from(metric.cell_area_mm2().get()),
+        i128::from(yield_fraction.numerator()),
+    )?;
+    let saturated_depth = causafera_types::checked_water_div_floor(scaled, divisor)?;
+    Ok(
+        WaterAccumulator::new(i128::from(ground.aquifer_base_elevation_mm()))
+            .add(saturated_depth)?
+            .get(),
+    )
 }
 
 /// `floor(2 * a * b / (a + b))`, and zero when either endpoint cannot conduct.

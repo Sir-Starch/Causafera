@@ -20,7 +20,7 @@ mod receipts;
 mod records;
 mod resolution;
 
-pub use evolution::{HydrologyEvolutionModel, allocate_largest_remainder};
+pub use evolution::{HydrologyEvolutionModel, allocate_largest_remainder, groundwater_head_mm};
 pub use parameters::{HYDROLOGY_AGGREGATION_ARITY, HydrologyEvolutionLimits, process, substage};
 pub use proposal::{
     HydrologyCoarseMember, HydrologyCoarseProcess, HydrologyEventEffect, HydrologyEventKind,
