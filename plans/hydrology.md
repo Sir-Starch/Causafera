@@ -3183,7 +3183,7 @@ its own evidence-backed follow-up TODO rather than being hidden in Progress.
 - **2026-07-30 — Stage 6 wave C complete: the seventh production bootstrap stage.** An enabled session
   runs seven stages; the appended one commits one origin event with seven aggregate effects, installs
   the configured forcing schedule as canonical records under the bootstrap policy, and anchors every
-  initialised carrier to that event. Checkpoint commit `<pending>`.
+  initialised carrier to that event. Checkpoint commit `cbfff7c`.
 
   Files changed and why:
 
