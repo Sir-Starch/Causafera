@@ -20,7 +20,7 @@ mod substrate;
 
 pub use forcing::{
     BOOTSTRAP_HYDROLOGY_FORCING_POLICY_V1, HydrologyForcingMember, HydrologyForcingParts,
-    HydrologyForcingRecord, HydrologyForcingSchedule,
+    HydrologyForcingRecord, HydrologyForcingSchedule, validate_forcing_records,
 };
 pub use metric::{HydrologyDepthSplit, HydrologyGridMetric, HydrologyGridMetrics};
 pub use state::{

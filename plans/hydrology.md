@@ -2923,6 +2923,42 @@ its own evidence-backed follow-up TODO rather than being hidden in Progress.
   document now says so and names the schema-conformance audit that stands in for the missing build
   step.
 
+- **2026-07-30 — Post-review remediation: five §11 import obligations were implemented but not
+  enforced on the import path.** An independent gate review of `ced3569` found that the section
+  decoder and `validate_hydrology_state` between them left five of §11's listed import obligations
+  unchecked: trace existence, forcing ancestry, batch continuity, the composed
+  `MAX_HYDROLOGY_TOTAL_FORCING_MEMBERS` cap, and resident containment of conveyance endpoints. Each
+  was a real gap and each is now closed. The common cause is worth recording, because it is not
+  carelessness about any one of them: the checks that were written are the ones a *tick* can
+  violate, and every missing one is a question only a *snapshot* can raise. `validate_hydrology_state`
+  runs on both paths and grew to fit the cheaper one.
+
+  Two of them were latent panics rather than merely missing validation. An imported conveyance edge
+  whose outlet is not a resident cell reaches `cell_work(...).expect("an outlet is resident")` on the
+  first tick that releases through it, and `HydrologyForcingSchedule` — the type that owns the
+  aggregate member cap and the two origin fan-in bounds — was exported, unit-tested, and *never
+  constructed by the runtime*, which holds its schedule as a plain record vector so applied records
+  can be marked in place. Its invariants have been lifted into a borrowing
+  `validate_forcing_records` that both the constructor and the import path call, so the type is no
+  longer the only place they exist.
+
+- **2026-07-30 — Post-review remediation: the tick-boundary and import validators are now
+  deliberately different sets.** `validate_hydrology_state` keeps the invariants a tick can break —
+  registry bijection, residency, resolution level, forcing timing, ledger closure, and now
+  conveyance containment and batch continuity — and runs on both paths.
+  `validate_imported_hydrology` adds what only bytes from outside can violate: agreement with the
+  persisted configuration, forcing ancestry, and trace existence over every anchor and every
+  retained receipt. The split is a cost decision made explicit rather than a gap: the trace-existence
+  pass alone is two lookups per retained receipt, up to half a million per call, and a running tick
+  cannot have invalidated an anchor it just committed.
+
+- **2026-07-30 — Post-review remediation: `a_state_over_the_hydrology_section_bound_is_refused` was
+  named for a refusal it never caused.** It asserted that a real session's section is *within*
+  `MAX_HYDROLOGY_SECTION_BYTES` — true, unfalsifiable, and the opposite of its name. The section cap
+  is now a lowerable field beside `snapshot_budget`, for the same stated reason, and the test drives
+  a real refusal on a real session with the envelope budget left at the production cap, so the only
+  thing that can refuse the tick is the section bound.
+
 ## Progress
 
 - **2026-07-29 — Accepted.** Revision 19 is the authoritative hydrology implementation plan.
@@ -4148,6 +4184,58 @@ its own evidence-backed follow-up TODO rather than being hidden in Progress.
   Claims not backed by evidence, stated as such: the retained-fine/coarse design is **not**
   accepted as a performance architecture — see the Decision log entry above. No throughput, scale,
   or emergence claim is made anywhere in this plan's documentation.
+
+- **2026-07-30 — Post-review remediation of the §11 import obligations.** Checkpoint `PLACEHOLDER`.
+
+  An independent gate review of `ced3569` reported six blockers. Five were real and are fixed here;
+  the sixth was a benchmark run the reviewer interrupted (`SIGINT`, exit 130) rather than a defect —
+  the checked-in harness prints each workload as it completes and does complete, and the two limits
+  it cannot measure are already recorded in the Decision log above rather than claimed.
+
+  Files changed:
+
+  - `crates/causafera-geography/src/hydrology/forcing.rs` — the schedule's invariants lifted out of
+    `HydrologyForcingSchedule::new` into a borrowing `validate_forcing_records`, so the runtime's
+    plain record vector can be held to them without cloning up to 262,144 members.
+  - `crates/causafera-geography/src/hydrology/mod.rs` — `validate_forcing_records` exported.
+  - `crates/causafera-runtime/src/snapshot_sections.rs` — running aggregate totals in
+    `decode_hydrology_section` for forcing members and for retained receipts, each checked before the
+    `Vec::with_capacity` it bounds. Without the second, eight batches could reserve two million
+    receipt slots against a retention contract that allows 262,144 across all of them.
+  - `crates/causafera-runtime/src/hydrology_validation.rs` — conveyance endpoint and outlet
+    residency, and batch continuity, added to the tick-boundary set; a new
+    `validate_imported_hydrology` for configuration agreement, forcing ancestry, and trace existence.
+  - `crates/causafera-runtime/src/runtime.rs` — nine new specific `RuntimeError` variants, the
+    import-only validator called from `validate_snapshot_references`, and the lowerable
+    `hydrology_section_budget`.
+  - `crates/causafera-runtime/src/tick_transaction.rs` — the section budget threaded through the
+    transaction, and `a_state_over_the_hydrology_section_bound_is_refused` rewritten to cause the
+    refusal it is named for.
+  - `crates/causafera-runtime/tests/hydrology_import_validation.rs` — 13 → **26** tests, covering
+    every V25 clause that had no negative control: an off-map conveyance edge, an unknown forcing
+    origin, a forcing origin that exists but is not a bootstrap event, a bucket anchored to an
+    unknown trace, a batch keyed to a non-conservation event, a grid metric and a forcing record that
+    disagree with the persisted configuration, a gap in the retained window, a window that does not
+    reach the current batch, a receipt filed under another batch, and both composed caps refused
+    before allocation.
+
+  Verification, all run and all green at this checkpoint:
+
+  - `cargo fmt --all -- --check` — clean.
+  - `cargo clippy --workspace --all-targets --all-features -- -D warnings` — clean.
+  - `cargo test --workspace --all-features` — 84 suites, **927 passed**, 0 failed.
+  - `cargo test --workspace --no-default-features` — 84 suites, **927 passed**, 0 failed.
+  - `cargo run -p xtask -- ci` — CI checks passed.
+  - `pnpm lint` — pass. `pnpm typecheck` — pass. `pnpm build` — pass.
+  - `git diff --check` — clean.
+  - `node tools/audit/check-entry-points.mjs` — pass (32 entry points, 22 tests).
+  - `node tools/audit/run-source-tests.mjs` — **90 passed**, 0 failed.
+
+  Left undone deliberately, and named rather than silently skipped: the review's eighth remark, that
+  `evolution.rs` and its sibling hydrology modules are large enough to strain the modular-architecture
+  rule. That is true and it is a refactor, not a fail-closed gap; splitting the solver's substages
+  while its determinism evidence is the only thing pinning them would be the opposite of a bounded
+  change. Recorded as a candidate for its own plan.
 
 Execution must begin by re-reading this Progress section and Decision log, then inspecting
 `git status`. The implementing agent updates both sections whenever scope, contract, verification,

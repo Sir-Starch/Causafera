@@ -131,6 +131,14 @@ pub struct Runtime {
     /// so a test can lower it to a reachable value and drive the near-cap
     /// rejection on a real session. See `crate::tick_transaction`.
     pub(crate) snapshot_budget: u64,
+    /// The hydrology-section byte cap every hydrology-enabled tick is held to.
+    ///
+    /// Always `causafera_geography::MAX_HYDROLOGY_SECTION_BYTES` in production,
+    /// and a field for the same reason as `snapshot_budget`: reaching 192 MiB of
+    /// section means allocating 192 MiB of section, so without a lowerable bound
+    /// the only test that could be written is one that asserts the refusal never
+    /// happens — which is what the test named for it used to do.
+    pub(crate) hydrology_section_budget: usize,
 }
 
 /// One system's phase and the stream-keying ID the scheduler actually assigned it.
@@ -237,6 +245,7 @@ impl Runtime {
             state,
             scheduler_registrations,
             snapshot_budget: causafera_persistence::MAX_TOTAL_SIZE,
+            hydrology_section_budget: causafera_geography::MAX_HYDROLOGY_SECTION_BYTES,
         })
     }
 
@@ -277,10 +286,13 @@ impl Runtime {
             if let Some(error) = state.failure.clone() {
                 return Err(error);
             }
-            state
-                .hydrology
-                .enabled
-                .then(|| RuntimeTickTransaction::open(&state, self.snapshot_budget))
+            state.hydrology.enabled.then(|| {
+                RuntimeTickTransaction::open(
+                    &state,
+                    self.snapshot_budget,
+                    self.hydrology_section_budget,
+                )
+            })
         };
         self.scheduler.tick();
         let mut state = self.lock_state()?;
@@ -702,6 +714,32 @@ pub enum RuntimeError {
     HydrologyReceiptsDisagreeWithLedger,
     #[error("an imported hydrology section and its recipe disagree about whether water exists")]
     HydrologyStateDisagreesWithRecipe,
+    /// A conveyance edge reaching outside the field set. Routing settles a
+    /// release into its outlet cell's storage, so an endpoint or outlet with no
+    /// field is not a distant carrier — it is a write with nowhere to land.
+    #[error("an imported hydrology conveyance edge names a cell that is not resident")]
+    HydrologyConveyanceCellNotResident,
+    /// The retained batches are the newest whole ones, so their sequence numbers
+    /// are contiguous and end at the field set's. A gap would mean a batch was
+    /// removed from the middle of the window, which eviction cannot do.
+    #[error("imported hydrology retained batches are not a contiguous newest-first window")]
+    HydrologyBatchSequenceNotContinuous,
+    #[error("an imported hydrology transfer receipt does not belong to the batch that holds it")]
+    HydrologyReceiptBatchMismatch,
+    /// A trace anchor naming an event the store does not hold. The anchor is the
+    /// whole of a carrier's provenance, so one that resolves to nothing leaves
+    /// the carrier describing an origin that never happened.
+    #[error("an imported hydrology anchor names a trace the store does not hold")]
+    HydrologyTraceAnchorUnknown,
+    #[error("an imported hydrology retained batch is not anchored to a conservation event")]
+    HydrologyBatchTraceNotConservation,
+    /// Forcing ancestry is not the record's to declare. Every canonical record
+    /// is installed by the bootstrap stage against the origin event it commits,
+    /// under the one producer policy that stage applies.
+    #[error("an imported hydrology forcing record's ancestry is not a bootstrap origin")]
+    HydrologyForcingAncestryForged,
+    #[error("imported hydrology {what} does not match the persisted configuration")]
+    HydrologyStateDisagreesWithConfiguration { what: &'static str },
     /// The hydrology section of the would-be snapshot outgrew its own cap.
     ///
     /// Reported before the state is accepted, never after: a state that cannot be
@@ -1643,6 +1681,11 @@ impl RuntimeState {
             &self.hydrology,
             self.config.hydrology.enabled,
             self.advanced_through.raw(),
+        )?;
+        crate::hydrology_validation::validate_imported_hydrology(
+            &self.hydrology,
+            &self.config.hydrology,
+            &self.traces,
         )?;
         Ok(())
     }

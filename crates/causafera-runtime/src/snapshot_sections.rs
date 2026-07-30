@@ -4146,6 +4146,11 @@ pub fn decode_hydrology_section(bytes: &[u8]) -> Result<HydrologyRuntimeState, P
 
     let forcing_count = read_count(&mut dec, MAX_HYDROLOGY_FORCING_RECORDS, "hydrology forcing")?;
     let mut forcing = Vec::with_capacity(forcing_count);
+    // The per-record target cap composes with an aggregate one, and only the
+    // aggregate bounds what this loop may allocate: 8_192 records of 4_096
+    // targets each satisfies the per-record cap 8_192 times over and still asks
+    // for thirty-three million members.
+    let mut forcing_members = 0_usize;
     for _ in 0..forcing_count {
         let forcing_id = dec.read_u64()?;
         let scheduled_tick = dec.read_u64()?;
@@ -4164,6 +4169,13 @@ pub fn decode_hydrology_section(bytes: &[u8]) -> Result<HydrologyRuntimeState, P
             MAX_HYDROLOGY_TARGETS_PER_FORCING,
             "hydrology forcing target",
         )?;
+        forcing_members = forcing_members.saturating_add(target_count);
+        if forcing_members > causafera_geography::MAX_HYDROLOGY_TOTAL_FORCING_MEMBERS {
+            return Err(PersistenceError::codec(format!(
+                "hydrology forcing member count {forcing_members} exceeds {}",
+                causafera_geography::MAX_HYDROLOGY_TOTAL_FORCING_MEMBERS
+            )));
+        }
         let mut targets = Vec::with_capacity(target_count);
         for _ in 0..target_count {
             let cell = decode_hydrology_cell(&mut dec)?;
@@ -4198,6 +4210,10 @@ pub fn decode_hydrology_section(bytes: &[u8]) -> Result<HydrologyRuntimeState, P
     let mut retained_batches = Vec::with_capacity(batch_count);
     let mut receipts = BTreeMap::new();
     let mut conservation_receipts = BTreeMap::new();
+    // Retention bounds the retained receipts across every batch, not one batch
+    // at a time, so the per-batch cap alone would let eight batches allocate
+    // eight times what a live session is ever allowed to hold.
+    let mut retained_receipts = 0_usize;
     for _ in 0..batch_count {
         let trace = TraceId::new(dec.read_u64()?);
         let receipt_count = read_count(
@@ -4205,6 +4221,13 @@ pub fn decode_hydrology_section(bytes: &[u8]) -> Result<HydrologyRuntimeState, P
             causafera_geography::MAX_HYDROLOGY_PERSISTED_TRANSFER_RECEIPTS,
             "hydrology transfer receipt",
         )?;
+        retained_receipts = retained_receipts.saturating_add(receipt_count);
+        if retained_receipts > causafera_geography::MAX_HYDROLOGY_PERSISTED_TRANSFER_RECEIPTS {
+            return Err(PersistenceError::codec(format!(
+                "hydrology retained receipt count {retained_receipts} exceeds {}",
+                causafera_geography::MAX_HYDROLOGY_PERSISTED_TRANSFER_RECEIPTS
+            )));
+        }
         let mut batch = Vec::with_capacity(receipt_count);
         for _ in 0..receipt_count {
             batch.push(decode_hydrology_receipt(&mut dec)?);

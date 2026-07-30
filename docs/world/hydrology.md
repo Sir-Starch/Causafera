@@ -143,9 +143,27 @@ changes never change adjacency or distance.
 
 Hydrology is section `0x000F` of the snapshot envelope, at section major 1. It
 participates in the physical state digest at schema 8; the digest is an identity,
-never a distance. Export and import are byte-identical round trips, and import
-revalidates residency, registry bijection, forcing timing, and receipt
-recomputation rather than trusting the bytes.
+never a distance. Export and import are byte-identical round trips.
+
+Import trusts none of it. The decoder rebuilds every collection through the same
+constructor a live runtime uses, and enforces the composed bounds — the aggregate
+forcing-member cap and the retention-wide receipt cap — as running totals, before
+the vectors they bound are allocated rather than after. What no single
+constructor can see is then checked across the whole state: registry bijection,
+residency of every field, conveyance endpoint and outlet, resolution coverage,
+forcing schedule order and origin fan-in, forcing timing against the clock, ledger
+closure and receipt recomputation, and continuity of the retained batch window.
+
+Two further classes are checked only at import, because a running tick cannot
+have broken them. The state must agree with the configuration that bootstrapped
+it — same grid metrics, same forcing records — and every trace anchor must name
+an event the store actually holds: each bucket's, each conveyance edge's, each
+resolution entry's, each retained receipt's parents, and each batch's own key,
+which must be a hydrology conservation event rather than merely some trace.
+Forcing ancestry is held to the same standard: a record's origin must be the
+bootstrap stage's own origin event, under the one producer policy that stage
+applies, because configuration cannot name a trace and a session may not declare
+itself an authorized producer.
 
 Retained typed detail is bounded: at most eight whole batches and 262,144
 transfer receipts, evicted whole-batch-first in tick order. Eviction removes

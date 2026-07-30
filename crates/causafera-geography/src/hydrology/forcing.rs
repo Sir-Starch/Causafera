@@ -210,6 +210,98 @@ impl HydrologyForcingRecord {
     }
 }
 
+/// Everything a canonical forcing schedule must satisfy, over borrowed records.
+///
+/// Borrowed rather than owned because the runtime holds its schedule as a plain
+/// record vector — applied records are marked in place — and had no way to ask
+/// these questions of it. Import went straight from the decoder to the state,
+/// so a forged section could carry a schedule that is unordered, past the
+/// aggregate member cap, or fanned out beyond what a causal event can cite,
+/// and none of it was noticed until a tick tried to commit against it.
+///
+/// See `plans/hydrology.md` §11 and verification gate V25.
+pub fn validate_forcing_records(
+    records: &[HydrologyForcingRecord],
+) -> Result<(), HydrologyStateError> {
+    if records.len() > MAX_HYDROLOGY_FORCING_RECORDS {
+        return Err(HydrologyStateError::ForcingRecordCountExceeded {
+            count: records.len(),
+            max: MAX_HYDROLOGY_FORCING_RECORDS,
+        });
+    }
+
+    // Ordering and uniqueness are checked, not imposed: the schedule's
+    // canonical bytes are covered by the bootstrap event's result digest,
+    // so silently reordering would change what the digest attests to.
+    for window in records.windows(2) {
+        match window[0].key().cmp(&window[1].key()) {
+            std::cmp::Ordering::Less => {}
+            std::cmp::Ordering::Equal => {
+                return Err(HydrologyStateError::DuplicateForcingKey {
+                    tick: window[1].scheduled_tick(),
+                    id: window[1].forcing_id(),
+                });
+            }
+            std::cmp::Ordering::Greater => {
+                return Err(HydrologyStateError::UnorderedForcingSchedule);
+            }
+        }
+    }
+
+    let mut members = 0_usize;
+    for record in records {
+        // The aggregate member cap composes with the per-record one: 8_192
+        // records of 4_096 targets each would satisfy both individually and
+        // still be far past what the snapshot envelope can hold.
+        members = members.saturating_add(record.targets().len());
+        if members > MAX_HYDROLOGY_TOTAL_FORCING_MEMBERS {
+            return Err(HydrologyStateError::ForcingMemberTotalExceeded {
+                count: members,
+                max: MAX_HYDROLOGY_TOTAL_FORCING_MEMBERS,
+            });
+        }
+    }
+
+    validate_origin_fan_in(records)
+}
+
+/// Enforce the two causal fan-in bounds that keep every hydrology event
+/// inside the sixteen-cause limit.
+///
+/// A tick may draw on at most eight distinct forcing origins, and any one
+/// cell on at most six within a tick. Overlapping records are legal and
+/// expected — two producers may rain on the same ground — but the terminal
+/// conservation event cites the tick's origins and each cell's
+/// forcing-settlement event cites that cell's, so both counts are hard
+/// structural limits rather than preferences.
+fn validate_origin_fan_in(records: &[HydrologyForcingRecord]) -> Result<(), HydrologyStateError> {
+    let mut per_tick: BTreeMap<u64, BTreeSet<TraceId>> = BTreeMap::new();
+    let mut per_cell: BTreeMap<(u64, HydrologyCellKey), BTreeSet<TraceId>> = BTreeMap::new();
+    for record in records {
+        let tick = record.scheduled_tick();
+        let origins = per_tick.entry(tick).or_default();
+        origins.insert(record.origin_trace());
+        if origins.len() > MAX_HYDROLOGY_FORCING_ORIGINS_PER_TICK {
+            return Err(HydrologyStateError::ForcingOriginsPerTickExceeded {
+                tick,
+                count: origins.len(),
+                max: MAX_HYDROLOGY_FORCING_ORIGINS_PER_TICK,
+            });
+        }
+        for member in record.targets() {
+            let cell_origins = per_cell.entry((tick, member.cell)).or_default();
+            cell_origins.insert(record.origin_trace());
+            if cell_origins.len() > MAX_HYDROLOGY_FORCING_ORIGINS_PER_CELL_PER_TICK {
+                return Err(HydrologyStateError::ForcingOriginsPerCellExceeded {
+                    count: cell_origins.len(),
+                    max: MAX_HYDROLOGY_FORCING_ORIGINS_PER_CELL_PER_TICK,
+                });
+            }
+        }
+    }
+    Ok(())
+}
+
 /// The complete bounded forcing schedule, in canonical `(tick, id)` order.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct HydrologyForcingSchedule {
@@ -218,84 +310,8 @@ pub struct HydrologyForcingSchedule {
 
 impl HydrologyForcingSchedule {
     pub fn new(records: Vec<HydrologyForcingRecord>) -> Result<Self, HydrologyStateError> {
-        if records.len() > MAX_HYDROLOGY_FORCING_RECORDS {
-            return Err(HydrologyStateError::ForcingRecordCountExceeded {
-                count: records.len(),
-                max: MAX_HYDROLOGY_FORCING_RECORDS,
-            });
-        }
-
-        // Ordering and uniqueness are checked, not imposed: the schedule's
-        // canonical bytes are covered by the bootstrap event's result digest,
-        // so silently reordering would change what the digest attests to.
-        let mut members = 0_usize;
-        for window in records.windows(2) {
-            match window[0].key().cmp(&window[1].key()) {
-                std::cmp::Ordering::Less => {}
-                std::cmp::Ordering::Equal => {
-                    return Err(HydrologyStateError::DuplicateForcingKey {
-                        tick: window[1].scheduled_tick(),
-                        id: window[1].forcing_id(),
-                    });
-                }
-                std::cmp::Ordering::Greater => {
-                    return Err(HydrologyStateError::UnorderedForcingSchedule);
-                }
-            }
-        }
-        for record in &records {
-            // The aggregate member cap composes with the per-record one: 8_192
-            // records of 4_096 targets each would satisfy both individually and
-            // still be far past what the snapshot envelope can hold.
-            members = members.saturating_add(record.targets().len());
-            if members > MAX_HYDROLOGY_TOTAL_FORCING_MEMBERS {
-                return Err(HydrologyStateError::ForcingMemberTotalExceeded {
-                    count: members,
-                    max: MAX_HYDROLOGY_TOTAL_FORCING_MEMBERS,
-                });
-            }
-        }
-
-        let schedule = Self { records };
-        schedule.validate_origin_fan_in()?;
-        Ok(schedule)
-    }
-
-    /// Enforce the two causal fan-in bounds that keep every hydrology event
-    /// inside the sixteen-cause limit.
-    ///
-    /// A tick may draw on at most eight distinct forcing origins, and any one
-    /// cell on at most six within a tick. Overlapping records are legal and
-    /// expected — two producers may rain on the same ground — but the terminal
-    /// conservation event cites the tick's origins and each cell's
-    /// forcing-settlement event cites that cell's, so both counts are hard
-    /// structural limits rather than preferences.
-    fn validate_origin_fan_in(&self) -> Result<(), HydrologyStateError> {
-        let mut per_tick: BTreeMap<u64, BTreeSet<TraceId>> = BTreeMap::new();
-        let mut per_cell: BTreeMap<(u64, HydrologyCellKey), BTreeSet<TraceId>> = BTreeMap::new();
-        for record in &self.records {
-            let tick = record.scheduled_tick();
-            let origins = per_tick.entry(tick).or_default();
-            origins.insert(record.origin_trace());
-            if origins.len() > MAX_HYDROLOGY_FORCING_ORIGINS_PER_TICK {
-                return Err(HydrologyStateError::ForcingOriginsPerTickExceeded {
-                    tick,
-                    count: origins.len(),
-                    max: MAX_HYDROLOGY_FORCING_ORIGINS_PER_TICK,
-                });
-            }
-            for member in record.targets() {
-                let cell_origins = per_cell.entry((tick, member.cell)).or_default();
-                cell_origins.insert(record.origin_trace());
-                if cell_origins.len() > MAX_HYDROLOGY_FORCING_ORIGINS_PER_CELL_PER_TICK {
-                    return Err(HydrologyStateError::ForcingOriginsPerCellExceeded {
-                        count: cell_origins.len(),
-                        max: MAX_HYDROLOGY_FORCING_ORIGINS_PER_CELL_PER_TICK,
-                    });
-                }
-            }
-        }
-        Ok(())
+        validate_forcing_records(&records)?;
+        Ok(Self { records })
     }
 
     /// Every record is scheduled strictly after `bootstrap_tick` and no more

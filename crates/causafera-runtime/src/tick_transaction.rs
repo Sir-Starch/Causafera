@@ -53,15 +53,19 @@ pub(crate) struct RuntimeTickTransaction {
     /// rejection on a real session instead of asserting it about 256 MiB of
     /// fixture.
     budget: u64,
+    /// The hydrology-section cap this tick is held to, for the same reason and
+    /// with the same production value.
+    section_budget: usize,
 }
 
 impl RuntimeTickTransaction {
     /// Stage everything the tick may change, before it changes anything.
-    pub(crate) fn open(state: &RuntimeState, budget: u64) -> Self {
+    pub(crate) fn open(state: &RuntimeState, budget: u64, section_budget: usize) -> Self {
         Self {
             staged: state.clone(),
             completed_time: state.advanced_through,
             budget,
+            section_budget,
         }
     }
 
@@ -82,7 +86,7 @@ impl RuntimeTickTransaction {
         state: &mut RuntimeState,
         scheduler_time: SimulationTime,
     ) -> Result<(), RuntimeError> {
-        match validate_completed_tick(state, scheduler_time, self.budget) {
+        match validate_completed_tick(state, scheduler_time, self.budget, self.section_budget) {
             Ok(()) => Ok(()),
             Err(error) => {
                 // One move, and it cannot fail. Anything that could fail here
@@ -100,6 +104,7 @@ fn validate_completed_tick(
     state: &RuntimeState,
     scheduler_time: SimulationTime,
     budget: u64,
+    section_budget: usize,
 ) -> Result<(), RuntimeError> {
     if let Some(failure) = state.failure.clone() {
         return Err(failure);
@@ -115,7 +120,7 @@ fn validate_completed_tick(
         state.config.hydrology.enabled,
         scheduler_time.raw(),
     )?;
-    require_exportable_within(state, budget)
+    require_exportable_within(state, budget, section_budget)
 }
 
 /// Refuse a state that could be accepted and then never exported.
@@ -133,19 +138,23 @@ pub(crate) fn require_exportable(state: &RuntimeState) -> Result<(), RuntimeErro
         // to it would be a contract change this plan does not make.
         return Ok(());
     }
-    require_exportable_within(state, MAX_TOTAL_SIZE)
+    require_exportable_within(state, MAX_TOTAL_SIZE, MAX_HYDROLOGY_SECTION_BYTES)
 }
 
-fn require_exportable_within(state: &RuntimeState, budget: u64) -> Result<(), RuntimeError> {
+fn require_exportable_within(
+    state: &RuntimeState,
+    budget: u64,
+    section_budget: usize,
+) -> Result<(), RuntimeError> {
     let envelope = assemble_envelope(&state.export_snapshot())?;
     let hydrology = envelope
         .sections
         .get(&u64::from(HYDROLOGY_SECTION_ID))
         .map_or(0, |section| section.bytes.len());
-    if hydrology > MAX_HYDROLOGY_SECTION_BYTES {
+    if hydrology > section_budget {
         return Err(RuntimeError::HydrologySectionWouldExceedBound {
             size: hydrology,
-            max: MAX_HYDROLOGY_SECTION_BYTES,
+            max: section_budget,
         });
     }
     let size = envelope_encoded_size(&envelope);
@@ -323,27 +332,61 @@ mod tests {
 
     #[test]
     fn a_state_over_the_hydrology_section_bound_is_refused() {
-        // The section has its own cap below the envelope's. Exercised through the
-        // accounting function with the bound it enforces, because reaching
-        // 192 MiB of hydrology section would mean allocating it.
-        let mut runtime = Runtime::new(near_cap_config(7_717)).expect("construction");
+        // The section has its own cap below the envelope's, and it is a distinct
+        // refusal: a session can outgrow the section bound while the complete
+        // envelope still has room, and that state is just as unexportable.
+        //
+        // Driven through a lowered budget on a real session, because reaching
+        // 192 MiB of hydrology section would mean allocating 192 MiB of it. The
+        // envelope budget is left at the production cap throughout, so the only
+        // thing that can refuse this tick is the section bound.
+        let seed = 7_717;
+        let mut runtime = Runtime::new(near_cap_config(seed)).expect("construction");
         runtime.run_ticks(1).expect("tick one must commit");
-        let state = runtime.lock_state().expect("state");
-        let envelope = assemble_envelope(&state.export_snapshot()).expect("assemble");
-        let hydrology = envelope
-            .sections
-            .get(&u64::from(HYDROLOGY_SECTION_ID))
-            .expect("an enabled session encodes the section")
-            .bytes
-            .len();
+        let section = {
+            let state = runtime.lock_state().expect("state");
+            let envelope = assemble_envelope(&state.export_snapshot()).expect("assemble");
+            assert!(
+                envelope_encoded_size(&envelope) <= MAX_TOTAL_SIZE,
+                "the complete envelope is nowhere near the persistence cap"
+            );
+            envelope
+                .sections
+                .get(&u64::from(HYDROLOGY_SECTION_ID))
+                .expect("an enabled session encodes the section")
+                .bytes
+                .len()
+        };
         assert!(
-            hydrology > 0 && hydrology <= MAX_HYDROLOGY_SECTION_BYTES,
-            "a real session's section is within its own bound"
+            section > 0 && section <= MAX_HYDROLOGY_SECTION_BYTES,
+            "a real session's section is within its production bound"
         );
+
+        let before = runtime.snapshot().expect("readable");
+        let before_time = runtime.current_time();
+        let before_hydrology = runtime.hydrology_state();
+
+        // One byte short of what the section already occupies, so the very next
+        // tick cannot fit however little it adds.
+        runtime.hydrology_section_budget = section - 1;
+        let error = runtime.tick().expect_err("the section bound must refuse");
         assert!(
-            envelope_encoded_size(&envelope) <= MAX_TOTAL_SIZE,
-            "and the complete envelope is within the persistence cap"
+            matches!(
+                error,
+                RuntimeError::HydrologySectionWouldExceedBound { max, .. } if max == section - 1
+            ),
+            "the refusal must name the section bound, not the envelope cap: {error}"
         );
+
+        // And the refusal is whole, exactly as the envelope one is.
+        assert_eq!(runtime.snapshot().expect("still readable"), before);
+        assert_eq!(runtime.hydrology_state(), before_hydrology);
+        assert_eq!(runtime.current_time(), before_time);
+        assert_eq!(runtime.scheduler.current_time(), before_time);
+
+        runtime.hydrology_section_budget = MAX_HYDROLOGY_SECTION_BYTES;
+        runtime.tick().expect("the tick fits inside the real bound");
+        assert_eq!(runtime.current_time(), before_time.tick());
     }
 
     #[test]
@@ -363,9 +406,13 @@ mod tests {
 
     #[test]
     fn a_production_session_holds_the_persistence_cap() {
-        // The budget is a field so a test can reach it. That is only safe while
-        // production keeps setting it to the real cap.
+        // Both budgets are fields so a test can reach them. That is only safe
+        // while production keeps setting them to the real caps.
         let runtime = Runtime::new(RuntimeConfig::new(4_231)).expect("construction");
         assert_eq!(runtime.snapshot_budget, MAX_TOTAL_SIZE);
+        assert_eq!(
+            runtime.hydrology_section_budget,
+            MAX_HYDROLOGY_SECTION_BYTES
+        );
     }
 }
