@@ -48,6 +48,38 @@ export function formatMillimetresAsMetres(value: number, fractionDigits = 2): st
   return (value / 1000).toFixed(fractionDigits);
 }
 
+/**
+ * A water volume, which is an exact count of cubic millimetres.
+ *
+ * Rendered as a volume and never as a depth. A depth is a volume divided by a
+ * cell area, the grid metric that carries that area is declared per chart, and
+ * the observer is not sent it — so a millimetre figure here would be a number
+ * this side of the wire made up. Litres and cubic metres are exact decimal
+ * regroupings of the same count.
+ *
+ * The division happens in `bigint`, because a `u64` volume runs past the range a
+ * double represents exactly and the whole point of the carrier is that it does
+ * not round.
+ */
+export function formatWaterVolume(value: bigint, locale: ObserverLocale): string {
+  const magnitude = value < 0n ? -value : value;
+  if (magnitude < 1_000_000n) return `${formatInteger(value, locale)} mm³`;
+  const litres = Number(value / 1_000n) / 1_000;
+  // The digit count follows the magnitude, not the signed value, so a loss and
+  // a gain of the same size are written to the same precision.
+  if (magnitude < 1_000_000_000n) return `${litres.toFixed(Math.abs(litres) < 100 ? 1 : 0)} L`;
+  const cubicMetres = litres / 1_000;
+  if (magnitude < 1_000_000_000_000n) return `${cubicMetres.toFixed(2)} m³`;
+  return `${formatCompact(Math.round(cubicMetres), locale)} m³`;
+}
+
+/** The same volume with an explicit sign, for a change rather than a level. */
+export function formatWaterDelta(value: bigint, locale: ObserverLocale): string {
+  if (value === 0n) return "0";
+  const rendered = formatWaterVolume(value < 0n ? -value : value, locale);
+  return value < 0n ? `−${rendered}` : `+${rendered}`;
+}
+
 export function formatPercent(fraction: number, fractionDigits = 0): string {
   return `${(fraction * 100).toFixed(fractionDigits)} %`;
 }

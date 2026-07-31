@@ -14,11 +14,9 @@ causafera-observer-wire.workspace = true
 causafera-runtime.workspace = true
 causafera-types.workspace = true
 thiserror.workspace = true
-
-# Examples only. `hydrology_bench` builds explicit metrics, substrate, and
-# forcing schedules, which are geography and domain types; the shipped binary
-# links neither.
-[dev-dependencies]
+# The session declares its own hydrology: a grid metric, substrate parameters,
+# a boundary condition and a forcing schedule are geography and domain types,
+# and `HydrologyConfig` is stated in them rather than in runtime-local aliases.
 causafera-domains.workspace = true
 causafera-geography.workspace = true
 

@@ -24,7 +24,16 @@ export type ColumnReading = "sum" | "maximum";
 export type RasterBand = "value" | "auxiliary";
 
 const cache = new Map<string, ChartField | undefined>();
-const CACHE_CAPACITY = 12;
+/**
+ * Assembled fields held at once.
+ *
+ * A frame can want seven at a time — terrain's two bands, the mana volume's two
+ * readings, and the three water buckets — and four of those change every tick.
+ * The capacity has to clear the live set plus one frame of churn, or the two
+ * fields that never change get evicted by the ones that always do and are
+ * rebuilt from scratch on every frame.
+ */
+const CACHE_CAPACITY = 24;
 
 /**
  * Assembled fields are memoised against their own signature.
@@ -85,6 +94,101 @@ export function surfaceField(
     }
     return assembleField(patches);
   });
+}
+
+/**
+ * A surface field built from the lossless unsigned band a hydrology lattice
+ * carries.
+ *
+ * The band is `BigUint64Array` because a water volume is a `u64` and the upper
+ * half of that range has no image in a double. Painting a surface needs
+ * doubles, so the conversion happens here and nowhere earlier: the drawn field
+ * is a picture of the measurements, while the exact counts stay in the raster
+ * for any surface that reports a number rather than a colour. The lenses that
+ * use this say so in their caveat.
+ */
+export function unsignedSurfaceField(
+  rasters: ReadonlyMap<string, FieldRaster>,
+  kind: FieldRasterKind,
+): ChartField | undefined {
+  const found = rastersOfKind(rasters, kind);
+  if (found.length === 0) return undefined;
+  return memoise(signatureOf(found, `${kind}/unsigned`), () => {
+    const patches: FieldPatch[] = [];
+    for (const raster of found) {
+      if (raster.unsignedValues.length !== raster.edge * raster.edge * raster.depth) continue;
+      const values = new Float64Array(raster.unsignedValues.length);
+      for (let index = 0; index < values.length; index += 1) {
+        values[index] = Number(raster.unsignedValues[index]!);
+      }
+      patches.push({
+        chunkX: raster.chunkX,
+        chunkY: raster.chunkY,
+        edge: raster.edge,
+        values,
+      });
+    }
+    return assembleField(patches);
+  });
+}
+
+/**
+ * The provenance a set of received lattices arrived with, as one string.
+ *
+ * A lens signature has to identify the measurements exactly, and for a field
+ * that changes every tick the extremes do not: water moving between two cells
+ * that both stay inside the current range leaves min, max and the patch count
+ * untouched, and a signature built from those alone would hold a stale image on
+ * the chart. The generation trace is what actually changed.
+ */
+export function rasterGeneration(
+  rasters: ReadonlyMap<string, FieldRaster>,
+  kind: FieldRasterKind,
+): string {
+  return rastersOfKind(rasters, kind)
+    .map((raster) => raster.generationTraceId)
+    .join(",");
+}
+
+/**
+ * The greatest volume any cell of a received hydrology lattice holds.
+ *
+ * Read from the unsigned band rather than from the assembled field, so the
+ * figure a legend states is an exact count and not the double the surface was
+ * painted from.
+ */
+export function unsignedPeak(
+  rasters: ReadonlyMap<string, FieldRaster>,
+  kind: FieldRasterKind,
+): bigint | undefined {
+  const found = rastersOfKind(rasters, kind);
+  if (found.length === 0) return undefined;
+  let peak = 0n;
+  for (const raster of found) {
+    for (const value of raster.unsignedValues) if (value > peak) peak = value;
+  }
+  return peak;
+}
+
+/**
+ * One chunk's exact total for an unsigned lattice, or undefined when none is
+ * held for it.
+ *
+ * Summed in `bigint` so the figure a panel prints is the same count the runtime
+ * conserves, rather than the double the surface was painted from.
+ */
+export function unsignedChunkTotal(
+  rasters: ReadonlyMap<string, FieldRaster>,
+  kind: FieldRasterKind,
+  chunk: { chartId: bigint; chunkX: number; chunkY: number; chunkZ: number },
+): bigint | undefined {
+  const raster = rasters.get(
+    `${kind}|${chunk.chartId}:${chunk.chunkX}:${chunk.chunkY}:${chunk.chunkZ}`,
+  );
+  if (raster === undefined || raster.unsignedValues.length === 0) return undefined;
+  let total = 0n;
+  for (const value of raster.unsignedValues) total += value;
+  return total;
 }
 
 /** A volumetric field reduced through z to the plan view the chart draws. */

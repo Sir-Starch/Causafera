@@ -42,11 +42,28 @@ export const BATCH_SIZES: readonly BatchSize[] = [1, 4, 16, 64];
 export const HISTORY_CAPACITY = 256;
 export const EXCHANGE_CAPACITY = 120;
 /**
- * Decoded rasters held at once. The active set is nine chunks and each carries
- * two fields, so this is generous; it exists so a chart that moves rather than
- * grows cannot turn the cache into a leak.
+ * Decoded rasters held at once.
+ *
+ * The active set is nine chunks, and a session with water carries five fields
+ * per chunk: terrain, mana, and the three water buckets. The capacity has to
+ * clear that product with room to spare, because evicting a lattice the current
+ * frame is still drawing would make the map flicker between what it has and
+ * what it just threw away.
  */
-export const RASTER_CAPACITY = 64;
+export const RASTER_CAPACITY = 96;
+
+/**
+ * The water buckets a hydrology-enabled session fetches per chunk.
+ *
+ * All three rather than only the mounted lens's: they are the same quantity in
+ * three places, switching between them must not stall on a round trip, and soil
+ * and groundwater hold water in worlds whose surface is dry.
+ */
+const HYDROLOGY_FIELDS: readonly FieldRasterKind[] = [
+  FieldRasterKind.HydrologySurfaceWater,
+  FieldRasterKind.HydrologySoilWater,
+  FieldRasterKind.HydrologyGroundwater,
+];
 
 /** Per-chunk, per-field identity of a decoded raster. */
 export function rasterKey(
@@ -81,6 +98,8 @@ export interface SessionState {
   history: RuntimeSummary[];
   exchanges: Exchange[];
   error?: string;
+  /** Set when the failure is the export cap, which is a limit rather than a fault. */
+  errorKind?: "export-cap";
   running: boolean;
   analyzing: boolean;
   batch: BatchSize;
@@ -142,7 +161,7 @@ export class ObserverSessionController {
     const client = this.client;
     if (client === undefined) return;
     const generation = (this.generation += 1);
-    this.store.patch({ connection: "connecting", error: undefined });
+    this.store.patch({ connection: "connecting", error: undefined, errorKind: undefined });
     this.forgetRasters();
     try {
       const response = await client.connect(this.store.snapshot.locale);
@@ -165,7 +184,12 @@ export class ObserverSessionController {
       if (this.demand.demanded("world")) await this.refreshWorld();
     } catch (cause) {
       if (generation !== this.generation) return;
-      this.store.patch({ connection: "error", error: message(cause), running: false });
+      this.store.patch({
+        connection: "error",
+        error: message(cause),
+        errorKind: errorKindOf(cause),
+        running: false,
+      });
     }
   }
 
@@ -192,7 +216,7 @@ export class ObserverSessionController {
       this.stop();
       return;
     }
-    this.store.patch({ running: true, error: undefined });
+    this.store.patch({ running: true, error: undefined, errorKind: undefined });
     this.scheduleTick(0);
   }
 
@@ -228,10 +252,11 @@ export class ObserverSessionController {
         world: undefined,
         worldTicks: undefined,
         error: undefined,
+        errorKind: undefined,
       });
       if (this.demand.demanded("world")) await this.refreshWorld();
     } catch (cause) {
-      this.store.patch({ error: message(cause) });
+      this.store.patch({ error: message(cause), errorKind: errorKindOf(cause) });
     }
   }
 
@@ -240,7 +265,7 @@ export class ObserverSessionController {
     if (client === undefined || this.store.snapshot.connection !== "connected") return;
     if (this.store.snapshot.analyzing) return;
     this.stop();
-    this.store.patch({ analyzing: true, error: undefined });
+    this.store.patch({ analyzing: true, error: undefined, errorKind: undefined });
     try {
       const report = await client.analyze();
       this.store.patch({
@@ -248,7 +273,7 @@ export class ObserverSessionController {
         explanationTicks: this.store.snapshot.summary?.simulationTicks,
       });
     } catch (cause) {
-      this.store.patch({ error: message(cause) });
+      this.store.patch({ error: message(cause), errorKind: errorKindOf(cause) });
     } finally {
       this.store.patch({ analyzing: false });
     }
@@ -262,7 +287,7 @@ export class ObserverSessionController {
       this.store.patch({ world, worldTicks: world.simulationTicks });
       await this.refreshRasters(world);
     } catch (cause) {
-      this.store.patch({ error: message(cause) });
+      this.store.patch({ error: message(cause), errorKind: errorKindOf(cause) });
     }
   }
 
@@ -273,10 +298,16 @@ export class ObserverSessionController {
    * once per chunk and held against its generation trace. The mana field does
    * change, so it is refetched with every world frame — one bounded request per
    * chunk, never a chart dump.
+   *
+   * The water buckets are fetched on the same terms, and only when the summary
+   * says the session holds water. A world with hydrology disabled would
+   * otherwise pay twenty-seven refusals a frame to be told what its own summary
+   * already said.
    */
   private async refreshRasters(world: WorldChunkSnapshot): Promise<void> {
     const client = this.client;
     if (client === undefined) return;
+    const wet = (this.store.snapshot.summary?.hydrology.activeChunkCount ?? 0) > 0;
     // Issued together rather than one after another. The session serialises them
     // on its own lock either way, but a frame of nine chunks otherwise pays the
     // bridge's per-call overhead nine times end to end instead of once.
@@ -286,6 +317,7 @@ export class ObserverSessionController {
       if (!this.rasters.has(rasterKey(FieldRasterKind.TerrainElevation, chunk))) {
         fields.push(FieldRasterKind.TerrainElevation);
       }
+      if (wet) fields.push(...HYDROLOGY_FIELDS);
       return fields.map((field) => this.fetchRaster(client, field, chunk));
     });
     const changed = (await Promise.all(wanted)).some(Boolean);
@@ -339,12 +371,13 @@ export class ObserverSessionController {
         previous: current.summary,
         history: appendBounded(current.history, update.summary, HISTORY_CAPACITY),
         error: undefined,
+        errorKind: undefined,
       });
       if (this.demand.demanded("world")) await this.refreshWorld();
       return true;
     } catch (cause) {
       this.stop();
-      this.store.patch({ error: message(cause) });
+      this.store.patch({ error: message(cause), errorKind: errorKindOf(cause) });
       return false;
     }
   }
@@ -400,6 +433,27 @@ function appendBounded<T>(items: readonly T[], item: T, capacity: number): T[] {
 
 function message(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause);
+}
+
+/**
+ * Whether a failure is the runtime's export cap rather than a fault.
+ *
+ * No accepted state may become unexportable, so a tick whose result would not
+ * fit the envelope is refused whole and the session is left exactly as it was.
+ * That is a limit being enforced, and an instrument that reported it in the same
+ * red as a broken bridge would be miscategorising the one interesting thing
+ * about it.
+ *
+ * Recognised by the wording the runtime uses, because the failure crosses the
+ * bridge as text. A rewording would fall back to the generic notice, which is
+ * the safe direction to be wrong in.
+ */
+function errorKindOf(cause: unknown): SessionState["errorKind"] {
+  const text = message(cause);
+  return text.includes("snapshot envelope would encode") ||
+    text.includes("hydrology snapshot section would encode")
+    ? "export-cap"
+    : undefined;
 }
 
 /**

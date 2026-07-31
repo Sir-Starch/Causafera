@@ -1,3 +1,5 @@
+use causafera_domains::HydrologyResolutionPolicy;
+use causafera_geography::{HydrologyBoundaryCondition, HydrologyCellKey, HydrologyGridMetric};
 use causafera_observer_api::{
     DeliveryPolicy, ObserverStreamHub, QueryKind, QueryStatus, StreamError, StreamKind, StreamScope,
 };
@@ -6,7 +8,14 @@ use causafera_observer_wire::{
     encode_connect_response, encode_field_raster, encode_observer_snapshot, encode_query_response,
     encode_stream_envelope,
 };
-use causafera_runtime::{ActiveChunkShape, Runtime, RuntimeConfig, RuntimeError};
+use causafera_runtime::{
+    ActiveChunkShape, HYDROLOGY_BOOTSTRAP_PARAMETERS_SCHEMA_V1, HYDROLOGY_LIMITS_SCHEMA_V1,
+    HydrologyBootstrapParameters, HydrologyConfig, HydrologyForcingSpec, Runtime, RuntimeConfig,
+    RuntimeError,
+};
+use causafera_types::{ChartChunkCoord, ChunkCoord, SpatialChartId, WaterVolume};
+use std::collections::BTreeMap;
+use std::num::{NonZeroU32, NonZeroU64};
 use thiserror::Error;
 
 const RUNTIME_STREAM_ID: u64 = 1;
@@ -14,6 +23,18 @@ const MAX_ADVANCE_TICKS: u64 = 64;
 const DEFAULT_ACTORS: u8 = 8;
 const DEFAULT_SENSORS: u8 = 2;
 const DEFAULT_POPULATION: u64 = 512;
+
+/// The chart the session's one chunk block belongs to.
+const SESSION_CHART: u64 = 1;
+/// Cells in one chunk of the hydrology lattice, which is terrain's 32 x 32.
+const HYDROLOGY_CELLS_PER_CHUNK: u16 = 1_024;
+/// How often the session's rainfall recurs, and how many events it schedules.
+///
+/// Close enough together that a viewer sees a second fall without waiting for
+/// one, far enough apart that each one's runoff is a distinct thing to watch
+/// rather than a permanently wet chart.
+const RAIN_INTERVAL_TICKS: u64 = 5;
+const RAIN_EVENTS: u64 = 64;
 
 pub struct ObserverSession {
     runtime: Runtime,
@@ -149,7 +170,155 @@ fn session_config(seed: u64) -> RuntimeConfig {
     // A chart with one dimension is a strip, not a map. The observer opts into
     // the square block; the default stays a line so no recorded fixture moves.
     config.active_chunk_shape = ActiveChunkShape::Area;
+    config.hydrology = session_hydrology();
     config
+}
+
+/// The session's water, as declared physical parameters and scheduled forcing.
+///
+/// This is configuration, not a fixture: every number below is a parameter the
+/// bootstrap derives coefficients from, and the rain is the explicit persisted
+/// forcing record the domain takes as its only input. Nothing here is a
+/// pre-built state, a named body of water, or an authored landscape — the
+/// session declares a substrate and a rainfall, and where the water ends up is
+/// the solver's answer against the terrain the generator produced.
+///
+/// The runtime default stays disabled (`RuntimeConfig::new`); this is the
+/// desktop shell opting its own session in, so the instrument has a domain to
+/// point at. A headless run is unaffected.
+///
+/// It is a trade, and worth naming here rather than only in the docs: a
+/// hydrology-enabled nine-chunk session reaches the 256 MiB export cap after
+/// roughly twenty ticks, and that ceiling binds everything else the observer
+/// shows, not just the water. Twenty ticks covers a fall of rain and the runoff
+/// after it — the whole of what the water surfaces demonstrate — and does not
+/// cover watching a world develop. Setting this back to
+/// `HydrologyConfig::disabled()` restores the unbounded session; every water
+/// surface then reports, correctly, that this session holds none.
+fn session_hydrology() -> HydrologyConfig {
+    HydrologyConfig {
+        enabled: true,
+        grid_metrics: [(
+            SpatialChartId::new(SESSION_CHART),
+            // One square metre of ground per cell, one metre across, one second
+            // per tick. A hydrology length is declared here and never inferred
+            // from `chunk_extent`, which sizes the mana volume and is not a
+            // distance (INV-036, INV-043).
+            HydrologyGridMetric::new(nz64(1_000_000), nz64(1_000), nz64(1_000)),
+        )]
+        .into_iter()
+        .collect(),
+        bootstrap_parameters: Some(session_hydrology_parameters()),
+        forcing_schedule: session_rainfall(),
+        // The engine's own resolution field decides the level; the policy states
+        // the deepest this session will accept. A level above it refuses the
+        // tick rather than clamping, so the ceiling admits what the engine's
+        // default policy can actually promote to.
+        resolution_policy: HydrologyResolutionPolicy::enabled(4)
+            .expect("level four is within the policy range"),
+        limits_schema: HYDROLOGY_LIMITS_SCHEMA_V1,
+    }
+}
+
+/// Substrate parameters, chosen for what the chart should show.
+///
+/// Chosen for the reading, not for the accounting. A hydrology-enabled session
+/// does reach the 256 MiB export cap sooner the more water it moves, but that
+/// ceiling is an engine limit with its own plan against it, and shaping the
+/// world around it would mean shipping a duller demonstration permanently to
+/// accommodate something temporary.
+///
+/// So: the surface starts with a thin sheet everywhere, which drains into the
+/// low ground of the measured relief within the first few ticks — the opening a
+/// viewer sees is water finding its basins rather than an empty chart. Surface
+/// head is ground elevation plus ponding depth, so that descent is the solver
+/// reading the terrain, not an animation. The subsurface starts above its
+/// baseflow threshold so the slow store participates from the beginning, and
+/// the transmissivities are set high enough that a tick visibly moves water
+/// rather than nudging it. Every rate here is a rate; none of them changes what
+/// is conserved.
+fn session_hydrology_parameters() -> HydrologyBootstrapParameters {
+    HydrologyBootstrapParameters {
+        schema_version: HYDROLOGY_BOOTSTRAP_PARAMETERS_SCHEMA_V1,
+        // One metre of head over one square metre, in cubic millimetres.
+        default_surface_capacity: WaterVolume::new(1_000_000_000),
+        default_soil_capacity: WaterVolume::new(400_000_000),
+        default_groundwater_capacity: WaterVolume::new(600_000_000),
+        // 12 mm standing, 60 mm held in the unsaturated zone, 150 mm below it.
+        initial_surface: WaterVolume::new(12_000_000),
+        initial_soil: WaterVolume::new(60_000_000),
+        initial_groundwater: WaterVolume::new(150_000_000),
+        infiltration_rate_mm_per_second: 2,
+        percolation_fraction_num: 1,
+        percolation_fraction_den: nz32(64),
+        specific_yield_num: 1,
+        specific_yield_den: nz32(5),
+        aquifer_base_offset_mm: -2_500,
+        // Below the initial groundwater, so baseflow runs from the first tick
+        // and the saturated zone is a store that visibly drains rather than a
+        // number that sits still.
+        baseflow_threshold: WaterVolume::new(80_000_000),
+        baseflow_fraction_num: 1,
+        baseflow_fraction_den: nz32(48),
+        base_surface_transmissivity_mm3_per_second: 6_000_000,
+        base_groundwater_transmissivity_mm3_per_second: 300_000,
+        roughness_reference_mm: nz64(50),
+        conveyance_capacity: WaterVolume::new(200_000_000),
+        conveyance_initial_storage: WaterVolume::ZERO,
+        conveyance_inlet_capacity_per_tick: WaterVolume::new(20_000_000),
+        conveyance_release_fraction_num: 1,
+        conveyance_release_fraction_den: nz32(4),
+        // Closed, so the charted extent conserves its own water rather than
+        // exporting it across an edge the observer cannot see.
+        default_boundary: HydrologyBoundaryCondition::CLOSED,
+        chart_overrides: BTreeMap::new(),
+        cell_overrides: BTreeMap::new(),
+    }
+}
+
+/// Recurring rainfall over the origin chunk.
+///
+/// One chunk rather than the whole block on purpose: water that arrives in one
+/// place and then runs out across the chunk seams is the reading that shows the
+/// seam behaving like an interior face. Weights are uniform, so allocation is
+/// the domain's canonical largest-remainder split and the parts sum to the whole
+/// exactly.
+fn session_rainfall() -> Vec<HydrologyForcingSpec> {
+    let chunk = ChartChunkCoord::new(SpatialChartId::new(SESSION_CHART), ChunkCoord::new(0, 0, 0));
+    let targets: Vec<_> = (0..HYDROLOGY_CELLS_PER_CHUNK)
+        .map(|ordinal| {
+            (
+                HydrologyCellKey::new(chunk, ordinal).expect("the ordinal is inside the lattice"),
+                nz64(1),
+            )
+        })
+        .collect();
+    (0..RAIN_EVENTS)
+        .map(|event| HydrologyForcingSpec {
+            forcing_id: event,
+            // Strictly after the bootstrap tick, which is zero, and the first
+            // one soon enough that a session shows water before a viewer has to
+            // go looking for the run control.
+            scheduled_tick: 2 + event * RAIN_INTERVAL_TICKS,
+            targets: targets.clone(),
+            // 40 mm of rain over the chunk against 6 mm of demand: enough that
+            // the fall itself is visible on the chart as it lands, and enough
+            // to run out across the seams into the neighbouring chunks.
+            precipitation_volume: WaterVolume::new(
+                40_000_000 * u64::from(HYDROLOGY_CELLS_PER_CHUNK),
+            ),
+            potential_et_volume: WaterVolume::new(6_000_000 * u64::from(HYDROLOGY_CELLS_PER_CHUNK)),
+            external_inflow_volume: WaterVolume::ZERO,
+        })
+        .collect()
+}
+
+fn nz32(value: u32) -> NonZeroU32 {
+    NonZeroU32::new(value).expect("the value is positive")
+}
+
+fn nz64(value: u64) -> NonZeroU64 {
+    NonZeroU64::new(value).expect("the value is positive")
 }
 
 #[derive(Debug, Error)]
@@ -232,11 +401,16 @@ mod tests {
         // against the cap that produced the list — the cap would agree with a
         // truncated list.
         assert_eq!(bootstrap.receipts.len(), BOOTSTRAP_STAGE_COUNT);
-        // The six-summary surface is frozen V1 contract. A session that ran the
-        // appended hydrology stage reports it in the separately bounded optional
-        // field, not as a seventh entry here — this session did not run one.
+        // The six-summary surface is frozen V1 contract, and this session does
+        // run the appended hydrology stage — so the assertion that matters is
+        // that the seventh arrives in the separately bounded optional field and
+        // leaves the frozen six exactly as a pre-hydrology consumer reads them.
         assert_eq!(bootstrap.stage_count as usize, BOOTSTRAP_STAGE_COUNT);
-        assert!(bootstrap.stage_seven.is_none());
+        let seventh = bootstrap
+            .stage_seven
+            .as_ref()
+            .expect("a hydrology-enabled session runs the appended stage");
+        assert_eq!(seventh.stage, BOOTSTRAP_STAGE_COUNT as u64 + 1);
         assert_eq!(bootstrap.world_seed, 9);
         assert_eq!(bootstrap.configured_population, DEFAULT_POPULATION);
         assert_eq!(
@@ -323,17 +497,21 @@ mod tests {
 
         // Then: it carries typed completeness and window claims backed by the
         // completion traces, with no rendered process name anywhere in the IR.
+        // The counts are stated against the plan this session actually runs —
+        // the six canonical stages plus the appended hydrology one — rather than
+        // as literals that would silently mean something else if a stage moved.
+        let stages = BOOTSTRAP_STAGE_COUNT as u64 + 1;
         let claims = &report.frames[0].claims;
         assert_eq!(claims.len(), 2);
         assert_eq!(claims[0].schema, HISTORICAL_BOOTSTRAP_RECORD_SCHEMA);
         assert_eq!(claims[0].evidence_state, ClaimEvidenceState::Supported);
-        assert_eq!(claims[0].value, NumericClaimValue::scalar(6));
+        assert_eq!(claims[0].value, NumericClaimValue::scalar(stages as i64));
         assert_eq!(claims[1].schema, HISTORICAL_BOOTSTRAP_WINDOW_SCHEMA);
         assert_eq!(
             claims[1].value,
-            NumericClaimValue::range(0, 6).expect("a canonical six-stage window")
+            NumericClaimValue::range(0, stages as i64).expect("a canonical stage window")
         );
-        assert!(claims[0].evidence_traces.len() >= 6);
+        assert!(claims[0].evidence_traces.len() >= stages as usize);
         assert!(
             claims[0]
                 .evidence_traces

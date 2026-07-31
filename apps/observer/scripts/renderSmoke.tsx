@@ -184,6 +184,7 @@ for (const area of AREA_IDS) {
             "mana-provenance",
             "mana-gradient",
             "trace-anchors",
+            "water-surface",
           ],
           ...selection,
         },
@@ -203,7 +204,15 @@ for (const area of AREA_IDS) {
 // The raster lenses, with the lattices a session would hold and then without
 // them: a lens that draws a measured surface must also render before one has
 // arrived, because that is the state every session starts in.
-for (const primaryLens of ["mana", "mana-peak", "relief", "roughness"]) {
+for (const primaryLens of [
+  "mana",
+  "mana-peak",
+  "relief",
+  "roughness",
+  "water-surface",
+  "water-soil",
+  "water-groundwater",
+]) {
   for (const held of [true, false]) {
     session.store.patch({ rasters: held ? rasters : new Map() });
     const props: AreaProps = {
@@ -214,7 +223,7 @@ for (const primaryLens of ["mana", "mana-peak", "relief", "roughness"]) {
         railWidth: 232,
         dockWidth: 344,
         primaryLens,
-        overlayLenses: ["contours", "mana-isolines", "mana-provenance"],
+        overlayLenses: ["contours", "mana-isolines", "mana-provenance", "water-surface"],
         traceFilter: world.materialSurfaceDeltas[0]?.localManaTransitionTraceId,
       },
       update: () => {},

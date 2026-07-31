@@ -69,6 +69,40 @@ export const TEXTURE_RAMP: readonly RampStop[] = [
   [1.0, 0x9d, 0xab, 0xb1],
 ];
 
+/**
+ * Standing water, as a bathymetric scale.
+ *
+ * It reads the way a chart reads depth: the shallows are a thin film that barely
+ * tints the ground, and the ramp deepens through cyan into the dark blue of
+ * water you cannot see the bottom of. The low end is deliberately close to the
+ * relief's own floor so a dry cell under this lens does not become a blue cell —
+ * the alpha ramp does the rest, and dry ground stays ground.
+ */
+export const WATER_RAMP: readonly RampStop[] = [
+  [0.0, 0x0d, 0x1c, 0x24],
+  [0.18, 0x11, 0x3c, 0x4e],
+  [0.42, 0x12, 0x63, 0x7d],
+  [0.66, 0x1b, 0x8e, 0xa8],
+  [0.85, 0x45, 0xb8, 0xc8],
+  [1.0, 0xa6, 0xe4, 0xe8],
+];
+
+/**
+ * Moisture held in a substrate rather than standing on it.
+ *
+ * Deliberately not the water ramp: soil and groundwater are the same quantity in
+ * a different place, and drawing all three in the same blue would make the three
+ * lenses look like one lens with a bug. This keeps water's hue and takes the
+ * chroma down towards the ground it is held in.
+ */
+export const MOISTURE_RAMP: readonly RampStop[] = [
+  [0.0, 0x10, 0x16, 0x16],
+  [0.3, 0x22, 0x39, 0x3c],
+  [0.6, 0x35, 0x62, 0x63],
+  [0.82, 0x52, 0x8c, 0x88],
+  [1.0, 0x8d, 0xbe, 0xb4],
+];
+
 export interface SurfaceStyle {
   ramp: readonly RampStop[];
   /** Relief shading, or `false` for a field whose gradient is not a slope. */
@@ -89,6 +123,33 @@ export const TEXTURE_STYLE: SurfaceStyle = {
   ramp: TEXTURE_RAMP,
   shading: false,
   alpha: [0.72, 0.96],
+};
+
+/**
+ * Ponded surface water.
+ *
+ * Alpha starts at nothing, which is the whole reading: a cell holding no water
+ * must show the ground, so that where water *is* reads as a shape against dry
+ * land rather than as a shade of one wash over everything. Shading is off — a
+ * gradient in stored volume is not a hillside, and lighting it would draw a
+ * relief the water does not have.
+ */
+export const WATER_STYLE: SurfaceStyle = {
+  ramp: WATER_RAMP,
+  shading: false,
+  alpha: [0, 0.97],
+  // A shallow sheet spread over most of the chart with a few deep pools would
+  // otherwise leave the sheet invisible against the pools. The gamma lifts the
+  // shallows into the ramp without touching what is measured.
+  gamma: 0.55,
+};
+
+/** Soil and groundwater, which are held rather than standing. */
+export const MOISTURE_STYLE: SurfaceStyle = {
+  ramp: MOISTURE_RAMP,
+  shading: false,
+  alpha: [0.1, 0.92],
+  gamma: 0.75,
 };
 
 export const MANA_STYLE: SurfaceStyle = {

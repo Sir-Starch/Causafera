@@ -33,6 +33,9 @@ export const es: Copy = {
     unavailableBody:
       "El puente de Tauri no está disponible, así que no hay datos autorizados. El observador no sustituye nada con un estado de demostración: un instrumento vacío es más honesto que una lectura inventada.",
     unavailableHint: "Inicie el entorno de escritorio con pnpm --dir apps/observer desktop.",
+    capTitle: "La ejecución alcanzó el tope de exportación",
+    capBody:
+      "El siguiente tic produciría un estado mayor que el sobre de instantánea de 256 MiB, así que el entorno lo rechazó entero y dejó la sesión exactamente como estaba. Ningún estado aceptado puede volverse inexportable. Una carta de nueve bloques con hidrología acumula trazas causales y recibos de transferencia lo bastante rápido como para alcanzarlo en decenas de tics; Reiniciar comienza una ejecución nueva.",
     errorTitle: "El intercambio con el observador ha fallado",
   },
 
@@ -117,6 +120,31 @@ export const es: Copy = {
     manaCellChanges: "Cambios en celdas de maná",
     manaEffects: "Efectos físicos del maná",
     resolutionTransitions: "Transiciones de resolución",
+    water: "Agua, total",
+    waterStanding: "Agua estancada",
+    waterTitle: "Almacenamiento de agua",
+    waterLede:
+      "Los tres almacenes uno frente a otro. En una extensión cerrada el total es plano por construcción; lo que se mueve es en cuál de ellos está el agua.",
+    waterOpenChart: "Verlo en la carta",
+    waterLedger: "Balance hídrico",
+    waterLedgerLede:
+      "Totales de toda la sesión y el registro de forzamiento aplicado más reciente, con su origen.",
+    waterSurface: "Superficie",
+    waterSoil: "Suelo",
+    waterGround: "Agua subterránea",
+    waterConveyance: "Cauces",
+    waterChunks: "Bloques con agua",
+    waterResidualZero: "Balance cerrado · residuo 0",
+    waterForcing: "Último forzamiento",
+    waterNoForcing: "Ningún registro aplicado sigue estando evidenciado",
+    waterAccepted: "Aporte aceptado",
+    waterEvapotranspiration: "Demanda aceptada",
+    waterOrigin: "Origen",
+    waterDisabled: "no existe en este mundo",
+    waterDisabledBody:
+      "Esta sesión no contiene agua: la hidrología está configurada como desactivada. Es un hecho sobre la ejecución, no un hueco del instrumento.",
+    waterUnreported:
+      "Esta carga se escribió antes de que existiera la hidrología, así que no dice nada sobre el agua en ningún sentido.",
   },
 
   chart: {
@@ -171,6 +199,9 @@ export const es: Copy = {
     selection: "Selección",
     selectPrompt: "Ningún bloque seleccionado",
     selectPromptBody: "Seleccione un bloque en el mapa, en el perfil o en el registro.",
+    water: "Agua",
+    waterLede: "Sumado a partir de las retículas por celda que esta sesión mantiene, no de un agregado del bloque.",
+    noWaterLattice: "No se ha recibido retícula de agua para este bloque.",
     noChart: "Aún no se ha recibido ninguna carta",
     noChartBody:
       "La proyección de bloques llega en cuanto el observador se conecta. Nunca dibuja terreno que no se le haya entregado.",
@@ -216,6 +247,26 @@ export const es: Copy = {
     rate: "tasa",
     quantity: "Magnitud",
     total: "Total",
+    water: "Movimientos de agua",
+    waterLede:
+      "Como mucho 64 movimientos, en orden canónico de portador, para el último lote retenido. Cada uno —aceptado, aceptado en parte o rechazado por completo— viaja con sus tres volúmenes, porque un limitador que actuó es evidencia: mostrar sólo lo que se movió haría que una cota en funcionamiento pareciera un proceso sin nada que hacer. La ventana es una porción de un tic, no un censo.",
+    waterProcess: "Proceso",
+    waterRequested: "Solicitado",
+    waterAccepted: "Aceptado",
+    waterUnaccepted: "No aceptado",
+    waterAcceptance: "Proporción",
+    waterOrigin: "Ancla",
+    waterOriginHint: "El registro de forzamiento del que desciende este movimiento",
+    waterLimited: "limitados en la ventana",
+    waterUnlimited: "nada limitado en la ventana",
+    waterCells: "Cambios de agua por celda",
+    waterCellsLede:
+      "Como mucho 64 celdas cambiadas, en orden canónico de dirección: las primeras por dirección, no los mayores cambios ni una muestra de dónde se movió el agua. Cada fila es el antes y el después confirmados de una celda, con los términos de forzamiento y de flujo lateral que lo produjeron.",
+    waterForcingTerm: "Forzamiento",
+    waterLateral: "Flujo lateral",
+    noWater: "No hay movimientos de agua en la ventana",
+    noWaterBody:
+      "O bien esta sesión no contiene agua, o nada se movió dentro de la ventana acotada. Ambas cosas son observaciones, no huecos.",
   },
 
   assay: {
