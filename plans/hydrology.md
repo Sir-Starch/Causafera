@@ -4252,7 +4252,8 @@ its own evidence-backed follow-up TODO rather than being hidden in Progress.
   while its determinism evidence is the only thing pinning them would be the opposite of a bounded
   change. Recorded as a candidate for its own plan.
 
-- **2026-07-31 — The aggregate forcing-member cap closed on the recipe path.** A scoped re-review of
+- **2026-07-31 — The aggregate forcing-member cap closed on the recipe path.** Checkpoint `3da36db`.
+  A scoped re-review of
   `3c5d7af` confirmed four of the five remediated items and found the first one unfinished: the
   composed cap was carried in `decode_hydrology_section` but not in `decode_hydrology_config`.
 
