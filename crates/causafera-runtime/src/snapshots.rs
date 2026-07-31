@@ -43,6 +43,7 @@ pub struct RuntimeSnapshot {
     pub thermal_active_chunk_count: u32,
     pub thermal_active_cell_count: u32,
     pub bootstrap: ObserverBootstrapSummary,
+    pub hydrology: ObserverHydrologySummary,
 }
 
 impl RuntimeSnapshot {
@@ -78,6 +79,7 @@ impl RuntimeSnapshot {
             thermal_active_chunk_count: self.thermal_active_chunk_count,
             thermal_active_cell_count: self.thermal_active_cell_count,
             bootstrap: self.bootstrap.clone(),
+            hydrology: self.hydrology,
         }
     }
 }
@@ -88,6 +90,8 @@ pub struct RuntimeSnapshotData {
     pub spatial: SpatialChunkSnapshot,
     pub mana: ManaFieldSetSnapshot,
     pub thermal: ThermalSnapshot,
+    /// The complete hydrology state, present even when the domain is disabled.
+    pub hydrology: crate::HydrologyRuntimeState,
     pub resolution: ResolutionFieldSnapshot,
     pub resolution_policy: ResolutionPolicySnapshot,
     pub pattern_history: PatternHistorySnapshot,

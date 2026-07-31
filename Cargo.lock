@@ -413,6 +413,7 @@ dependencies = [
 name = "causafera-domains"
 version = "0.1.0"
 dependencies = [
+ "blake3",
  "causafera-biology",
  "causafera-cognition",
  "causafera-core",
@@ -448,6 +449,7 @@ dependencies = [
  "causafera-core",
  "causafera-types",
  "causafera-world",
+ "thiserror 2.0.19",
 ]
 
 [[package]]
@@ -493,7 +495,9 @@ dependencies = [
 name = "causafera-observer"
 version = "0.1.0"
 dependencies = [
+ "causafera-domains",
  "causafera-explanation",
+ "causafera-geography",
  "causafera-lab",
  "causafera-observer-api",
  "causafera-observer-wire",
@@ -558,6 +562,7 @@ dependencies = [
 name = "causafera-runtime"
 version = "0.1.0"
 dependencies = [
+ "blake3",
  "causafera-analytics",
  "causafera-biology",
  "causafera-cognition",

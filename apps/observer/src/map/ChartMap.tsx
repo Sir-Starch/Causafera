@@ -241,6 +241,29 @@ export function ChartMap({
         }
       }
 
+      // 2b. Overlay fields, composited over the primary one.
+      //
+      // A lens mounted as an overlay may draw a continuous field, not only
+      // marks. Water is the case that demands it: it means nothing without
+      // ground beneath it, and its ramp is transparent where no water stands,
+      // so over the relief it reads as a shape against land rather than as a
+      // second sheet. Drawn before the graticule so the lattice stays on top of
+      // every field rather than under the last one.
+      for (const { layers } of overlayLayers) {
+        const over = layers.surface;
+        if (over === undefined) continue;
+        const image = paintedSurface(over);
+        if (image === undefined) continue;
+        const bounds = fieldBounds(over.field);
+        const a = project(bounds.west, bounds.north);
+        const b = project(bounds.east, bounds.south);
+        // No paper fill under this one: an overlay composites onto what is
+        // already there, and painting the sheet first would erase it.
+        context2d.imageSmoothingEnabled = true;
+        context2d.imageSmoothingQuality = "high";
+        context2d.drawImage(image, a.x, a.y, b.x - a.x, b.y - a.y);
+      }
+
       // 3. The chart graticule.
       //
       // Ruled across the sheet it turns any map into a grid of squares, so over

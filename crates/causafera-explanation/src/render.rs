@@ -161,7 +161,7 @@ fn render_claim(out: &mut String, claim: &ExplanationClaim, locale: ObserverLoca
 
 /// Registered claim schemas, in `ObserverLocale::ORDER`. An identifier absent from this table
 /// is rendered generically rather than hidden, so a new schema appears the moment it is emitted.
-const SCHEMA_NAMES: [(u64, [&str; 5]); 15] = [
+const SCHEMA_NAMES: [(u64, [&str; 5]); 25] = [
     (
         1,
         [
@@ -310,6 +310,106 @@ const SCHEMA_NAMES: [(u64, [&str; 5]); 15] = [
             "物质表面局部魔力耦合",
             "Kopplung des lokalen Mana an der materiellen Oberfläche",
             "acoplamiento de maná local de superficie material",
+        ],
+    ),
+    (
+        20,
+        [
+            "hydrology minimum carrier storage",
+            "минимальный запас воды носителя",
+            "水文最小载体储量",
+            "minimaler Wasserspeicher eines Trägers",
+            "almacenamiento hídrico mínimo por portador",
+        ],
+    ),
+    (
+        21,
+        [
+            "hydrology maximum carrier storage",
+            "максимальный запас воды носителя",
+            "水文最大载体储量",
+            "maximaler Wasserspeicher eines Trägers",
+            "almacenamiento hídrico máximo por portador",
+        ],
+    ),
+    (
+        22,
+        [
+            "hydrology scope storage total",
+            "суммарный запас воды в области",
+            "水文范围储量总计",
+            "Gesamtwasserspeicher des Bereichs",
+            "almacenamiento hídrico total del ámbito",
+        ],
+    ),
+    (
+        23,
+        [
+            "hydrology water-table elevation range",
+            "диапазон высот уровня грунтовых вод",
+            "地下水位高程范围",
+            "Höhenbereich des Grundwasserspiegels",
+            "rango de elevación del nivel freático",
+        ],
+    ),
+    (
+        24,
+        [
+            "hydrology accepted forcing",
+            "принятое гидрологическое воздействие",
+            "已接受的水文强迫",
+            "aufgenommener hydrologischer Antrieb",
+            "forzamiento hidrológico aceptado",
+        ],
+    ),
+    (
+        25,
+        [
+            "hydrology unmet forcing",
+            "неудовлетворённое гидрологическое воздействие",
+            "未满足的水文强迫",
+            "nicht aufgenommener hydrologischer Antrieb",
+            "forzamiento hidrológico no atendido",
+        ],
+    ),
+    (
+        26,
+        [
+            "hydrology accepted transfer",
+            "принятый перенос воды",
+            "已接受的水量传输",
+            "aufgenommener Wassertransfer",
+            "transferencia hídrica aceptada",
+        ],
+    ),
+    (
+        27,
+        [
+            "hydrology transfer limited by a bound",
+            "перенос воды, ограниченный пределом",
+            "受界限限制的水量传输",
+            "durch eine Schranke begrenzter Wassertransfer",
+            "transferencia hídrica limitada por una cota",
+        ],
+    ),
+    (
+        28,
+        [
+            "hydrology conservation residual",
+            "невязка водного баланса",
+            "水量守恒残差",
+            "Restglied der Wasserbilanz",
+            "residuo de conservación hídrica",
+        ],
+    ),
+    (
+        29,
+        [
+            "hydrology boundary export",
+            "экспорт воды через границу",
+            "水文边界输出",
+            "Wasserausfuhr über die Grenze",
+            "exportación hídrica por la frontera",
         ],
     ),
 ];

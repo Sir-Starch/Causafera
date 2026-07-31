@@ -77,6 +77,24 @@ chart-qualified matching cell per historically contacted surface. Each persisted
 transition records local fixed-point before/after values and its mana trace; a falling gate does
 not create a material-condition transition. The bounded experiment-recipe source adds one
 externally originated carrier to this same path.
+Conserved hydrology adds a physical carrier family whose identities are structural rather than
+semantic. A cell, a face between two adjacent cells, an exterior face, a scheduled forcing record, a
+resolution chunk, and a synthetic aggregation node each have an exact fixed-length canonical
+encoding; none of them is a river, a lake, a catchment, or a drainage network, and no production
+path may promote one into a named thing. Water moves only along these carriers, always as a checked
+fixed-point volume, and every movement commits a receipt carrying what was requested, what was
+accepted, and what a bound refused — so a limiter that engaged stays distinguishable from a process
+that had nothing to do.
+
+The tick's own ledger is a carrier too. Each committed batch settles a conservation event whose
+residual is exactly zero, and the batch's terminal aggregation tree cites every event that touched a
+storage bucket, so a downstream reader can walk from a whole-tick budget down to the individual
+transfer that produced any part of it. Forcing enters this chain as explicit persisted state with an
+opaque producer identity: nothing behind a forcing record is simulated, and the record carries its
+own origin trace so accepted water is never water from nowhere. Surface material identity crosses
+none of this boundary — two worlds differing only in the material under the water behave
+identically.
+
 An immutable, validated recipe record enters as a root Mana-phase commit, then its chart-qualified
 fixed-point cell transition may flow through the existing mana, material-surface, physical-signal,
 and perception boundaries. Source record IDs, recipe hashes, and policy schemas remain engine-level

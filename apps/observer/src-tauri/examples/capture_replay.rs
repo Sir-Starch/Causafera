@@ -34,8 +34,15 @@ fn main() {
         std::process::exit(2);
     });
     let seed = parse(arguments.next(), 7);
-    let frames = parse(arguments.next(), 24);
-    let ticks_per_frame = parse(arguments.next(), 2);
+    // Pinned by the export cap, not chosen for its own sake. The session runs
+    // hydrology, and a hydrology-enabled chart of nine chunks reaches the
+    // 256 MiB cap around ten ticks at seed 7 — a default that ran past it would
+    // make `pnpm capture` fail rather than produce a shorter capture. Eight
+    // leaves margin and still spans the opening drainage and two rainfalls.
+    //
+    // Raise this when the cap does: nothing else here wants a short capture.
+    let frames = parse(arguments.next(), 8);
+    let ticks_per_frame = parse(arguments.next(), 1);
 
     let mut session = ObserverSession::new(seed).expect("observer session must initialize");
     let connect = session
@@ -160,13 +167,25 @@ fn rasters(
     include_static: bool,
 ) -> Vec<(String, Vec<u8>)> {
     let mut captured = Vec::new();
+    // The three water buckets change every tick exactly as mana does, and the
+    // replay is the only thing the render check has to exercise the water lenses
+    // against real bytes — a capture without them would leave those lenses
+    // covered only in the state where nothing has arrived.
     let fields: &[FieldRasterKind] = if include_static {
         &[
             FieldRasterKind::TerrainElevation,
             FieldRasterKind::ManaIntensity,
+            FieldRasterKind::HydrologySurfaceWater,
+            FieldRasterKind::HydrologySoilWater,
+            FieldRasterKind::HydrologyGroundwater,
         ]
     } else {
-        &[FieldRasterKind::ManaIntensity]
+        &[
+            FieldRasterKind::ManaIntensity,
+            FieldRasterKind::HydrologySurfaceWater,
+            FieldRasterKind::HydrologySoilWater,
+            FieldRasterKind::HydrologyGroundwater,
+        ]
     };
     for (chart_id, chunk_x, chunk_y, chunk_z) in chunks.iter().copied() {
         for field in fields.iter().copied() {

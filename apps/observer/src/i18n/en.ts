@@ -34,6 +34,9 @@ export const en = {
     unavailableBody:
       "The Tauri bridge is unavailable, so there is no authoritative data. The observer substitutes no demonstration state: an empty instrument is more honest than an invented reading.",
     unavailableHint: "Start the desktop shell with pnpm --dir apps/observer desktop.",
+    capTitle: "The run reached the export cap",
+    capBody:
+      "The next tick would produce a state larger than the 256 MiB snapshot envelope, so the engine refused it whole and left the session exactly as it was. No accepted state may become unexportable. A hydrology-enabled chart of nine chunks accumulates causal traces and transfer receipts quickly enough to reach it in tens of ticks; Reset starts a new run.",
     errorTitle: "The observer exchange failed",
   },
 
@@ -116,6 +119,31 @@ export const en = {
     manaCellChanges: "Mana cell changes",
     manaEffects: "Mana physical effects",
     resolutionTransitions: "Resolution transitions",
+    water: "Water, total",
+    waterStanding: "Standing water",
+    waterTitle: "Water storage",
+    waterLede:
+      "The three storages against each other. In a closed extent the total is flat by construction; what moves is which storage the water is in.",
+    waterOpenChart: "See it on the chart",
+    waterLedger: "Water ledger",
+    waterLedgerLede:
+      "Whole-session totals and the most recent applied forcing record, with its origin.",
+    waterSurface: "Surface",
+    waterSoil: "Soil",
+    waterGround: "Groundwater",
+    waterConveyance: "Conveyance",
+    waterChunks: "Chunks with water",
+    waterResidualZero: "Ledger closed · residual 0",
+    waterForcing: "Latest forcing",
+    waterNoForcing: "No applied record is still evidenced",
+    waterAccepted: "Accepted source",
+    waterEvapotranspiration: "Accepted demand",
+    waterOrigin: "Origin",
+    waterDisabled: "not in this world",
+    waterDisabledBody:
+      "This session holds no water: hydrology is configured off, which is a fact about the run rather than a gap in the instrument.",
+    waterUnreported:
+      "This payload was written before hydrology existed, so it says nothing about water either way.",
   },
 
   chart: {
@@ -169,6 +197,10 @@ export const en = {
     selection: "Selection",
     selectPrompt: "No chunk selected",
     selectPromptBody: "Select a chunk on the map, in the profile or in the register.",
+    water: "Water",
+    waterLede:
+      "Summed from the per-cell lattices this session holds, not from a chunk aggregate.",
+    noWaterLattice: "No water lattice received for this chunk.",
     noChart: "No chart received yet",
     noChartBody:
       "The chunk projection arrives once the observer attaches. It never draws ground it was not given.",
@@ -212,6 +244,26 @@ export const en = {
     rate: "rate",
     quantity: "Quantity",
     total: "Total",
+    water: "Water movements",
+    waterLede:
+      "At most 64 movements, in canonical carrier order, for the latest retained batch. Every accepted, partly accepted and wholly rejected one travels with all three of its volumes, because a limiter that engaged is evidence: showing only what moved would make a bound doing its work look like a process with nothing to do. The window is a slice of a tick, not a census of it.",
+    waterProcess: "Process",
+    waterRequested: "Requested",
+    waterAccepted: "Accepted",
+    waterUnaccepted: "Unaccepted",
+    waterAcceptance: "Share",
+    waterOrigin: "Anchor",
+    waterOriginHint: "The forcing record this movement descends from",
+    waterLimited: "limited in the window",
+    waterUnlimited: "nothing limited in the window",
+    waterCells: "Water cell changes",
+    waterCellsLede:
+      "At most 64 changed cells, in canonical address order — the first by address, not the largest changes and not a sample of where water moved. Each row is one cell's committed before and after, with the forcing and lateral terms that produced it.",
+    waterForcingTerm: "Forcing",
+    waterLateral: "Lateral",
+    noWater: "No water movements in the window",
+    noWaterBody:
+      "Either this session holds no water, or nothing moved inside the bounded window. Both are observations rather than gaps.",
   },
 
   assay: {

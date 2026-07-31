@@ -1,11 +1,16 @@
 /**
  * Flux — causal activity over run time.
  *
- * Three readings of the same run: rate recorders over the observer-side series, the surface
- * condition ladder with its provenance markers, and the bounded transition ledger. A trace
- * anchor selected anywhere here filters the ledger, which is the only provenance navigation
- * the current protocol supports — there is no ancestry query yet, and the interface says so
- * rather than implying a graph it cannot draw.
+ * Readings of one run: rate recorders over the observer-side series, the water movement and
+ * cell-delta windows, the surface condition ladder with its provenance markers, and the
+ * bounded transition ledger. A trace anchor selected anywhere here filters the ledger, which
+ * is the only provenance navigation the current protocol supports — there is no ancestry
+ * query yet, and the interface says so rather than implying a graph it cannot draw.
+ *
+ * The two water windows are 64 entries each, selected by canonical order and truncated. That
+ * makes them a deterministic slice of a tick rather than a census of one, and it is why they
+ * are tables here rather than marks on the chart: a list states its own ordering, while marks
+ * on a map would turn the ordering into a claim about where water went.
  */
 
 import { useMemo } from "react";
@@ -20,13 +25,21 @@ import {
   TraceChip,
   Unsurveyed,
 } from "../components/primitives";
-import { formatCompact, formatInteger } from "../observer/format";
+import {
+  formatCompact,
+  formatInteger,
+  formatPercent,
+  formatWaterDelta,
+  formatWaterVolume,
+} from "../observer/format";
 import { useCopy, useFeed, useSession } from "../observer/instance";
 import {
   activityRates,
   buildGates,
   buildLadders,
   buildLedger,
+  buildWaterCells,
+  buildWaterTransfers,
   levelSeries,
   rateSeries,
   type SignalId,
@@ -52,6 +65,12 @@ export function FluxArea({ workspace, update }: AreaProps) {
   const ladders = useMemo(() => buildLadders(world?.materialSurfaceDeltas ?? []), [world]);
   const gates = useMemo(() => buildGates(world?.materialSurfaceGateDeltas ?? []), [world]);
   const rates = useMemo(() => activityRates(history), [history]);
+  const transfers = useMemo(
+    () => buildWaterTransfers(world?.hydrologyTransferSummaries ?? []),
+    [world],
+  );
+  const limitedTransfers = transfers.filter((transfer) => transfer.limited).length;
+  const waterCells = useMemo(() => buildWaterCells(world?.hydrologyDeltas ?? []), [world]);
 
   const ledger = useMemo(() => {
     const all = buildLedger(world?.materialSurfaceDeltas ?? []);
@@ -154,6 +173,144 @@ export function FluxArea({ workspace, update }: AreaProps) {
           </p>
         </Panel>
       </div>
+
+      <Panel
+        title={copy.flux.water}
+        eyebrow={copy.common.bounded}
+        lede={copy.flux.waterLede}
+        flushBody
+        tools={
+          <Tag tone={limitedTransfers === 0 ? "quiet" : "partial"}>
+            {limitedTransfers === 0
+              ? copy.flux.waterUnlimited
+              : `${formatInteger(limitedTransfers, locale)} ${copy.flux.waterLimited}`}
+          </Tag>
+        }
+      >
+        {transfers.length === 0 ? (
+          <div style={{ padding: "var(--s3)" }}>
+            <Unsurveyed title={copy.flux.noWater}>{copy.flux.noWaterBody}</Unsurveyed>
+          </div>
+        ) : (
+          <div className="table-frame" style={{ ["--table-height" as string]: "16rem" }}>
+            <table className="data">
+              <thead>
+                <tr>
+                  <th className="num">{copy.flux.tick}</th>
+                  <th className="num">{copy.flux.waterProcess}</th>
+                  <th className="num">{copy.flux.waterRequested}</th>
+                  <th className="num">{copy.flux.waterAccepted}</th>
+                  <th className="num">{copy.flux.waterUnaccepted}</th>
+                  <th className="num">{copy.flux.waterAcceptance}</th>
+                  <th>{copy.flux.waterOrigin}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {transfers.map((transfer) => (
+                  <tr key={transfer.key}>
+                    <td className="num emphasis">{transfer.tick}</td>
+                    {/* An opaque numeric identity. Rendering it as a process
+                        name would put a developer analytical label where the
+                        simulation carries a number (INV-006). */}
+                    <td className="num muted">P{transfer.processKind}</td>
+                    <td className="num">{formatWaterVolume(transfer.requested, locale)}</td>
+                    <td className="num" style={{ color: "var(--sig-water)" }}>
+                      {formatWaterVolume(transfer.accepted, locale)}
+                    </td>
+                    <td
+                      className="num"
+                      style={{ color: transfer.limited ? "var(--sig-refused)" : undefined }}
+                    >
+                      {transfer.unaccepted === 0n
+                        ? "—"
+                        : formatWaterVolume(transfer.unaccepted, locale)}
+                    </td>
+                    <td className="num">
+                      {transfer.acceptance === undefined
+                        ? "—"
+                        : formatPercent(transfer.acceptance, 0)}
+                    </td>
+                    <td className="numeric">
+                      {transfer.forcingOriginTraceId === null ? (
+                        <TraceChip
+                          id={transfer.transferTraceId}
+                          active={workspace.traceFilter === transfer.transferTraceId}
+                          onSelect={(id) =>
+                            update({ traceFilter: workspace.traceFilter === id ? undefined : id })
+                          }
+                        />
+                      ) : (
+                        <TraceChip
+                          id={transfer.forcingOriginTraceId}
+                          active={workspace.traceFilter === transfer.forcingOriginTraceId}
+                          title={copy.flux.waterOriginHint}
+                          onSelect={(id) =>
+                            update({ traceFilter: workspace.traceFilter === id ? undefined : id })
+                          }
+                        />
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Panel>
+
+      <Panel
+        title={copy.flux.waterCells}
+        eyebrow={copy.common.bounded}
+        lede={copy.flux.waterCellsLede}
+        flushBody
+      >
+        {waterCells.length === 0 ? (
+          <div style={{ padding: "var(--s3)" }}>
+            <Unsurveyed title={copy.flux.noWater}>{copy.flux.noWaterBody}</Unsurveyed>
+          </div>
+        ) : (
+          <div className="table-frame" style={{ ["--table-height" as string]: "16rem" }}>
+            <table className="data">
+              <thead>
+                <tr>
+                  <th className="num">{copy.flux.tick}</th>
+                  <th>{copy.chart.cell}</th>
+                  <th className="num">{copy.station.waterSurface}</th>
+                  <th className="num">{copy.station.waterSoil}</th>
+                  <th className="num">{copy.station.waterGround}</th>
+                  <th className="num">{copy.flux.waterForcingTerm}</th>
+                  <th className="num">{copy.flux.waterLateral}</th>
+                  <th>{copy.flux.waterOrigin}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {waterCells.map((cell) => (
+                  <tr key={cell.key}>
+                    <td className="num emphasis">{cell.tick}</td>
+                    <td className="numeric">
+                      {cell.chunkX}, {cell.chunkY} · {cell.cell.x}, {cell.cell.y}
+                    </td>
+                    <td className="num">{formatWaterDelta(cell.surfaceChange, locale)}</td>
+                    <td className="num">{formatWaterDelta(cell.soilChange, locale)}</td>
+                    <td className="num">{formatWaterDelta(cell.groundwaterChange, locale)}</td>
+                    <td className="num">{formatWaterDelta(cell.netForcing, locale)}</td>
+                    <td className="num">{formatWaterDelta(cell.netLateralFlow, locale)}</td>
+                    <td className="numeric">
+                      <TraceChip
+                        id={cell.transitionTraceId}
+                        active={workspace.traceFilter === cell.transitionTraceId}
+                        onSelect={(id) =>
+                          update({ traceFilter: workspace.traceFilter === id ? undefined : id })
+                        }
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Panel>
 
       <Panel
         title={copy.flux.ladder}

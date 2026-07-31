@@ -1044,7 +1044,12 @@ fn enabled_source_same_seed_replays_exactly() {
         second_snapshot.canonical_state
     );
     assert_eq!(first_receipts, second_receipts);
-    assert_eq!(first_snapshot.physical_state_digest.schema_version.raw(), 7);
+    // Schema 8 covers hydrology. A digest is an identity, so the version says which
+    // state it covers; this run's water is a disabled domain's single zero.
+    assert_eq!(
+        first_snapshot.physical_state_digest.schema_version.raw(),
+        causafera_runtime::CURRENT_DIGEST_SCHEMA_VERSION.raw()
+    );
 }
 
 #[test]

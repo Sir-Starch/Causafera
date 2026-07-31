@@ -14,6 +14,11 @@ causafera-observer-wire.workspace = true
 causafera-runtime.workspace = true
 causafera-types.workspace = true
 thiserror.workspace = true
+# The session declares its own hydrology: a grid metric, substrate parameters,
+# a boundary condition and a forcing schedule are geography and domain types,
+# and `HydrologyConfig` is stated in them rather than in runtime-local aliases.
+causafera-domains.workspace = true
+causafera-geography.workspace = true
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

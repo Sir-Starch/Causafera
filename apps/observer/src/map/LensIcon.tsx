@@ -14,6 +14,10 @@ const PATHS: Record<string, string> = {
   roughness: "M2 12l2-3 2 4 2-5 2 6 2-4 2 3 2-5 2 4",
   contours: "M10 10m-2.5 0a2.5 2.5 0 1 0 5 0a2.5 2.5 0 1 0-5 0M10 10m-5.5 0a5.5 2.8 0 1 0 11 0a5.5 2.8 0 1 0-11 0M10 10m-8 0a8 4.6 0 1 0 16 0a8 4.6 0 1 0-16 0",
   ecology: "M10 17V7M10 7c0-3 2.5-4.5 5.5-4.5C15.5 6 13 8 10 8M10 10c0-2.5-2-4-4.5-4C5.5 9 7.5 11 10 11",
+  // Water — a standing surface, a drop soaking in, a table under the ground.
+  "water-surface": "M2 8q2-2 4 0t4 0t4 0t4 0M2 12q2-2 4 0t4 0t4 0t4 0M2 16q2-2 4 0t4 0t4 0t4 0",
+  "water-soil": "M10 2.5l3.2 4.4a4 4 0 1 1-6.4 0zM2 13h16M2 16.5h16",
+  "water-groundwater": "M2 6h16M4 6v3M8 6v4M12 6v3M16 6v4M2 12.5q2-2 4 0t4 0t4 0t4 0M2 16q2-2 4 0t4 0t4 0t4 0",
   // Material — a lattice with one marked cell.
   surface: "M3 3h14v14H3zM3 8h14M3 13h14M8 3v14M13 3v14M9 9.5l1.5-1.5 1.5 1.5-1.5 1.5z",
   // Mana — a radiant source, a directed difference, a gate.

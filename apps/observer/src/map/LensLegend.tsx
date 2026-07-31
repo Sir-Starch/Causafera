@@ -131,6 +131,10 @@ export function LensLegend({
 
 /** The key mark mirrors whichever geometry the overlay actually contributes. */
 function keyShape(layers: LensLayers): string {
+  // Before marks, because an overlay that paints a field paints the largest
+  // thing on the sheet, and a key that showed its isolines instead would
+  // describe the smaller half of what it drew.
+  if (layers.surface !== undefined) return "wash";
   if (layers.isolines !== undefined && layers.isolines.length > 0) return "line";
   if (layers.vectors !== undefined && layers.vectors.length > 0) return "arrow";
   if (layers.cells !== undefined && layers.cells.length > 0) return "diamond";

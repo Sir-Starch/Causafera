@@ -47,7 +47,10 @@ pub const EXPERIMENT_RECIPE_MANA_SOURCE_POLICY_SCHEMA_V1: u64 = 1;
 /// Bumped to 7 when the canonical production bootstrap record (plan identity,
 /// per-stage result fingerprints, and terminal receipts) became an authoritative
 /// input to `physical_state_digest`.
-pub const CURRENT_DIGEST_SCHEMA_VERSION: DigestSchemaVersion = DigestSchemaVersion::new(7);
+/// Schema 8 adds hydrology to the physical digest. A digest is an identity, never
+/// a distance: the version says which state it covers, and a session that
+/// gained a domain gained new authoritative state to cover.
+pub const CURRENT_DIGEST_SCHEMA_VERSION: DigestSchemaVersion = DigestSchemaVersion::new(8);
 
 const PHYSICAL_SYSTEM_ID: u64 = 10;
 pub const EXPERIMENT_RECIPE_MANA_SOURCE_SYSTEM_ID: u64 = 19;
@@ -121,6 +124,35 @@ const EXPERIMENT_DIGEST_DOMAIN: u64 = 0x4558_5045_5249_4D45;
 pub struct Runtime {
     pub(crate) scheduler: Scheduler,
     pub(crate) state: Arc<Mutex<RuntimeState>>,
+    scheduler_registrations: Vec<SchedulerRegistration>,
+    /// The complete-envelope byte cap every hydrology-enabled tick is held to.
+    ///
+    /// Always `causafera_persistence::MAX_TOTAL_SIZE` in production; a field only
+    /// so a test can lower it to a reachable value and drive the near-cap
+    /// rejection on a real session. See `crate::tick_transaction`.
+    pub(crate) snapshot_budget: u64,
+    /// The hydrology-section byte cap every hydrology-enabled tick is held to.
+    ///
+    /// Always `causafera_geography::MAX_HYDROLOGY_SECTION_BYTES` in production,
+    /// and a field for the same reason as `snapshot_budget`: reaching 192 MiB of
+    /// section means allocating 192 MiB of section, so without a lowerable bound
+    /// the only test that could be written is one that asserts the refusal never
+    /// happens — which is what the test named for it used to do.
+    pub(crate) hydrology_section_budget: usize,
+}
+
+/// One system's phase and the stream-keying ID the scheduler actually assigned it.
+///
+/// `runtime_system_registrations` *declares* the same order, but a declaration
+/// cannot catch a registration inserted ahead of the systems it numbers: the
+/// declared list and the live scheduler would simply disagree in silence. Every
+/// system's deterministic RNG stream is keyed on the ID recorded here, so this
+/// is the observed artifact `plans/hydrology.md` R7 protects, captured from
+/// `Scheduler::register_system`'s own return value rather than restated.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct SchedulerRegistration {
+    pub phase: Phase,
+    pub system_id: u64,
 }
 
 impl Runtime {
@@ -128,60 +160,110 @@ impl Runtime {
         let config = config.validate()?;
         let state = Arc::new(Mutex::new(RuntimeState::new(&config)?));
         let mut scheduler = Scheduler::new(config.deterministic.clone());
-        scheduler.register_system(
+        let mut scheduler_registrations = Vec::new();
+        let mut register = |scheduler: &mut Scheduler, phase, system| {
+            scheduler_registrations.push(SchedulerRegistration {
+                phase,
+                system_id: scheduler.register_system(phase, system),
+            });
+        };
+        register(
+            &mut scheduler,
             Phase::Physics,
             Box::new(PhysicalPatternSystem::new(
                 Arc::clone(&state),
                 config.pattern_schedule,
             )),
         );
-        scheduler.register_system(
+        register(
+            &mut scheduler,
             Phase::Mana,
             Box::new(ExperimentRecipeManaSourceSystem::new(Arc::clone(&state))),
         );
-        scheduler.register_system(
+        register(
+            &mut scheduler,
             Phase::Mana,
             Box::new(ManaRuntimeSystem::new(
                 Arc::clone(&state),
                 config.mana_parameters,
             )),
         );
-        scheduler.register_system(
+        register(
+            &mut scheduler,
             Phase::Mana,
             Box::new(ManaEffectsSystem::new(
                 Arc::clone(&state),
                 config.mana_parameters,
             )),
         );
-        scheduler.register_system(
+        register(
+            &mut scheduler,
             Phase::Resolution,
             Box::new(ResolutionRuntimeSystem::new(Arc::clone(&state))),
         );
-        scheduler.register_system(
+        register(
+            &mut scheduler,
             Phase::Perception,
             Box::new(ActorPerceptionSystem::new(Arc::clone(&state))),
         );
-        scheduler.register_system(
+        register(
+            &mut scheduler,
             Phase::Cognition,
             Box::new(ActorCognitionSystem::new(Arc::clone(&state))),
         );
-        scheduler.register_system(
+        register(
+            &mut scheduler,
             Phase::Action,
             Box::new(ActorActionSystem::new(Arc::clone(&state))),
         );
-        scheduler.register_system(
+        register(
+            &mut scheduler,
             Phase::Lifecycle,
             Box::new(PopulationLifecycleSystem::new(Arc::clone(&state))),
         );
-        scheduler.register_system(
+        register(
+            &mut scheduler,
             Phase::Physics,
             Box::new(ThermalReservoirSystem::new(Arc::clone(&state))),
         );
-        scheduler.register_system(
+        register(
+            &mut scheduler,
             Phase::Physics,
             Box::new(ThermalEvolutionSystem::new(Arc::clone(&state))),
         );
-        Ok(Self { scheduler, state })
+        // Appended after every existing registration. Although hydrology runs in
+        // `Phase::Physics`, appending is what preserves the implicit IDs and
+        // therefore the RNG stream keys of every system already registered
+        // (plan risk R7, §10).
+        register(
+            &mut scheduler,
+            Phase::Physics,
+            Box::new(crate::HydrologyRuntimeSystem::new(Arc::clone(&state))),
+        );
+        Ok(Self {
+            scheduler,
+            state,
+            scheduler_registrations,
+            snapshot_budget: causafera_persistence::MAX_TOTAL_SIZE,
+            hydrology_section_budget: causafera_geography::MAX_HYDROLOGY_SECTION_BYTES,
+        })
+    }
+
+    /// A read-only copy of the runtime's hydrology state.
+    ///
+    /// Cloned rather than borrowed because the state lives behind the tick loop's
+    /// mutex; nothing downstream may hold that lock or mutate what it guards.
+    pub fn hydrology_state(&self) -> crate::HydrologyRuntimeState {
+        self.state
+            .lock()
+            .map(|state| state.hydrology.clone())
+            .unwrap_or_default()
+    }
+
+    /// The phase and stream-keying ID the scheduler assigned each system, in
+    /// registration order. Read-only evidence; nothing consumes it to execute.
+    pub fn scheduler_registrations(&self) -> &[SchedulerRegistration] {
+        &self.scheduler_registrations
     }
 
     pub fn from_seed(world_seed: u64) -> Result<Self, RuntimeError> {
@@ -196,9 +278,37 @@ impl Runtime {
         if self.scheduler.current_time().raw() >= MAX_RUNTIME_TICKS {
             return Err(RuntimeError::TickLimitExceeded);
         }
+        // A hydrology-enabled tick runs inside a staging transaction; every other
+        // session keeps the frozen legacy path, which is what keeps its bytes and
+        // stream probes comparable with the pre-hydrology evidence (V22).
+        let transaction = {
+            let state = self.lock_state()?;
+            if let Some(error) = state.failure.clone() {
+                return Err(error);
+            }
+            state.hydrology.enabled.then(|| {
+                RuntimeTickTransaction::open(
+                    &state,
+                    self.snapshot_budget,
+                    self.hydrology_section_budget,
+                )
+            })
+        };
         self.scheduler.tick();
         let mut state = self.lock_state()?;
-        if let Some(error) = state.failure.clone() {
+        if let Some(transaction) = transaction {
+            let restore_to = transaction.completed_time();
+            if let Err(error) = transaction.close(&mut state, self.scheduler.current_time()) {
+                // The staged state is back. The scheduler has to come back with
+                // it: its clock and every system's next-execution time are what
+                // key the RNG streams, so leaving them advanced would make the
+                // retried tick a different tick.
+                drop(state);
+                self.scheduler.set_current_time(restore_to);
+                self.scheduler.restore_system_times(restore_to.tick());
+                return Err(error);
+            }
+        } else if let Some(error) = state.failure.clone() {
             return Err(error);
         }
         if state.advanced_through != self.scheduler.current_time() {
@@ -278,6 +388,34 @@ impl Runtime {
         state.thermal_conservation_explanation(self.scheduler.current_time())
     }
 
+    /// Typed hydrology evidence for one chunk, or for the whole resident scope.
+    ///
+    /// A chunk that holds no water, a session that never enabled hydrology, and
+    /// a batch that retention has evicted all answer with insufficiency claims
+    /// rather than with an error, so an observer can tell "no evidence" apart
+    /// from "a failed query" (`plans/hydrology.md` V29).
+    pub fn observer_hydrology_explanation(
+        &self,
+        scope: Option<ChartChunkCoord>,
+    ) -> Result<ExplanationReport, RuntimeError> {
+        let state = self.lock_state()?;
+        if let Some(error) = state.failure.clone() {
+            return Err(error);
+        }
+        let time = self.scheduler.current_time();
+        let claims = state
+            .hydrology
+            .explanation_claims(scope)
+            .map_err(|_| RuntimeError::InvalidSnapshot("invalid hydrology Explanation claim"))?;
+        let frame = ExplanationFrame::new(time, claims)
+            .map_err(|_| RuntimeError::InvalidSnapshot("invalid hydrology Explanation frame"))?;
+        ExplanationReport::new(
+            ExperimentId::new(state.config.deterministic.world_seed),
+            vec![frame],
+        )
+        .map_err(|_| RuntimeError::InvalidSnapshot("invalid hydrology Explanation report"))
+    }
+
     /// The queried surface's most recent retained-heat exchange (`TODO-THERMAL-002`), independent
     /// of its mana/contact history: an unknown surface ID is rejected, while a real surface with
     /// no exchange evidence in the bounded transition history yields an `Unknown` claim rather
@@ -343,6 +481,11 @@ impl Runtime {
             .scheduler
             .restore_system_times(data.recipe.completed_time.tick());
         let restored_state = RuntimeState::import_snapshot(data)?;
+        // A resumed session has to be able to save again. Checked here rather than
+        // inside `RuntimeState::import_snapshot` because envelope assembly imports
+        // the data itself to compute its digests, and a size check inside import
+        // would call assembly, which would call import.
+        crate::tick_transaction::require_exportable(&restored_state)?;
         *runtime.lock_state()? = restored_state;
         Ok(runtime)
     }
@@ -351,7 +494,7 @@ impl Runtime {
         RuntimeState::import_snapshot(data)
     }
 
-    fn lock_state(&self) -> Result<MutexGuard<'_, RuntimeState>, RuntimeError> {
+    pub(crate) fn lock_state(&self) -> Result<MutexGuard<'_, RuntimeState>, RuntimeError> {
         self.state.lock().map_err(|_| RuntimeError::StatePoisoned)
     }
 }
@@ -477,6 +620,148 @@ pub enum RuntimeError {
     ActorCognition(#[from] causafera_cognition::SceneUpdateError),
     #[error("snapshot is invalid: {0}")]
     InvalidSnapshot(&'static str),
+    #[error("hydrology limits schema {schema} is not supported")]
+    HydrologyLimitsSchemaUnknown { schema: u16 },
+    #[error("hydrology bootstrap parameter schema {schema} is not supported")]
+    HydrologyBootstrapParametersSchemaUnknown { schema: u16 },
+    /// A disabled hydrology configuration has exactly one canonical shape.
+    /// Carrying parameters it will never use means its author believed something
+    /// the runtime does not.
+    #[error("a disabled hydrology configuration carries state it cannot use")]
+    HydrologyDisabledConfigNotCanonical,
+    #[error("hydrology is enabled without bootstrap parameters")]
+    HydrologyEnabledWithoutParameters,
+    #[error("hydrology is enabled without an explicit grid metric")]
+    HydrologyMetricMissing,
+    #[error("hydrology resolution level {level} is above the representable maximum")]
+    HydrologyResolutionLevelUnsupported { level: u8 },
+    #[error("hydrology {what}: {count} exceeds the limit of {max}")]
+    HydrologyBoundExceeded {
+        what: &'static str,
+        count: usize,
+        max: usize,
+    },
+    #[error("a hydrology forcing schedule is unsorted, duplicated, or empty")]
+    HydrologyForcingScheduleNotCanonical,
+    #[error(
+        "a hydrology forcing record is scheduled for tick {scheduled_tick}, \
+         which is not after the bootstrap tick {bootstrap_tick}"
+    )]
+    HydrologyForcingScheduledTooEarly {
+        scheduled_tick: u64,
+        bootstrap_tick: u64,
+    },
+    #[error(
+        "a hydrology forcing record at tick {scheduled_tick} is beyond the {horizon}-tick horizon"
+    )]
+    HydrologyForcingBeyondHorizon { scheduled_tick: u64, horizon: u64 },
+    #[error("a hydrology fraction {numerator}/{denominator} is outside [0, 1]")]
+    HydrologyFractionOutOfRange { numerator: u32, denominator: u32 },
+    #[error("hydrology initial storage exceeds its own configured capacity")]
+    HydrologyInitialStorageExceedsCapacity,
+    #[error("hydrology configures groundwater capacity without a specific yield")]
+    HydrologyZeroSpecificYield,
+    /// `CausalTarget` has one `u64` object slot, so every addressable hydrology
+    /// carrier needs a registered dense ordinal. Hashing a 22-byte cell key into
+    /// the slot would let two cells collide and the causal record would then say
+    /// one thing about two places.
+    #[error("a hydrology carrier has no registered object ordinal")]
+    HydrologyCarrierNotRegistered,
+    #[error("a hydrology carrier is not an addressable causal target")]
+    HydrologyCarrierNotAddressable,
+    #[error("a hydrology fine allocation names a coarse process that was not built")]
+    HydrologyCoarseProcessUnknown,
+    #[error("a hydrology terminal leaf names an event that is not in the batch")]
+    HydrologyTerminalLeafUnknown,
+    #[error("hydrology synthetic aggregation node identifiers are exhausted")]
+    HydrologyNodeIdentifiersExhausted,
+    #[error("the hydrology conservation event is not in the committed batch")]
+    HydrologyConservationNotCommitted,
+    #[error("a hydrology anchor names an event that is not in the committed batch")]
+    HydrologyAnchorNotCommitted,
+    #[error("a hydrology forcing record marked applied is not in the schedule")]
+    HydrologyForcingRecordUnknown,
+    #[error("hydrology bucket tag {0:#04x} is not cell storage and has no anchor")]
+    HydrologyBucketNotCellStorage(u8),
+    /// A derived per-tick coefficient did not fit its destination type. Clamping
+    /// it would execute a different world than the one that was configured.
+    #[error("a derived hydrology coefficient does not fit its destination type")]
+    HydrologyCoefficientOverflow,
+    /// The hydrology bootstrap stage's origin event cites the preceding stage's
+    /// completion. Without one there is nothing to attribute the initialised world
+    /// to, and an origin with no ancestry is not an origin.
+    #[error("the hydrology bootstrap stage has no preceding stage to cite")]
+    HydrologyBootstrapWithoutPredecessor,
+    #[error("an imported disabled hydrology state carries water it says it does not have")]
+    HydrologyDisabledStateNotCanonical,
+    #[error("an imported hydrology object registry is not a bijection onto a dense range")]
+    HydrologyRegistryNotDense,
+    #[error("an imported hydrology object registry does not address exactly its own carriers")]
+    HydrologyRegistryIncomplete,
+    #[error("an imported hydrology chunk has no resolution entry")]
+    HydrologyResolutionEntryMissing,
+    #[error("an imported hydrology residency set does not match its field set")]
+    HydrologyResidencyMismatch,
+    #[error("an imported applied hydrology forcing record's timestamp is not its scheduled tick")]
+    HydrologyForcingAppliedAtMismatch,
+    #[error("an imported hydrology forcing record claims to have applied in the future")]
+    HydrologyForcingAppliedInTheFuture,
+    #[error("an imported pending hydrology forcing record is scheduled in the past")]
+    HydrologyForcingMissedItsTick,
+    #[error("an imported hydrology retained batch is missing its receipts or its ledger")]
+    HydrologyRetainedBatchIncomplete,
+    #[error("imported hydrology receipts do not recompute to the ledger they claim")]
+    HydrologyReceiptsDisagreeWithLedger,
+    #[error("an imported hydrology section and its recipe disagree about whether water exists")]
+    HydrologyStateDisagreesWithRecipe,
+    /// A conveyance edge reaching outside the field set. Routing settles a
+    /// release into its outlet cell's storage, so an endpoint or outlet with no
+    /// field is not a distant carrier — it is a write with nowhere to land.
+    #[error("an imported hydrology conveyance edge names a cell that is not resident")]
+    HydrologyConveyanceCellNotResident,
+    /// The retained batches are the newest whole ones, so their sequence numbers
+    /// are contiguous and end at the field set's. A gap would mean a batch was
+    /// removed from the middle of the window, which eviction cannot do.
+    #[error("imported hydrology retained batches are not a contiguous newest-first window")]
+    HydrologyBatchSequenceNotContinuous,
+    #[error("an imported hydrology transfer receipt does not belong to the batch that holds it")]
+    HydrologyReceiptBatchMismatch,
+    /// A trace anchor naming an event the store does not hold. The anchor is the
+    /// whole of a carrier's provenance, so one that resolves to nothing leaves
+    /// the carrier describing an origin that never happened.
+    #[error("an imported hydrology anchor names a trace the store does not hold")]
+    HydrologyTraceAnchorUnknown,
+    #[error("an imported hydrology retained batch is not anchored to a conservation event")]
+    HydrologyBatchTraceNotConservation,
+    /// Forcing ancestry is not the record's to declare. Every canonical record
+    /// is installed by the bootstrap stage against the origin event it commits,
+    /// under the one producer policy that stage applies.
+    #[error("an imported hydrology forcing record's ancestry is not a bootstrap origin")]
+    HydrologyForcingAncestryForged,
+    #[error("imported hydrology {what} does not match the persisted configuration")]
+    HydrologyStateDisagreesWithConfiguration { what: &'static str },
+    /// The hydrology section of the would-be snapshot outgrew its own cap.
+    ///
+    /// Reported before the state is accepted, never after: a state that cannot be
+    /// encoded is a state this session could never save.
+    #[error("the hydrology snapshot section would encode {size} bytes and the bound is {max}")]
+    HydrologySectionWouldExceedBound { size: usize, max: usize },
+    /// The complete would-be snapshot envelope outgrew the persistence cap.
+    ///
+    /// Composed, not estimated: every section, the causal trace bytes, the header
+    /// and the section directory. A tick that crosses it is refused whole,
+    /// including its later-phase work, because the alternative is an accepted
+    /// world nobody can export.
+    #[error("the complete snapshot envelope would encode {size} bytes and the cap is {max}")]
+    SnapshotWouldExceedTotalSize { size: u64, max: u64 },
+    #[error("snapshot assembly failed: {0}")]
+    SnapshotAssembly(#[from] causafera_persistence::PersistenceError),
+    #[error("hydrology state is invalid: {0}")]
+    HydrologyState(#[from] causafera_geography::HydrologyStateError),
+    #[error("hydrology causal commit failed: {0}")]
+    HydrologyCommit(#[from] causafera_core::provenance::CausalDagCommitError),
+    #[error("hydrology evolution failed: {0}")]
+    Hydrology(#[from] causafera_domains::HydrologyError),
 }
 
 impl From<ManaError> for RuntimeError {
@@ -498,6 +783,13 @@ impl From<ThermalError> for RuntimeError {
     }
 }
 
+/// Every value one tick may mutate, in one place.
+///
+/// `Clone` exists for exactly one caller: [`crate::RuntimeTickTransaction`] stages
+/// a copy of the whole thing before a hydrology-enabled tick starts, so a tick that
+/// cannot be published can be undone in one infallible move rather than unwound
+/// system by system (`plans/hydrology.md` §10). Nothing else clones runtime state.
+#[derive(Clone)]
 pub struct RuntimeState {
     pub(crate) config: RuntimeConfig,
     pub(crate) traces: CausalTraceStore,
@@ -514,6 +806,9 @@ pub struct RuntimeState {
     pub(crate) thermal_reservoirs: BTreeMap<ThermalReservoirId, ThermalReservoir>,
     pub(crate) thermal_parameters: ThermalParameters,
     pub(crate) pending_thermal_injections: Vec<ThermalInjectionProposal>,
+    /// Everything hydrology holds, grouped so unrelated state does not accumulate
+    /// here (the plan's modular-architecture rule).
+    pub(crate) hydrology: crate::HydrologyRuntimeState,
     pub(crate) thermal_receipts: BTreeMap<TraceId, Vec<ThermalCellTransferReceipt>>,
     pub(crate) thermal_conservation_receipts: BTreeMap<TraceId, ThermalConservationReceipt>,
     pub(crate) resolution: ResolutionField,
@@ -666,6 +961,10 @@ impl RuntimeState {
             thermal_reservoirs: BTreeMap::new(),
             thermal_parameters,
             pending_thermal_injections: Vec::new(),
+            // The seventh production bootstrap stage builds this, so that every
+            // initialised carrier is anchored to the origin event that created it
+            // rather than to a placeholder a later step has to rewrite.
+            hydrology: crate::HydrologyRuntimeState::disabled(),
             thermal_receipts: BTreeMap::new(),
             thermal_conservation_receipts: BTreeMap::new(),
             resolution,
@@ -718,11 +1017,17 @@ impl RuntimeState {
             .execute(&mut state)
             .map_err(|error| bootstrap_construction_error(error, "invalid bootstrap state"))?;
         state.bootstrap = bootstrap;
+        // Configuration is accepted only if the world it produced can be saved.
+        // The bounds on cells, edges, boundaries, overrides and forcing members are
+        // each satisfiable while their composition is not, so the composed size is
+        // the only thing that actually answers the question.
+        crate::tick_transaction::require_exportable(&state)?;
         Ok(state)
     }
 
     pub fn export_snapshot(&self) -> RuntimeSnapshotData {
         RuntimeSnapshotData {
+            hydrology: self.hydrology.clone(),
             recipe: RuntimeRecipeSnapshot {
                 seed: self.config.deterministic.world_seed,
                 config: self.config.clone(),
@@ -1065,6 +1370,7 @@ impl RuntimeState {
             thermal_reservoirs,
             thermal_parameters,
             pending_thermal_injections: Vec::new(),
+            hydrology: data.hydrology.clone(),
             thermal_receipts,
             thermal_conservation_receipts,
             resolution,
@@ -1371,6 +1677,16 @@ impl RuntimeState {
             }
         }
         self.validate_bootstrap_record()?;
+        crate::hydrology_validation::validate_hydrology_state(
+            &self.hydrology,
+            self.config.hydrology.enabled,
+            self.advanced_through.raw(),
+        )?;
+        crate::hydrology_validation::validate_imported_hydrology(
+            &self.hydrology,
+            &self.config.hydrology,
+            &self.traces,
+        )?;
         Ok(())
     }
 
@@ -1386,9 +1702,25 @@ impl RuntimeState {
             .bootstrap
             .record()
             .ok_or(RuntimeError::InvalidSnapshot("missing bootstrap record"))?;
-        if record.plan().stages().len() > BOOTSTRAP_STAGE_COUNT {
+        // Six without hydrology, seven with it. The bound is on the largest plan
+        // any accepted configuration can declare, and the exact count is checked
+        // against the configuration below.
+        if record.plan().stages().len() > MAX_BOOTSTRAP_STAGE_COUNT {
             return Err(RuntimeError::InvalidSnapshot(
-                "bootstrap record exceeds the current six-stage envelope",
+                "bootstrap record exceeds the current stage envelope",
+            ));
+        }
+        // And the exact count the configuration implies. A snapshot claiming seven
+        // stages while its recipe says hydrology is off would be a record of a run
+        // that configuration could not have produced.
+        let expected = if self.config.hydrology.enabled {
+            HYDROLOGY_BOOTSTRAP_STAGE_COUNT
+        } else {
+            BOOTSTRAP_STAGE_COUNT
+        };
+        if record.plan().stages().len() != expected {
+            return Err(RuntimeError::InvalidSnapshot(
+                "bootstrap record's stage count does not match the recipe's configuration",
             ));
         }
 
@@ -1753,10 +2085,14 @@ impl RuntimeState {
 
         // The reservoir stage's window carries the transition each reservoir was
         // created with; the budget and target are recomputed from it rather than
-        // believed.
-        let reservoir_effects = windows.last().ok_or(RuntimeError::InvalidSnapshot(
-            "bootstrap record has no stages",
-        ))?;
+        // believed. Indexed by that stage rather than taken as the last window:
+        // stages are appended after thermal, and "the last one" stopped meaning
+        // "the reservoir one" the moment hydrology arrived.
+        let reservoir_effects = windows
+            .get(THERMAL_RESERVOIR_STAGE.raw() as usize - 1)
+            .ok_or(RuntimeError::InvalidSnapshot(
+                "bootstrap record has no thermal reservoir stage",
+            ))?;
         for reservoir in self.thermal_reservoirs.values() {
             if !self.active_chunks.contains_key(&reservoir.target.chunk)
                 || usize::from(reservoir.target.cell_index)
@@ -2093,6 +2429,7 @@ impl RuntimeState {
             thermal_active_chunk_count,
             thermal_active_cell_count,
             bootstrap: self.bootstrap.observer_summary(&self.config),
+            hydrology: self.hydrology.observer_summary(),
         }
     }
 
@@ -2306,6 +2643,7 @@ impl RuntimeState {
                 delta.cell_ordinal,
             )
         });
+        let hydrology = self.hydrology.observer_world_projection();
         ObserverWorldSnapshot {
             time,
             chunks,
@@ -2326,6 +2664,12 @@ impl RuntimeState {
                 THERMAL_DELTA_SCHEMA_V1
             },
             thermal_deltas,
+            hydrology_deltas: hydrology.deltas,
+            hydrology_delta_schema_version: hydrology.delta_schema_version,
+            hydrology_transfer_summaries: hydrology.transfers,
+            hydrology_transfer_schema_version: hydrology.transfer_schema_version,
+            hydrology_conveyance_summaries: hydrology.conveyance,
+            hydrology_conveyance_schema_version: hydrology.conveyance_schema_version,
         }
     }
 
@@ -2866,6 +3210,7 @@ impl RuntimeState {
             }
         }
         write_bootstrap_record(&mut digest, &self.bootstrap);
+        write_hydrology_state(&mut digest, &self.hydrology);
         PhysicalStateDigest {
             schema_version: CURRENT_DIGEST_SCHEMA_VERSION,
             fingerprint: digest.finish(),
@@ -3052,6 +3397,16 @@ fn runtime_system_registrations() -> Vec<SystemRegistrationSnapshot> {
             system_schema_id: THERMAL_EVOLUTION_SYSTEM_ID,
             revision: 1,
             registration_order: 10,
+        },
+        // Appended, never inserted. `hydrology_legacy_compatibility` asserts the
+        // live scheduler and this declaration agree *and* that the first eleven
+        // entries are byte-identical to the pre-hydrology capture, which is what
+        // makes an accidental insertion a test failure rather than silent RNG drift.
+        SystemRegistrationSnapshot {
+            phase: Phase::Physics,
+            system_schema_id: crate::HYDROLOGY_SYSTEM_ID,
+            revision: 1,
+            registration_order: 11,
         },
     ]
 }

@@ -465,6 +465,13 @@
   border-left-color: var(--signal);
 }
 
+/* A field laid over the primary one: a wash rather than a mark, because that is
+   what it draws. Graded so it reads as a ramp and not as a filled square. */
+.chart-map__key-mark--wash {
+  border: 1px solid var(--signal);
+  background: linear-gradient(90deg, transparent, var(--signal));
+}
+
 .chart-map__key-mark--empty {
   border: 1px dashed var(--line-strong);
 }

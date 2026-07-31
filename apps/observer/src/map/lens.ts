@@ -29,6 +29,7 @@ export type LensAvailability =
 
 export type LensGroupId =
   | "geography"
+  | "hydrology"
   | "material"
   | "mana"
   | "life"
@@ -176,6 +177,16 @@ export const LENS_GROUPS: LensGroup[] = [
       "zh-Hans": "地理",
       "de-DE": "Geographie",
       "es-ES": "Geografía",
+    },
+  },
+  {
+    id: "hydrology",
+    title: {
+      "en-US": "Water",
+      "ru-RU": "Вода",
+      "zh-Hans": "水",
+      "de-DE": "Wasser",
+      "es-ES": "Agua",
     },
   },
   {

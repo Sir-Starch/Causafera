@@ -118,6 +118,18 @@ proto/causafera/observer/v2/
 
 The simulation and UI negotiate supported versions at connection time.
 
+An *additive* change stays inside the current version, and the bar for calling
+one additive is that a decoder built before the change reads a new payload and
+gets exactly what it always got. Hydrology is the worked example: it appended
+runtime-summary fields 36 to 48, world-snapshot fields 9 to 14, and two raster
+fields, while every field a pre-hydrology consumer reads — including the
+six-receipt bootstrap bound, the projected stage count, and the completion flag —
+kept its frozen meaning, with the seventh bootstrap receipt projected into its own
+optional field rather than into the existing list. The claim is not asserted, it
+is tested: a frozen copy of the pre-hydrology decoder is kept as an oracle and
+must decode a new payload to exactly what it decodes without the additions.
+Editing the oracle is a test failure, not a re-freeze.
+
 ## Security Model
 
 The observer protocol is read-only. There is no mutation path from the UI back to authoritative simulation state through the observer protocol. Control commands such as pause, resume, or speed change affect simulation execution parameters, not simulation content.

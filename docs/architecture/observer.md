@@ -120,6 +120,34 @@ canonical window they span. An incomplete or unevidenced record answers with the
 state at zero confidence rather than erroring. Neither claim reports a fingerprint as a numeric
 value — a fingerprint is an equality identity, not a magnitude.
 
+## Bounded hydrology read model
+
+Hydrology is projected the same way and under the same rules: additive fields on
+the existing V1 surface, bounded before allocation, read-only, and carrying trace
+anchors rather than conclusions.
+
+The runtime summary gains one atomic group — a schema version, four whole-scope
+storage totals, the exact residual of the latest committed batch, and the active
+chunk count — plus an all-or-nothing group naming the latest applied forcing
+record. The world snapshot gains three lists capped at 64 entries each: per-cell
+storage deltas, transfer summaries with their limiter evidence, and conveyance
+storage summaries. Three further raster kinds project a chunk's surface, soil, and
+groundwater volumes in a lossless unsigned band.
+
+Three properties are worth stating because each is a decision rather than a
+detail. The summary is written even when hydrology is disabled, so a reader can
+tell "this build has no hydrology" apart from "this world holds no water". The
+three lists reject entry 65 instead of dropping it, because a bound a peer can
+exceed without being told is not a bound. And typed detail disappears when
+retention evicts the batch that evidenced it: the forcing group goes absent
+rather than reporting an identity beside fabricated zeroes, and the matching
+Explanation claims answer with insufficiency.
+
+What the projection deliberately does not contain: any water-body classification,
+any drainage or catchment structure, any authoritative entity identity, and any
+process name. Carrier keys travel as opaque fixed-length bytes that each decoder
+validates against the declared encoding rather than by importing the simulation.
+
 ## Detailed Development cadence
 
 Observer development follows simulation and Explanation evidence needs. The immediate priority is

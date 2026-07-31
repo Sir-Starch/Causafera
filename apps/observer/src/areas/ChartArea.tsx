@@ -12,6 +12,8 @@
 
 import { useMemo, useState } from "react";
 
+import { FieldRasterKind } from "@causafera/observer-protocol";
+
 import {
   Division,
   Field,
@@ -25,6 +27,7 @@ import {
   formatCompact,
   formatInteger,
   formatMillimetresAsMetres,
+  formatWaterVolume,
   type ObserverLocale,
 } from "../observer/format";
 import { useCopy, useFeed, useSession } from "../observer/instance";
@@ -48,6 +51,7 @@ import { LENSES, LENS_BY_ID, lensLayers, resolveLenses } from "../map/lenses";
 import { LensDock } from "../map/LensDock";
 import { LensIcon } from "../map/LensIcon";
 import { LensLegend } from "../map/LensLegend";
+import { unsignedChunkTotal } from "../map/rasterFields";
 import { Transect } from "../viz/Transect";
 import type { AreaProps } from "../workspace";
 
@@ -286,6 +290,25 @@ export function ChartDock({ workspace, update }: AreaProps) {
   const showCatalogue = workspace.dockView === "catalogue";
 
   const chunk = context.atlas.chunks.find((entry) => entry.key === workspace.selectedChunk);
+  // Summed from the lattices the session already holds rather than from a chunk
+  // aggregate, because the world snapshot carries no water per chunk — this is
+  // the same measurement the map is painting, added up.
+  const chunkWater = useMemo(() => {
+    if (chunk === undefined) return undefined;
+    const surface = unsignedChunkTotal(
+      context.rasters,
+      FieldRasterKind.HydrologySurfaceWater,
+      chunk,
+    );
+    const soil = unsignedChunkTotal(context.rasters, FieldRasterKind.HydrologySoilWater, chunk);
+    const groundwater = unsignedChunkTotal(
+      context.rasters,
+      FieldRasterKind.HydrologyGroundwater,
+      chunk,
+    );
+    if (surface === undefined || soil === undefined || groundwater === undefined) return undefined;
+    return { surface, soil, groundwater };
+  }, [chunk, context.rasters]);
   const chunkLadders = context.ladders.filter(
     (ladder) =>
       chunk !== undefined &&
@@ -359,6 +382,29 @@ export function ChartDock({ workspace, update }: AreaProps) {
                 <TraceChip id={chunk.latestTraceId} />
               </Field>
             </Fields>
+          </Panel>
+
+          <Panel
+            variant="flush"
+            eyebrow={copy.chart.water}
+            title={copy.station.waterTitle}
+            lede={copy.chart.waterLede}
+          >
+            {chunkWater === undefined ? (
+              <p className="lede">{copy.chart.noWaterLattice}</p>
+            ) : (
+              <Fields>
+                <Field label={copy.station.waterSurface}>
+                  {formatWaterVolume(chunkWater.surface, locale)}
+                </Field>
+                <Field label={copy.station.waterSoil}>
+                  {formatWaterVolume(chunkWater.soil, locale)}
+                </Field>
+                <Field label={copy.station.waterGround}>
+                  {formatWaterVolume(chunkWater.groundwater, locale)}
+                </Field>
+              </Fields>
+            )}
           </Panel>
 
           {workspace.selectedCell !== undefined && (

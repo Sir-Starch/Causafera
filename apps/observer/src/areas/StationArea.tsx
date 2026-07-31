@@ -1,9 +1,14 @@
 /**
  * Observatory — the primary surface.
  *
- * The run's identity, the instrument cluster, and the three quantities that actually move in
- * a live session: the mana field, causal accretion, and actor action admission. Everything
- * here is the objective observer projection; none of it is agent knowledge.
+ * The run's identity, the instrument cluster, and the quantities that actually move in a live
+ * session: the mana field, water storage, causal accretion, and actor action admission.
+ * Everything here is the objective observer projection; none of it is agent knowledge.
+ *
+ * The water ledger states the conservation residual because it is the one number that says
+ * whether any of the rest can be believed. It is exactly zero for every committed batch — not
+ * near zero, not within a tolerance — so a non-zero one is a finding, and the tag reports it
+ * as such rather than rendering it as another figure among the storages.
  */
 
 import { useMemo } from "react";
@@ -17,6 +22,7 @@ import {
   RateTable,
   Readout,
   Tag,
+  TraceChip,
 } from "../components/primitives";
 import { capabilityCounts } from "../observer/capability";
 import {
@@ -24,6 +30,7 @@ import {
   formatInteger,
   formatPercent,
   formatTraceId,
+  formatWaterVolume,
 } from "../observer/format";
 import { useCopy, useFeed, useSession } from "../observer/instance";
 import {
@@ -32,6 +39,8 @@ import {
   buildAtlas,
   buildLedger,
   levelSeries,
+  totalWater,
+  waterPresence,
   type LedgerEntry,
   type SignalId,
 } from "../observer/models";
@@ -81,6 +90,24 @@ export function StationArea({ update, goTo }: AreaProps) {
     ],
     [history],
   );
+  // Storages against each other rather than the total: the total is flat by
+  // construction in a closed extent, and what actually happens is the water
+  // changing which storage it is in.
+  //
+  // Two lines rather than three. One hue is reserved per measured quantity and
+  // water has one, so the recorder can tell apart exactly two same-hue series —
+  // solid and dashed. Groundwater is the slow store and the least legible as a
+  // line; it is carried as an exact figure in the ledger beside this, which is
+  // better than a third line nobody can distinguish from the first two.
+  const waterSeries = useMemo(
+    () => [
+      levelSeries(history, "surface", "water", (item) => item.hydrology.totalSurface),
+      { ...levelSeries(history, "soil", "water", (item) => item.hydrology.totalSoil), dashed: true },
+    ],
+    [history],
+  );
+  const water = summary?.hydrology;
+  const presence = waterPresence(summary);
 
   const sparkFor = (signal: SignalId, read: (item: (typeof history)[number]) => bigint) =>
     levelSeries(history, "spark", signal, read).points;
@@ -109,6 +136,33 @@ export function StationArea({ update, goTo }: AreaProps) {
               signal="mana"
               label={copy.station.manaTotal}
             />
+          </Readout>
+          {/* Standing water rather than the total, because the total is flat in
+              a closed extent and a readout that never moves teaches nothing.
+              The four storages and the residual are in the ledger below. */}
+          <Readout
+            label={copy.station.waterStanding}
+            value={
+              water === undefined || presence !== "observed"
+                ? "—"
+                : formatWaterVolume(water.totalSurface, locale)
+            }
+            note={
+              water !== undefined && presence === "observed"
+                ? `${copy.station.water} ${formatWaterVolume(totalWater(water), locale)}`
+                : presence === "disabled"
+                  ? copy.station.waterDisabled
+                  : undefined
+            }
+            signal="water"
+          >
+            {presence === "observed" && (
+              <Sparkline
+                points={sparkFor("water", (item) => item.hydrology.totalSurface)}
+                signal="water"
+                label={copy.station.waterStanding}
+              />
+            )}
           </Readout>
           <Readout
             label={copy.station.population}
@@ -203,6 +257,101 @@ export function StationArea({ update, goTo }: AreaProps) {
               size="compact"
             />
           </div>
+        </Panel>
+      </div>
+
+      <div className="grid grid--halves">
+        <Panel
+          title={copy.station.waterTitle}
+          eyebrow={copy.common.projection}
+          lede={copy.station.waterLede}
+          tools={
+            <button type="button" className="btn" onClick={() => goTo("chart")}>
+              {copy.station.waterOpenChart} →
+            </button>
+          }
+        >
+          {presence === "observed" ? (
+            <ChartRecorder
+              series={waterSeries}
+              label={copy.station.waterTitle}
+              tickLabel={copy.transport.ticks}
+              legendLabels={{
+                surface: copy.station.waterSurface,
+                soil: copy.station.waterSoil,
+              }}
+              emptyLabel={copy.chart.noWorld}
+              fillFirst
+            />
+          ) : (
+            <p className="lede">
+              {presence === "disabled" ? copy.station.waterDisabledBody : copy.station.waterUnreported}
+            </p>
+          )}
+        </Panel>
+
+        <Panel
+          title={copy.station.waterLedger}
+          eyebrow={copy.common.bounded}
+          lede={copy.station.waterLedgerLede}
+          tools={
+            water !== undefined && presence === "observed" ? (
+              <Tag tone={water.latestResidual === 0n ? "supported" : "unsupported"} dot>
+                {water.latestResidual === 0n
+                  ? copy.station.waterResidualZero
+                  : formatWaterVolume(water.latestResidual, locale)}
+              </Tag>
+            ) : undefined
+          }
+        >
+          {water === undefined || presence !== "observed" ? (
+            <p className="lede">
+              {presence === "disabled" ? copy.station.waterDisabledBody : copy.station.waterUnreported}
+            </p>
+          ) : (
+            // Thirds rather than halves for the nested grid: at 24rem per
+            // column a half-width panel collapses the pair into one stack on
+            // every screen narrower than a very wide one.
+            <div className="grid grid--thirds">
+              <Fields>
+                <Field label={copy.station.waterSurface}>
+                  {formatWaterVolume(water.totalSurface, locale)}
+                </Field>
+                <Field label={copy.station.waterSoil}>
+                  {formatWaterVolume(water.totalSoil, locale)}
+                </Field>
+                <Field label={copy.station.waterGround}>
+                  {formatWaterVolume(water.totalGroundwater, locale)}
+                </Field>
+                <Field label={copy.station.waterConveyance}>
+                  {formatWaterVolume(water.totalConveyance, locale)}
+                </Field>
+                <Field label={copy.station.waterChunks}>
+                  {formatInteger(water.activeChunkCount, locale)}
+                </Field>
+              </Fields>
+              <Fields>
+                {water.latestForcing === null ? (
+                  <Field label={copy.station.waterForcing}>{copy.station.waterNoForcing}</Field>
+                ) : (
+                  <>
+                    <Field label={copy.transport.ticks}>
+                      {water.latestForcing.tick.toString()}
+                    </Field>
+                    <Field label={copy.station.waterAccepted}>
+                      {formatWaterVolume(water.latestForcing.acceptedSource, locale)}
+                    </Field>
+                    <Field label={copy.station.waterEvapotranspiration}>
+                      {formatWaterVolume(water.latestForcing.acceptedEvapotranspiration, locale)}
+                    </Field>
+                    <Field label={copy.station.waterOrigin}>
+                      <TraceChip id={water.latestForcing.originTrace} />
+                    </Field>
+                  </>
+                )}
+              </Fields>
+            </div>
+          )}
         </Panel>
       </div>
 

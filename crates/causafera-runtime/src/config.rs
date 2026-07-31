@@ -21,6 +21,9 @@ pub struct RuntimeConfig {
     pub bootstrap_population: u64,
     pub material_surface_signals_enabled: bool,
     pub experiment_recipe_mana_sources: ExperimentRecipeManaSourceRecipe,
+    /// Disabled unless a session asks otherwise. No field, edge, boundary, or
+    /// rainfall is defaulted into an existing world.
+    pub hydrology: HydrologyConfig,
 }
 
 /// The shape the active chunk set takes around the chart origin.
@@ -109,6 +112,7 @@ impl RuntimeConfig {
                 records: Vec::new(),
                 recipe_budget: 0,
             },
+            hydrology: HydrologyConfig::disabled(),
         }
     }
 
@@ -241,6 +245,9 @@ impl RuntimeConfig {
                 recipe_budget: self.experiment_recipe_mana_sources.recipe_budget,
             });
         }
+        // Production bootstrap runs before the first tick, so a forcing record is
+        // in the future exactly when it lands after tick zero.
+        self.hydrology.validate(0)?;
         self.experiment_recipe_mana_sources
             .records
             .sort_unstable_by_key(|record| (record.scheduled_tick, record.source_record_id));

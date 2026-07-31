@@ -25,7 +25,15 @@ pub use causafera_world::{
 /// This is the complete implementation surface of the canonical plan today. It
 /// is a bound on what the runtime executes, not a claim that historical
 /// synthesis is only ever six steps.
+/// Stages a session without hydrology runs. Unchanged: appending a stage to an
+/// enabled session must not change what a disabled one records.
 pub const BOOTSTRAP_STAGE_COUNT: usize = 6;
+
+/// Stages a session with hydrology enabled runs.
+pub const HYDROLOGY_BOOTSTRAP_STAGE_COUNT: usize = 7;
+
+/// The most stages any accepted plan may declare, for import bounds.
+pub const MAX_BOOTSTRAP_STAGE_COUNT: usize = HYDROLOGY_BOOTSTRAP_STAGE_COUNT;
 
 pub const PHYSICAL_GEOGRAPHY_STAGE: HistoricalStageId = HistoricalStageId::new(1);
 pub const MATERIAL_SURFACE_STAGE: HistoricalStageId = HistoricalStageId::new(2);
@@ -33,6 +41,9 @@ pub const POPULATION_LIFECYCLE_STAGE: HistoricalStageId = HistoricalStageId::new
 pub const ACTOR_PROMOTION_STAGE: HistoricalStageId = HistoricalStageId::new(4);
 pub const MATERIAL_ACTIVITY_STAGE: HistoricalStageId = HistoricalStageId::new(5);
 pub const THERMAL_RESERVOIR_STAGE: HistoricalStageId = HistoricalStageId::new(6);
+/// The appended hydrology stage. Present only when hydrology is enabled, so a
+/// disabled session keeps the legacy six-stage plan byte for byte (V22).
+pub const HYDROLOGY_STAGE: HistoricalStageId = HistoricalStageId::new(7);
 
 /// Opaque process identities. They are numeric schema IDs, never human-language
 /// event names, and carry no meaning a downstream reader may translate.
@@ -46,6 +57,10 @@ pub const ACTOR_PROMOTION_PROCESS_SCHEMA: HistoricalProcessSchemaId =
     HistoricalProcessSchemaId::new(0x0B04);
 pub const MATERIAL_ACTIVITY_PROCESS_SCHEMA: HistoricalProcessSchemaId =
     HistoricalProcessSchemaId::new(0x0B05);
+/// The appended hydrology stage's process schema. Verified unused: the six
+/// existing schemas are 0x4001 through 0x4006.
+pub const HYDROLOGY_PROCESS_SCHEMA: HistoricalProcessSchemaId =
+    HistoricalProcessSchemaId::new(0x4007);
 pub const THERMAL_RESERVOIR_PROCESS_SCHEMA: HistoricalProcessSchemaId =
     HistoricalProcessSchemaId::new(0x0B06);
 
@@ -144,6 +159,8 @@ pub struct RuntimeBootstrapRecipe {
     pub actor_promotion: ActorPromotionStage,
     pub material_activity: MaterialActivityStage,
     pub thermal_reservoirs: ThermalReservoirBootstrapStage,
+    /// Whether the appended hydrology stage is part of this plan.
+    pub hydrology_enabled: bool,
     plan: HistoricalBootstrapPlan,
 }
 
@@ -157,10 +174,19 @@ pub struct RuntimeBootstrapRecipe {
 /// later needs randomness must take it from here instead of deriving a seed of
 /// its own.
 pub trait HistoricalBootstrapAdapter {
+    /// Run one stage and report the traces it committed.
+    ///
+    /// `previous_receipt` is the preceding stage's terminal completion trace, or
+    /// `None` for the first stage. Most stages do not need it — the coordinator
+    /// threads it into their completion event either way — but a stage whose own
+    /// origin event must cite the preceding stage does, and passing it is more
+    /// honest than having such a stage rummage through the trace store for the
+    /// most recent completion it can find.
     fn bootstrap(
         &self,
         state: &mut RuntimeState,
         stage_seed: u64,
+        previous_receipt: Option<TraceId>,
     ) -> Result<Vec<TraceId>, BootstrapError>;
 }
 
@@ -242,6 +268,25 @@ impl BootstrapRuntimeState {
                         .collect(),
                 })
                 .collect(),
+            // The appended stage's receipt, carried separately. `stage_count`,
+            // `complete`, and the six-summary cap above are frozen V1 contract, so
+            // a seventh entry in `receipts` would change what an existing consumer
+            // reads; an additive optional field is something it skips.
+            stage_seven: record
+                .receipts()
+                .get(MAX_BOOTSTRAP_RECEIPT_SUMMARIES)
+                .map(|receipt| ObserverBootstrapReceipt {
+                    stage: receipt.stage().raw(),
+                    completed_at: receipt.completed_at(),
+                    result: receipt.result().bytes(),
+                    completion_trace: receipt.trace(),
+                    dependency_traces: receipt
+                        .causes()
+                        .iter()
+                        .take(MAX_BOOTSTRAP_RECEIPT_DEPENDENCIES)
+                        .copied()
+                        .collect(),
+                }),
         }
     }
 
@@ -407,7 +452,7 @@ impl RuntimeBootstrapRecipe {
         };
 
         let targets = canonical_stage_targets(config)?;
-        let parameters = [
+        let mut parameters = vec![
             physical_geography_init.parameter_fingerprint(),
             material_surface.parameter_fingerprint(),
             population_lifecycle.parameter_fingerprint(),
@@ -415,7 +460,7 @@ impl RuntimeBootstrapRecipe {
             material_activity.parameter_fingerprint(),
             thermal_reservoirs.parameter_fingerprint(),
         ];
-        let processes = [
+        let mut processes = vec![
             PHYSICAL_GEOGRAPHY_PROCESS_SCHEMA,
             MATERIAL_SURFACE_PROCESS_SCHEMA,
             POPULATION_LIFECYCLE_PROCESS_SCHEMA,
@@ -423,9 +468,17 @@ impl RuntimeBootstrapRecipe {
             MATERIAL_ACTIVITY_PROCESS_SCHEMA,
             THERMAL_RESERVOIR_PROCESS_SCHEMA,
         ];
+        // Appended only when hydrology is enabled. A disabled session's plan, its
+        // receipts, and therefore its bootstrap section stay byte-identical to
+        // every pre-hydrology snapshot, which is what V22 protects.
+        if config.hydrology.enabled {
+            parameters.push(hydrology_parameter_fingerprint(config));
+            processes.push(HYDROLOGY_PROCESS_SCHEMA);
+        }
+        let stage_count = processes.len();
 
-        let mut stages = Vec::with_capacity(BOOTSTRAP_STAGE_COUNT);
-        for ordinal in 0..BOOTSTRAP_STAGE_COUNT {
+        let mut stages = Vec::with_capacity(stage_count);
+        for ordinal in 0..stage_count {
             let id = HistoricalStageId::new(ordinal as u64 + 1);
             // The canonical stage timeline is a bootstrap ordering timeline, not
             // a request to advance scheduler time: six non-overlapping one-unit
@@ -465,6 +518,7 @@ impl RuntimeBootstrapRecipe {
             actor_promotion,
             material_activity,
             thermal_reservoirs,
+            hydrology_enabled: config.hydrology.enabled,
             plan,
         })
     }
@@ -480,15 +534,19 @@ impl RuntimeBootstrapRecipe {
         self.plan.stage_seed(stage)
     }
 
-    fn adapters(&self) -> [&dyn HistoricalBootstrapAdapter; BOOTSTRAP_STAGE_COUNT] {
-        [
+    fn adapters(&self) -> Vec<&dyn HistoricalBootstrapAdapter> {
+        let mut adapters: Vec<&dyn HistoricalBootstrapAdapter> = vec![
             &self.physical_geography_init,
             &self.material_surface,
             &self.population_lifecycle,
             &self.actor_promotion,
             &self.material_activity,
             &self.thermal_reservoirs,
-        ]
+        ];
+        if self.hydrology_enabled {
+            adapters.push(&HydrologyBootstrapAdapter);
+        }
+        adapters
     }
 
     /// Run the six stages and close each one with exactly one terminal receipt.
@@ -503,7 +561,7 @@ impl RuntimeBootstrapRecipe {
         state: &mut RuntimeState,
     ) -> Result<BootstrapRuntimeState, BootstrapError> {
         let adapters = self.adapters();
-        let mut receipts = Vec::with_capacity(BOOTSTRAP_STAGE_COUNT);
+        let mut receipts = Vec::with_capacity(adapters.len());
         let mut stage_results = BTreeMap::new();
         let mut previous_receipt: Option<TraceId> = None;
 
@@ -518,7 +576,7 @@ impl RuntimeBootstrapRecipe {
                 .stage_seed(stage.id())
                 .ok_or(BootstrapError::StageCompletionsDoNotMatchRecord)?;
             let committed_before = state.traces.len();
-            let reported = adapter.bootstrap(state, stage_seed)?;
+            let reported = adapter.bootstrap(state, stage_seed, previous_receipt)?;
             let mut effects = state
                 .traces
                 .iter()
@@ -882,6 +940,7 @@ impl HistoricalBootstrapAdapter for TerrainBootstrapStage {
         &self,
         state: &mut RuntimeState,
         _stage_seed: u64,
+        _previous_receipt: Option<TraceId>,
     ) -> Result<Vec<TraceId>, BootstrapError> {
         let chunks = state.carrier_adapters.keys().copied().collect::<Vec<_>>();
         let mut traces = Vec::with_capacity(chunks.len());
@@ -928,6 +987,7 @@ impl HistoricalBootstrapAdapter for MaterialSurfaceBootstrapStage {
         &self,
         state: &mut RuntimeState,
         _stage_seed: u64,
+        _previous_receipt: Option<TraceId>,
     ) -> Result<Vec<TraceId>, BootstrapError> {
         let chunks = state.active_chunks.keys().copied().collect::<Vec<_>>();
         validate_material_surface_object_ids(
@@ -987,6 +1047,7 @@ impl HistoricalBootstrapAdapter for PopulationLifecycleStage {
         &self,
         state: &mut RuntimeState,
         _stage_seed: u64,
+        _previous_receipt: Option<TraceId>,
     ) -> Result<Vec<TraceId>, BootstrapError> {
         if self.initial_population == 0 || !state.population_aggregates.is_empty() {
             return Ok(Vec::new());
@@ -1019,6 +1080,7 @@ impl HistoricalBootstrapAdapter for ActorPromotionStage {
         &self,
         state: &mut RuntimeState,
         _stage_seed: u64,
+        _previous_receipt: Option<TraceId>,
     ) -> Result<Vec<TraceId>, BootstrapError> {
         let mut traces = Vec::new();
         for _ in 0..self.max_promotions {
@@ -1038,6 +1100,7 @@ impl HistoricalBootstrapAdapter for MaterialActivityStage {
         &self,
         state: &mut RuntimeState,
         _stage_seed: u64,
+        _previous_receipt: Option<TraceId>,
     ) -> Result<Vec<TraceId>, BootstrapError> {
         let chunks = state
             .population_aggregates
@@ -1077,6 +1140,7 @@ impl HistoricalBootstrapAdapter for ThermalReservoirBootstrapStage {
         &self,
         state: &mut RuntimeState,
         _stage_seed: u64,
+        _previous_receipt: Option<TraceId>,
     ) -> Result<Vec<TraceId>, BootstrapError> {
         let chunks = state.active_chunks.keys().copied().collect::<Vec<_>>();
         let mut traces = Vec::with_capacity(chunks.len() + self.reservoirs.len());
@@ -1221,4 +1285,41 @@ fn commit_bootstrap_stage_event(
         .commit_batch(SimulationTime::new(0), Phase::Lifecycle, vec![event])?[0];
     state.latest_physical_trace = trace;
     Ok(trace)
+}
+
+/// The seventh stage's adapter.
+///
+/// A unit struct: everything it needs is on the `RuntimeState` it is handed, and
+/// the stage's parameters are already fingerprinted into the canonical plan.
+struct HydrologyBootstrapAdapter;
+
+impl HistoricalBootstrapAdapter for HydrologyBootstrapAdapter {
+    fn bootstrap(
+        &self,
+        state: &mut RuntimeState,
+        _stage_seed: u64,
+        previous_receipt: Option<TraceId>,
+    ) -> Result<Vec<TraceId>, BootstrapError> {
+        crate::HydrologyBootstrapStage::run(state, previous_receipt)
+            .map_err(BootstrapError::Runtime)
+    }
+}
+
+/// The hydrology stage's parameter fingerprint.
+///
+/// Covers the configured numbers the stage initialises from, so two worlds
+/// configured differently cannot share a canonical plan. Purely numeric: the
+/// canonical recipe encoding is reused rather than re-derived, which is what stops
+/// the two from drifting apart.
+fn hydrology_parameter_fingerprint(config: &RuntimeConfig) -> StateFingerprint {
+    let mut hasher = blake3::Hasher::new();
+    let domain = b"causafera.hydrology.bootstrap-parameters.v1";
+    hasher.update(&(domain.len() as u64).to_be_bytes());
+    hasher.update(domain);
+    let mut buffer = Vec::new();
+    let mut encoder = causafera_persistence::LittleEndianEncoder::new(&mut buffer);
+    crate::snapshot_sections::encode_hydrology_config_for_digest(&mut encoder, &config.hydrology);
+    hasher.update(&(buffer.len() as u64).to_be_bytes());
+    hasher.update(&buffer);
+    StateFingerprint::new(*hasher.finalize().as_bytes())
 }

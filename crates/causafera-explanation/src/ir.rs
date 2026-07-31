@@ -37,6 +37,39 @@ pub const HISTORICAL_BOOTSTRAP_RECORD_SCHEMA: ExplanationClaimSchemaId =
     ExplanationClaimSchemaId::new(18);
 pub const HISTORICAL_BOOTSTRAP_WINDOW_SCHEMA: ExplanationClaimSchemaId =
     ExplanationClaimSchemaId::new(19);
+/// The smallest and largest per-carrier volume in a scope, as two claims.
+///
+/// Two claims rather than one `Range`: `Range` is `i64` on both ends and a water
+/// volume is a `u64`, so a range would silently lose the upper half of what a
+/// carrier can hold. Each bound travels as `Ratio { volume, 1 }`, which is
+/// lossless without widening `NumericClaimValue` or its wire schema.
+pub const HYDROLOGY_STORAGE_MINIMUM_SCHEMA: ExplanationClaimSchemaId =
+    ExplanationClaimSchemaId::new(20);
+pub const HYDROLOGY_STORAGE_MAXIMUM_SCHEMA: ExplanationClaimSchemaId =
+    ExplanationClaimSchemaId::new(21);
+/// A scope's whole storage total. Insufficiency above `u64::MAX`, never a
+/// narrowed number.
+pub const HYDROLOGY_STORAGE_TOTAL_SCHEMA: ExplanationClaimSchemaId =
+    ExplanationClaimSchemaId::new(22);
+/// Water-table elevation in millimetres, which is signed and therefore a
+/// genuine `Range`.
+pub const HYDROLOGY_WATER_TABLE_RANGE_SCHEMA: ExplanationClaimSchemaId =
+    ExplanationClaimSchemaId::new(23);
+pub const HYDROLOGY_FORCING_ACCEPTED_SCHEMA: ExplanationClaimSchemaId =
+    ExplanationClaimSchemaId::new(24);
+pub const HYDROLOGY_FORCING_UNMET_SCHEMA: ExplanationClaimSchemaId =
+    ExplanationClaimSchemaId::new(25);
+pub const HYDROLOGY_TRANSFER_ACCEPTED_SCHEMA: ExplanationClaimSchemaId =
+    ExplanationClaimSchemaId::new(26);
+/// What a limiter refused. Emitted at zero as well: a bound that did not engage
+/// is evidence, and its absence would make "nothing was refused" and "nothing
+/// was asked" the same answer.
+pub const HYDROLOGY_TRANSFER_LIMITED_SCHEMA: ExplanationClaimSchemaId =
+    ExplanationClaimSchemaId::new(27);
+pub const HYDROLOGY_CONSERVATION_RESIDUAL_SCHEMA: ExplanationClaimSchemaId =
+    ExplanationClaimSchemaId::new(28);
+pub const HYDROLOGY_BOUNDARY_EXPORT_SCHEMA: ExplanationClaimSchemaId =
+    ExplanationClaimSchemaId::new(29);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -477,6 +510,304 @@ impl MaterialSurfaceThermalExchangeClaim {
     }
 }
 
+/* --------------------------------------------------------------- hydrology -- */
+
+/// One exact water volume, as a lossless ratio over one.
+///
+/// `NumericClaimValue` has no unsigned variant and does not gain one here:
+/// widening it would change `explanation.proto`, the Rust codec, and the
+/// TypeScript codec at once, for a quantity the existing `Ratio` already carries
+/// exactly. A denominator of one is not a fraction standing in for a number — it
+/// is the number, in the one variant of this schema whose numerator is a `u64`.
+pub fn exact_volume(volume: u64) -> Result<NumericClaimValue, ExplanationIrError> {
+    NumericClaimValue::ratio(volume, 1)
+}
+
+/// A scope's storage bounds, whole total, and water-table span.
+///
+/// `carrier_count` is carried so a scope that turned out to be empty can be
+/// reported as empty rather than as a set of zero-valued measurements.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct HydrologyStorageClaim {
+    pub carrier_count: u64,
+    pub minimum_volume: u64,
+    pub maximum_volume: u64,
+    /// The whole-scope total, which is `u128` because it sums `u64` volumes.
+    pub total_volume: u128,
+    /// Water-table elevation in millimetres. Signed, and a genuine range.
+    pub water_table_minimum_mm: i64,
+    pub water_table_maximum_mm: i64,
+    pub evidence_traces: Vec<TraceId>,
+}
+
+impl HydrologyStorageClaim {
+    /// Four claims: the two bounds, the total, and the water-table range.
+    ///
+    /// An empty scope, or one with no trace evidence, yields four `Unknown`
+    /// claims rather than four zeroes: "no carrier is in scope" and "every
+    /// carrier holds nothing" are different facts.
+    pub fn to_explanation_claims(&self) -> Result<Vec<ExplanationClaim>, ExplanationIrError> {
+        if self.carrier_count == 0 || self.evidence_traces.is_empty() {
+            return Ok(vec![
+                ExplanationClaim::unknown(
+                    HYDROLOGY_STORAGE_MINIMUM_SCHEMA,
+                    exact_volume(0)?,
+                    ComparisonContext::None,
+                )?,
+                ExplanationClaim::unknown(
+                    HYDROLOGY_STORAGE_MAXIMUM_SCHEMA,
+                    exact_volume(0)?,
+                    ComparisonContext::None,
+                )?,
+                ExplanationClaim::unknown(
+                    HYDROLOGY_STORAGE_TOTAL_SCHEMA,
+                    exact_volume(0)?,
+                    ComparisonContext::None,
+                )?,
+                ExplanationClaim::unknown(
+                    HYDROLOGY_WATER_TABLE_RANGE_SCHEMA,
+                    NumericClaimValue::scalar(0),
+                    ComparisonContext::None,
+                )?,
+            ]);
+        }
+        let supported = |schema, value| {
+            ExplanationClaim::new(
+                schema,
+                value,
+                ClaimConfidence::ONE,
+                self.evidence_traces.clone(),
+                ComparisonContext::None,
+                ClaimEvidenceState::Supported,
+            )
+        };
+        // A total wider than `u64` is not reported as a smaller number. The
+        // scope is real and the measurement exists; this schema cannot carry it,
+        // and saying so is the only honest answer available.
+        let total = match u64::try_from(self.total_volume) {
+            Ok(total) => supported(HYDROLOGY_STORAGE_TOTAL_SCHEMA, exact_volume(total)?)?,
+            Err(_) => ExplanationClaim::unknown(
+                HYDROLOGY_STORAGE_TOTAL_SCHEMA,
+                exact_volume(0)?,
+                ComparisonContext::None,
+            )?,
+        };
+        Ok(vec![
+            supported(
+                HYDROLOGY_STORAGE_MINIMUM_SCHEMA,
+                exact_volume(self.minimum_volume)?,
+            )?,
+            supported(
+                HYDROLOGY_STORAGE_MAXIMUM_SCHEMA,
+                exact_volume(self.maximum_volume)?,
+            )?,
+            total,
+            supported(
+                HYDROLOGY_WATER_TABLE_RANGE_SCHEMA,
+                NumericClaimValue::range(self.water_table_minimum_mm, self.water_table_maximum_mm)?,
+            )?,
+        ])
+    }
+}
+
+/// One applied forcing record's accepted and unmet volumes, with its ancestry.
+///
+/// `origin_trace` is the producer's own event, and it leads the evidence list:
+/// a forcing claim whose ancestry stopped at the settlement would say what
+/// arrived without saying where it came from.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct HydrologyForcingClaim {
+    pub scheduled_tick: u64,
+    pub forcing_id: u64,
+    pub accepted_source: u128,
+    pub unmet_source: u64,
+    pub accepted_evapotranspiration: u64,
+    pub unmet_evapotranspiration: u64,
+    pub origin_trace: TraceId,
+    pub settlement_traces: Vec<TraceId>,
+}
+
+impl HydrologyForcingClaim {
+    pub fn to_explanation_claims(&self) -> Result<Vec<ExplanationClaim>, ExplanationIrError> {
+        let mut evidence = Vec::with_capacity(1 + self.settlement_traces.len());
+        evidence.push(self.origin_trace);
+        evidence.extend_from_slice(&self.settlement_traces);
+        let accepted = match u64::try_from(self.accepted_source) {
+            Ok(accepted) => ExplanationClaim::new(
+                HYDROLOGY_FORCING_ACCEPTED_SCHEMA,
+                exact_volume(accepted)?,
+                ClaimConfidence::ONE,
+                evidence.clone(),
+                ComparisonContext::None,
+                ClaimEvidenceState::Supported,
+            )?,
+            Err(_) => ExplanationClaim::unknown(
+                HYDROLOGY_FORCING_ACCEPTED_SCHEMA,
+                exact_volume(0)?,
+                ComparisonContext::None,
+            )?,
+        };
+        // Unmet source and unmet evapotranspiration are summed into one claim
+        // because both answer the same question — what the record asked for and
+        // did not get — and the two are already separated by the transfer
+        // receipts the evidence points at.
+        let unmet = self
+            .unmet_source
+            .saturating_add(self.unmet_evapotranspiration);
+        Ok(vec![
+            accepted,
+            ExplanationClaim::new(
+                HYDROLOGY_FORCING_UNMET_SCHEMA,
+                exact_volume(unmet)?,
+                ClaimConfidence::ONE,
+                evidence,
+                ComparisonContext::None,
+                ClaimEvidenceState::Supported,
+            )?,
+        ])
+    }
+
+    /// The answer for a record whose typed evidence has been evicted.
+    pub fn unknown() -> Result<Vec<ExplanationClaim>, ExplanationIrError> {
+        Ok(vec![
+            ExplanationClaim::unknown(
+                HYDROLOGY_FORCING_ACCEPTED_SCHEMA,
+                exact_volume(0)?,
+                ComparisonContext::None,
+            )?,
+            ExplanationClaim::unknown(
+                HYDROLOGY_FORCING_UNMET_SCHEMA,
+                exact_volume(0)?,
+                ComparisonContext::None,
+            )?,
+        ])
+    }
+}
+
+/// One transfer's accepted volume and what its limiter refused.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct HydrologyTransferPathClaim {
+    pub process_kind: u32,
+    pub requested_volume: u64,
+    pub accepted_volume: u64,
+    pub unaccepted_volume: u64,
+    pub transfer_trace: TraceId,
+    pub conservation_trace: TraceId,
+    pub forcing_origin_trace: Option<TraceId>,
+}
+
+impl HydrologyTransferPathClaim {
+    pub fn to_explanation_claims(&self) -> Result<Vec<ExplanationClaim>, ExplanationIrError> {
+        // Accepting more than was requested is not a generous process, it is a
+        // source of water no ledger term accounts for; a claim built on one
+        // would be evidence for something that did not happen.
+        if self
+            .requested_volume
+            .checked_sub(self.accepted_volume)
+            .is_none_or(|remainder| remainder != self.unaccepted_volume)
+        {
+            return Err(ExplanationIrError::HydrologyTransferDoesNotClose {
+                requested: self.requested_volume,
+                accepted: self.accepted_volume,
+                unaccepted: self.unaccepted_volume,
+            });
+        }
+        let mut evidence = vec![self.transfer_trace, self.conservation_trace];
+        evidence.extend(self.forcing_origin_trace);
+        let supported = |schema, value| {
+            ExplanationClaim::new(
+                schema,
+                value,
+                ClaimConfidence::ONE,
+                evidence.clone(),
+                ComparisonContext::None,
+                ClaimEvidenceState::Supported,
+            )
+        };
+        Ok(vec![
+            supported(
+                HYDROLOGY_TRANSFER_ACCEPTED_SCHEMA,
+                exact_volume(self.accepted_volume)?,
+            )?,
+            supported(
+                HYDROLOGY_TRANSFER_LIMITED_SCHEMA,
+                exact_volume(self.unaccepted_volume)?,
+            )?,
+        ])
+    }
+}
+
+/// One batch's exact conservation residual and its boundary export.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct HydrologyConservationClaim {
+    pub residual: i128,
+    pub boundary_exports: i128,
+    pub conservation_trace: TraceId,
+    pub transfer_traces: Vec<TraceId>,
+}
+
+impl HydrologyConservationClaim {
+    pub fn to_explanation_claims(&self) -> Result<Vec<ExplanationClaim>, ExplanationIrError> {
+        let mut evidence = Vec::with_capacity(1 + self.transfer_traces.len());
+        evidence.push(self.conservation_trace);
+        evidence.extend_from_slice(&self.transfer_traces);
+        // A committed batch closed exactly, so the residual claim is a literal
+        // zero. A nonzero residual is not a smaller claim about a bigger number
+        // — it means this batch is not committed evidence — so it answers with
+        // insufficiency rather than reporting the discrepancy as a measurement.
+        // Thermal errors here instead; hydrology's contract is insufficiency.
+        let residual = if self.residual == 0 {
+            ExplanationClaim::new(
+                HYDROLOGY_CONSERVATION_RESIDUAL_SCHEMA,
+                NumericClaimValue::scalar(0),
+                ClaimConfidence::ONE,
+                evidence.clone(),
+                ComparisonContext::None,
+                ClaimEvidenceState::Supported,
+            )?
+        } else {
+            ExplanationClaim::unknown(
+                HYDROLOGY_CONSERVATION_RESIDUAL_SCHEMA,
+                NumericClaimValue::scalar(0),
+                ComparisonContext::None,
+            )?
+        };
+        let exported = match u64::try_from(self.boundary_exports) {
+            Ok(exported) => ExplanationClaim::new(
+                HYDROLOGY_BOUNDARY_EXPORT_SCHEMA,
+                exact_volume(exported)?,
+                ClaimConfidence::ONE,
+                evidence,
+                ComparisonContext::None,
+                ClaimEvidenceState::Supported,
+            )?,
+            // Negative or wider than `u64`: an export term that cannot be one.
+            Err(_) => ExplanationClaim::unknown(
+                HYDROLOGY_BOUNDARY_EXPORT_SCHEMA,
+                exact_volume(0)?,
+                ComparisonContext::None,
+            )?,
+        };
+        Ok(vec![residual, exported])
+    }
+
+    /// The answer for a scope with no retained batch to report on.
+    pub fn unknown() -> Result<Vec<ExplanationClaim>, ExplanationIrError> {
+        Ok(vec![
+            ExplanationClaim::unknown(
+                HYDROLOGY_CONSERVATION_RESIDUAL_SCHEMA,
+                NumericClaimValue::scalar(0),
+                ComparisonContext::None,
+            )?,
+            ExplanationClaim::unknown(
+                HYDROLOGY_BOUNDARY_EXPORT_SCHEMA,
+                exact_volume(0)?,
+                ComparisonContext::None,
+            )?,
+        ])
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum FrameAssessment {
     Supported,
@@ -599,6 +930,18 @@ pub enum ExplanationIrError {
     ObservationTimeOverflow,
     #[error("thermal conservation receipt residual must be zero, got {residual}")]
     ThermalConservationResidual { residual: i128 },
+    /// Unlike a nonzero conservation residual, which answers with insufficiency,
+    /// this is a malformed input rather than absent evidence: the three volumes
+    /// come from one receipt and a caller that can present them not closing has
+    /// built the claim from parts of different transfers.
+    #[error(
+        "hydrology transfer volumes do not close: requested {requested}, accepted {accepted}, unaccepted {unaccepted}"
+    )]
+    HydrologyTransferDoesNotClose {
+        requested: u64,
+        accepted: u64,
+        unaccepted: u64,
+    },
 }
 
 #[cfg(test)]

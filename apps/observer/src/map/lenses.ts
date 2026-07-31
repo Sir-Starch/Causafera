@@ -13,7 +13,12 @@
 import { FieldRasterKind } from "@causafera/observer-protocol";
 
 import { copyFor } from "../i18n";
-import { formatCompact, formatInteger, formatMillimetresAsMetres } from "../observer/format";
+import {
+  formatCompact,
+  formatInteger,
+  formatMillimetresAsMetres,
+  formatWaterVolume,
+} from "../observer/format";
 import { CHUNK_SIZE } from "../observer/models";
 import { contourLevels, contourLines, refineField, type ChartField } from "./field";
 import {
@@ -30,11 +35,21 @@ import { previewGradient, previewIsolines } from "./preview";
 import {
   cellsChangedBy,
   columnField,
+  rasterGeneration,
   receivedEdge,
   surfaceField,
+  unsignedPeak,
+  unsignedSurfaceField,
   type ColumnReading,
 } from "./rasterFields";
-import { MANA_STYLE, RELIEF_STYLE, TEXTURE_STYLE } from "./surface";
+import {
+  MANA_STYLE,
+  MOISTURE_STYLE,
+  RELIEF_STYLE,
+  TEXTURE_STYLE,
+  WATER_STYLE,
+  type SurfaceStyle,
+} from "./surface";
 
 /**
  * The lattice edge at which a field no longer has to be upsampled to be drawn.
@@ -99,6 +114,52 @@ function reliefSurface(context: LensContext): LensSurface | undefined {
 }
 
 /**
+ * One water bucket, as a surface over the charted extent.
+ *
+ * The three buckets are the same quantity in three places, so they share one
+ * builder and differ only in which lattice they read and how they are painted.
+ * The signature carries the peak as an exact count rather than the field's
+ * double, so a tick that moved water past the precision of the painted value
+ * still repaints.
+ */
+function waterSurface(
+  context: LensContext,
+  kind: FieldRasterKind,
+  style: SurfaceStyle,
+  name: string,
+): LensSurface | undefined {
+  const field = unsignedSurfaceField(context.rasters, kind);
+  if (field === undefined) return undefined;
+  const peak = unsignedPeak(context.rasters, kind) ?? 0n;
+  return {
+    // The generation trace rather than the extremes alone: water that moves
+    // between two cells inside the current range changes neither min nor max,
+    // and a signature that missed that would leave the last image on the chart.
+    signature: `${name}:${rasterGeneration(context.rasters, kind)}:${peak}:${field.patches}`,
+    field,
+    style,
+    // Rounded, because the painted field is interpolated between cells: a
+    // fractional cubic millimetre between two samples is the drawing's, not the
+    // world's, and printing it would dress an interpolation as a measurement.
+    format: (value) => formatWaterVolume(BigInt(Math.round(value)), context.locale),
+  };
+}
+
+/**
+ * A water lens is observed once its lattice has arrived, and partial before it.
+ *
+ * Partial rather than awaiting, in the same sense the mana lens uses it: the
+ * read model exists and the whole-session totals are already real data, so what
+ * is missing before the first raster is the per-cell slice and not the domain.
+ * A session that holds no water draws nothing under any of these, and the
+ * caveat says which of the two is happening.
+ */
+function waterAvailability(kind: FieldRasterKind) {
+  return (context: LensContext): Lens["availability"] =>
+    unsignedSurfaceField(context.rasters, kind) === undefined ? "partial" : "observed";
+}
+
+/**
  * Units are copy, not data. They come from the active dictionary so a metre reads as `m`,
  * `м` or `米` rather than leaking one language into every other.
  */
@@ -116,6 +177,21 @@ const MILLIMETRES: Lens["unit"] = {
   "zh-Hans": "毫米",
   "de-DE": "mm",
   "es-ES": "mm",
+};
+
+/**
+ * Water is carried as cubic millimetres and read as cubic metres.
+ *
+ * The regrouping is exact and the symbol is the same everywhere, so this is a
+ * unit rather than a translation — but it still travels through the dictionary
+ * shape, because a locale that writes it differently must be able to.
+ */
+const CUBIC_METRES: Lens["unit"] = {
+  "en-US": "m³",
+  "ru-RU": "м³",
+  "zh-Hans": "立方米",
+  "de-DE": "m³",
+  "es-ES": "m³",
 };
 
 function metreMark(context: LensContext): string {
@@ -355,6 +431,142 @@ export const LENSES: Lens[] = [
     },
   ),
 
+  /* ---------------------------------------------------------- hydrology -- */
+  {
+    id: "water-surface",
+    group: "hydrology",
+    signal: "water",
+    availability: "observed",
+    availabilityFor: waterAvailability(FieldRasterKind.HydrologySurfaceWater),
+    roles: ["primary", "overlay"],
+    title: {
+      "en-US": "Surface water",
+      "ru-RU": "Поверхностная вода",
+      "zh-Hans": "地表水",
+      "de-DE": "Oberflächenwasser",
+      "es-ES": "Agua superficial",
+    },
+    detail: {
+      "en-US": "Water ponded above the ground, as an exact volume per cell.",
+      "ru-RU": "Вода, стоящая над поверхностью, — точный объём по ячейкам.",
+      "zh-Hans": "积聚在地表之上的水，逐单元格的精确体积。",
+      "de-DE": "Über dem Boden stehendes Wasser, als exaktes Volumen je Zelle.",
+      "es-ES": "Agua embalsada sobre el terreno, como volumen exacto por celda.",
+    },
+    unit: CUBIC_METRES,
+    cellProjection: "full",
+    caveat: {
+      "en-US":
+        "A volume, never a depth: a depth is a volume over a cell area, and the grid metric carrying that area is not projected to the observer. Where the surface is drawn between two cells the value is interpolated. There is no lake and no river here — a body of water is a reading a viewer may take, not simulation state.",
+      "ru-RU":
+        "Объём, а не глубина: глубина — это объём, делённый на площадь ячейки, а метрика решётки с этой площадью наблюдателю не передаётся. Между двумя ячейками значение интерполировано. Здесь нет ни озера, ни реки — водоём это прочтение зрителя, а не состояние симуляции.",
+      "zh-Hans":
+        "这是体积，而不是深度：深度是体积除以单元格面积，而携带该面积的格网度量并不投影给观测器。两个单元格之间的取值为插值结果。这里没有湖泊也没有河流——水体是观看者可作的读法，而非仿真状态。",
+      "de-DE":
+        "Ein Volumen, keine Tiefe: eine Tiefe ist ein Volumen je Zellfläche, und die Gittermetrik, die diese Fläche trägt, wird dem Beobachter nicht projiziert. Zwischen zwei Zellen ist der Wert interpoliert. Hier gibt es weder See noch Fluss — ein Gewässer ist eine Lesart des Betrachters, kein Simulationszustand.",
+      "es-ES":
+        "Un volumen, nunca una profundidad: la profundidad es un volumen por área de celda, y la métrica de retícula que lleva esa área no se proyecta al observador. Entre dos celdas el valor está interpolado. Aquí no hay lago ni río: una masa de agua es una lectura del espectador, no estado de la simulación.",
+    },
+    layers: (context) => {
+      const surface = waterSurface(
+        context,
+        FieldRasterKind.HydrologySurfaceWater,
+        WATER_STYLE,
+        "water-surface",
+      );
+      return surface === undefined ? EMPTY_LAYERS : { surface };
+    },
+  },
+  {
+    id: "water-soil",
+    group: "hydrology",
+    signal: "water",
+    availability: "observed",
+    availabilityFor: waterAvailability(FieldRasterKind.HydrologySoilWater),
+    roles: ["primary"],
+    title: {
+      "en-US": "Soil water",
+      "ru-RU": "Почвенная вода",
+      "zh-Hans": "土壤水",
+      "de-DE": "Bodenwasser",
+      "es-ES": "Agua del suelo",
+    },
+    detail: {
+      "en-US": "Water held in the unsaturated zone, as an exact volume per cell.",
+      "ru-RU": "Вода, удерживаемая в зоне аэрации, — точный объём по ячейкам.",
+      "zh-Hans": "保持在非饱和带中的水，逐单元格的精确体积。",
+      "de-DE": "In der ungesättigten Zone gehaltenes Wasser, als exaktes Volumen je Zelle.",
+      "es-ES": "Agua retenida en la zona no saturada, como volumen exacto por celda.",
+    },
+    unit: CUBIC_METRES,
+    cellProjection: "full",
+    caveat: {
+      "en-US":
+        "The substrate's capacities and its infiltration limit are not projected, so a cell that looks full and one that is full cannot be told apart here.",
+      "ru-RU":
+        "Ёмкости субстрата и предел инфильтрации не проецируются, поэтому ячейку, которая выглядит полной, здесь не отличить от полной.",
+      "zh-Hans":
+        "基质的容量与入渗上限不会被投影，因此在这里无法区分“看起来满了”的单元格与真正满了的单元格。",
+      "de-DE":
+        "Die Kapazitäten des Substrats und sein Infiltrationslimit werden nicht projiziert; eine Zelle, die voll aussieht, ist hier nicht von einer vollen zu unterscheiden.",
+      "es-ES":
+        "Las capacidades del sustrato y su límite de infiltración no se proyectan, así que aquí no se distingue una celda que parece llena de una que lo está.",
+    },
+    layers: (context) => {
+      const surface = waterSurface(
+        context,
+        FieldRasterKind.HydrologySoilWater,
+        MOISTURE_STYLE,
+        "water-soil",
+      );
+      return surface === undefined ? EMPTY_LAYERS : { surface };
+    },
+  },
+  {
+    id: "water-groundwater",
+    group: "hydrology",
+    signal: "water",
+    availability: "observed",
+    availabilityFor: waterAvailability(FieldRasterKind.HydrologyGroundwater),
+    roles: ["primary"],
+    title: {
+      "en-US": "Groundwater",
+      "ru-RU": "Подземная вода",
+      "zh-Hans": "地下水",
+      "de-DE": "Grundwasser",
+      "es-ES": "Agua subterránea",
+    },
+    detail: {
+      "en-US": "Water in the saturated zone, as an exact volume per cell.",
+      "ru-RU": "Вода в зоне насыщения — точный объём по ячейкам.",
+      "zh-Hans": "饱和带中的水，逐单元格的精确体积。",
+      "de-DE": "Wasser in der gesättigten Zone, als exaktes Volumen je Zelle.",
+      "es-ES": "Agua en la zona saturada, como volumen exacto por celda.",
+    },
+    unit: CUBIC_METRES,
+    cellProjection: "full",
+    caveat: {
+      "en-US":
+        "A stored volume, not a water table. The table is that volume against the cell's specific yield and aquifer base, and neither is projected — so this shows how much is down there and not how high it stands.",
+      "ru-RU":
+        "Запасённый объём, а не уровень грунтовых вод. Уровень — это тот же объём относительно водоотдачи ячейки и подошвы водоносного горизонта, а их не проецируют; здесь видно, сколько воды внизу, но не на какой она высоте.",
+      "zh-Hans":
+        "这是储存体积，而不是地下水位。水位是该体积相对于单元格给水度与含水层底板的结果，而二者都不被投影——所以这里显示的是下面有多少水，而不是它站得多高。",
+      "de-DE":
+        "Ein gespeichertes Volumen, kein Grundwasserspiegel. Der Spiegel ergibt sich aus diesem Volumen gegen den nutzbaren Porenraum der Zelle und die Aquiferbasis, und beides wird nicht projiziert — das hier zeigt, wie viel unten liegt, nicht wie hoch es steht.",
+      "es-ES":
+        "Un volumen almacenado, no un nivel freático. El nivel es ese volumen frente al rendimiento específico de la celda y la base del acuífero, y ninguno se proyecta: esto muestra cuánta agua hay abajo, no a qué altura está.",
+    },
+    layers: (context) => {
+      const surface = waterSurface(
+        context,
+        FieldRasterKind.HydrologyGroundwater,
+        MOISTURE_STYLE,
+        "water-groundwater",
+      );
+      return surface === undefined ? EMPTY_LAYERS : { surface };
+    },
+  },
   /* ----------------------------------------------------------- material -- */
   {
     id: "surface",
@@ -1088,17 +1300,23 @@ export const LENSES: Lens[] = [
 export const LENS_BY_ID = new Map(LENSES.map((lens) => [lens.id, lens]));
 
 /**
- * The chart opens on the mana field.
+ * The chart opens on measured relief with water laid over it.
  *
- * It is the one field the runtime maintains that is continuous across the whole
- * charted extent, so it is the one that shows the instrument reading a world
- * rather than a set of chunks. Terrain is now continuous across chunk boundaries
- * too (TODO-GEO-005), so contours over it no longer bunch along every seam; they
- * still are not the default overlay, but that is a UI choice rather than a
- * consequence of the generator, left to a UI-facing plan.
+ * Water needs ground under it to mean anything: the surface lens paints only
+ * where water stands and is fully transparent where none does, so over the
+ * hypsometric relief it reads the way water reads on a chart — a shape against
+ * land, pooled in the low ground the solver actually routed it into. Contours
+ * complete the reading by giving the elevation the water is answering to; they
+ * no longer bunch at every seam now that terrain is continuous across chunk
+ * boundaries (TODO-GEO-005), which is what previously kept them out of the
+ * default set.
+ *
+ * The mana field is one lens click away and keeps every lens it had. It opened
+ * the chart while it was the only continuous field the runtime maintained; that
+ * is no longer the case.
  */
-export const DEFAULT_PRIMARY_LENS = "mana";
-export const DEFAULT_OVERLAYS = ["mana-isolines", "population", "surface"];
+export const DEFAULT_PRIMARY_LENS = "relief";
+export const DEFAULT_OVERLAYS = ["water-surface", "contours", "population"];
 
 /** The lattice ordinal decoded back to a cell position. */
 function cellOf(ordinal: number): { x: number; y: number; z: number } {

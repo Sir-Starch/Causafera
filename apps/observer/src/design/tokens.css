@@ -7,10 +7,11 @@
  *
  * Colour discipline: the interface chrome is monochrome ink. Hue is reserved entirely for
  * measured quantities, so a coloured mark on screen always means a simulation quantity and
- * never decoration. The six signal hues were generated in OKLCH and validated as a
+ * never decoration. The signal hues were generated in OKLCH and validated as a
  * categorical palette against the sheet (lightness band, chroma floor, protan/deutan
  * separation, normal-vision separation, contrast). Do not hand-edit them; regenerate and
- * revalidate.
+ * revalidate, or — for a hue added to an already-generated set — search the band under the
+ * same criteria and record the measurements, as the water hue below does.
  */
 
 :root {
@@ -48,6 +49,15 @@
   --sig-life: #4ba45c;
   --sig-physical: #4791ce;
   --sig-refused: #ce533e;
+  /* Water is the seventh hue and the only one added after the palette was
+     generated. It was placed by search rather than by eye, against the same
+     criteria: L 0.600 and C 0.101 sit on the existing lightness and chroma
+     floors, contrast against the sheet is 5.28 inside the palette's 4.70–6.65,
+     and its hue is centred in the one gap left on the wheel, between the trace
+     teal and the physical blue. Its worst separation from any existing hue is
+     0.064 OKLab across normal, protan and deutan vision — better than two pairs
+     the palette already ships. See docs/ui/observer-application.md. */
+  --sig-water: #1190a2;
 
   /* Washes stay faint: a signal is drawn, not flooded. */
   --sig-mana-wash: rgb(194 134 20 / 12%);
@@ -56,6 +66,7 @@
   --sig-life-wash: rgb(75 164 92 / 12%);
   --sig-physical-wash: rgb(71 145 206 / 12%);
   --sig-refused-wash: rgb(206 83 62 / 12%);
+  --sig-water-wash: rgb(17 144 162 / 12%);
 
   /* ---- Sequential ramp (single hue, magnitude) ------------------------ */
   --ramp-100: #edd3b0;

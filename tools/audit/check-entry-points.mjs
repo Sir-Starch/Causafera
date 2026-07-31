@@ -7,6 +7,7 @@ const REQUIRED = [
   'tools/audit/build-task4-inventory.mjs',
   'tools/audit/build-tooling-blobs.mjs',
   'tools/audit/capture-command.mjs',
+  'tools/audit/fixtures/observer-protocol-v1-pre-hydrology.mjs',
   'tools/audit/lib/capture-security.mjs',
   'tools/audit/lib/validate-capability-audit-core.mjs',
   'tools/audit/produce-task4-evidence.mjs',
@@ -29,6 +30,10 @@ const REQUIRED = [
   'tools/audit/test-task4-non-rust-runtime.mjs',
   'tools/audit/test-tooling-and-endpoints.mjs',
   'tools/audit/test-trust-boundaries.mjs',
+  'tools/audit/test-hydrology-production-boundaries.mjs',
+  'tools/audit/test-observer-hydrology-decoder.mjs',
+  'tools/audit/test-observer-hydrology-legacy-decoder.mjs',
+  'tools/audit/test-observer-proto-schema.mjs',
   'tools/audit/validate-capability-audit.mjs',
   'tools/audit/verify-mapping-endpoints.mjs',
 ];

@@ -15,14 +15,24 @@ Companion documents:
 A lens is one class of information projected onto the chart. The renderer draws six kinds of
 geometry and knows nothing about what any of them mean:
 
-| Layer | Geometry | Drawn at |
-|-------|----------|----------|
-| `surface` | a continuous field over the whole surveyed extent, painted as one image | every scale |
-| `field` | a scalar per chunk, painted as a tint of the lens hue | every scale |
-| `symbols` | a mark at a chunk centre — a proportional circle, or a fixed glyph | chunk and cell scale |
-| `cells` | a mark at a real cell position inside a chunk | cell scale only |
-| `vectors` | a directed magnitude between two chunk centres | every scale |
-| `isolines` | polylines in chart space, clipped to the charted extent | every scale |
+| Layer | Geometry | Drawn at | Mounted as |
+|-------|----------|----------|------------|
+| `surface` | a continuous field over the whole surveyed extent, painted as one image | every scale | primary, and overlay composited over it |
+| `field` | a scalar per chunk, painted as a tint of the lens hue | every scale | primary only |
+| `symbols` | a mark at a chunk centre — a proportional circle, or a fixed glyph | chunk and cell scale | primary or overlay |
+| `cells` | a mark at a real cell position inside a chunk | cell scale only | primary or overlay |
+| `vectors` | a directed magnitude between two chunk centres | every scale | primary or overlay |
+| `isolines` | polylines in chart space, clipped to the charted extent | every scale | primary or overlay |
+
+The last column is contract, not trivia: a lens that returns a layer the renderer does not consume in
+the position it is mounted draws nothing, silently and with no error anywhere. `field` is the one
+that is primary-only, because a tint per chunk is the base fill of the sheet and two of them
+stacked would be a wash over a wash rather than two readings.
+
+An overlay `surface` composites onto whatever is already painted, so a lens that draws one has to
+mean it: its ramp must be transparent where the quantity is absent, or it will simply hide the
+primary field. Surface water is the case the rule exists for — it is nothing without ground beneath
+it, and its alpha starts at zero.
 
 `surface` and `field` answer the same question at different resolutions, and a lens supplies
 whichever it can: a `surface` when the observer has sent the lattice, a `field` when one value per
@@ -137,19 +147,57 @@ resolves into rules once a chunk is large enough on screen that its boundary is 
 a frame. A lens with only chunk aggregates keeps the full rules, because there the boundary really is
 where one measurement stops and the next begins.
 
+## Water
+
+The `hydrology` group holds three lenses: the same quantity in three places — ponded surface water,
+water held in the unsaturated zone, and water in the saturated zone.
+
+Three things about them are contract rather than styling:
+
+1. **Volumes, never depths.** A water volume is an exact count of cubic millimetres. A depth is that
+   volume over a cell area, the `HydrologyGridMetric` carrying that area is declared per chart, and
+   it is not projected to the observer — so the chart shows cubic metres and says so. Rendering a
+   millimetre figure here would be a number invented on this side of the wire.
+2. **The unsigned band is a separate band.** A hydrology lattice carries its values in
+   `unsignedValues` (`BigUint64Array`) and leaves the signed `values` empty, because the upper half
+   of a `u64` has no image in a double. `unsignedSurfaceField` converts to doubles to paint, and
+   `unsignedPeak` reads the exact maximum for the signature and the legend, so a repaint is decided
+   by a count rather than by a rounded one.
+3. **No water bodies.** There is no lake, river, wetland or catchment lens, and there will not be
+   one drawn from this data. Those are readings a viewer may take; they are not simulation state, and
+   nothing an observer computes may travel back (INV-022, and the source audit in
+   `tools/audit/test-hydrology-production-boundaries.mjs`).
+
+There is deliberately no fourth lens over the per-cell delta window. That window exists and the
+frontend reads it, but it is capped at 64 entries taken in canonical address order, so on a chart of
+nine thousand cells the entries it carries are the lowest-addressed changed cells rather than a
+sample of where water moved. Drawn as marks they would cluster in one corner and read as a claim
+about geography that the selection rule, not the world, produced. The window is presented as a table
+in Flux instead, where canonical ordering is visible as ordering. A map overlay needs either a
+spatially representative window or a much larger cap, which is `TODO-OBS-006`.
+
+Surface water is painted with alpha rising from zero, so a dry cell shows the ground beneath rather
+than the floor of a blue ramp. That is what lets it sit over the relief as an overlay and read as a
+shape against land. Soil and groundwater use a separate, lower-chroma ramp on purpose: three lenses
+over the same blue would look like one lens with a bug.
+
 ## What the chart opens on, and why
 
-The default primary lens is the mana field. It is the one field the runtime maintains that is
-continuous across the whole charted extent, so it is the one that shows the instrument reading a
-world rather than a set of chunks.
+The default primary lens is measured relief, with surface water and contours over it.
 
-Terrain contours are not the default overlay, but the reason is now a UI decision rather than a
-generation gap. `terrain_cells` used to derive elevation from chunk-local coordinates only, so every
-chunk repeated the same diagonal ridge and the chart carried a thirty-metre scarp on every chunk
-boundary; that closed with `TODO-GEO-005`, and the relief lens's caveat about the step being world
-state rather than a seam remains true — it is just no longer describing a defect. Promoting contours
-to a default overlay is left to a UI-facing plan (`AGENTS.md`: do not update UI for every internal
-field).
+Water needs ground under it to mean anything. The surface-water lens paints only where water stands,
+so over the hypsometric relief it reads the way water reads on a chart — a shape against land, in the
+low ground the solver routed it into — and the contours state the elevation it is answering to.
+
+Contours were previously kept out of the default set for a generation reason that has since closed:
+`terrain_cells` used to derive elevation from chunk-local coordinates only, so every chunk repeated
+the same diagonal ridge and the chart carried a thirty-metre scarp on every chunk boundary. That
+closed with `TODO-GEO-005`. The relief lens's caveat about the step being world state rather than a
+seam remains true; it is just no longer describing a defect.
+
+The mana field opened the chart while it was the only field the runtime maintained continuously
+across the whole charted extent. That is no longer the case, and it keeps every lens it had one
+click away.
 
 ## What the map deliberately does not do
 

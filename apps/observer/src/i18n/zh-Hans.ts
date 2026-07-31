@@ -32,6 +32,9 @@ export const zhHans: Copy = {
     unavailableBody:
       "Tauri 桥接不可用，因此没有权威数据。观测器不会用演示状态顶替：空白的仪器比虚构的读数更诚实。",
     unavailableHint: "使用 pnpm --dir apps/observer desktop 启动桌面外壳。",
+    capTitle: "运行已达到导出上限",
+    capBody:
+      "下一刻将产生大于 256 MiB 快照信封的状态，因此运行时将其整体拒绝，会话保持原样。任何已接受的状态都不得变为不可导出。含水文的九区块图幅积累因果迹线与转移回执的速度足以在数十刻内触及该上限；重置将开始一次新的运行。",
     errorTitle: "与观测器的交换失败",
   },
 
@@ -111,6 +114,29 @@ export const zhHans: Copy = {
     manaCellChanges: "魔力单元格变化",
     manaEffects: "魔力物理效应",
     resolutionTransitions: "分辨率转变",
+    water: "水，总量",
+    waterStanding: "地表积水",
+    waterTitle: "水的存储",
+    waterLede:
+      "三个存储彼此对照。在封闭范围内，总量因构造而恒定；变化的是水处在哪一个存储之中。",
+    waterOpenChart: "在图幅上查看",
+    waterLedger: "水量平衡",
+    waterLedgerLede: "整场会话的总量，以及最近一条已应用的强迫记录及其来源。",
+    waterSurface: "地表",
+    waterSoil: "土壤",
+    waterGround: "地下水",
+    waterConveyance: "输水通道",
+    waterChunks: "含水区块",
+    waterResidualZero: "账目已结平 · 残差 0",
+    waterForcing: "最新强迫",
+    waterNoForcing: "已无仍有证据支撑的已应用记录",
+    waterAccepted: "已接受的来水",
+    waterEvapotranspiration: "已接受的需水",
+    waterOrigin: "来源",
+    waterDisabled: "此世界中不存在",
+    waterDisabledBody:
+      "本次会话不含水：水文在配置中已关闭。这是关于该次运行的事实，而不是仪器的缺口。",
+    waterUnreported: "该载荷写于水文出现之前，因此对水的有无都未作任何陈述。",
   },
 
   chart: {
@@ -162,6 +188,9 @@ export const zhHans: Copy = {
     selection: "选择",
     selectPrompt: "未选择区块",
     selectPromptBody: "请在地图、剖面或登记册中选择一个区块。",
+    water: "水",
+    waterLede: "由本次会话持有的逐单元格格网求和得出，而非取自区块聚合值。",
+    noWaterLattice: "尚未收到该区块的水格网。",
     noChart: "尚未收到图幅",
     noChartBody: "观测器接入后才会送达区块投影。它绝不绘制未曾获得的地面。",
   },
@@ -202,6 +231,25 @@ export const zhHans: Copy = {
     rate: "速率",
     quantity: "量",
     total: "合计",
+    water: "水的移动",
+    waterLede:
+      "至多 64 次移动，按载体的规范顺序排列，取自最近一批保留批次。每一次被接受、部分接受与完全拒绝的移动都带着三个体积，因为起作用的限制器本身就是证据：只展示移动了的部分，会让一条正在起作用的界限看起来像一个无事可做的过程。该窗口是一刻的切片，而非一刻的普查。",
+    waterProcess: "过程",
+    waterRequested: "请求",
+    waterAccepted: "接受",
+    waterUnaccepted: "未接受",
+    waterAcceptance: "占比",
+    waterOrigin: "锚点",
+    waterOriginHint: "这次移动所源自的强迫记录",
+    waterLimited: "在窗口内受限",
+    waterUnlimited: "窗口内无一受限",
+    waterCells: "逐单元格水量变化",
+    waterCellsLede:
+      "至多 64 个发生变化的单元格，按规范地址顺序排列——按地址取靠前的，而不是变化最大的，也不是水在何处移动的抽样。每一行是一个单元格已提交的前后值，以及产生它的强迫项与侧向流项。",
+    waterForcingTerm: "强迫",
+    waterLateral: "侧向",
+    noWater: "窗口内没有水的移动",
+    noWaterBody: "要么本次会话不含水，要么在有界窗口内没有任何移动。两者都是观测结果，而不是缺口。",
   },
 
   assay: {

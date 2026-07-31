@@ -62,8 +62,34 @@
 ## The observer
 
 The desktop observer is a read-only instrument attached to a live deterministic runtime. Everything
-below is real output at the seed and tick stated in the caption, not a mock-up — the runtime is
-deterministic, so each of these is reproducible rather than illustrative.
+below is real output at the seed and tick stated in the caption, not a mock-up. Each was
+reproducible from that seed and tick at the commit it was taken from; the session configuration has
+moved since, so reproducing them exactly now means checking out that commit rather than running the
+current one.
+
+> [!WARNING]
+> **The observer is early, rough, and not the intended end state.** It is a working instrument
+> rather than a designed product: it exists so the simulation can be inspected while it is being
+> built, and it is built at whatever pace inspection demands.
+>
+> It also lags. The runtime is under active development and the observer is downstream of it, so
+> a domain can be simulated for some time before anything on screen reads it, and a surface can
+> describe a read model more narrowly than the runtime now offers. Expect the images below to go
+> out of date faster than the text around them — a screenshot is a photograph of one commit, and
+> this one moves. Treat them as evidence that the instrument runs, not as its current appearance.
+
+> [!NOTE]
+> **A real map of the world is not possible yet, and the lenses below are not the map.**
+>
+> The chart projects one chart at one containment layer, because chunk coordinates are
+> chart-qualified lattice addresses and no seamless global surface exists to draw (INV-036). What
+> it can honestly show today is a small block of surveyed chunks and a handful of measured fields
+> over it, with everything beyond the received extent hatched as unsurveyed.
+>
+> The present lenses are a first, functional pass — enough to check that a field is there and
+> behaving, not enough to be read as a world. A legible, properly cartographic map of the world is
+> a much later stage, and it depends on simulation depth that does not exist yet rather than on
+> drawing effort. Nothing in the current chart should be taken as a preview of how that will look.
 
 <div align="center">
 

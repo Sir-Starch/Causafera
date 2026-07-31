@@ -41,6 +41,7 @@ export function App() {
   const copy = useCopy();
   const connection = useSession((state) => state.connection);
   const error = useSession((state) => state.error);
+  const errorKind = useSession((state) => state.errorKind);
   const hasSummary = useSession((state) => state.summary !== undefined);
 
   useEffect(() => {
@@ -131,9 +132,19 @@ export function App() {
         <main className="workspace">
           <div className="workspace__inner">
             {error !== undefined && attached && (
-              <Notice tone="alarm">
+              // The export cap is a limit the engine enforces, not a fault: the
+              // refused tick changed nothing and the session is exactly as it
+              // was. Drawing it in the same red as a broken bridge would
+              // miscategorise the one interesting thing about it.
+              <Notice tone={errorKind === "export-cap" ? "caution" : "alarm"}>
                 <span>
-                  <b>{copy.connection.errorTitle}.</b> {error}
+                  <b>
+                    {errorKind === "export-cap"
+                      ? copy.connection.capTitle
+                      : copy.connection.errorTitle}
+                    .
+                  </b>{" "}
+                  {errorKind === "export-cap" ? copy.connection.capBody : error}
                 </span>
               </Notice>
             )}

@@ -11,15 +11,26 @@
  */
 
 import type {
+  HydrologyCellDelta,
+  HydrologySummary,
+  HydrologyTransferSummary,
   MaterialSurfaceDelta,
   MaterialSurfaceGateDelta,
   RuntimeSummary,
   SpatialChunkSummary,
   WorldChunkSnapshot,
 } from "@causafera/observer-protocol";
+import { HYDROLOGY_SUMMARY_SCHEMA_ABSENT } from "@causafera/observer-protocol";
 
 /** Each signal is one measured quantity with one reserved hue. */
-export type SignalId = "mana" | "trace" | "resolution" | "life" | "physical" | "refused";
+export type SignalId =
+  | "mana"
+  | "trace"
+  | "resolution"
+  | "life"
+  | "physical"
+  | "refused"
+  | "water";
 
 export const SIGNAL_VARIABLE: Record<SignalId, string> = {
   mana: "var(--sig-mana)",
@@ -28,6 +39,7 @@ export const SIGNAL_VARIABLE: Record<SignalId, string> = {
   life: "var(--sig-life)",
   physical: "var(--sig-physical)",
   refused: "var(--sig-refused)",
+  water: "var(--sig-water)",
 };
 
 export const SIGNAL_WASH: Record<SignalId, string> = {
@@ -37,6 +49,7 @@ export const SIGNAL_WASH: Record<SignalId, string> = {
   life: "var(--sig-life-wash)",
   physical: "var(--sig-physical-wash)",
   refused: "var(--sig-refused-wash)",
+  water: "var(--sig-water-wash)",
 };
 
 /* ---------------------------------------------------------------- series -- */
@@ -334,6 +347,149 @@ export function ladderExtent(ladders: readonly SurfaceLadder[]): LadderExtent {
     conditionMin,
     conditionMax: conditionMax === conditionMin ? conditionMin + 1 : conditionMax,
   };
+}
+
+/* ------------------------------------------------------------ hydrology -- */
+
+/**
+ * Whether the payload carries water at all.
+ *
+ * Three states, and conflating any two of them would misreport the world. A
+ * payload written before hydrology existed says nothing about water; a build
+ * that has hydrology writes the group even when the domain is off, and that is
+ * a session with no water rather than a session that did not say; and an
+ * enabled session with no resident field is neither.
+ */
+export type WaterPresence = "unreported" | "disabled" | "observed";
+
+export function waterPresence(summary: RuntimeSummary | undefined): WaterPresence {
+  if (summary === undefined) return "unreported";
+  if (summary.hydrology.schemaVersion === HYDROLOGY_SUMMARY_SCHEMA_ABSENT) return "unreported";
+  return summary.hydrology.activeChunkCount === 0 ? "disabled" : "observed";
+}
+
+/** Every storage the ledger closes over, summed. Cell storages plus conveyance. */
+export function totalWater(hydrology: HydrologySummary): bigint {
+  return (
+    hydrology.totalSurface +
+    hydrology.totalSoil +
+    hydrology.totalGroundwater +
+    hydrology.totalConveyance
+  );
+}
+
+/**
+ * One cell's committed storage change, reduced to what a reader compares.
+ *
+ * The protocol sends before and after for all three storages; the differences
+ * are computed here rather than in a view so that every surface showing this
+ * cell shows the same subtraction.
+ */
+export interface WaterCell {
+  key: string;
+  chunkKey: string;
+  chartId: bigint;
+  chunkX: number;
+  chunkY: number;
+  chunkZ: number;
+  cellOrdinal: number;
+  cell: { x: number; y: number; z: number };
+  tick: number;
+  surfaceChange: bigint;
+  soilChange: bigint;
+  groundwaterChange: bigint;
+  netForcing: bigint;
+  netLateralFlow: bigint;
+  /**
+   * The most recent of the cell's three bucket anchors: the event that last
+   * settled any part of this transition. The batch anchor that closed the
+   * ledger for the whole tick is the same for every row of a tick, so it is
+   * reported once in the Observatory's ledger rather than repeated here.
+   */
+  transitionTraceId: bigint;
+}
+
+export function buildWaterCells(deltas: readonly HydrologyCellDelta[]): WaterCell[] {
+  return deltas
+    .map<WaterCell>((delta) => {
+      const surfaceChange = delta.surfaceAfter - delta.surfaceBefore;
+      const soilChange = delta.soilAfter - delta.soilBefore;
+      const groundwaterChange = delta.groundwaterAfter - delta.groundwaterBefore;
+      return {
+        key: `${surfaceKey(delta)}@${delta.transitionTick}`,
+        chunkKey: chunkKey(delta),
+        chartId: delta.chartId,
+        chunkX: delta.chunkX,
+        chunkY: delta.chunkY,
+        chunkZ: delta.chunkZ,
+        cellOrdinal: delta.cellOrdinal,
+        cell: decodeHydrologyCellOrdinal(delta.cellOrdinal),
+        tick: Number(delta.transitionTick),
+        surfaceChange,
+        soilChange,
+        groundwaterChange,
+        netForcing: delta.netForcing,
+        netLateralFlow: delta.netLateralFlow,
+        transitionTraceId: delta.transitionTraceId,
+      };
+    })
+    .sort((a, b) => b.tick - a.tick || a.cellOrdinal - b.cellOrdinal);
+}
+
+/**
+ * The hydrology lattice is one cell deep and 32 x 32 across a chunk, unlike the
+ * 32³ lattice a material surface ordinal addresses. Decoding it with the cubic
+ * rule would place every cell of the plan at z 0 and x, y wrong past the first
+ * row, so it gets its own decoding rather than sharing one that happens to
+ * agree for the first 32 ordinals.
+ */
+export function decodeHydrologyCellOrdinal(ordinal: number): { x: number; y: number; z: number } {
+  return { x: ordinal % CHUNK_SIZE, y: Math.floor(ordinal / CHUNK_SIZE), z: 0 };
+}
+
+/**
+ * One accepted, partly accepted or wholly rejected movement, with the limiter
+ * evidence made comparable.
+ *
+ * `acceptance` is accepted over requested. A limiter that engaged is the whole
+ * reason all three volumes travel: a movement that asked for more than it got is
+ * evidence of a bound doing its work, and a table that showed only what moved
+ * would make it indistinguishable from a process that had nothing to do.
+ */
+export interface WaterTransfer {
+  key: string;
+  processKind: number;
+  tick: number;
+  requested: bigint;
+  accepted: bigint;
+  unaccepted: bigint;
+  /** 0..1, or undefined when nothing was requested and the ratio has no meaning. */
+  acceptance?: number;
+  limited: boolean;
+  transferTraceId: bigint;
+  forcingOriginTraceId: bigint | null;
+}
+
+export function buildWaterTransfers(
+  summaries: readonly HydrologyTransferSummary[],
+): WaterTransfer[] {
+  return summaries
+    .map<WaterTransfer>((transfer, index) => ({
+      key: `${transfer.transferTraceId}:${index}`,
+      processKind: transfer.processKind,
+      tick: Number(transfer.tick),
+      requested: transfer.requestedVolume,
+      accepted: transfer.acceptedVolume,
+      unaccepted: transfer.unacceptedVolume,
+      acceptance:
+        transfer.requestedVolume === 0n
+          ? undefined
+          : Number(transfer.acceptedVolume) / Number(transfer.requestedVolume),
+      limited: transfer.unacceptedVolume > 0n,
+      transferTraceId: transfer.transferTraceId,
+      forcingOriginTraceId: transfer.forcingOriginTraceId,
+    }))
+    .sort((a, b) => b.tick - a.tick || Number(b.accepted - a.accepted));
 }
 
 /* ----------------------------------------------------------------- gates -- */

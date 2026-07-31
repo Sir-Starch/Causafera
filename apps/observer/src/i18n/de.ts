@@ -32,6 +32,9 @@ export const de: Copy = {
     unavailableBody:
       "Die Tauri-Brücke ist nicht verfügbar, also gibt es keine maßgeblichen Daten. Der Beobachter schiebt keinen Demonstrationszustand unter: ein leeres Instrument ist ehrlicher als ein erfundener Messwert.",
     unavailableHint: "Starten Sie die Desktop-Hülle mit pnpm --dir apps/observer desktop.",
+    capTitle: "Der Lauf hat die Exportgrenze erreicht",
+    capBody:
+      "Der nächste Takt ergäbe einen Zustand größer als der 256-MiB-Schnappschuss-Umschlag, also hat die Laufzeitumgebung ihn ganz zurückgewiesen und die Sitzung genau so belassen, wie sie war. Kein angenommener Zustand darf unexportierbar werden. Ein Kartenblatt aus neun Chunks mit Hydrologie sammelt Kausalspuren und Transferbelege schnell genug, um die Grenze in Dutzenden von Takten zu erreichen; Zurücksetzen beginnt einen neuen Lauf.",
     errorTitle: "Der Austausch mit dem Beobachter ist fehlgeschlagen",
   },
 
@@ -115,6 +118,31 @@ export const de: Copy = {
     manaCellChanges: "Änderungen an Mana-Zellen",
     manaEffects: "Physische Mana-Effekte",
     resolutionTransitions: "Auflösungsübergänge",
+    water: "Wasser, gesamt",
+    waterStanding: "Stehendes Wasser",
+    waterTitle: "Wasserspeicher",
+    waterLede:
+      "Die drei Speicher gegeneinander. In einem geschlossenen Ausschnitt ist die Summe bauartbedingt konstant; was sich bewegt, ist, in welchem Speicher das Wasser steht.",
+    waterOpenChart: "Auf dem Kartenblatt zeigen",
+    waterLedger: "Wasserbilanz",
+    waterLedgerLede:
+      "Summen der gesamten Sitzung und der zuletzt angewandte Forcing-Datensatz mit seinem Ursprung.",
+    waterSurface: "Oberfläche",
+    waterSoil: "Boden",
+    waterGround: "Grundwasser",
+    waterConveyance: "Gerinne",
+    waterChunks: "Chunks mit Wasser",
+    waterResidualZero: "Bilanz geschlossen · Restglied 0",
+    waterForcing: "Letztes Forcing",
+    waterNoForcing: "Kein angewandter Datensatz ist noch belegt",
+    waterAccepted: "Angenommener Zufluss",
+    waterEvapotranspiration: "Angenommener Bedarf",
+    waterOrigin: "Ursprung",
+    waterDisabled: "in dieser Welt nicht vorhanden",
+    waterDisabledBody:
+      "Diese Sitzung führt kein Wasser: die Hydrologie ist abgeschaltet konfiguriert. Das ist eine Tatsache über den Lauf, keine Lücke im Instrument.",
+    waterUnreported:
+      "Diese Nachricht wurde geschrieben, bevor es Hydrologie gab, und sagt über Wasser in keine Richtung etwas aus.",
   },
 
   chart: {
@@ -169,6 +197,9 @@ export const de: Copy = {
     selection: "Auswahl",
     selectPrompt: "Kein Chunk ausgewählt",
     selectPromptBody: "Wählen Sie einen Chunk auf der Karte, im Profil oder im Register.",
+    water: "Wasser",
+    waterLede: "Aus den Zellgittern dieser Sitzung aufsummiert, nicht aus einem Chunk-Aggregat.",
+    noWaterLattice: "Für diesen Chunk ist kein Wassergitter eingetroffen.",
     noChart: "Noch kein Kartenblatt empfangen",
     noChartBody:
       "Die Chunk-Projektion trifft ein, sobald der Beobachter angebunden ist. Er zeichnet niemals Boden, den er nicht erhalten hat.",
@@ -214,6 +245,26 @@ export const de: Copy = {
     rate: "Rate",
     quantity: "Größe",
     total: "Gesamt",
+    water: "Wasserbewegungen",
+    waterLede:
+      "Höchstens 64 Bewegungen, in kanonischer Trägerreihenfolge, für die zuletzt gehaltene Charge. Jede angenommene, teilweise angenommene und ganz zurückgewiesene reist mit allen drei Volumina, weil ein Begrenzer, der gegriffen hat, ein Beleg ist: nur das Bewegte zu zeigen, ließe eine wirkende Schranke wie einen Vorgang ohne Aufgabe aussehen. Das Fenster ist ein Ausschnitt eines Takts, keine Zählung.",
+    waterProcess: "Vorgang",
+    waterRequested: "Angefordert",
+    waterAccepted: "Angenommen",
+    waterUnaccepted: "Nicht angenommen",
+    waterAcceptance: "Anteil",
+    waterOrigin: "Anker",
+    waterOriginHint: "Der Forcing-Datensatz, von dem diese Bewegung abstammt",
+    waterLimited: "im Fenster begrenzt",
+    waterUnlimited: "im Fenster nichts begrenzt",
+    waterCells: "Wasseränderungen je Zelle",
+    waterCellsLede:
+      "Höchstens 64 geänderte Zellen, in kanonischer Adressreihenfolge — die ersten nach Adresse, nicht die größten Änderungen und keine Stichprobe davon, wo Wasser sich bewegt hat. Jede Zeile ist das festgeschriebene Vorher und Nachher einer Zelle samt der Forcing- und Lateralterme, die es erzeugt haben.",
+    waterForcingTerm: "Antrieb",
+    waterLateral: "Seitlich",
+    noWater: "Keine Wasserbewegungen im Fenster",
+    noWaterBody:
+      "Entweder führt diese Sitzung kein Wasser, oder innerhalb des begrenzten Fensters hat sich nichts bewegt. Beides sind Beobachtungen, keine Lücken.",
   },
 
   assay: {

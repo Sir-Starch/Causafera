@@ -298,6 +298,121 @@ export const CAPABILITY_REGISTER: CapabilityGroup[] = [
     ],
   },
   {
+    id: "hydrology",
+    title: {
+      "en-US": "Water",
+      "ru-RU": "Вода",
+      "zh-Hans": "水",
+      "de-DE": "Wasser",
+      "es-ES": "Agua",
+    },
+    entries: [
+      {
+        id: "water-summary",
+        state: "live",
+        domainMaturity: 4,
+        observerMaturity: 4,
+        area: "station",
+        title: {
+          "en-US": "Water storage and ledger",
+          "ru-RU": "Запасы воды и баланс",
+          "zh-Hans": "水的存储与账目",
+          "de-DE": "Wasserspeicher und Bilanz",
+          "es-ES": "Almacenamiento de agua y balance",
+        },
+        detail: {
+          "en-US":
+            "Surface, soil, groundwater and conveyance totals, the exact conservation residual, and the most recent applied forcing record with its origin trace.",
+          "ru-RU":
+            "Итоги по поверхности, почве, подземным водам и руслам, точная невязка сохранения и последняя применённая запись форсинга с трассой происхождения.",
+          "zh-Hans":
+            "地表、土壤、地下水与输水通道的总量，精确的守恒残差，以及最近一条已应用的强迫记录及其来源迹线。",
+          "de-DE":
+            "Summen für Oberfläche, Boden, Grundwasser und Gerinne, das exakte Erhaltungs-Restglied und der zuletzt angewandte Forcing-Datensatz mit seiner Ursprungsspur.",
+          "es-ES":
+            "Totales de superficie, suelo, agua subterránea y cauces, el residuo exacto de conservación y el registro de forzamiento aplicado más reciente con su traza de origen.",
+        },
+      },
+      {
+        id: "water-lattice",
+        state: "live",
+        domainMaturity: 4,
+        observerMaturity: 4,
+        area: "chart",
+        title: {
+          "en-US": "Per-cell water lattice",
+          "ru-RU": "Решётка воды по ячейкам",
+          "zh-Hans": "逐单元格水格网",
+          "de-DE": "Wassergitter je Zelle",
+          "es-ES": "Retícula de agua por celda",
+        },
+        detail: {
+          "en-US":
+            "All three storages arrive as exact 64-bit volumes over the 32 x 32 lattice, with per-cell provenance. The grid metric that would turn a volume into a depth is declared per chart and is not projected, so the chart shows volumes.",
+          "ru-RU":
+            "Все три хранилища приходят точными 64-битными объёмами по решётке 32 x 32, с происхождением по каждой ячейке. Метрика решётки, которая превратила бы объём в глубину, объявляется по карте и не проецируется, поэтому карта показывает объёмы.",
+          "zh-Hans":
+            "三种存储都以精确的 64 位体积在 32 x 32 格网上送达，并带逐单元格溯源。可将体积换算为深度的格网度量按图幅声明且不被投影，因此图幅展示的是体积。",
+          "de-DE":
+            "Alle drei Speicher treffen als exakte 64-Bit-Volumina über dem 32 x 32-Gitter ein, mit Herkunft je Zelle. Die Gittermetrik, die ein Volumen in eine Tiefe verwandeln würde, wird je Kartenblatt erklärt und nicht projiziert; daher zeigt das Blatt Volumina.",
+          "es-ES":
+            "Los tres almacenes llegan como volúmenes exactos de 64 bits sobre la retícula de 32 x 32, con procedencia por celda. La métrica de retícula que convertiría un volumen en profundidad se declara por carta y no se proyecta, así que la carta muestra volúmenes.",
+        },
+      },
+      {
+        id: "water-movements",
+        state: "bounded",
+        domainMaturity: 4,
+        observerMaturity: 4,
+        area: "flux",
+        title: {
+          "en-US": "Movements and cell deltas",
+          "ru-RU": "Перемещения и дельты ячеек",
+          "zh-Hans": "移动与单元格增量",
+          "de-DE": "Bewegungen und Zell-Deltas",
+          "es-ES": "Movimientos y deltas de celda",
+        },
+        detail: {
+          "en-US":
+            "Requested, accepted and unaccepted volumes per movement, and per-cell storage changes with their transition and conservation anchors. Both windows are bounded, so an empty list means nothing happened inside the window rather than nothing happened.",
+          "ru-RU":
+            "Запрошенный, принятый и непринятый объёмы по каждому перемещению и изменения запасов по ячейкам с якорями перехода и сохранения. Оба окна ограничены, поэтому пустой список означает, что внутри окна ничего не произошло, а не что не произошло ничего.",
+          "zh-Hans":
+            "每次移动的请求、接受与未接受体积，以及逐单元格的存量变化及其转变与守恒锚点。两个窗口都是有界的，因此空列表意味着窗口内没有发生什么，而不是什么都没发生。",
+          "de-DE":
+            "Angeforderte, angenommene und nicht angenommene Volumina je Bewegung sowie Speicheränderungen je Zelle mit ihren Übergangs- und Erhaltungsankern. Beide Fenster sind begrenzt; eine leere Liste heißt, dass im Fenster nichts geschah, nicht dass nichts geschah.",
+          "es-ES":
+            "Volúmenes solicitado, aceptado y no aceptado por movimiento, y cambios de almacenamiento por celda con sus anclas de transición y de conservación. Ambas ventanas están acotadas, así que una lista vacía significa que nada ocurrió dentro de la ventana, no que nada ocurriera.",
+        },
+      },
+      {
+        id: "water-conveyance",
+        state: "bounded",
+        domainMaturity: 4,
+        observerMaturity: 2,
+        title: {
+          "en-US": "Conveyance edges",
+          "ru-RU": "Рёбра русел",
+          "zh-Hans": "输水边",
+          "de-DE": "Gerinnekanten",
+          "es-ES": "Aristas de cauce",
+        },
+        detail: {
+          "en-US":
+            "Storage, capacity and this tick's accepted exchange arrive per edge, but the edge key is the canonical carrier encoding and is opaque at this boundary — so the observer can report an edge and cannot place it on the chart. No surface draws them yet.",
+          "ru-RU":
+            "По каждому ребру приходят запас, ёмкость и принятый обмен за такт, но ключ ребра — это каноническая кодировка носителя, непрозрачная на этой границе: наблюдатель может сообщить о ребре, но не может разместить его на карте. Пока ни одна поверхность их не рисует.",
+          "zh-Hans":
+            "每条边都会送达蓄水量、容量与本刻已接受的交换，但边的键是载体的规范编码，在此边界上不透明——观测器能报告一条边，却无法把它放到图幅上。目前还没有界面绘制它们。",
+          "de-DE":
+            "Speicher, Kapazität und der angenommene Austausch dieses Takts treffen je Kante ein, doch der Kantenschlüssel ist die kanonische Trägerkodierung und an dieser Grenze undurchsichtig — der Beobachter kann eine Kante melden, sie aber nicht auf dem Blatt verorten. Noch zeichnet keine Oberfläche sie.",
+          "es-ES":
+            "Almacenamiento, capacidad y el intercambio aceptado de este tic llegan por arista, pero la clave de arista es la codificación canónica del portador y es opaca en esta frontera: el observador puede informar de una arista y no puede situarla en la carta. Ninguna superficie las dibuja todavía.",
+        },
+      },
+    ],
+  },
+  {
     id: "causality",
     title: {
       "en-US": "Causality",

@@ -750,6 +750,21 @@
 **Explanation Implications:** Schema labels, evidence states, assessments and comparison contexts are localized in the authoritative Rust renderer; unregistered schemas keep their numeric identity in every locale
 **Out of Scope:** Traditional Chinese, right-to-left layout, locale-specific number and date formats beyond `Intl` grouping, translating protocol nouns, logs or domain identifiers
 
+## TODO-UI-007: Water in the Observer
+**Status:** Completed
+**Phase:** Detailed Development — Observer Surface
+**Priority:** High
+**Dependencies:** TODO-HYDRO-001, TODO-UI-005, TODO-UI-006, TODO-OBS-001
+**Goal:** Read the hydrology projections the runtime already ships. `TODO-HYDRO-001` put observer UI work out of its own scope, so the read models existed and nothing in the frontend touched them
+**Acceptance Criteria:** A `hydrology` lens group over the three storage lattices with a reserved signal hue; the whole-session storages, the exact conservation residual and the latest applied forcing with its origin on the Observatory; the bounded movement and cell-delta windows as tables with all three volumes per movement; per-chunk storage in the chart inspector; capability register entries for what is read and what is not; five locales; the desktop session configured with water so the surfaces have something to show
+**Performance Requirements:** One bounded raster request per chunk per bucket per frame, issued only when the summary reports resident hydrology; the assembled-field cache sized for the live set plus one frame of churn; surface signatures keyed on the generation trace so a tick that moves water inside the current range still repaints
+**Determinism Requirements:** None reachable — every surface reads and none writes (INV-022). Locale changes nothing about what is drawn
+**Ontology Implications:** None. No water body, drainage network or catchment is named or drawn; those stay readings a viewer may take
+**Observer Implications:** Volumes are shown and depths are not, because the `HydrologyGridMetric` that would convert one to the other is declared per chart and is not projected. Conveyance edges are reported in the register and drawn nowhere, because the edge key is opaque at this boundary
+**Explanation Implications:** None; these are read surfaces over the observer protocol, not over Explanation IR
+**Out of Scope:** Depth rendering, a drainage-graph overlay, a delta overlay on the chart, a water band in the chart profile, and any classification of what the water forms
+**Outcome:** Delivered on `feat/conserved-hydrology`. Three findings became their own follow-ups rather than being worked around: `TODO-OBS-006`, the palette note below, and `TODO-HYDRO-002`; the grid metric and conveyance-key limits it ran into are `TODO-OBS-004` and `TODO-OBS-005`, and the stale register entry it declined to fix in passing is `TODO-UI-008`. The delta and transfer windows are 64 entries selected in canonical order and truncated, which reads correctly as a table and would read as a lie as a map overlay, so there is no delta lens — see `docs/ui/observer-projection-gaps.md` §4c. The seventh signal hue was fitted to an already-generated palette by search rather than regenerated with it, and its measured separation is reported rather than rounded up. And a hydrology-enabled nine-chunk session reaches the 256 MiB export cap sooner the more water it moves. That is an engine property at that scale rather than a frontend fault, and it is being addressed by its own plan, so the session's parameters are chosen for the reading rather than against the ceiling; the interface reports the refusal as a limit rather than as a failure and assumes nothing else about it.
+
 ## TODO-OBS-001: Field Raster Projection and Chart Shape
 **Status:** Completed
 **Phase:** Detailed Development — Observer Surface
@@ -886,6 +901,21 @@ Round eight closed two of this class inside the bootstrap plan's scope — `acto
 **Resolution:** `TerrainCarrierAdapter::new` and `project_columns` now take a `BTreeMap<ChartChunkCoord, TerrainChunk>` of sibling terrain; `neighbor_cells` resolves each of a cell's four axis-aligned neighbours from the chunk's own array when interior, or from `neighboring_terrain.get(&chunk.same_chart_neighbor(dx, dy, 0))`'s corresponding edge cell when not — a missing entry drops that direction, exactly as before, rather than inventing a value. This mirrors `causafera-domains::mana`'s existing `OpenNeighbors`/`same_chart_neighbor` idiom. Recomputing a missing neighbour from the deterministic generator formula was considered and rejected: `TerrainChunk` is data, not a cached formula evaluation, and `featureless_ground_is_not_a_physical_pattern`'s hand-built fixture already proves the two can diverge. `TerrainBootstrapStage::bootstrap` and `import_carrier_adapters` — the two call sites whose adapters ever reach a live runtime or a resumed one — now generate/decode every sibling chunk before building any one adapter; `runtime_carrier_adapters`, whose output is unconditionally overwritten by bootstrap before anything reads it, passes an empty map rather than being restructured for no observable effect.
 **Evidence:** `elevation_contrast`, `material_difference` and `neighbor_indices` in `crates/causafera-runtime/src/carrier.rs` used to index only `terrain.elevations()`/`terrain.surface_materials()` of the one `TerrainChunk` passed in, dropping a direction entirely at `x == 0`, `x == CHUNK_SIZE - 1`, `y == 0` or `y == CHUNK_SIZE - 1` rather than looking into the neighbouring chunk — an edge cell's `structure` was drawn from at most 2-3 real neighbours where an interior cell has 4. Found while implementing `TODO-GEO-005`. Re-measured with `cargo run --release -p causafera-observer --example field_probe` (seed 7, three line-shaped chunks): 2 of 9 lattice columns in the west-most active chunk change `structure` once its real east-adjacent sibling becomes visible, and the mana field shifts only at the boundary-touching extremes (e.g. `166..2570` to `167..2570` in that chunk). Bootstrap wall-clock is unchanged within run-to-run noise at every `active_chunk_radius` from 1 to 4 (the validated ceiling), measured against the pre-fix source with the change stashed. No existing test needed re-pointing — `different_seeds_produce_different_worlds_not_one_world_with_two_terrains` and `below_threshold_source_changes_mana_without_material_consequence_or_supported_explanation` both stayed green as rerun explicitly after the fix
 
+## TODO-HYDRO-001: Conserved Multi-Resolution Hydrology
+**Status:** Completed — see `plans/hydrology.md`
+**Phase:** Detailed Development — Geography / Hydrology
+**Priority:** High
+**Dependencies:** Accepted `docs/rfc/RFC-HYDRO-001.md`; the terrain continuity and cross-chunk neighbour contracts closed by `TODO-GEO-005` and `TODO-GEO-006`; the provenance, persistence, and causal-resolution foundations (`TODO-TRACE-001`, `TODO-PERSIST-001`, `TODO-RES-001`)
+**Goal:** Replace the inert `HydrologyCell { water_table: f32 }` placeholder with deterministic, conserved, causally inspectable hydrologic state and processes: surface, unsaturated-soil, groundwater, and unlabeled conveyance storage; explicit tick-indexed precipitation and evapotranspiration forcing; infiltration, percolation, runoff, groundwater flow, baseflow, and storage-discharge routing that crosses same-chart chunk seams; conservative hydrology-specific resolution changes; exact persistence and replay; and bounded Explanation and observer read models
+**Acceptance Criteria:** Every carrier, process, conservation, provenance, resolution, persistence, observer, and Explanation requirement in `plans/hydrology.md`, verified by its V1–V34 gates. In particular: `storage_before + sources == storage_after + sinks` exactly for every tick and for the aggregate run; demotion and promotion preserve every water bucket, topology, and retained fine provenance; export/import/export bytes are identical; and a `2N`-tick run matches `N` ticks, save, import, then `N` ticks
+**Performance Requirements:** Reproducible measurement of the six workloads in the plan's benchmark section, including the fine-versus-coarse resolution comparison. The retained-fine/coarse design counts as a performance architecture only if the coarse workload evaluates strictly fewer vertical process groups and internal faces than the fine workload while every conservation, replay, topology, and ancestry check stays green; timing alone is not the oracle. No absolute threshold or scale claim is declared before baseline measurement
+**Determinism Requirements:** Checked integer arithmetic and ordered maps/edges throughout; every substage reads a frozen state; rounding remainders stay in donor storage or use canonical largest-remainder allocation; forcing is explicit persisted state with no wall clock and no RNG; hydrology registration is appended so legacy system IDs and RNG stream keys are unchanged; digest schema 8 deliberately distinguishes hydrology-bearing state
+**Ontology Implications:** Hydrology moves from a documentation-only M0 placeholder to an executable conserved physical domain. Geography, Space/Resolution, Time, and Matter gain hydrology-facing inputs. Climate stays M0 and gains only a future-compatible output boundary — persisted hydrology forcing records. Final maturity wording is evidence-driven and is not pre-claimed
+**Observer Implications:** Bounded additive protocol-V1 fields: per-chunk surface/soil/groundwater rasters with lossless unsigned bands, conveyance storage and flow summaries, latest forcing and conservation summary, bounded transfer receipts by chart-qualified scope, and trace anchors. The frozen six-receipt bootstrap field is preserved and the seventh bootstrap receipt is projected separately, so a pre-hydrology V1 decoder accepts the new payload unchanged
+**Explanation Implications:** Typed claims for storage and water-table range, forcing ancestry and accepted/unmet forcing, transfer path and limiter evidence, exact conservation residual, and boundary export, with explicit insufficiency instead of narrowing or fabricated classification
+**Out of Scope:** The plan's Non-goals — full climate or atmospheric generation; geological formation, strata, deformation, or aquifer classification; snow/ice accumulation and phase change; sediment, erosion, solutes, salinity, pollutants, or water quality; full Saint-Venant hydraulics, backwater, flow reversal, pressurization, coastal tides, or cross-chart ocean routing; dams, pumps, weirs, canals, irrigation, or municipal networks; ecology, agriculture, health, settlement, economy, history, biology, or mana coupling implementation; semantic water-body or hazard labels in authoritative state; observer UI work; CUDA/GPU work; and migration shims that default absent hydrology into an old production snapshot
+**Outcome:** Implemented across eight stages on `feat/conserved-hydrology`. Follow-ups: `TODO-HYDRO-002`, `TODO-HYDRO-003`, `TODO-HYDRO-004`, `TODO-OBS-004`, `TODO-OBS-005`, `TODO-OBS-006`; the observer frontend that reads it is `TODO-UI-007`. Every V1–V34 gate is covered by tests in `crates/causafera-geography`, `causafera-domains`, `causafera-runtime`, `causafera-explanation`, `causafera-observer-wire`, and the `tools/audit` decoder and boundary audits. Digest schema 7→8, runtime recipe section major 6→7, snapshot section `0x000F` v1. Measured evidence, including the ceiling the 256 MiB export cap places on session length, is in `docs/performance/benchmarks.md`; the fine-versus-coarse comparison the Performance Requirements ask for could not be driven from configuration, because the engine's resolution policy is a compiled constant rather than a setting — what was measured instead is the work at each level the engine itself chose, and that limitation is recorded rather than worked around.
+
 ## TODO-MANA-004: Mana Field Lattice Cost Decision
 **Status:** Completed — `chunk_extent` stays 3. **Flagged for re-review:** `TODO-GEO-004` measured
 the fidelity-vs-noise ratio this decision rests on improving at every candidate extent once surface
@@ -1013,6 +1043,111 @@ The prior decision of extent 6 is void, along with its stated 98.1% convergence 
 **Observer Implications:** One additive bounded projection for the promoted structure and its interiors; no protocol-wide interior/parcel query surface
 **Explanation Implications:** Promotion and demotion events are trace-backed and inspectable like any other committed state change
 **Out of Scope:** City/road/settlement generation, mass building construction, full indoor physics (light, acoustics, airflow), a general promotion/demotion system for arbitrary chunks, persistence schema changes beyond this slice's own section, observer-protocol changes beyond this slice's own additive query, UI work
+
+## TODO-HYDRO-002: The Export Cap Bounds a Hydrology-Enabled Session
+**Status:** Pending
+**Phase:** Detailed Development — Geography / Hydrology
+**Priority:** High
+**Dependencies:** TODO-HYDRO-001, TODO-PERF-001
+**Goal:** Stop a hydrology-enabled session's length being decided by how much water it moves
+**Acceptance Criteria:** A nine-chunk hydrology session runs for thousands of ticks rather than tens. The cost is causal traces and transfer receipts accumulating per tick against `MAX_TOTAL_SIZE`; the engine refuses any tick whose result would no longer fit, because no accepted state may become unexportable, so the ceiling is a hard stop rather than a slowdown. Measured on the desktop observer's own configuration at seed 7: the parameters chosen for the clearest reading commit 10 ticks and refuse at 14; a deliberately quiet world doubles that to 20 committed and 26 refused. `docs/performance/benchmarks.md` measures 221/59/15 ticks for one, three and nine chunks fully wet. Any fix must keep every conservation, replay, ancestry and import gate green — a shorter retention window that lost evidence would trade the ceiling for the thing the ceiling protects
+**Performance Requirements:** Re-measure the ceiling per configuration after the change, and the per-tick cost alongside it; a fix that buys ticks by making each one slower has to say so
+**Determinism Requirements:** Whatever is retained or evicted stays deterministic and order-independent; eviction may not depend on wall clock, allocation order or map iteration
+**Ontology Implications:** None expected. Evidence that is dropped must become explicit insufficiency downstream rather than a number nothing supports
+**Observer Implications:** The observer already reports the refusal as a limit rather than as a fault (`errorKind: "export-cap"`); that treatment stays until the ceiling is far enough away to be unreachable in practice. The replay capture's default length is pinned to this ceiling and should be raised with it
+**Explanation Implications:** Claims whose retained evidence is evicted must report insufficiency, never a narrowed number
+**Out of Scope:** Raising `MAX_TOTAL_SIZE`, which moves the wall rather than removing it; GPU work; reducing the active chunk set as a permanent answer
+**Evidence:** `plans/hydrology.md` Progress and `docs/performance/benchmarks.md`; reproduced by `cargo run -p causafera-observer --example capture_replay -- <out> 7 14 1`
+
+## TODO-HYDRO-003: Hydrology Solver Module Size
+**Status:** Pending
+**Phase:** Detailed Development — Geography / Hydrology
+**Priority:** Low
+**Dependencies:** TODO-HYDRO-001
+**Goal:** Bring the hydrology solver back inside the modular-architecture rule (INV-042)
+**Acceptance Criteria:** `crates/causafera-domains/src/hydrology/evolution.rs` is 3,279 lines carrying every substage of the tick with no inline tests, which strains "keep modules cohesive and strictly scoped". Split along the substage boundaries the plan already froze, with the determinism, conservation and ordering evidence intact and unchanged at every step
+**Performance Requirements:** No measurable change; this is a move, not a rewrite
+**Determinism Requirements:** Substage order, frozen-state reads and rounding behaviour identical before and after — the digest and every conservation gate must not move
+**Ontology Implications:** None
+**Observer Implications:** None
+**Explanation Implications:** None
+**Out of Scope:** Changing any substage's behaviour, reordering them, or altering the receipt schema while moving code
+**Evidence:** Raised by an independent gate review of the hydrology slice and recorded in `plans/hydrology.md`; deliberately not done there because a refactor of the solver while its only determinism evidence is the test set pinning it is the opposite of a bounded change
+
+## TODO-HYDRO-004: Resolution Level Is Not Drivable From Configuration
+**Status:** Pending
+**Phase:** Detailed Development — Geography / Hydrology
+**Priority:** Medium
+**Dependencies:** TODO-HYDRO-001, TODO-RES-001
+**Goal:** Make the fine-versus-coarse resolution comparison the hydrology plan asks for actually runnable
+**Acceptance Criteria:** A benchmark can hold one world at a chosen resolution level and compare the work done against the same world at another. Today the engine's resolution policy is a compiled constant rather than a setting, so the plan's Performance Requirement — that the coarse workload evaluate strictly fewer vertical process groups and internal faces than the fine one — could not be driven from configuration. What was measured instead is the work at whichever level the engine itself chose, which is a weaker statement and is recorded as such
+**Performance Requirements:** The comparison is the deliverable; it must report vertical process groups and internal faces per level, not timing alone
+**Determinism Requirements:** Selecting a level for measurement must not become a way for a session to clamp what the engine chose — the tick still refuses a level above the policy rather than clamping it
+**Ontology Implications:** None
+**Observer Implications:** None required, though `TODO-UI-004`'s resolution thresholds would let the observer show the same scale
+**Explanation Implications:** None
+**Out of Scope:** Changing how the engine chooses a level in a production session
+**Evidence:** `plans/hydrology.md` Decision log and Outcome; `docs/performance/benchmarks.md`
+
+## TODO-OBS-004: Project the Hydrology Grid Metric
+**Status:** Pending
+**Phase:** Detailed Development — Observer Surface
+**Priority:** Medium
+**Dependencies:** TODO-HYDRO-001, TODO-UI-007
+**Goal:** Let the observer read water as a depth rather than only as a volume
+**Acceptance Criteria:** `HydrologyGridMetric` — cell area, cell edge and timestep — reaches the observer per chart, so a volume can be divided by an area on the reading side. It is declared per chart and is in no observer payload today, so every water surface, panel and table states cubic metres; a millimetre figure would be a number invented on the frontend. Depth is the quantity a reader actually wants from standing water, and the conversion is exact integer arithmetic once the area is present
+**Performance Requirements:** Additive scalar fields on an existing message; no per-tick cost
+**Determinism Requirements:** Read-only projection; nothing may travel back (INV-022)
+**Ontology Implications:** A depth is a derived reading, not a new carrier. Authoritative state stays volumes
+**Observer Implications:** The chart, the Observatory ledger and the Flux tables can then offer depth alongside volume, and the water lenses' caveat about volumes-never-depths becomes unnecessary
+**Explanation Implications:** None; the water-table claim already carries its own derivation
+**Out of Scope:** Deriving a depth anywhere without the projected metric
+**Evidence:** `docs/ui/observer-projection-gaps.md` §4c
+
+## TODO-OBS-005: Conveyance Edge Endpoints Are Opaque to the Observer
+**Status:** Pending
+**Phase:** Detailed Development — Observer Surface
+**Priority:** Medium
+**Dependencies:** TODO-HYDRO-001, TODO-UI-007
+**Goal:** Let the observer place a conveyance edge on the chart
+**Acceptance Criteria:** A conveyance summary carries its two endpoint cell addresses alongside the edge key. Storage, capacity and the tick's accepted exchange already arrive per edge, but the key is the canonical carrier encoding and is opaque at that boundary, so the observer can report an edge and cannot draw one — there is no drainage-graph lens and the capability register says so. With endpoints, the steepest-descent graph the bootstrap builds becomes drawable as measured geometry
+**Performance Requirements:** Two addresses per summary against a window already bounded at 64; no per-tick cost
+**Determinism Requirements:** Read-only; the key stays authoritative and the addresses are a projection of it
+**Ontology Implications:** A drawn drainage graph is a reading of conveyance edges, never a river or a network in authoritative state
+**Observer Implications:** Unblocks a conveyance lens and upgrades the `water-conveyance` capability entry from bounded-and-unreadable
+**Explanation Implications:** None
+**Out of Scope:** Decoding the carrier key on the frontend, which would put an authoritative encoding in a read surface
+**Evidence:** `docs/ui/observer-projection-gaps.md` §4c
+
+## TODO-OBS-006: Hydrology Delta and Transfer Windows Are Not Spatially Representative
+**Status:** Pending
+**Phase:** Detailed Development — Observer Surface
+**Priority:** Medium
+**Dependencies:** TODO-HYDRO-001, TODO-UI-007
+**Goal:** Make the per-cell water windows something a map may honestly draw
+**Acceptance Criteria:** `MAX_HYDROLOGY_DELTAS` and `MAX_HYDROLOGY_TRANSFER_SUMMARIES` are 64 each and the runtime sorts by canonical address or carrier key before truncating, so on a nine-thousand-cell chart the window is the lowest-addressed sixty-four. That is deterministic and reproducible but it is not a sample: drawn as marks the entries cluster in one corner and read as a claim about geography that the selection rule produced. Either a stratified deterministic selection or a cap large enough to cover a tick would make a delta lens honest. Whatever replaces the ordering must stay deterministic and order-independent
+**Performance Requirements:** A larger cap has to be paid for against the response budget and the export cap; state the cost
+**Determinism Requirements:** Selection may not depend on wall clock, allocation order or map iteration; two runs of one seed select the same entries
+**Ontology Implications:** None
+**Observer Implications:** Unblocks a per-cell water-change overlay on the chart. Until then the windows are presented only as tables, where canonical ordering reads as ordering rather than as a distribution
+**Explanation Implications:** None
+**Out of Scope:** Drawing the current window as marks, which is the thing this exists to prevent
+**Evidence:** `docs/ui/observer-projection-gaps.md` §4c and `docs/ui/map-lenses.md`
+
+## TODO-UI-008: Stale Capability Register Entries
+**Status:** Pending
+**Phase:** Detailed Development — Observer Surface
+**Priority:** Low
+**Dependencies:** TODO-OBS-001
+**Goal:** Make the capability register describe what the observer reads today
+**Acceptance Criteria:** Every entry in `apps/observer/src/observer/capability.ts` matches the current protocol and frontend. At least one does not: `mana-field` is `absent-projection` and says "only chunk totals and the peak cell intensity are projected to the observer", which stopped being true when `TODO-OBS-001` landed the `FieldRaster` query — the map has drawn the measured mana lattice since. The register is the surface that states what the instrument can and cannot see, so a stale entry there is worse than a stale comment. Audit the whole file rather than fixing the one known case
+**Performance Requirements:** None
+**Determinism Requirements:** None; the register is presentation content carrying no simulation meaning (INV-006, INV-013)
+**Ontology Implications:** None
+**Observer Implications:** The Instrument area's coverage counts and the Observatory's coverage panel both read these states, so both are currently reporting one live capability as absent
+**Explanation Implications:** None
+**Out of Scope:** Adding entries for capabilities that do not exist
+**Evidence:** Found while adding the hydrology entries in `TODO-UI-007` and deliberately not fixed there, because an unrelated correction inside a scoped change is a drive-by
 
 ## TODO-UI-004: Observer Projection Requests
 **Status:** Pending
