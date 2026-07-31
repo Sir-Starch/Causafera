@@ -148,18 +148,23 @@ never a distance. Export and import are byte-identical round trips.
 Import trusts none of it. The decoder rebuilds every collection through the same
 constructor a live runtime uses, and enforces the composed bounds — the aggregate
 forcing-member cap and the retention-wide receipt cap — as running totals, before
-the vectors they bound are allocated rather than after. What no single
-constructor can see is then checked across the whole state: registry bijection,
-residency of every field, conveyance endpoint and outlet, resolution coverage,
-forcing schedule order and origin fan-in, forcing timing against the clock, ledger
-closure and receipt recomputation, and continuity of the retained batch window.
+the vectors they bound are allocated rather than after. The schedule is persisted
+twice, as applied state and as recipe configuration, and both decoders carry the
+aggregate: a validator that runs on the finished schedule is one allocation too
+late. What no single constructor can see is then checked across the whole state:
+registry bijection, residency of every field, conveyance endpoint and outlet,
+resolution coverage, forcing schedule order and origin fan-in, forcing timing
+against the clock, ledger closure and receipt recomputation, and continuity of
+the retained batch window.
 
 Two further classes are checked only at import, because a running tick cannot
 have broken them. The state must agree with the configuration that bootstrapped
-it — same grid metrics, same forcing records — and every trace anchor must name
-an event the store actually holds: each bucket's, each conveyance edge's, each
-resolution entry's, each retained receipt's parents, and each batch's own key,
-which must be a hydrology conservation event rather than merely some trace.
+it — same grid metrics, same forcing records, and the same resolution policy,
+since the policy is what every imported level is checked against — and every
+trace anchor must name an event the store actually holds: each bucket's, each
+conveyance edge's, each resolution entry's, each retained receipt's parents, and
+each batch's own key, which must be a hydrology conservation event rather than
+merely some trace.
 Forcing ancestry is held to the same standard: a record's origin must be the
 bootstrap stage's own origin event, under the one producer policy that stage
 applies, because configuration cannot name a trace and a session may not declare

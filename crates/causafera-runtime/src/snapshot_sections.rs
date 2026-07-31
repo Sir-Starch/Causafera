@@ -1852,6 +1852,13 @@ fn decode_hydrology_config(
     };
     let forcing_count = read_count(dec, MAX_HYDROLOGY_FORCING_RECORDS, "hydrology forcing spec")?;
     let mut forcing_schedule = Vec::with_capacity(forcing_count);
+    // The same composed bound the state section carries, for the same reason and
+    // one layer earlier. `HydrologyConfig::validate` does hold the aggregate, but
+    // only once the whole schedule is a value it can be handed — which is after
+    // every member vector this loop reserves already exists. The plan asks for it
+    // before allocation across the complete schedule, and a recipe is a complete
+    // schedule.
+    let mut forcing_members = 0_usize;
     for _ in 0..forcing_count {
         let forcing_id = dec.read_u64()?;
         let scheduled_tick = dec.read_u64()?;
@@ -1863,6 +1870,13 @@ fn decode_hydrology_config(
             MAX_HYDROLOGY_TARGETS_PER_FORCING,
             "hydrology forcing target",
         )?;
+        forcing_members = forcing_members.saturating_add(target_count);
+        if forcing_members > causafera_geography::MAX_HYDROLOGY_TOTAL_FORCING_MEMBERS {
+            return Err(PersistenceError::codec(format!(
+                "hydrology forcing member count {forcing_members} exceeds {}",
+                causafera_geography::MAX_HYDROLOGY_TOTAL_FORCING_MEMBERS
+            )));
+        }
         let mut targets = Vec::with_capacity(target_count);
         for _ in 0..target_count {
             let cell = decode_hydrology_cell(dec)?;

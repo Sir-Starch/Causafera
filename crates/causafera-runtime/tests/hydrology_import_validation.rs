@@ -8,8 +8,9 @@
 mod support_hydrology;
 
 use causafera_runtime::snapshot_sections::{
-    HYDROLOGY_SECTION_ID, assemble_envelope, decode_hydrology_section, disassemble_envelope,
-    encode_hydrology_section,
+    HYDROLOGY_SECTION_ID, assemble_envelope, decode_hydrology_section,
+    decode_runtime_recipe_section, disassemble_envelope, encode_hydrology_section,
+    encode_runtime_recipe_section,
 };
 use causafera_runtime::{Runtime, RuntimeState};
 use causafera_types::TraceId;
@@ -799,6 +800,61 @@ fn a_schedule_past_the_aggregate_member_cap_is_refused_before_allocation() {
     let bytes = encode_hydrology_section(&snapshot.hydrology);
     let error = decode_hydrology_section(&bytes)
         .expect_err("a schedule past the aggregate cap must be refused")
+        .to_string();
+    assert!(
+        error.contains("member count"),
+        "unexpected refusal: {error}"
+    );
+}
+
+#[test]
+fn a_recipe_schedule_past_the_aggregate_member_cap_is_refused_before_allocation() {
+    // The schedule is persisted twice — as applied state in the hydrology section
+    // and as configuration in the recipe — and the aggregate cap binds both. The
+    // recipe path has a validator that holds it, but only once the whole schedule
+    // is a value to hand it, which is one allocation too late.
+    let mut runtime = Runtime::new(wet_runtime_config()).expect("construction");
+    runtime.run_ticks(1).expect("the run must commit");
+    let mut snapshot = runtime.export_snapshot().expect("export");
+
+    let chunk = *snapshot
+        .hydrology
+        .fields
+        .fields()
+        .keys()
+        .next()
+        .expect("resident somewhere");
+    let weight = std::num::NonZeroU64::new(1).expect("positive");
+    type Target = (causafera_geography::HydrologyCellKey, std::num::NonZeroU64);
+    let targets: Vec<Target> = (0..1_024_u16)
+        .map(|ordinal| {
+            (
+                causafera_geography::HydrologyCellKey::new(chunk, ordinal)
+                    .expect("ordinal in range"),
+                weight,
+            )
+        })
+        .collect();
+    let specs = (0..257_u64)
+        .map(|id| causafera_runtime::HydrologyForcingSpec {
+            forcing_id: id,
+            scheduled_tick: 1_000 + id,
+            targets: targets.clone(),
+            precipitation_volume: causafera_types::WaterVolume::new(1),
+            potential_et_volume: causafera_types::WaterVolume::ZERO,
+            external_inflow_volume: causafera_types::WaterVolume::ZERO,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        specs.len() * targets.len(),
+        263_168,
+        "257 x 1024 is past the 262_144 aggregate and inside both per-part caps"
+    );
+    snapshot.recipe.config.hydrology.forcing_schedule = specs;
+
+    let bytes = encode_runtime_recipe_section(&snapshot.recipe);
+    let error = decode_runtime_recipe_section(&bytes)
+        .expect_err("a recipe schedule past the aggregate cap must be refused")
         .to_string();
     assert!(
         error.contains("member count"),

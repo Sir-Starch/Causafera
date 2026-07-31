@@ -4252,6 +4252,48 @@ its own evidence-backed follow-up TODO rather than being hidden in Progress.
   while its determinism evidence is the only thing pinning them would be the opposite of a bounded
   change. Recorded as a candidate for its own plan.
 
+- **2026-07-31 — The aggregate forcing-member cap closed on the recipe path.** A scoped re-review of
+  `3c5d7af` confirmed four of the five remediated items and found the first one unfinished: the
+  composed cap was carried in `decode_hydrology_section` but not in `decode_hydrology_config`.
+
+  The schedule is persisted twice — as applied state in section `0x000F` and as configuration in the
+  runtime recipe — and §11 asks for the aggregate before allocating member vectors across the
+  complete schedule, without qualifying which copy. `HydrologyConfig::validate` does hold the
+  aggregate, and the set of states the import accepts is therefore unchanged; what it cannot do is
+  hold it in time, because it is handed the schedule only once every member vector already exists.
+  A forged recipe of 8,192 records at 4,096 targets satisfies both per-part caps and reserves
+  thirty-three million members before the validator is reached.
+
+  Files changed:
+
+  - `crates/causafera-runtime/src/snapshot_sections.rs` — the same running total, in
+    `decode_hydrology_config`, checked before the `Vec::with_capacity` it bounds.
+  - `crates/causafera-runtime/tests/hydrology_import_validation.rs` — 27 → **28** tests;
+    `a_recipe_schedule_past_the_aggregate_member_cap_is_refused_before_allocation` is the recipe
+    counterpart of the state-section test beside it. Confirmed RED against the unfixed decoder: it
+    returned `Ok` with the full 263,168-member schedule built.
+  - `docs/world/hydrology.md` — the persistence paragraph now says both decoders carry it, which is
+    what the previous wording had claimed of the decoder in general.
+
+  Verification, all run and all green:
+
+  - `cargo fmt --all -- --check` — clean.
+  - `cargo clippy --workspace --all-targets --all-features -- -D warnings` — clean.
+  - `cargo test --workspace --all-features` — 84 suites, **929 passed**, 0 failed.
+  - `cargo test --workspace --no-default-features` — 84 suites, **929 passed**, 0 failed.
+  - `cargo test -p causafera-runtime --all-features --test hydrology_import_validation` — **28
+    passed**, 0 failed.
+  - `cargo run -p xtask -- ci` — CI checks passed.
+  - `pnpm lint` — pass. `pnpm typecheck` — pass. `pnpm build` — pass.
+  - `git diff --check` — clean.
+  - `node tools/audit/check-entry-points.mjs` — pass (32 entry points, 22 tests).
+  - `node tools/audit/run-source-tests.mjs` — **90 passed**, 0 failed.
+  - `node tools/audit/test-hydrology-production-boundaries.mjs` — **6 passed**, 0 failed.
+  - `cargo test -p causafera-observer --all-features` — **12 passed**, 0 failed.
+
+  The benchmark was not re-run: this change adds one integer add and one comparison per forcing
+  record on the recipe decode path, bounded at 8,192 records, and nothing on the tick path.
+
 Execution must begin by re-reading this Progress section and Decision log, then inspecting
 `git status`. The implementing agent updates both sections whenever scope, contract, verification,
 or checkpoint evidence changes.
