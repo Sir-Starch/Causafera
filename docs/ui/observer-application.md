@@ -78,6 +78,29 @@ control/intervention experiment within its in-memory experiment envelope.
 
 Pause is local: the UI stops requesting tick batches.
 
+### Water
+
+The session configures hydrology on, because an instrument pointed at a world with no water can only
+demonstrate its own empty states. What it declares is configuration rather than a fixture: a grid
+metric, substrate parameters the bootstrap derives its coefficients from, and a recurring rainfall as
+explicit forcing records. Where the water ends up is the solver's answer against the generated
+terrain — there is no authored landscape and no placed body of water.
+
+The parameters are chosen for the reading. A thin sheet everywhere at bootstrap drains into the low
+ground of the measured relief over the first few ticks, so the chart opens on water finding its
+basins; surface head is ground elevation plus ponding depth, which makes that descent the solver
+reading the terrain rather than an animation. The subsurface starts above its baseflow threshold so
+the slow store participates from the beginning, and rain falls on the origin chunk often enough to
+watch and far enough apart that each runoff is its own event.
+
+They are deliberately *not* chosen against the 256 MiB export cap. A hydrology-enabled session
+accumulates causal traces and transfer receipts every tick and reaches that cap sooner the more water
+it moves, so a duller world would last longer — but that ceiling is an engine limit with its own follow-up
+(`TODO-HYDRO-002`), and shaping the interface around it would mean shipping the duller demonstration
+permanently to accommodate something temporary. Where the cap does still engage today, the tick is
+refused whole, the session is left exactly as it was, and the observer reports it as a limit rather
+than as a fault. Nothing else in the frontend assumes it exists.
+
 ## Presentation
 
 The visual system is a black outline atlas: white ink on black chart paper, hairline rules, square
@@ -93,9 +116,9 @@ flat, partly transparent fill, so the sheet reads through without harming text.
 
 Colour is disciplined: **the interface chrome is monochrome ink, and hue is reserved entirely for
 measured quantities**. A coloured mark on screen therefore always means a simulation quantity and
-never decoration. Six signal hues carry mana, causal traces, resolution, population, physical events
-and refusals. Evidence states use a separate reserved status palette and always pair a hue with a
-word; `Unknown` is drawn as hatched unsurveyed ground rather than as an error.
+never decoration. Seven signal hues carry mana, causal traces, resolution, population, physical
+events, refusals and water. Evidence states use a separate reserved status palette and always pair a
+hue with a word; `Unknown` is drawn as hatched unsurveyed ground rather than as an error.
 
 Selection and activity are drawn, not lit: the run control inverts to paper-on-ink while advancing,
 a followed trace anchor is inked solid, a selected register row is ruled, and focus is a hairline.
@@ -104,6 +127,21 @@ The signal palette was generated in OKLCH and validated as a categorical palette
 surface for lightness band, chroma floor, protanopia and deuteranopia separation, normal-vision
 separation, and contrast. Do not hand-edit the hues in `src/design/tokens.css`; regenerate and
 revalidate them.
+
+The water hue was added to an already-generated set rather than regenerated with it, so it was placed
+by searching the sRGB cube under those same criteria for the colour whose worst separation from the
+existing six is greatest. What it landed on sits on the palette's own floors — L 0.600 like
+`refused`, C 0.101 like `trace`, contrast 5.28 inside the 4.70–6.65 range — with its hue centred in
+the one gap on the wheel, between the trace teal at −170° and the physical blue at −114°.
+
+Its worst separation from any existing hue is 0.064 OKLab in normal vision, 0.067 under protanopia
+and 0.064 under deuteranopia. That is not as wide as the generated six manage among themselves in
+normal vision (0.092), and it is deliberately reported rather than rounded up: with six hues already
+placed there is no room at this lightness for a seventh that beats them all. It is still wider than
+two separations the palette already ships — `mana`/`life` under protanopia at 0.065 and
+`resolution`/`physical` under deuteranopia at 0.021 — so adding it does not move the palette's
+worst case. An eighth hue should be regenerated with the whole set rather than fitted into what is
+left.
 
 Human labels, locale, colour, selected area, selected chunk, plots, and animations are
 non-authoritative. Metadata in five locales (`en-US`, `ru-RU`, `zh-Hans`, `de-DE`, `es-ES`) maps
@@ -258,6 +296,12 @@ reports itself unattached, as it must (INV-039).
 `pnpm --dir apps/observer smoke` server-renders every area and inspector dock, in both locales,
 with and without a selection, against real captured payloads. It exits successfully when no
 capture is present.
+
+The capture defaults to eight single-tick frames. That number is pinned by the export cap rather
+than chosen: a longer default would reach the ceiling and fail instead of producing a shorter
+capture. Eight ticks span the opening drainage and two rainfalls, so the water lenses are exercised
+against real lattices rather than only in the state before one has arrived. It should be raised when
+the cap is.
 
 ## Related Documents
 

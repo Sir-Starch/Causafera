@@ -1,6 +1,11 @@
 # Conserved Multi-Resolution Hydrology ExecPlan
 
-**Status:** Accepted
+**Status:** Accepted and implemented — every stage and verification gate complete; `TODO-HYDRO-001`
+closed. Measured but unsolved items were split into their own TODOs rather than left in Progress:
+`TODO-HYDRO-002` (export-cap ceiling), `TODO-HYDRO-003` (solver module size),
+`TODO-HYDRO-004` (fine-versus-coarse comparison not drivable from configuration),
+`TODO-OBS-004` (grid metric unprojected), `TODO-OBS-005` (opaque conveyance edge key),
+`TODO-OBS-006` (delta and transfer windows not spatially representative).
 
 ## Goal
 

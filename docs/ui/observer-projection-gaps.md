@@ -81,6 +81,37 @@ by that hash, so the first area-shaped runtime was rejected by the mana cell val
 unchanged and the off-line terms are zero at zero, so every line-shaped chart keeps the identity it
 was recorded with.
 
+## 4c. Water — resolved
+
+**Delivered** by `TODO-UI-007`, over the read models `TODO-HYDRO-001` shipped. Nothing had to be
+added to the protocol for the chart to draw water: the hydrology slice shipped a whole-session
+summary, a bounded per-cell delta window, transfer and conveyance summaries, and three `FieldRaster`
+kinds for the storages. What was missing was a frontend that read any of it.
+
+The `hydrology` lens group now draws surface water, soil water and groundwater from those lattices.
+The Observatory reports the four storages, the exact conservation residual, and the latest applied
+forcing record with its origin; Flux reports the movement and cell-delta windows as tables, each
+movement carrying all three of its volumes so a limiter that engaged is visible as such.
+
+Three things stayed unprojected and are not gaps in the frontend:
+
+- **The grid metric** (`TODO-OBS-004`). `HydrologyGridMetric` is declared per chart and is not in any observer
+  payload, so a volume cannot honestly be turned into a depth on this side of the wire. Every
+  surface therefore states volumes. Projecting the metric would let the chart read depths, which is
+  the more natural quantity for a reader — worth doing, and a protocol change rather than a
+  frontend one.
+- **Conveyance edge geometry** (`TODO-OBS-005`). Conveyance summaries arrive with storage, capacity and the tick's
+  accepted exchange, but the edge key is the canonical carrier encoding and is opaque at this
+  boundary. The observer can report an edge and cannot place it on the chart, so no lens draws the
+  drainage graph. Projecting the two endpoint addresses alongside the key would resolve it.
+- **A spatially representative delta window** (`TODO-OBS-006`). `MAX_HYDROLOGY_DELTAS` and
+  `MAX_HYDROLOGY_TRANSFER_SUMMARIES` are 64 each, and the runtime sorts by canonical address or
+  carrier key before truncating. On a nine-chunk chart where thousands of cells change per tick the
+  window is therefore the lowest-addressed sixty-four, which is deterministic and reproducible but
+  is not a sample. It reads correctly as a table and would read as a lie as a map overlay, so there
+  is no delta lens. Either a stratified selection or a cap large enough to cover a tick would make
+  one honest.
+
 ## 5. Performance telemetry
 
 **Needed:** wire encoding for the existing `PerformanceMetrics` message.

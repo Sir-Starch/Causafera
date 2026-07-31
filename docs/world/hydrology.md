@@ -189,6 +189,18 @@ per-chunk water rasters in a lossless unsigned band. A decoder written before
 hydrology existed reads a new payload and gets exactly what it always got. See
 [`docs/observer/protocol.md`](../observer/protocol.md).
 
+The desktop observer draws all of it. Its chart opens on measured relief with
+surface water over it, and the soil and groundwater lattices are lenses beside
+it; the Observatory reports the storages, the residual and the latest applied
+forcing; Flux reports the movement and cell-delta windows as tables, each
+movement with all three of its volumes. Three things are deliberately not drawn,
+because the protocol does not carry what drawing them would require: the grid
+metric, without which a volume cannot honestly become a depth; conveyance edge
+geometry, whose key is opaque at that boundary; and a spatial reading of the
+delta window, which is 64 entries taken in address order and would read as a
+claim about geography if it were drawn as one. See
+[`docs/ui/map-lenses.md`](../ui/map-lenses.md).
+
 Explanation carries typed claims for storage bounds and water-table range,
 forcing ancestry and accepted/unmet forcing, transfer path and limiter evidence,
 the exact conservation residual, and boundary export — with explicit
