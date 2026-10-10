@@ -850,6 +850,21 @@ separately as `TODO-GEO-005`.
 
 Round eight closed two of this class inside the bootstrap plan's scope — `actor_action_bounds` contradicting `config.action_bounds`, and `ResolutionPolicy` overriding the compiled constant — because both are one comparison against something the snapshot already carries. The rest is a persistence-wide programme spanning geography, thermal, mana, resolution and cognition, and is opened here rather than absorbed round by round into a bootstrap-receipt plan.
 
+## TODO-PERSIST-005: A Tick Is One History Frame, So Tick Size Is Bounded by the Frame Limit
+**Status:** Pending
+**Phase:** Detailed Development — Persistence
+**Priority:** Medium
+**Dependencies:** `plans/causal-history-storage.md` Todos 3 and 5 (the segment store and the history transaction)
+**Goal:** Let one logical tick publish as several consecutive history frames under a single logical generation, so the size of a tick no longer has to fit one frame's decode bound
+**Acceptance Criteria:** A tick larger than `MAX_HISTORY_RECORDS_PER_FRAME` or `MAX_FRAME_DECODED_BYTES` commits; each frame stays within both bounds; one tick is still exactly one logical generation, visible atomically; a crash between the frames of one tick recovers to the previous or the complete next generation, never a prefix of the tick; the logical history digest is unchanged by where the frame boundaries fall; the frame bounds can then be lowered again without refusing any configurable world
+**Performance Requirements:** Re-measured with the benchmark methodology of `plans/causal-history-storage.md` Todo 11; decode memory per frame stays bounded regardless of tick size
+**Determinism Requirements:** Frame boundaries are storage layout, never state: they must not enter any digest, event ID, or ordering
+**Ontology Implications:** None; this is storage layout only
+**Observer Implications:** None
+**Explanation Implications:** Paged queries must not depend on frame boundaries
+**Out of Scope:** Compression, sharding, and changing what a tick records
+**Evidence:** `MAX_HISTORY_RECORDS_PER_FRAME` was drafted at 65,536 and a default nine-chunk hydrology tick commits about 68,000 records, so the observer session failed on its first tick with `RecordLimitExceeded`. The bounds were raised to 524,288 records and 128 MiB (`plans/causal-history-storage.md` Decision log, 2026-10-10). The widest configurable active region (`active_chunk_radius` 4, area shape, 81 chunks) is about nine times a nine-chunk tick, so it still approaches the raised record bound
+
 ## TODO-GEO-004: Coherent Surface Material Regions
 **Status:** Completed — see `plans/coherent-surface-material-regions.md`
 **Phase:** Detailed Development — Geography

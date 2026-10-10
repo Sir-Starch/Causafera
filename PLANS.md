@@ -86,6 +86,7 @@ Progress
 
 This section lists only accepted or in-progress work with genuinely unfinished implementation stages, acceptance criteria, or close-out work.
 
+- [`plans/causal-history-storage.md`](plans/causal-history-storage.md) — accepted architecture for externalized causal/evidence history: immutable append-only segments, transactional catalog/index, bounded hot runtime state, checkpoints, digest schema 9, exact replay/save-resume, historical Explanation, and legacy migration/recovery.
 
 ## Blocked and Paused Work
 
