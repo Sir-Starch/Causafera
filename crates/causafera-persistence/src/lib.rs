@@ -8,6 +8,7 @@ pub mod history_anchor;
 pub mod history_format;
 pub mod history_store;
 mod history_store_reader;
+mod history_tail;
 pub mod snapshot;
 
 #[cfg(test)]
@@ -32,4 +33,5 @@ pub use history_anchor::*;
 pub use history_format::*;
 pub use history_store::*;
 pub use history_store_reader::HistoryStoreReader;
+pub use history_tail::UnpublishedTail;
 pub use snapshot::{Snapshot, SnapshotSection};

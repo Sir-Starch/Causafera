@@ -127,6 +127,8 @@ pub enum PersistenceError {
     UnsupportedCheckpointVersion { major: u16, minor: u16 },
     #[error("checkpoint digest mismatch")]
     CheckpointDigestMismatch,
+    #[error("snapshot file does not match its registered digest")]
+    SnapshotDigestMismatch,
     #[error("checkpoint payload length {length} exceeds maximum {max}")]
     CheckpointPayloadTooLarge { length: u64, max: u64 },
     #[error("{remaining} trailing bytes remain after the checkpoint payload")]

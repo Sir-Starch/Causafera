@@ -32,6 +32,7 @@ use rusqlite::{
     Connection, OptionalExtension, Transaction, TransactionBehavior, params, params_from_iter,
 };
 
+use crate::history_tail::{TailChain, UnpublishedTail, scan_unpublished_tail};
 use crate::{
     CheckpointEnvelope, CheckpointMetadata, EvidenceManifestDigest, HISTORY_FRAME_HEADER_LEN,
     HistoryFrameHeaderFields, HistoryStoreReader, LogicalHistoryDigest, PersistenceError,
@@ -325,6 +326,42 @@ impl AppendReceipt {
     }
 }
 
+/// A portable snapshot registered in a bundle's catalog.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CatalogSnapshot {
+    pub generation: u64,
+    pub digest: [u8; 32],
+    pub relative_path: PathBuf,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SnapshotReceipt {
+    generation: u64,
+    digest: [u8; 32],
+    path: PathBuf,
+}
+
+impl SnapshotReceipt {
+    pub const fn generation(&self) -> u64 {
+        self.generation
+    }
+    pub const fn digest(&self) -> &[u8; 32] {
+        &self.digest
+    }
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+}
+
+const SNAPSHOT_DIGEST_DOMAIN: &[u8] = b"causafera/bundle-snapshot/v1\0";
+
+fn snapshot_digest(bytes: &[u8]) -> [u8; 32] {
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(SNAPSHOT_DIGEST_DOMAIN);
+    hasher.update(bytes);
+    *hasher.finalize().as_bytes()
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SealedSegment {
     identity: [u8; 32],
@@ -462,6 +499,7 @@ pub struct HistoryStore {
     durable_evidence_manifest_digest: [u8; 32],
     evidence_hasher: EvidenceManifestDigest,
     hooks: Arc<dyn HistoryStoreHooks>,
+    recovered_tail: UnpublishedTail,
     _writer_lease: WriterLease,
 }
 
@@ -562,6 +600,7 @@ impl HistoryStore {
             durable_evidence_manifest_digest: EvidenceManifestDigest::new().finish(),
             evidence_hasher: EvidenceManifestDigest::new(),
             hooks,
+            recovered_tail: UnpublishedTail::default(),
             _writer_lease: lease,
         })
     }
@@ -633,6 +672,17 @@ impl HistoryStore {
         })?;
         let logical_digest = logical_hasher.finish();
         let evidence_manifest_digest = evidence_hasher.finish();
+        let recovered_tail = scan_unpublished_tail(
+            &active_path,
+            durable_end,
+            &registry,
+            TailChain {
+                namespace,
+                durable_generation,
+                durable_records: logical_records,
+                hasher: logical_hasher.clone(),
+            },
+        )?;
         Ok(Self {
             root: root.to_path_buf(),
             namespace,
@@ -659,8 +709,17 @@ impl HistoryStore {
             durable_evidence_manifest_digest: evidence_manifest_digest,
             evidence_hasher,
             hooks,
+            recovered_tail,
             _writer_lease: lease,
         })
+    }
+
+    /// The ticks an earlier writer flushed after its last catalog commit.
+    ///
+    /// Counted when the bundle was opened and never promoted to history: they
+    /// are the logical ticks a crash lost, reported so the loss is not silent.
+    pub const fn recovered_tail(&self) -> UnpublishedTail {
+        self.recovered_tail
     }
 
     /// The logical history digest recomputed from the canonical frames.
@@ -1226,6 +1285,108 @@ impl HistoryStore {
                     .read_checkpoint(&checkpoint, self.namespace, &self.registry)
             })
             .transpose()
+    }
+
+    /// Register `bytes` as the portable snapshot of durable generation `generation`.
+    ///
+    /// A snapshot is resumable only from a generation that is already durable,
+    /// so a generation still in the logical group is refused. The file is staged,
+    /// synced and renamed before the catalog row exists, which makes the row the
+    /// visibility authority: a file without one is an orphan, never a snapshot.
+    /// Publishing the same bytes again is a no-op; different bytes for a
+    /// published generation are refused.
+    pub fn publish_snapshot(
+        &mut self,
+        generation: u64,
+        bytes: &[u8],
+    ) -> Result<SnapshotReceipt, PersistenceError> {
+        if generation > self.durable_generation || !self.catalog.has_generation(generation)? {
+            return Err(PersistenceError::HistoryGenerationUnavailable { generation });
+        }
+        if u64::try_from(bytes.len())? > crate::MAX_TOTAL_SIZE {
+            return Err(PersistenceError::HistoryCatalogInvariant {
+                invariant: "snapshot exceeds the envelope size cap",
+            });
+        }
+        let digest = snapshot_digest(bytes);
+        let relative_path = PathBuf::from("snapshots").join(format!("{generation}.snap"));
+        let final_path =
+            resolve_catalog_path(&self.root, &relative_path, "snapshots", "snap", false)?;
+        if let Some(existing) = self.catalog.snapshot_at_generation(generation)? {
+            if existing.digest == digest {
+                return Ok(SnapshotReceipt {
+                    generation,
+                    digest,
+                    path: final_path,
+                });
+            }
+            return Err(PersistenceError::HistoryCatalogInvariant {
+                invariant: "a different snapshot is already published for this generation",
+            });
+        }
+        let staging_relative =
+            PathBuf::from("staging").join(format!("snapshot-{generation}-{}.tmp", hex(&digest)));
+        let staging_path =
+            resolve_catalog_path(&self.root, &staging_relative, "staging", "tmp", false)?;
+        let mut staging_file = OpenOptions::new()
+            .create(true)
+            .truncate(true)
+            .write(true)
+            .open(&staging_path)
+            .map_err(|error| io_error("create staged snapshot", &staging_path, error))?;
+        staging_file
+            .write_all(bytes)
+            .and_then(|_| staging_file.flush())
+            .and_then(|_| staging_file.sync_all())
+            .map_err(|error| io_error("sync staged snapshot", &staging_path, error))?;
+        drop(staging_file);
+        let final_preexisted = final_path.exists();
+        fs::rename(&staging_path, &final_path)
+            .map_err(|error| io_error("publish snapshot file", &staging_path, error))?;
+        let publication = (|| {
+            sync_directory(&self.root.join("snapshots"), self.hooks.as_ref())?;
+            self.catalog
+                .publish_snapshot(generation, digest, &relative_path)?;
+            sync_directory(&self.root, self.hooks.as_ref())
+        })();
+        if let Err(error) = publication {
+            if !final_preexisted {
+                let _ = fs::remove_file(&final_path);
+            }
+            return Err(error);
+        }
+        Ok(SnapshotReceipt {
+            generation,
+            digest,
+            path: final_path,
+        })
+    }
+
+    /// The registered snapshot with the highest generation, if any.
+    pub fn latest_snapshot(&self) -> Result<Option<CatalogSnapshot>, PersistenceError> {
+        self.catalog.latest_snapshot()
+    }
+
+    /// The bytes of the snapshot registered for `generation`, verified against
+    /// the digest the catalog recorded.
+    pub fn read_snapshot(&self, generation: u64) -> Result<Vec<u8>, PersistenceError> {
+        let snapshot = self
+            .catalog
+            .snapshot_at_generation(generation)?
+            .ok_or(PersistenceError::HistoryGenerationUnavailable { generation })?;
+        let path = resolve_catalog_path(
+            &self.root,
+            &snapshot.relative_path,
+            "snapshots",
+            "snap",
+            true,
+        )?;
+        let bytes =
+            fs::read(&path).map_err(|error| io_error("read snapshot file", &path, error))?;
+        if snapshot_digest(&bytes) != snapshot.digest {
+            return Err(PersistenceError::SnapshotDigestMismatch);
+        }
+        Ok(bytes)
     }
 
     pub fn seal_active(&mut self) -> Result<SealedSegment, PersistenceError> {
@@ -1901,6 +2062,52 @@ impl SqliteHistoryCatalog {
             .optional()
             .map_err(|error| sqlite_error("read checkpoint generation", error))
             .and_then(parse_checkpoint_row)
+    }
+
+    fn publish_snapshot(
+        &mut self,
+        generation: u64,
+        digest: [u8; 32],
+        relative_path: &Path,
+    ) -> Result<(), PersistenceError> {
+        self.connection
+            .execute(
+                "INSERT INTO snapshots(generation,digest,relative_path) VALUES (?1,?2,?3)",
+                params![
+                    to_i64(generation)?,
+                    digest.as_slice(),
+                    path_text(relative_path)?
+                ],
+            )
+            .map_err(|error| sqlite_error("insert snapshot", error))?;
+        Ok(())
+    }
+
+    fn snapshot_at_generation(
+        &self,
+        generation: u64,
+    ) -> Result<Option<CatalogSnapshot>, PersistenceError> {
+        self.connection
+            .query_row(
+                "SELECT generation,digest,relative_path FROM snapshots WHERE generation=?1",
+                [to_i64(generation)?],
+                snapshot_from_row,
+            )
+            .optional()
+            .map_err(|error| sqlite_error("read snapshot generation", error))
+            .and_then(parse_snapshot_row)
+    }
+
+    fn latest_snapshot(&self) -> Result<Option<CatalogSnapshot>, PersistenceError> {
+        self.connection
+            .query_row(
+                "SELECT generation,digest,relative_path FROM snapshots ORDER BY generation DESC LIMIT 1",
+                [],
+                snapshot_from_row,
+            )
+            .optional()
+            .map_err(|error| sqlite_error("read latest snapshot", error))
+            .and_then(parse_snapshot_row)
     }
 
     fn read_checkpoint(
@@ -2788,6 +2995,29 @@ fn create_layout(root: &Path) -> Result<(), PersistenceError> {
         fs::create_dir(&path).map_err(|error| io_error("create bundle directory", &path, error))?;
     }
     Ok(())
+}
+
+type SnapshotRow = (i64, Vec<u8>, String);
+
+fn snapshot_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SnapshotRow> {
+    Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+}
+
+fn parse_snapshot_row(
+    row: Option<SnapshotRow>,
+) -> Result<Option<CatalogSnapshot>, PersistenceError> {
+    row.map(|(generation, digest, relative_path)| {
+        Ok(CatalogSnapshot {
+            generation: from_i64(generation)?,
+            digest: digest
+                .try_into()
+                .map_err(|_| PersistenceError::HistoryCatalogInvariant {
+                    invariant: "snapshot digest width",
+                })?,
+            relative_path: PathBuf::from(relative_path),
+        })
+    })
+    .transpose()
 }
 
 type CheckpointRow = (i64, Vec<u8>, Vec<u8>, String);

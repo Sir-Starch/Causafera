@@ -2753,3 +2753,197 @@ fn history_store_logical_digest_ignores_where_segments_are_sealed() {
         hex_digest(&per_record_status.logical_digest)
     );
 }
+
+fn causal_variant(sequence: u64, causes: Vec<TraceId>, object_offset: u64) -> HistoryRecord {
+    HistoryRecord::Causal(
+        OwnedCausalRecord::new(
+            sequence,
+            EventId::new(sequence),
+            TraceId::new(sequence),
+            SimulationTime::new(sequence * 10),
+            Phase::Physics,
+            EventKindId::new(13),
+            causes,
+            vec![effect(object_offset + sequence, 9)],
+        )
+        .expect("valid causal fixture"),
+    )
+}
+
+#[test]
+fn history_store_open_reports_the_unpublished_group_tail() {
+    // Given: a group-commit writer that flushed three ticks and then died before
+    // its group reached the catalog.
+    let temp = TempBundle::new("tail-group");
+    let mut store = HistoryStore::create(temp.path(), [0x71; 32], DurabilityMode::GroupCommit)
+        .expect("group store");
+    store.append_tick(vec![causal(1, vec![])]).expect("tick 1");
+    store
+        .append_tick(vec![causal(2, vec![TraceId::new(1)])])
+        .expect("tick 2");
+    store
+        .append_tick(vec![causal(3, vec![TraceId::new(2)])])
+        .expect("tick 3");
+    drop(store);
+
+    // When: the bundle is reopened.
+    let reopened = HistoryStore::open(temp.path()).expect("reopen after the crash");
+
+    // Then: the committed generation is untouched, and the lost ticks are named
+    // exactly rather than silently promoted or forgotten.
+    assert_eq!(reopened.logical_generation(), 0);
+    assert_eq!(reopened.durable_generation(), 0);
+    let tail = reopened.recovered_tail();
+    assert_eq!(
+        (tail.frames, tail.records),
+        (3, 3),
+        "three flushed ticks were lost"
+    );
+    assert_eq!(
+        (tail.first_generation, tail.last_generation),
+        (Some(1), Some(3))
+    );
+    assert_eq!(tail.unaccounted_bytes, 0);
+    println!(
+        "unpublished_tail frames={} first_generation=1 last_generation=3 unaccounted_bytes=0",
+        tail.frames
+    );
+}
+
+#[test]
+fn history_store_open_does_not_count_a_torn_final_frame() {
+    // Given: the same crash, with the last frame cut short.
+    let temp = TempBundle::new("tail-torn");
+    let mut store = HistoryStore::create(temp.path(), [0x72; 32], DurabilityMode::GroupCommit)
+        .expect("group store");
+    store.append_tick(vec![causal(1, vec![])]).expect("tick 1");
+    store
+        .append_tick(vec![causal(2, vec![TraceId::new(1)])])
+        .expect("tick 2");
+    let path = store.active_segment_path();
+    drop(store);
+    let length = fs::metadata(&path).expect("segment metadata").len();
+    OpenOptions::new()
+        .write(true)
+        .open(&path)
+        .expect("open segment")
+        .set_len(length - 5)
+        .expect("tear the final frame");
+
+    // When
+    let tail = HistoryStore::open(temp.path())
+        .expect("reopen after the torn write")
+        .recovered_tail();
+
+    // Then: only the complete frame counts, and the torn bytes are accounted for.
+    assert_eq!((tail.frames, tail.last_generation), (1, Some(1)));
+    assert!(tail.unaccounted_bytes > 0);
+}
+
+#[test]
+fn history_store_open_ignores_frames_left_by_an_earlier_writer() {
+    // Given: a crash that left three frames, then a second writer that wrote a
+    // different but same-sized first frame over the start of that tail and also
+    // died.
+    let temp = TempBundle::new("tail-stale");
+    let mut first = HistoryStore::create(temp.path(), [0x73; 32], DurabilityMode::GroupCommit)
+        .expect("first writer");
+    for sequence in 1..=3 {
+        let causes = if sequence == 1 {
+            vec![]
+        } else {
+            vec![TraceId::new(sequence - 1)]
+        };
+        first
+            .append_tick(vec![causal(sequence, causes)])
+            .expect("first writer tick");
+    }
+    drop(first);
+    let mut second = HistoryStore::open(temp.path()).expect("second writer");
+    second
+        .append_tick(vec![causal_variant(1, vec![], 900)])
+        .expect("second writer tick");
+    drop(second);
+
+    // When
+    let tail = HistoryStore::open(temp.path())
+        .expect("reopen")
+        .recovered_tail();
+
+    // Then: the second writer's one frame is the tail; the first writer's
+    // leftover frames, whose digest chain does not continue from it, are not.
+    assert_eq!(
+        (tail.frames, tail.first_generation, tail.last_generation),
+        (1, Some(1), Some(1))
+    );
+    assert!(
+        tail.unaccounted_bytes > 0,
+        "the leftovers are reported as unaccounted"
+    );
+}
+
+#[test]
+fn history_store_publishes_reads_and_verifies_snapshots() {
+    // Given: a durable generation.
+    let temp = TempBundle::new("snapshot-publish");
+    let mut store =
+        HistoryStore::create(temp.path(), [0x74; 32], DurabilityMode::EveryTick).expect("store");
+    store.append_tick(vec![causal(1, vec![])]).expect("tick 1");
+    let bytes = b"bounded snapshot bytes".to_vec();
+
+    // When
+    let receipt = store
+        .publish_snapshot(1, &bytes)
+        .expect("snapshot publishes");
+    let again = store
+        .publish_snapshot(1, &bytes)
+        .expect("publishing the same bytes is idempotent");
+
+    // Then: it is registered under its generation, reads back verified, and
+    // survives a reopen.
+    assert_eq!(receipt.generation(), 1);
+    assert_eq!(receipt.digest(), again.digest());
+    assert!(receipt.path().ends_with("snapshots/1.snap"));
+    assert_eq!(store.read_snapshot(1).expect("read"), bytes);
+    assert_eq!(store.catalog().counts().expect("counts").snapshots, 1);
+    drop(store);
+    let reopened = HistoryStore::open(temp.path()).expect("reopen");
+    let latest = reopened
+        .latest_snapshot()
+        .expect("latest snapshot")
+        .expect("one snapshot is registered");
+    assert_eq!(latest.generation, 1);
+    assert_eq!(&latest.digest, receipt.digest());
+    assert_eq!(reopened.read_snapshot(1).expect("read after reopen"), bytes);
+}
+
+#[test]
+fn history_store_refuses_snapshots_it_cannot_stand_behind() {
+    // Given: a group store with one unpublished tick and one durable snapshot.
+    let temp = TempBundle::new("snapshot-refuse");
+    let mut store =
+        HistoryStore::create(temp.path(), [0x75; 32], DurabilityMode::GroupCommit).expect("store");
+    store.append_tick(vec![causal(1, vec![])]).expect("tick 1");
+
+    // Then: a snapshot of a generation that is not durable, or does not exist, is refused.
+    assert!(matches!(
+        store.publish_snapshot(1, b"early"),
+        Err(PersistenceError::HistoryGenerationUnavailable { generation: 1 })
+    ));
+    assert!(matches!(
+        store.publish_snapshot(9, b"far"),
+        Err(PersistenceError::HistoryGenerationUnavailable { generation: 9 })
+    ));
+    store.flush_durable().expect("force the group");
+    store.publish_snapshot(1, b"first").expect("durable now");
+
+    // And: different bytes for a published generation are refused, and an altered
+    // file is detected on read.
+    assert!(store.publish_snapshot(1, b"second").is_err());
+    let path = temp.path().join("snapshots").join("1.snap");
+    fs::write(&path, b"tampered").expect("tamper with the snapshot file");
+    assert!(matches!(
+        store.read_snapshot(1),
+        Err(PersistenceError::SnapshotDigestMismatch)
+    ));
+}

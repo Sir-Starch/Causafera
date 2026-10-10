@@ -27,10 +27,16 @@ pub fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), PersistenceError> {
         .map_err(|e| PersistenceError::codec(format!("write temp file: {e}")))?;
     file.flush()
         .map_err(|e| PersistenceError::codec(format!("flush temp file: {e}")))?;
+    file.sync_all()
+        .map_err(|e| PersistenceError::codec(format!("sync temp file: {e}")))?;
     drop(file);
 
     fs::rename(&temp_name, path)
         .map_err(|e| PersistenceError::codec(format!("atomic rename: {e}")))?;
+    // The rename is only durable once the directory entry is.
+    fs::File::open(parent)
+        .and_then(|directory| directory.sync_all())
+        .map_err(|e| PersistenceError::codec(format!("sync parent directory: {e}")))?;
 
     Ok(())
 }
