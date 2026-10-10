@@ -74,6 +74,15 @@ rand = "0.8"
 [profile.dev]
 opt-level = 0
 
+# The causal-history store hashes and indexes every frame; unoptimised BLAKE3 and
+# SQLite dominate test wall time (measured 1.8x per hydrology tick), so these two
+# dependencies stay optimised in dev and test builds. Workspace code is unaffected.
+[profile.dev.package.blake3]
+opt-level = 3
+
+[profile.dev.package.libsqlite3-sys]
+opt-level = 3
+
 [profile.release]
 opt-level = 3
 lto = "thin"

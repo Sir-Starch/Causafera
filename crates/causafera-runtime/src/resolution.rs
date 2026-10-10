@@ -23,6 +23,10 @@ impl ResolutionRuntimeSystem {
         let mut state = self.state.lock().map_err(|_| RuntimeError::StatePoisoned)?;
         let mana_totals = mana_totals_by_chunk(&state.mana);
         let event_counts = pattern_event_counts_by_chunk(&state.pattern_history);
+        let active_chunks = state.active_chunks.keys().copied().collect::<Vec<_>>();
+        for chunk in active_chunks {
+            state.record_active_chunk_before(chunk);
+        }
         refresh_active_chunk_conserved_state(&mut state.active_chunks, &event_counts, &mana_totals);
         let signals = resolution_signals(&state, &mana_totals, self.next_time)?;
         let proposal = state.resolution.propose_evaluation(
@@ -63,7 +67,10 @@ impl ResolutionRuntimeSystem {
         let traces = state
             .traces
             .commit_batch(self.next_time, Phase::Resolution, events)?;
-        state.resolution = proposal.commit(&traces)?;
+        state.replace_resolution(proposal.commit(&traces)?);
+        for change in &changes {
+            state.record_active_chunk_before(change.chunk);
+        }
         apply_resolution_transitions(&mut state.active_chunks, &changes, &traces, &mana_totals);
         state.resolution_changes = state
             .resolution_changes
@@ -74,7 +81,7 @@ impl ResolutionRuntimeSystem {
                 .filter(|change| change.before_level != change.after_level)
                 .count() as u64,
         );
-        state.advanced_through = self.next_time;
+        state.set_advanced_through(self.next_time);
         self.next_time = self.next_time.tick();
         Ok(())
     }

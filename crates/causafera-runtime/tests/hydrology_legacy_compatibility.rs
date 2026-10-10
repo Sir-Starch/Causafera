@@ -37,10 +37,12 @@ use causafera_core::{Phase, RandomStream, StreamKey};
 use causafera_persistence::SnapshotEnvelope;
 use causafera_runtime::snapshot_sections::{
     HYDROLOGY_SECTION_ID, HYDROLOGY_SECTION_MAJOR, SECTION_RUNTIME_RECIPE, assemble_envelope,
+    assemble_envelope_for_digest_schema,
 };
 use causafera_runtime::{
-    ActiveChunkShape, CURRENT_DIGEST_SCHEMA_VERSION, HYDROLOGY_SYSTEM_ID, Runtime, RuntimeConfig,
-    RuntimeSnapshotData, SchedulerRegistration,
+    ActiveChunkShape, CURRENT_DIGEST_SCHEMA_VERSION, HYDROLOGY_SYSTEM_ID,
+    LEGACY_DIGEST_SCHEMA_VERSION, Runtime, RuntimeConfig, RuntimeSnapshotData,
+    SchedulerRegistration,
 };
 use causafera_types::SimulationTime;
 
@@ -172,8 +174,13 @@ fn scheduler_assigns_the_ids_the_persisted_recipe_declares() {
     );
     assert_eq!(
         CURRENT_DIGEST_SCHEMA_VERSION.raw(),
+        CURRENT_DIGEST_SCHEMA,
+        "schema 9 coordinates the history and bounded-snapshot contract"
+    );
+    assert_eq!(
+        LEGACY_DIGEST_SCHEMA_VERSION.raw(),
         HYDROLOGY_DIGEST_SCHEMA,
-        "schema 8 covers hydrology"
+        "schema 8, which covers hydrology, stays computable for migration proofs"
     );
 }
 
@@ -567,51 +574,58 @@ fn pre_hydrology_digests_are_pinned() {
         "a tick must change history, or this fixture proves nothing"
     );
 
-    // And: all three digests moved to schema 8, which is the declared change.
-    // Their bytes therefore differ from the captured baseline — a digest is an
-    // identity, and schema 8 identifies a state that includes hydrology. What must
-    // *not* have moved is the legacy subsystem section payloads, which
-    // `pre_hydrology_section_payloads_are_pinned` asserts byte for byte; together
-    // the two tests say the difference is attributable to the declared schema and
-    // section changes and to nothing else.
+    // And: all three digests are at the current schema, which is the declared
+    // change. Their bytes therefore differ from the captured baseline — a digest
+    // is an identity, and the current schema identifies a state that includes
+    // hydrology. What must *not* have moved is the legacy subsystem section
+    // payloads, which `pre_hydrology_section_payloads_are_pinned` asserts byte for
+    // byte; together the two tests say the difference is attributable to the
+    // declared schema and section changes and to nothing else.
     assert_eq!(
         evolved.physical_state_digest.schema_version.raw(),
-        HYDROLOGY_DIGEST_SCHEMA
+        CURRENT_DIGEST_SCHEMA
     );
     assert_eq!(
         evolved.history_digest.schema_version.raw(),
-        HYDROLOGY_DIGEST_SCHEMA
+        CURRENT_DIGEST_SCHEMA
     );
     assert_eq!(
         evolved.canonical_state.schema_version.raw(),
-        HYDROLOGY_DIGEST_SCHEMA
+        CURRENT_DIGEST_SCHEMA
     );
     assert_ne!(
         hex(&evolved.physical_state_digest.bytes()),
         PRE_HYDROLOGY_PHYSICAL_DIGEST,
-        "schema 8 covers new state, so the physical digest must move"
+        "the current schema covers new state, so the physical digest must move"
+    );
+    assert_ne!(
+        hex(&evolved.physical_state_digest.bytes()),
+        DISABLED_HYDROLOGY_PHYSICAL_DIGEST_SCHEMA_8,
+        "schema 9 is a different identity from schema 8"
     );
     assert_eq!(
         hex(&evolved.physical_state_digest.bytes()),
         DISABLED_HYDROLOGY_PHYSICAL_DIGEST,
-        "physical digest under schema 8 with hydrology disabled"
+        "physical digest under schema 9 with hydrology disabled"
     );
     assert_eq!(
         hex(&evolved.history_digest.bytes()),
         DISABLED_HYDROLOGY_HISTORY_DIGEST,
-        "history digest"
+        "history digest under schema 9 with hydrology disabled"
     );
     assert_eq!(
         hex(&evolved.canonical_state.bytes()),
         DISABLED_HYDROLOGY_EXPERIMENT_DIGEST,
-        "experiment digest"
+        "experiment digest under schema 9 with hydrology disabled"
     );
 
     // And: the full envelope digest moved, because the recipe section it covers
-    // now records the hydrology configuration. That is the one declared change
-    // at this stage — the three authoritative digests above are byte-identical,
-    // which is what says no legacy subsystem state was disturbed to get here.
-    let encoded = assemble_envelope(&runtime.export_snapshot().expect("state must export"))
+    // now records the hydrology configuration. That is the declared change at
+    // this stage; the legacy subsystem payloads are pinned separately.
+    let full = runtime
+        .export_snapshot_with_full_history()
+        .expect("state must export with its full history");
+    let encoded = assemble_envelope(&full)
         .expect("state must assemble")
         .encode()
         .expect("envelope must encode");
@@ -623,12 +637,37 @@ fn pre_hydrology_digests_are_pinned() {
     assert_eq!(
         digest_hex(&encoded),
         DISABLED_HYDROLOGY_ENVELOPE_DIGEST,
-        "complete envelope with a disabled hydrology recipe"
+        "complete envelope with a disabled hydrology recipe under schema 9"
+    );
+
+    // And: the legacy schema still reproduces the recorded schema-8 identities,
+    // which is what a migration proof of a schema-8 snapshot recomputes.
+    let legacy = assemble_envelope_for_digest_schema(&full, LEGACY_DIGEST_SCHEMA_VERSION)
+        .expect("legacy-schema state must assemble");
+    assert_eq!(
+        hex(&legacy.header.physical_digest),
+        DISABLED_HYDROLOGY_PHYSICAL_DIGEST_SCHEMA_8,
+        "legacy schema physical digest"
+    );
+    assert_eq!(
+        hex(&legacy.header.history_digest),
+        DISABLED_HYDROLOGY_HISTORY_DIGEST_SCHEMA_8,
+        "legacy schema history digest"
+    );
+    assert_eq!(
+        digest_hex(&legacy.encode().expect("legacy envelope must encode")),
+        DISABLED_HYDROLOGY_ENVELOPE_DIGEST_SCHEMA_8,
+        "legacy schema complete envelope"
     );
 }
 
-/// The digest schema that covers hydrology.
+/// The digest schema that covers hydrology. It stays computable: a schema-8
+/// snapshot's migration proof recomputes its identities under it.
 const HYDROLOGY_DIGEST_SCHEMA: u16 = 8;
+
+/// The digest schema that coordinates the history and bounded-snapshot contract
+/// (`docs/rfc/RFC-PERSIST-002.md`).
+const CURRENT_DIGEST_SCHEMA: u16 = 9;
 
 /// The runtime recipe section major before hydrology was configurable.
 const PRE_HYDROLOGY_RECIPE_MAJOR: u16 = 6;
@@ -651,17 +690,34 @@ const APPENDED_REGISTRATION_RECIPE_BYTES: usize = 2 + 8 + 2 + 2;
 /// The three authoritative digests of the same world under schema 8, with
 /// hydrology disabled. Measured, not restated: schema 8 writes one zero for a
 /// disabled domain, so what moved is the schema version and that single byte.
-const DISABLED_HYDROLOGY_PHYSICAL_DIGEST: &str =
+/// The legacy-schema path must keep reproducing them.
+const DISABLED_HYDROLOGY_PHYSICAL_DIGEST_SCHEMA_8: &str =
     "a62665b6c03d56846ef206302bff041bc59271678437c1b2ee7e29e32210ecac";
-const DISABLED_HYDROLOGY_HISTORY_DIGEST: &str =
+const DISABLED_HYDROLOGY_HISTORY_DIGEST_SCHEMA_8: &str =
     "14c3bc82f53b042d936f41eb60044282275b411653bbc8f9b6a349503afdff81";
-const DISABLED_HYDROLOGY_EXPERIMENT_DIGEST: &str =
+#[allow(
+    dead_code,
+    reason = "historical record of the schema-8 experiment identity"
+)]
+const DISABLED_HYDROLOGY_EXPERIMENT_DIGEST_SCHEMA_8: &str =
     "4faa93eaf8dfda6bb5025f80d87b8612540bcf799192d1fd8cdf94a798d18817";
 
 /// The full-envelope digest of the same pre-hydrology world once its recipe
-/// records a disabled hydrology configuration.
-const DISABLED_HYDROLOGY_ENVELOPE_DIGEST: &str =
+/// records a disabled hydrology configuration, assembled under schema 8.
+const DISABLED_HYDROLOGY_ENVELOPE_DIGEST_SCHEMA_8: &str =
     "baf641b23243b693f3f33163b44c7d8efc3b557bc197915fbf06a1d5d08750d7";
+
+/// The same four identities under schema 9, re-recorded from the same world.
+/// Todo 7 of `plans/causal-history-storage.md` redefines the schema-9 field
+/// inventory and re-records these once more.
+const DISABLED_HYDROLOGY_PHYSICAL_DIGEST: &str =
+    "9d9c93d1ad78dcf9d2924c4f6984501200cbca6be5eb6f5ab6d615019c54682e";
+const DISABLED_HYDROLOGY_HISTORY_DIGEST: &str =
+    "162455f50b0fd69be81dc61cb098599297fc29688eaee83ca466af78518134cf";
+const DISABLED_HYDROLOGY_EXPERIMENT_DIGEST: &str =
+    "cf12fb421335b5e5baf2d1f1a23e02e603d6a4ddbe63e95fdd7a241018e0835d";
+const DISABLED_HYDROLOGY_ENVELOPE_DIGEST: &str =
+    "77e0df1b3f58ad5cce5d9bd96b43f30aaffc9b0bd2d9f538d008662d17b65114";
 
 // ---------------------------------------------------------------------------
 // Resume equivalence

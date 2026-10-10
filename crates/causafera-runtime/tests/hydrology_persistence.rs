@@ -1,4 +1,4 @@
-//! Hydrology persistence: section `0x000F`, digest schema 8, and save/resume
+//! Hydrology persistence: section `0x000F`, digest schema 9, and save/resume
 //! equivalence.
 //!
 //! Covers `plans/hydrology.md` verification gates V24 and V26.
@@ -9,7 +9,7 @@ use causafera_runtime::snapshot_sections::{
     HYDROLOGY_SECTION_ID, HYDROLOGY_SECTION_MAJOR, assemble_envelope, decode_hydrology_section,
     disassemble_envelope, encode_hydrology_section,
 };
-use causafera_runtime::{CURRENT_DIGEST_SCHEMA_VERSION, Runtime, RuntimeConfig, RuntimeState};
+use causafera_runtime::{CURRENT_DIGEST_SCHEMA_VERSION, Runtime, RuntimeConfig};
 
 use support_hydrology::{enabled_runtime_config, wet_runtime_config};
 
@@ -17,6 +17,22 @@ fn evolved(ticks: u64) -> Runtime {
     let mut runtime = Runtime::new(wet_runtime_config()).expect("construction");
     runtime.run_ticks(ticks).expect("the run must commit");
     runtime
+}
+
+fn bounded_bytes(runtime: &Runtime) -> Vec<u8> {
+    runtime
+        .export_bounded_envelope()
+        .expect("bounded export")
+        .encode()
+        .expect("bounded encode")
+}
+
+fn resume_bounded(runtime: Runtime) -> Runtime {
+    let bytes = bounded_bytes(&runtime);
+    let history = runtime
+        .into_history_resume()
+        .expect("durable history resume");
+    Runtime::from_bounded_snapshot_bytes(&bytes, history).expect("bounded resume")
 }
 
 #[test]
@@ -75,13 +91,13 @@ fn an_evolved_hydrology_state_round_trips_byte_for_byte() {
 }
 
 #[test]
-fn the_digest_schema_is_eight_and_covers_hydrology() {
+fn the_digest_schema_is_nine_and_covers_hydrology() {
     let disabled = Runtime::new(RuntimeConfig::new(77))
         .expect("construction")
         .snapshot()
         .expect("digest");
-    assert_eq!(CURRENT_DIGEST_SCHEMA_VERSION.raw(), 8);
-    assert_eq!(disabled.physical_state_digest.schema_version.raw(), 8);
+    assert_eq!(CURRENT_DIGEST_SCHEMA_VERSION.raw(), 9);
+    assert_eq!(disabled.physical_state_digest.schema_version.raw(), 9);
 
     // Two sessions differing only in their water do not share a physical digest.
     let a = evolved(3).snapshot().expect("digest");
@@ -98,8 +114,21 @@ fn the_digest_schema_is_eight_and_covers_hydrology() {
     assert_ne!(
         a.physical_state_digest.bytes(),
         b.physical_state_digest.bytes(),
-        "hydrology state is authoritative equality input under schema 8"
+        "hydrology state is authoritative equality input under schema 9"
     );
+}
+
+#[test]
+fn current_digest_schema_is_nine_across_runtime_identities() {
+    let snapshot = Runtime::new(RuntimeConfig::new(77))
+        .expect("construction")
+        .snapshot()
+        .expect("digest");
+
+    assert_eq!(CURRENT_DIGEST_SCHEMA_VERSION.raw(), 9);
+    assert_eq!(snapshot.physical_state_digest.schema_version.raw(), 9);
+    assert_eq!(snapshot.history_digest.schema_version.raw(), 9);
+    assert_eq!(snapshot.canonical_state.schema_version.raw(), 9);
 }
 
 #[test]
@@ -109,19 +138,13 @@ fn an_enabled_session_resumes_byte_identically() {
     // stopped would have reached.
     let runtime = evolved(5);
     let exported = runtime.export_snapshot().expect("export");
-    let envelope = assemble_envelope(&exported).expect("assemble");
-    let bytes = envelope.encode().expect("encode");
-
-    let decoded = disassemble_envelope(&envelope).expect("disassemble");
-    let resumed = RuntimeState::import_snapshot(decoded).expect("import");
-    let reexported = resumed.export_snapshot();
+    let bytes = bounded_bytes(&runtime);
+    let resumed = resume_bounded(runtime);
+    let reexported = resumed.export_snapshot().expect("re-export");
 
     assert_eq!(reexported.hydrology, exported.hydrology);
     assert_eq!(
-        assemble_envelope(&reexported)
-            .expect("assemble")
-            .encode()
-            .expect("encode"),
+        bounded_bytes(&resumed),
         bytes,
         "export, import, export is byte-identical"
     );
@@ -141,10 +164,7 @@ fn a_resumed_session_continues_into_the_same_state() {
 
     let mut runtime = Runtime::new(wet_runtime_config()).expect("construction");
     runtime.run_ticks(4).expect("the first half must commit");
-    let halfway = runtime.export_snapshot().expect("export");
-    let envelope = assemble_envelope(&halfway).expect("assemble");
-    let mut resumed = Runtime::from_snapshot(disassemble_envelope(&envelope).expect("disassemble"))
-        .expect("resume");
+    let mut resumed = resume_bounded(runtime);
     resumed.run_ticks(4).expect("the second half must commit");
     let continued_digest = resumed.snapshot().expect("digest");
     let continued = resumed.export_snapshot().expect("export");
@@ -172,10 +192,7 @@ fn a_pending_forcing_record_survives_export_and_still_applies() {
     let mut runtime = Runtime::new(config).expect("construction");
     runtime.run_ticks(2).expect("two ticks must commit");
 
-    let envelope =
-        assemble_envelope(&runtime.export_snapshot().expect("export")).expect("assemble");
-    let mut resumed = Runtime::from_snapshot(disassemble_envelope(&envelope).expect("disassemble"))
-        .expect("resume");
+    let mut resumed = resume_bounded(runtime);
     assert_eq!(
         resumed.hydrology_state().forcing[0].applied_at(),
         None,
@@ -196,10 +213,7 @@ fn an_applied_forcing_record_stays_persisted_and_is_not_reapplied() {
     let mut runtime = Runtime::new(config).expect("construction");
     runtime.run_ticks(3).expect("three ticks must commit");
 
-    let envelope =
-        assemble_envelope(&runtime.export_snapshot().expect("export")).expect("assemble");
-    let mut resumed = Runtime::from_snapshot(disassemble_envelope(&envelope).expect("disassemble"))
-        .expect("resume");
+    let mut resumed = resume_bounded(runtime);
     assert_eq!(resumed.hydrology_state().forcing.len(), 1);
     assert_eq!(resumed.hydrology_state().forcing[0].applied_at(), Some(2));
 
@@ -218,11 +232,9 @@ fn an_applied_forcing_record_stays_persisted_and_is_not_reapplied() {
 fn retained_typed_batches_survive_export_and_import() {
     let runtime = evolved(3);
     let exported = runtime.export_snapshot().expect("export");
-    let envelope = assemble_envelope(&exported).expect("assemble");
-    let resumed =
-        RuntimeState::import_snapshot(disassemble_envelope(&envelope).expect("disassemble"))
-            .expect("import")
-            .export_snapshot();
+    let resumed = resume_bounded(runtime)
+        .export_snapshot()
+        .expect("re-export");
 
     assert_eq!(
         resumed.hydrology.retained_batches,
@@ -261,14 +273,9 @@ fn a_promoted_chunks_level_and_anchor_survive_a_round_trip() {
         "the run must reach a promotion, or this proves nothing about resolution"
     );
 
-    let exported = runtime.export_snapshot().expect("export");
-    let resumed = RuntimeState::import_snapshot(
-        disassemble_envelope(&assemble_envelope(&exported).expect("assemble"))
-            .expect("disassemble"),
-    )
-    .expect("import");
+    let resumed = resume_bounded(runtime);
 
-    let restored_state = resumed.export_snapshot().hydrology;
+    let restored_state = resumed.export_snapshot().expect("re-export").hydrology;
     assert_eq!(restored_state.resolution, before.resolution);
     for (chunk, entry) in promoted {
         let restored = restored_state.resolution[&chunk];

@@ -417,15 +417,16 @@ fn thermal_persistence_literal_version_contract() {
 
     // Then: thermal persistence and digest versions retain their literal wire contract.
     // Thermal's own identifiers are unchanged. The digest schema is shared across
-    // domains, and it moved to 8 when hydrology was added to what the physical
+    // domains, and it moved to 9 when the history/bounded contract was aligned
+    // after hydrology was added to what the physical
     // digest covers — a declared change to the digest's scope, not to thermal's
     // section or its payload.
     assert_eq!(THERMAL_SECTION_ID, 0x000E);
     assert_eq!(THERMAL_SECTION_MAJOR, 2);
-    assert_eq!(CURRENT_DIGEST_SCHEMA_VERSION.raw(), 8);
+    assert_eq!(CURRENT_DIGEST_SCHEMA_VERSION.raw(), 9);
     assert_eq!(envelope.sections[&u64::from(0x000E_u16)].section_major, 2);
-    assert_eq!(envelope.header.physical_digest_schema, 8);
-    assert_eq!(envelope.header.history_digest_schema, 8);
+    assert_eq!(envelope.header.physical_digest_schema, 9);
+    assert_eq!(envelope.header.history_digest_schema, 9);
 }
 
 #[test]
@@ -456,6 +457,8 @@ fn save_resume_equivalence() {
         .export_snapshot()
         .expect("continuous snapshot must export");
     assert!(!resumed_export.thermal.boundary_records.is_empty());
+    assert_eq!(resumed_export.thermal.receipt_batches.len(), 64);
+    assert_eq!(resumed_export.thermal.conservation_receipts.len(), 64);
     assert_eq!(
         resumed_export.thermal.boundary_records,
         continuous_export.thermal.boundary_records

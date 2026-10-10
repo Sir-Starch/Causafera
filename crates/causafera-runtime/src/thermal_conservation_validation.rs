@@ -5,6 +5,7 @@ use causafera_types::TraceId;
 
 use crate::RuntimeError;
 use crate::RuntimeState;
+use crate::thermal::MAX_THERMAL_PROJECTION_BATCHES;
 
 /// Per-batch receipt-side totals accumulated during snapshot import.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -62,6 +63,22 @@ pub(crate) fn validate_thermal_aggregate_conservation(
     state: &RuntimeState,
     receipt_totals: &BTreeMap<TraceId, ThermalBatchReceiptTotals>,
 ) -> Result<(), RuntimeError> {
+    if state.thermal_receipts.len() > MAX_THERMAL_PROJECTION_BATCHES
+        || state.thermal_conservation_receipts.len() > MAX_THERMAL_PROJECTION_BATCHES
+    {
+        return Err(RuntimeError::InvalidSnapshot(
+            "thermal receipt projection exceeds its batch bound",
+        ));
+    }
+    if !state
+        .thermal_receipts
+        .keys()
+        .eq(state.thermal_conservation_receipts.keys())
+    {
+        return Err(RuntimeError::InvalidSnapshot(
+            "thermal receipt and conservation projection batches differ",
+        ));
+    }
     if state.thermal_fields.batch_sequence() == 0 {
         return Ok(());
     }

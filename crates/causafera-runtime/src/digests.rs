@@ -81,6 +81,26 @@ pub(crate) fn write_trace_event(digest: &mut CanonicalDigest, event: CausalEvent
     }
 }
 
+pub(crate) fn write_owned_trace_event(digest: &mut CanonicalDigest, event: &OwnedCausalRecord) {
+    digest.write(event.event_id().raw());
+    digest.write(event.trace_id().raw());
+    digest.write(event.time().raw());
+    digest.write(u64::from(event.phase().id().0));
+    digest.write(event.kind().raw());
+    digest.write(event.causes().len() as u64);
+    for cause in event.causes() {
+        digest.write(cause.raw());
+    }
+    digest.write(event.effects().len() as u64);
+    for effect in event.effects() {
+        digest.write(effect.target().object_kind().raw());
+        digest.write(effect.target().object_id());
+        digest.write(effect.target().property().raw());
+        digest.write_bytes(effect.before().bytes());
+        digest.write_bytes(effect.after().bytes());
+    }
+}
+
 pub(crate) fn write_chart_chunk(digest: &mut CanonicalDigest, chunk: ChartChunkCoord) {
     digest.write(chunk.chart.raw());
     digest.write(chunk.chunk.x as u64);
@@ -280,7 +300,7 @@ pub(crate) fn mix64(mut value: u64) -> u64 {
     value ^ (value >> 31)
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub(crate) struct CanonicalDigest([u64; 4]);
 
 impl CanonicalDigest {
@@ -303,8 +323,10 @@ impl CanonicalDigest {
     }
 
     pub(crate) fn write_bytes(&mut self, bytes: [u8; 32]) {
-        for chunk in bytes.chunks_exact(8) {
-            self.write(u64::from_le_bytes(chunk.try_into().expect("exact chunk")));
+        let (chunks, remainder) = bytes.as_chunks::<8>();
+        debug_assert!(remainder.is_empty());
+        for chunk in chunks {
+            self.write(u64::from_le_bytes(*chunk));
         }
     }
 
@@ -315,11 +337,10 @@ impl CanonicalDigest {
     /// written either way agrees.
     pub(crate) fn write_slice(&mut self, bytes: &[u8]) {
         self.write(bytes.len() as u64);
-        let mut chunks = bytes.chunks_exact(8);
-        for chunk in &mut chunks {
-            self.write(u64::from_le_bytes(chunk.try_into().expect("exact chunk")));
+        let (chunks, tail) = bytes.as_chunks::<8>();
+        for chunk in chunks {
+            self.write(u64::from_le_bytes(*chunk));
         }
-        let tail = chunks.remainder();
         if !tail.is_empty() {
             let mut padded = [0_u8; 8];
             padded[..tail.len()].copy_from_slice(tail);
@@ -402,6 +423,29 @@ impl HistoryDigestPrefix {
     pub(crate) fn advance(&mut self, accumulator: CanonicalDigest, absorbed_events: usize) {
         self.accumulator = accumulator;
         self.absorbed_events = absorbed_events;
+    }
+
+    pub(crate) fn advance_owned(&mut self, records: &[OwnedCausalRecord]) {
+        let mut accumulator = self.resume();
+        for record in records {
+            write_owned_trace_event(&mut accumulator, record);
+        }
+        self.accumulator = accumulator;
+        self.absorbed_events = self.absorbed_events.saturating_add(records.len());
+    }
+
+    pub(crate) fn advance_history_records<'a>(
+        &mut self,
+        records: impl Iterator<Item = &'a OwnedCausalRecord>,
+    ) {
+        let mut accumulator = self.resume();
+        let mut count = 0_usize;
+        for record in records {
+            write_owned_trace_event(&mut accumulator, record);
+            count = count.saturating_add(1);
+        }
+        self.accumulator = accumulator;
+        self.absorbed_events = self.absorbed_events.saturating_add(count);
     }
 }
 

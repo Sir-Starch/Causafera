@@ -1,3 +1,4 @@
+use causafera_core::{Criticality, HistoryQuery, HistoryRecord, StateFingerprint};
 use causafera_explanation::{
     ClaimEvidenceState, DeterministicExplanationRenderer, MATERIAL_SURFACE_LOOP_CLAIM_SCHEMA,
     MATERIAL_SURFACE_LOOP_LOCAL_MANA_TRANSITION_SCHEMA,
@@ -356,4 +357,187 @@ fn below_threshold_source_changes_mana_without_material_consequence_or_supported
     assert!(exported.traces.events.iter().all(|event| {
         event.kind.raw() != EXPERIMENT_RECIPE_MANA_SOURCE_EVENT_KIND || event.causes.is_empty()
     }));
+}
+
+#[test]
+fn material_surface_transition_is_emitted_as_canonical_evidence() {
+    let mut runtime = Runtime::new(production_loop_config(988))
+        .expect("production material runtime must bootstrap");
+
+    let before_anchor = runtime
+        .history_reader()
+        .expect("canonical history reader must be available")
+        .anchor()
+        .expect("initial history anchor must be readable");
+    runtime
+        .run_ticks(4)
+        .expect("production material loop must execute");
+    let reader = runtime
+        .history_reader()
+        .expect("canonical history reader must be available");
+    let records = reader
+        .records(HistoryQuery::new(0, 256, 4 * 1024 * 1024).expect("bounded history query"))
+        .expect("canonical history page must be readable");
+    let evidence = records
+        .records()
+        .iter()
+        .filter_map(|record| match record {
+            HistoryRecord::Evidence(evidence)
+                if (0x4D53_0001..=0x4D53_0003).contains(&evidence.schema_id().raw()) =>
+            {
+                Some(evidence)
+            }
+            HistoryRecord::Causal(_) | HistoryRecord::Evidence(_) => None,
+        })
+        .collect::<Vec<_>>();
+    let expected = [(0x4D53_0001, [72, 80]), (0x4D53_0003, [78, 78])];
+    for (schema, payload_lens) in expected {
+        let record = evidence
+            .iter()
+            .find(|record| record.schema_id().raw() == schema)
+            .unwrap_or_else(|| panic!("material schema {schema:#x} must be present"));
+        assert_eq!(record.version().major, 1);
+        assert_eq!(record.version().minor, 0);
+        assert_eq!(record.criticality(), Criticality::ExplanationOnly);
+        assert!(!record.causal_anchors().is_empty());
+        assert!(
+            record
+                .causal_anchors()
+                .windows(2)
+                .all(|pair| pair[0] < pair[1])
+        );
+        assert!(
+            record
+                .canonical_key()
+                .ends_with(&record.commit_sequence().to_le_bytes())
+        );
+        assert!(payload_lens.contains(&record.canonical_payload().len()));
+        assert_eq!(
+            record.payload_digest(),
+            StateFingerprint::new(*blake3::hash(record.canonical_payload()).as_bytes())
+        );
+    }
+    assert!(evidence.len() >= 2);
+    let after_anchor = reader
+        .anchor()
+        .expect("committed history anchor must be readable");
+    assert_ne!(
+        before_anchor.evidence_manifest_digest(),
+        after_anchor.evidence_manifest_digest()
+    );
+    assert_ne!(
+        before_anchor.logical_digest(),
+        after_anchor.logical_digest()
+    );
+
+    let mut gate_config = source_config(990, 3, 1);
+    gate_config.terrain_participation = TerrainParticipation::Standing;
+    let mut gate_runtime =
+        Runtime::new(gate_config).expect("source material runtime must bootstrap");
+    gate_runtime
+        .run_ticks(8)
+        .expect("source material loop must execute");
+    let gate_reader = gate_runtime
+        .history_reader()
+        .expect("source history reader must be available");
+    let mut gate_offset = 0;
+    let gate = loop {
+        let gate_page = gate_reader
+            .indexed_range(
+                HistoryQuery::new(gate_offset, 256, 4 * 1024 * 1024).expect("bounded gate query"),
+            )
+            .expect("source history page must be readable");
+        if let Some(gate) = gate_page.records().iter().find_map(|record| match record {
+            HistoryRecord::Evidence(evidence) if evidence.schema_id().raw() == 0x4D53_0002 => {
+                Some(evidence.clone())
+            }
+            HistoryRecord::Causal(_) | HistoryRecord::Evidence(_) => None,
+        }) {
+            break gate;
+        }
+        let Some(next_offset) = gate_page.next_offset() else {
+            panic!("material gate schema must be present after source effect");
+        };
+        gate_offset = next_offset;
+    };
+    assert_eq!(gate.version().major, 1);
+    assert_eq!(gate.version().minor, 0);
+    assert_eq!(gate.criticality(), Criticality::ExplanationOnly);
+    assert!(!gate.causal_anchors().is_empty());
+    assert!(
+        gate.causal_anchors()
+            .windows(2)
+            .all(|pair| pair[0] < pair[1])
+    );
+    assert!(
+        gate.canonical_key()
+            .ends_with(&gate.commit_sequence().to_le_bytes())
+    );
+    assert!(gate.canonical_payload().len() == 64 || gate.canonical_payload().len() == 73);
+    assert_eq!(
+        gate.payload_digest(),
+        StateFingerprint::new(*blake3::hash(gate.canonical_payload()).as_bytes())
+    );
+}
+
+#[test]
+fn material_surface_evidence_is_cold_queryable_and_latest_before_is_indexed() {
+    let mut runtime = Runtime::new(production_loop_config(989))
+        .expect("production material runtime must bootstrap");
+    runtime
+        .run_ticks(4)
+        .expect("initial material loop must execute");
+    let initial_reader = runtime
+        .history_reader()
+        .expect("canonical history reader must be available");
+    let initial_records = initial_reader
+        .records(HistoryQuery::new(0, 256, 4 * 1024 * 1024).expect("bounded history query"))
+        .expect("initial history page must be readable");
+    let first = initial_records
+        .records()
+        .iter()
+        .find_map(|record| match record {
+            HistoryRecord::Evidence(evidence) if evidence.schema_id().raw() == 0x4D53_0001 => {
+                Some(evidence.clone())
+            }
+            HistoryRecord::Causal(_) | HistoryRecord::Evidence(_) => None,
+        })
+        .expect("initial material evidence must be present");
+    let transition = initial_reader
+        .event(causafera_types::TraceId::new(first.commit_sequence()))
+        .expect("material transition event must be readable")
+        .expect("material transition event must exist");
+    let target = transition
+        .effects()
+        .iter()
+        .find(|effect| effect.target().property().raw() == 11)
+        .map(|effect| effect.target())
+        .expect("material transition must expose a condition target");
+
+    runtime
+        .run_ticks(140)
+        .expect("long material loop must execute");
+    let status = runtime
+        .history_status()
+        .expect("history status must be readable");
+    assert!(status.hot_bytes <= status.hot_budget);
+    if let Some(oldest_pending) = status.oldest_pending_trace {
+        assert!(first.commit_sequence() < oldest_pending.raw());
+    }
+    let reader = runtime
+        .history_reader()
+        .expect("post-eviction history reader must be available");
+    let cold = reader
+        .evidence(
+            first.schema_id(),
+            first.canonical_key(),
+            HistoryQuery::new(0, 1, 4 * 1024 * 1024).expect("bounded evidence query"),
+        )
+        .expect("cold evidence-key query must be readable");
+    assert_eq!(cold.records(), std::slice::from_ref(&first));
+    let latest = reader
+        .latest_matching_event_before(target, causafera_types::TraceId::new(u64::MAX))
+        .expect("indexed latest-before query must be readable")
+        .expect("indexed latest-before query must find the material condition event");
+    assert!(latest.trace_id().raw() >= first.commit_sequence());
 }

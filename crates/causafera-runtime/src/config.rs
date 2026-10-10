@@ -24,6 +24,13 @@ pub struct RuntimeConfig {
     /// Disabled unless a session asks otherwise. No field, edge, boundary, or
     /// rainfall is defaulted into an existing world.
     pub hydrology: HydrologyConfig,
+    /// Override for the causal hot-cache budget.
+    ///
+    /// `None` (the default) uses the core constant; a `Some` value passes
+    /// directly to [`causafera_core::CausalTraceStore::with_hot_budget`].
+    /// Tests that need a larger hot cache without a cold reader set this;
+    /// a production session with a cold reader stays bounded at the default.
+    pub hot_budget: Option<usize>,
 }
 
 /// The shape the active chunk set takes around the chart origin.
@@ -113,6 +120,7 @@ impl RuntimeConfig {
                 recipe_budget: 0,
             },
             hydrology: HydrologyConfig::disabled(),
+            hot_budget: None,
         }
     }
 

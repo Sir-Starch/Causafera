@@ -157,13 +157,11 @@ impl ActorActionSystem {
                         next_actor
                             .validation_results
                             .push(ActionValidationResult::Valid { trace });
-                        state.actors.insert(actor_id, next_actor);
-                        if let Some(ancestry) = state.actor_ancestry.get_mut(&actor_id) {
-                            ancestry.push(trace);
-                        }
+                        state.insert_actor(actor_id, next_actor);
+                        state.push_actor_ancestry(actor_id, trace);
                         state.actor_actions_committed =
                             state.actor_actions_committed.saturating_add(1);
-                        state.latest_physical_trace = trace;
+                        state.set_latest_physical_trace(trace);
                     }
                     Err(cause) => {
                         let event = rejected_action_event(
@@ -177,6 +175,7 @@ impl ActorActionSystem {
                             Phase::Action,
                             vec![event],
                         )?[0];
+                        state.record_actor_before(actor_id);
                         if let Some(actor) = state.actors.get_mut(&actor_id) {
                             actor
                                 .validation_results
@@ -188,7 +187,7 @@ impl ActorActionSystem {
                 }
             }
         }
-        state.advanced_through = self.next_time;
+        state.set_advanced_through(self.next_time);
         self.next_time = self.next_time.tick();
         Ok(())
     }

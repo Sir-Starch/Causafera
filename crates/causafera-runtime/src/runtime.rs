@@ -5,7 +5,8 @@ use std::{
 
 use causafera_core::{
     CausalCommitError, CausalEffect, CausalEffectError, CausalEventProposal,
-    CausalEventProposalError, CausalTarget, CausalTraceStore, EventProposalKey, Phase, Scheduler,
+    CausalEventProposalError, CausalTarget, CausalTraceStore, DEFAULT_CAUSAL_HOT_BUDGET_BYTES,
+    EventProposalKey, HistoryError, HistoryReader, Phase, Scheduler,
 };
 use causafera_domains::{
     ManaError, ManaField, ManaFieldSet, PhysicalPatternSample, ThermalActiveRegion,
@@ -47,10 +48,12 @@ pub const EXPERIMENT_RECIPE_MANA_SOURCE_POLICY_SCHEMA_V1: u64 = 1;
 /// Bumped to 7 when the canonical production bootstrap record (plan identity,
 /// per-stage result fingerprints, and terminal receipts) became an authoritative
 /// input to `physical_state_digest`.
-/// Schema 8 adds hydrology to the physical digest. A digest is an identity, never
-/// a distance: the version says which state it covers, and a session that
-/// gained a domain gained new authoritative state to cover.
-pub const CURRENT_DIGEST_SCHEMA_VERSION: DigestSchemaVersion = DigestSchemaVersion::new(8);
+/// Schema 8 added hydrology; schema 9 coordinates the history/bounded snapshot
+/// digest contract across runtime and persistence.
+pub const LEGACY_DIGEST_SCHEMA_VERSION: DigestSchemaVersion =
+    DigestSchemaVersion::new(causafera_persistence::LEGACY_DIGEST_SCHEMA_VERSION);
+pub const CURRENT_DIGEST_SCHEMA_VERSION: DigestSchemaVersion =
+    DigestSchemaVersion::new(causafera_persistence::CURRENT_DIGEST_SCHEMA_VERSION);
 
 const PHYSICAL_SYSTEM_ID: u64 = 10;
 pub const EXPERIMENT_RECIPE_MANA_SOURCE_SYSTEM_ID: u64 = 19;
@@ -139,6 +142,20 @@ pub struct Runtime {
     /// the only test that could be written is one that asserts the refusal never
     /// happens — which is what the test named for it used to do.
     pub(crate) hydrology_section_budget: usize,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RuntimeHistoryStatus {
+    pub logical_generation: u64,
+    pub durable_generation: u64,
+    pub visible_head: TraceId,
+    pub hot_bytes: usize,
+    pub hot_budget: usize,
+    pub pending_ticks: usize,
+    pub pending_records: usize,
+    pub oldest_pending_trace: Option<TraceId>,
+    pub newest_pending_trace: Option<TraceId>,
+    pub handed_off_generation: u64,
 }
 
 /// One system's phase and the stream-keying ID the scheduler actually assigned it.
@@ -274,42 +291,70 @@ impl Runtime {
         self.scheduler.current_time()
     }
 
+    pub fn history_status(&self) -> Result<RuntimeHistoryStatus, RuntimeError> {
+        let state = self.lock_state()?;
+        let (oldest_pending_trace, newest_pending_trace) = state.history.pending_trace_range();
+        Ok(RuntimeHistoryStatus {
+            logical_generation: state.history.logical_generation(),
+            durable_generation: state.history.durable_generation(),
+            visible_head: state.history.visible_head(),
+            hot_bytes: state.traces.hot_bytes(),
+            hot_budget: state.traces.hot_budget(),
+            pending_ticks: state.history.pending_ticks(),
+            pending_records: state.history.pending_records(),
+            oldest_pending_trace,
+            newest_pending_trace,
+            handed_off_generation: state.history.handed_off_generation(),
+        })
+    }
+
+    pub fn history_reader(&self) -> Result<Arc<dyn HistoryReader>, RuntimeError> {
+        let state = self.lock_state()?;
+        if let Some(error) = state.failure.clone() {
+            return Err(error);
+        }
+        Ok(state.history.reader())
+    }
+
+    /// Consume this session and retain its exact durable history for a bounded resume.
+    pub fn into_history_resume(self) -> Result<RuntimeHistoryResume, RuntimeError> {
+        let resume = {
+            let mut state = self.lock_state()?;
+            if let Some(error) = state.failure.clone() {
+                return Err(error);
+            }
+            state.history.flush_durable()?;
+            let digest_prefix = state.history_digest_prefix.clone();
+            state.history.resume(&digest_prefix)?
+        };
+        Ok(resume)
+    }
+
     pub fn tick(&mut self) -> Result<RuntimeSnapshot, RuntimeError> {
         if self.scheduler.current_time().raw() >= MAX_RUNTIME_TICKS {
             return Err(RuntimeError::TickLimitExceeded);
         }
-        // A hydrology-enabled tick runs inside a staging transaction; every other
-        // session keeps the frozen legacy path, which is what keeps its bytes and
-        // stream probes comparable with the pre-hydrology evidence (V22).
         let transaction = {
-            let state = self.lock_state()?;
+            let mut state = self.lock_state()?;
             if let Some(error) = state.failure.clone() {
                 return Err(error);
             }
-            state.hydrology.enabled.then(|| {
-                RuntimeTickTransaction::open(
-                    &state,
-                    self.snapshot_budget,
-                    self.hydrology_section_budget,
-                )
-            })
+            Some(RuntimeTickTransaction::open(
+                &mut state,
+                self.snapshot_budget,
+                self.hydrology_section_budget,
+            )?)
         };
         self.scheduler.tick();
         let mut state = self.lock_state()?;
         if let Some(transaction) = transaction {
             let restore_to = transaction.completed_time();
             if let Err(error) = transaction.close(&mut state, self.scheduler.current_time()) {
-                // The staged state is back. The scheduler has to come back with
-                // it: its clock and every system's next-execution time are what
-                // key the RNG streams, so leaving them advanced would make the
-                // retried tick a different tick.
                 drop(state);
                 self.scheduler.set_current_time(restore_to);
                 self.scheduler.restore_system_times(restore_to.tick());
                 return Err(error);
             }
-        } else if let Some(error) = state.failure.clone() {
-            return Err(error);
         }
         if state.advanced_through != self.scheduler.current_time() {
             return Err(RuntimeError::PhaseDesynchronized);
@@ -455,6 +500,63 @@ impl Runtime {
         Ok(state.export_snapshot())
     }
 
+    /// The snapshot plus the complete causal history, read back from durable
+    /// storage.
+    ///
+    /// This is the legacy single-file shape: [`Self::export_snapshot`] carries
+    /// only the bounded hot trace suffix, so a complete-history consumer (the
+    /// legacy-format codec, migration, an oracle comparison) names this method
+    /// and pays for a scan of everything ever committed. It is never on the tick
+    /// path and nothing bounded may call it.
+    pub fn export_snapshot_with_full_history(&self) -> Result<RuntimeSnapshotData, RuntimeError> {
+        let state = self.lock_state()?;
+        if let Some(error) = state.failure.clone() {
+            return Err(error);
+        }
+        if state.advanced_through != self.scheduler.current_time() {
+            return Err(RuntimeError::PhaseDesynchronized);
+        }
+        let mut snapshot = state.export_snapshot();
+        snapshot.traces.events = state
+            .history
+            .records_for_cold_oracle()?
+            .into_iter()
+            .map(|record| causafera_core::provenance::CausalEventSnapshot {
+                event_id: record.event_id(),
+                trace_id: record.trace_id(),
+                time: record.time(),
+                phase: record.phase(),
+                kind: record.kind(),
+                causes: record.causes().to_vec(),
+                effects: record.effects().to_vec(),
+            })
+            .collect();
+        Ok(snapshot)
+    }
+
+    pub fn export_bounded_envelope(
+        &self,
+    ) -> Result<causafera_persistence::SnapshotEnvelope, RuntimeError> {
+        let mut state = self.lock_state()?;
+        if let Some(error) = state.failure.clone() {
+            return Err(error);
+        }
+        if state.advanced_through != self.scheduler.current_time() {
+            return Err(RuntimeError::PhaseDesynchronized);
+        }
+        state.history.flush_durable()?;
+        let data = state.export_snapshot();
+        let anchor = state.history.reader().anchor()?;
+        let metadata = BoundedSnapshotMetadata {
+            runtime_recipe_fingerprint: [0; 32],
+            physical_digest: state
+                .physical_state_digest(data.recipe.completed_time)
+                .bytes(),
+            anchor,
+        };
+        Ok(assemble_bounded_envelope(&data, &metadata)?)
+    }
+
     pub fn executed_experiment_recipe_mana_sources(
         &self,
     ) -> Result<Vec<ExperimentRecipeManaSourceReceipt>, RuntimeError> {
@@ -467,6 +569,21 @@ impl Runtime {
 
     /// Reconstruct a full `Runtime` from a completed-tick snapshot.
     pub fn from_snapshot(data: RuntimeSnapshotData) -> Result<Self, RuntimeError> {
+        Self::from_snapshot_with_history_generation(data, None)
+    }
+
+    fn from_snapshot_with_history_generation(
+        data: RuntimeSnapshotData,
+        target_generation: Option<u64>,
+    ) -> Result<Self, RuntimeError> {
+        Self::from_snapshot_with_history(data, target_generation, None)
+    }
+
+    fn from_snapshot_with_history(
+        data: RuntimeSnapshotData,
+        target_generation: Option<u64>,
+        history_resume: Option<RuntimeHistoryResume>,
+    ) -> Result<Self, RuntimeError> {
         if data.recipe.system_registrations != runtime_system_registrations() {
             return Err(RuntimeError::InvalidSnapshot(
                 "runtime system registrations do not match compiled registry",
@@ -480,13 +597,81 @@ impl Runtime {
         runtime
             .scheduler
             .restore_system_times(data.recipe.completed_time.tick());
-        let restored_state = RuntimeState::import_snapshot(data)?;
+        let restored_state = RuntimeState::import_snapshot_with_history_generation(
+            data,
+            target_generation,
+            history_resume,
+        )?;
         // A resumed session has to be able to save again. Checked here rather than
         // inside `RuntimeState::import_snapshot` because envelope assembly imports
         // the data itself to compute its digests, and a size check inside import
         // would call assembly, which would call import.
         crate::tick_transaction::require_exportable(&restored_state)?;
         *runtime.lock_state()? = restored_state;
+        Ok(runtime)
+    }
+
+    /// Resume a bounded revision-2 snapshot by taking ownership of its durable history.
+    pub fn from_bounded_snapshot_bytes(
+        bytes: &[u8],
+        history_resume: RuntimeHistoryResume,
+    ) -> Result<Self, RuntimeError> {
+        let envelope = causafera_persistence::SnapshotEnvelope::decode(bytes)?;
+        if envelope.header.codec_revision != crate::BOUNDED_ENVELOPE_CODEC_REVISION {
+            return Err(RuntimeError::InvalidSnapshot(
+                "owned history resume requires a bounded revision-2 snapshot",
+            ));
+        }
+        let target_generation =
+            crate::history_anchor_from_bounded_envelope(&envelope)?.logical_generation();
+        let history_reader = history_resume.reader();
+        let data = crate::bounded_snapshot::disassemble_bounded_envelope_for_resume(
+            &envelope,
+            history_reader.as_ref(),
+        )?;
+        Self::from_snapshot_with_history(data, Some(target_generation), Some(history_resume))
+    }
+
+    /// Decode and resume either an exact legacy snapshot or a bounded revision-2 snapshot.
+    pub fn from_snapshot_bytes(
+        bytes: &[u8],
+        history: Option<&dyn HistoryReader>,
+    ) -> Result<Self, RuntimeError> {
+        let envelope = causafera_persistence::SnapshotEnvelope::decode(bytes)?;
+        if envelope.header.codec_revision == crate::BOUNDED_ENVELOPE_CODEC_REVISION {
+            return Err(RuntimeError::InvalidSnapshot(
+                "bounded revision-2 snapshots require owned history resume",
+            ));
+        }
+        let target_generation =
+            if envelope.header.codec_revision == crate::BOUNDED_ENVELOPE_CODEC_REVISION {
+                Some(crate::history_anchor_from_bounded_envelope(&envelope)?.logical_generation())
+            } else {
+                None
+            };
+        let data = crate::disassemble_snapshot_bytes(bytes, history)?;
+        let runtime = Self::from_snapshot_with_history_generation(data, target_generation)?;
+        if envelope.header.codec_revision == 1
+            && envelope.header.physical_digest_schema == LEGACY_DIGEST_SCHEMA_VERSION.raw()
+            && envelope.header.history_digest_schema == LEGACY_DIGEST_SCHEMA_VERSION.raw()
+        {
+            let state = runtime.lock_state()?;
+            let time = SimulationTime::new(envelope.header.completed_time);
+            let physical =
+                state.physical_state_digest_for_schema(time, LEGACY_DIGEST_SCHEMA_VERSION);
+            let history =
+                state.history_digest_full_rescan_for_schema(LEGACY_DIGEST_SCHEMA_VERSION)?;
+            if envelope.header.physical_digest != physical.bytes() {
+                return Err(RuntimeError::InvalidSnapshot(
+                    "legacy schema-8 physical digest does not match snapshot",
+                ));
+            }
+            if envelope.header.history_digest != history.bytes() {
+                return Err(RuntimeError::InvalidSnapshot(
+                    "legacy schema-8 history digest does not match snapshot",
+                ));
+            }
+        }
         Ok(runtime)
     }
 
@@ -590,8 +775,16 @@ pub enum RuntimeError {
     TickLimitExceeded,
     #[error("runtime state lock was poisoned")]
     StatePoisoned,
+    #[error("a runtime tick history transaction is already open")]
+    HistoryTransactionAlreadyOpen,
+    #[error("no runtime tick history transaction is open")]
+    HistoryTransactionNotOpen,
     #[error("runtime systems did not advance through the scheduler time")]
     PhaseDesynchronized,
+    #[error("runtime history commit rejected at {phase:?}")]
+    HistoryCommitRejected {
+        phase: crate::history_transaction::HistoryCommitPhase,
+    },
     #[error("causal effect construction failed: {0}")]
     CausalEffect(#[from] CausalEffectError),
     #[error("causal proposal construction failed: {0}")]
@@ -783,13 +976,13 @@ impl From<ThermalError> for RuntimeError {
     }
 }
 
+impl From<HistoryError> for RuntimeError {
+    fn from(error: HistoryError) -> Self {
+        Self::CausalCommit(CausalCommitError::HistoryRead(error))
+    }
+}
+
 /// Every value one tick may mutate, in one place.
-///
-/// `Clone` exists for exactly one caller: [`crate::RuntimeTickTransaction`] stages
-/// a copy of the whole thing before a hydrology-enabled tick starts, so a tick that
-/// cannot be published can be undone in one infallible move rather than unwound
-/// system by system (`plans/hydrology.md` §10). Nothing else clones runtime state.
-#[derive(Clone)]
 pub struct RuntimeState {
     pub(crate) config: RuntimeConfig,
     pub(crate) traces: CausalTraceStore,
@@ -799,6 +992,9 @@ pub struct RuntimeState {
     /// store holds, so it is deliberately absent from the persisted snapshot
     /// envelope and an imported state simply starts empty and absorbs once.
     pub(crate) history_digest_prefix: HistoryDigestPrefix,
+    pub(crate) history: crate::history_transaction::RuntimeHistoryCoordinator,
+    pub(crate) tick_history: Option<crate::history_transaction::HistoryTxn>,
+    pub(crate) tick_undo: crate::tick_undo::TickUndoLog,
     pub(crate) mana: ManaFieldSet,
     pub(crate) thermal_fields: ThermalFieldSet,
     pub(crate) thermal_active_region: ThermalActiveRegion,
@@ -855,6 +1051,7 @@ pub struct RuntimeState {
     pub(crate) material_activity_events: u64,
     pub(crate) next_actor_id: u64,
     pub(crate) last_mana_changes: u32,
+    pub(crate) physical_scan_count: u64,
     pub(crate) failure: Option<RuntimeError>,
 }
 
@@ -869,7 +1066,11 @@ pub struct ActiveChunkState {
 
 impl RuntimeState {
     pub(crate) fn new(config: &RuntimeConfig) -> Result<Self, RuntimeError> {
-        let mut traces = CausalTraceStore::new();
+        let mut traces = if let Some(budget) = config.hot_budget {
+            CausalTraceStore::with_hot_budget(budget)
+        } else {
+            CausalTraceStore::new()
+        };
         let root = CausalEventProposal::new(
             EventProposalKey::new(0, 0, 0),
             EventKindId::new(ROOT_EVENT_KIND),
@@ -950,10 +1151,20 @@ impl RuntimeState {
             })
             .collect();
         let resolution_policy = Self::default_resolution_policy()?;
+        let history_registry = crate::history_transaction::runtime_history_decoder_registry()?;
+        let (history, traces, history_digest_prefix) =
+            crate::history_transaction::RuntimeHistoryCoordinator::bootstrap(
+                &traces,
+                config.deterministic.world_seed,
+                Arc::clone(&history_registry),
+            )?;
         let mut state = Self {
             config: config.clone(),
             traces,
-            history_digest_prefix: HistoryDigestPrefix::new(),
+            history_digest_prefix,
+            history,
+            tick_history: None,
+            tick_undo: crate::tick_undo::TickUndoLog::default(),
             mana,
             thermal_fields,
             thermal_active_region,
@@ -1009,6 +1220,7 @@ impl RuntimeState {
             material_activity_events: 0,
             next_actor_id: 1,
             last_mana_changes: 0,
+            physical_scan_count: 0,
             failure: None,
         };
         let recipe = RuntimeBootstrapRecipe::from_runtime_config(config)
@@ -1017,6 +1229,15 @@ impl RuntimeState {
             .execute(&mut state)
             .map_err(|error| bootstrap_construction_error(error, "invalid bootstrap state"))?;
         state.bootstrap = bootstrap;
+        let (history, traces, history_digest_prefix) =
+            crate::history_transaction::RuntimeHistoryCoordinator::bootstrap(
+                &state.traces,
+                config.deterministic.world_seed,
+                history_registry,
+            )?;
+        state.history = history;
+        state.traces = traces;
+        state.history_digest_prefix = history_digest_prefix;
         // Configuration is accepted only if the world it produced can be saved.
         // The bounds on cells, edges, boundaries, overrides and forcing members are
         // each satisfiable while their composition is not, so the composed size is
@@ -1276,12 +1497,19 @@ impl RuntimeState {
     }
 
     pub fn import_snapshot(data: RuntimeSnapshotData) -> Result<Self, RuntimeError> {
+        Self::import_snapshot_with_history_generation(data, None, None)
+    }
+
+    fn import_snapshot_with_history_generation(
+        data: RuntimeSnapshotData,
+        target_generation: Option<u64>,
+        history_resume: Option<RuntimeHistoryResume>,
+    ) -> Result<Self, RuntimeError> {
         let config = data.recipe.config.validate()?;
         let imported_receipts = import_experiment_recipe_mana_source_receipts(
             data.experiment_recipe_mana_source_receipts,
         )?;
-        let traces = CausalTraceStore::import_snapshot(data.traces)
-            .map_err(|_| RuntimeError::InvalidSnapshot("trace store failed validation"))?;
+        let trace_snapshot = data.traces;
         let mana = ManaFieldSet::import_snapshot(data.mana)?;
         validate_mana_cell_object_ids(&mana)?;
         let resolution = ResolutionField::import_snapshot(data.resolution)?;
@@ -1359,10 +1587,36 @@ impl RuntimeState {
                 "snapshot completed time does not match the advanced-through counter",
             ));
         }
+        let hot_budget = config.hot_budget.unwrap_or(DEFAULT_CAUSAL_HOT_BUDGET_BYTES);
+        let (history, traces, history_digest_prefix) = if let Some(resume) = history_resume {
+            if !trace_snapshot.events.is_empty() {
+                return Err(RuntimeError::InvalidSnapshot(
+                    "owned history resume must not contain materialized causal traces",
+                ));
+            }
+            resume.install(hot_budget)?
+        } else {
+            let registry = crate::history_transaction::runtime_history_decoder_registry()?;
+            let import_budget = CausalTraceStore::snapshot_required_bytes(&trace_snapshot)
+                .map_err(|_| RuntimeError::InvalidSnapshot("trace store failed validation"))?;
+            let traces =
+                CausalTraceStore::import_snapshot_with_hot_budget(trace_snapshot, import_budget)
+                    .map_err(|_| RuntimeError::InvalidSnapshot("trace store failed validation"))?;
+            crate::history_transaction::RuntimeHistoryCoordinator::bootstrap_with_registry_at_generation(
+                    &traces,
+                    config.deterministic.world_seed,
+                    hot_budget,
+                    target_generation,
+                    registry,
+            )?
+        };
         let state = Self {
             config,
             traces,
-            history_digest_prefix: HistoryDigestPrefix::new(),
+            history_digest_prefix,
+            history,
+            tick_history: None,
+            tick_undo: crate::tick_undo::TickUndoLog::default(),
             mana,
             thermal_fields,
             thermal_active_region,
@@ -1412,6 +1666,7 @@ impl RuntimeState {
             material_activity_events: counters.material_activity_events,
             next_actor_id: counters.next_actor_id,
             last_mana_changes: counters.last_mana_changes,
+            physical_scan_count: 0,
             failure: None,
         };
         state.validate_snapshot_references(&thermal_receipt_totals)?;
@@ -1566,12 +1821,12 @@ impl RuntimeState {
             for trace in field.last_change() {
                 let event = self
                     .traces
-                    .event(*trace)
+                    .event(*trace)?
                     .ok_or(RuntimeError::InvalidSnapshot(
                         "thermal field references unknown trace",
                     ))?;
                 if !matches!(
-                    event.kind.raw(),
+                    event.kind().raw(),
                     THERMAL_FIELD_BOOTSTRAP_EVENT_KIND
                         | THERMAL_CELL_CHANGE_EVENT_KIND
                         | THERMAL_RESERVOIR_TRANSFER_EVENT_KIND
@@ -1584,7 +1839,7 @@ impl RuntimeState {
         }
         let conservation_event = self
             .traces
-            .event(self.thermal_fields.conservation_last_change())
+            .event(self.thermal_fields.conservation_last_change())?
             .ok_or(RuntimeError::InvalidSnapshot(
                 "thermal conservation anchor references unknown trace",
             ))?;
@@ -1593,17 +1848,17 @@ impl RuntimeState {
         } else {
             THERMAL_CONSERVATION_EVENT_KIND
         };
-        if conservation_event.kind.raw() != expected_conservation_kind {
+        if conservation_event.kind().raw() != expected_conservation_kind {
             return Err(RuntimeError::InvalidSnapshot(
                 "thermal conservation anchor has mismatched event kind",
             ));
         }
         for reservoir in self.thermal_reservoirs.values() {
-            let bootstrap = self.traces.event(reservoir.bootstrap_trace).ok_or(
+            let bootstrap = self.traces.event(reservoir.bootstrap_trace)?.ok_or(
                 RuntimeError::InvalidSnapshot("thermal reservoir bootstrap trace is unknown"),
             )?;
-            if bootstrap.phase != Phase::Lifecycle
-                || bootstrap.kind.raw() != THERMAL_RESERVOIR_BOOTSTRAP_EVENT_KIND
+            if bootstrap.phase() != Phase::Lifecycle
+                || bootstrap.kind().raw() != THERMAL_RESERVOIR_BOOTSTRAP_EVENT_KIND
             {
                 return Err(RuntimeError::InvalidSnapshot(
                     "thermal reservoir bootstrap anchor is invalid",
@@ -1611,12 +1866,12 @@ impl RuntimeState {
             }
             let last_change =
                 self.traces
-                    .event(reservoir.last_change)
+                    .event(reservoir.last_change)?
                     .ok_or(RuntimeError::InvalidSnapshot(
                         "thermal reservoir last-change trace is unknown",
                     ))?;
             if !matches!(
-                last_change.kind.raw(),
+                last_change.kind().raw(),
                 THERMAL_RESERVOIR_BOOTSTRAP_EVENT_KIND | THERMAL_RESERVOIR_TRANSFER_EVENT_KIND
             ) {
                 return Err(RuntimeError::InvalidSnapshot(
@@ -1627,11 +1882,12 @@ impl RuntimeState {
         for (trace, receipt) in &self.thermal_conservation_receipts {
             let event = self
                 .traces
-                .event(*trace)
+                .event(*trace)?
                 .ok_or(RuntimeError::InvalidSnapshot(
                     "thermal conservation receipt references unknown trace",
                 ))?;
-            if event.phase != Phase::Physics || event.kind.raw() != THERMAL_CONSERVATION_EVENT_KIND
+            if event.phase() != Phase::Physics
+                || event.kind().raw() != THERMAL_CONSERVATION_EVENT_KIND
             {
                 return Err(RuntimeError::InvalidSnapshot(
                     "thermal conservation receipt has mismatched trace anchor",
@@ -1788,14 +2044,14 @@ impl RuntimeState {
                     "bootstrap stage result does not match its receipt",
                 ));
             }
-            let event = self
-                .traces
-                .event(receipt.trace())
-                .ok_or(RuntimeError::InvalidSnapshot(
-                    "bootstrap receipt references unknown trace",
-                ))?;
-            if event.phase != Phase::Lifecycle
-                || event.kind.raw() != BOOTSTRAP_STAGE_COMPLETION_EVENT_KIND
+            let event =
+                self.traces
+                    .event(receipt.trace())?
+                    .ok_or(RuntimeError::InvalidSnapshot(
+                        "bootstrap receipt references unknown trace",
+                    ))?;
+            if event.phase() != Phase::Lifecycle
+                || event.kind().raw() != BOOTSTRAP_STAGE_COMPLETION_EVENT_KIND
             {
                 return Err(RuntimeError::InvalidSnapshot(
                     "bootstrap receipt trace is not a stage completion",
@@ -1806,7 +2062,7 @@ impl RuntimeState {
                 receipt.stage().raw(),
                 StatePropertyId::new(BOOTSTRAP_STAGE_RESULT_PROPERTY),
             );
-            if !event.effects.iter().any(|effect| {
+            if !event.effects().iter().any(|effect| {
                 effect.target() == expected_target
                     && effect.before() == bootstrap_stage_absent_result(receipt.stage())
                     && effect.after() == receipt.result()
@@ -1819,7 +2075,7 @@ impl RuntimeState {
             // ancestry asserted by the record rather than committed by the run.
             for cause in receipt.causes() {
                 validate_trace_exists(&self.traces, *cause)?;
-                if !event.causes.contains(cause) {
+                if !event.causes().contains(cause) {
                     return Err(RuntimeError::InvalidSnapshot(
                         "bootstrap receipt cause is absent from its completion event",
                     ));
@@ -1844,12 +2100,7 @@ impl RuntimeState {
     /// population and an actor set that are still exactly what bootstrap left.
     fn holds_only_the_bootstrap_prefix(&self, record: &HistoricalBootstrapRecord) -> bool {
         let last_completion = record.receipts().last().map(HistoricalStageReceipt::trace);
-        self.traces
-            .iter()
-            .last()
-            .map(|event| event.trace_id)
-            .zip(last_completion)
-            .is_some_and(|(last, completion)| last == completion)
+        last_completion.is_some_and(|completion| self.history.visible_head() == completion)
     }
 
     /// The domain state a bootstrap-time snapshot must be in.
@@ -1865,21 +2116,17 @@ impl RuntimeState {
     ) -> Result<(), RuntimeError> {
         // A counter claiming the run advanced must be backed by a committed
         // event that actually happened after bootstrap.
-        if self.advanced_through != SimulationTime::new(0)
-            && !self
-                .traces
-                .iter()
-                .any(|event| event.time > SimulationTime::new(0))
+        let head = self
+            .traces
+            .event(self.history.visible_head())?
+            .ok_or(RuntimeError::InvalidSnapshot("history head is unknown"))?;
+        if self.advanced_through != SimulationTime::new(0) && head.time() <= SimulationTime::new(0)
         {
             return Err(RuntimeError::InvalidSnapshot(
                 "snapshot claims to have advanced with no event committed after bootstrap",
             ));
         }
-        if self
-            .traces
-            .iter()
-            .any(|event| event.time > self.advanced_through)
-        {
+        if head.time() > self.advanced_through {
             return Err(RuntimeError::InvalidSnapshot(
                 "snapshot holds an event committed past its advanced-through counter",
             ));
@@ -1887,7 +2134,12 @@ impl RuntimeState {
 
         // Every stage's committed effects, as the store records them. Used below
         // to bound what may claim bootstrap provenance.
-        let windows = replay_stage_effects(&self.traces, record.receipts()).map_err(|_| {
+        let windows = if self.history.is_owned_resume() {
+            replay_stage_effects_bounded(&self.traces, record.receipts())
+        } else {
+            replay_stage_effects(&self.traces, record.receipts())
+        }
+        .map_err(|_| {
             RuntimeError::InvalidSnapshot("committed stage completions do not match the record")
         })?;
 
@@ -2105,13 +2357,17 @@ impl RuntimeState {
             let expected =
                 thermal_reservoir_bootstrap_after(reservoir.budget.get(), reservoir.target);
             let committed = reservoir_effects.iter().any(|trace| {
-                self.traces.event(*trace).is_some_and(|event| {
-                    event.kind.raw() == THERMAL_RESERVOIR_BOOTSTRAP_EVENT_KIND
-                        && event.effects.iter().any(|effect| {
-                            effect.target().object_id() == reservoir.id.raw()
-                                && effect.after() == expected
-                        })
-                })
+                self.traces
+                    .event(*trace)
+                    .ok()
+                    .flatten()
+                    .is_some_and(|event| {
+                        event.kind().raw() == THERMAL_RESERVOIR_BOOTSTRAP_EVENT_KIND
+                            && event.effects().iter().any(|effect| {
+                                effect.target().object_id() == reservoir.id.raw()
+                                    && effect.after() == expected
+                            })
+                    })
             });
             if !committed {
                 return Err(RuntimeError::InvalidSnapshot(
@@ -2142,7 +2398,12 @@ impl RuntimeState {
         &self,
         record: &HistoricalBootstrapRecord,
     ) -> Result<(), RuntimeError> {
-        let windows = replay_stage_effects(&self.traces, record.receipts()).map_err(|_| {
+        let windows = if self.history.is_owned_resume() {
+            replay_stage_effects_bounded(&self.traces, record.receipts())
+        } else {
+            replay_stage_effects(&self.traces, record.receipts())
+        }
+        .map_err(|_| {
             RuntimeError::InvalidSnapshot("committed stage completions do not match the record")
         })?;
         let mut previous_completion: Option<TraceId> = None;
@@ -2162,13 +2423,13 @@ impl RuntimeState {
                     "bootstrap stage result does not match what the stage committed",
                 ));
             }
-            let event = self
-                .traces
-                .event(receipt.trace())
-                .ok_or(RuntimeError::InvalidSnapshot(
-                    "bootstrap receipt references unknown trace",
-                ))?;
-            if event.causes != expected_completion_causes(effects, previous_completion) {
+            let event =
+                self.traces
+                    .event(receipt.trace())?
+                    .ok_or(RuntimeError::InvalidSnapshot(
+                        "bootstrap receipt references unknown trace",
+                    ))?;
+            if event.causes() != expected_completion_causes(effects, previous_completion) {
                 return Err(RuntimeError::InvalidSnapshot(
                     "bootstrap completion does not name exactly its stage effects and predecessor",
                 ));
@@ -2213,13 +2474,17 @@ impl RuntimeState {
                 effects
                     .iter()
                     .filter(|trace| {
-                        self.traces.event(**trace).is_some_and(|event| {
-                            event.kind.raw() == ACTOR_PROMOTION_EVENT_KIND
-                                && event.effects.iter().any(|effect| {
-                                    effect.target().property()
-                                        == StatePropertyId::new(ACTOR_PROMOTION_PROPERTY)
-                                })
-                        })
+                        self.traces
+                            .event(**trace)
+                            .ok()
+                            .flatten()
+                            .is_some_and(|event| {
+                                event.kind().raw() == ACTOR_PROMOTION_EVENT_KIND
+                                    && event.effects().iter().any(|effect| {
+                                        effect.target().property()
+                                            == StatePropertyId::new(ACTOR_PROMOTION_PROPERTY)
+                                    })
+                            })
                     })
                     .count()
             })
@@ -2257,7 +2522,7 @@ impl RuntimeState {
             ))?;
         let completion =
             self.traces
-                .event(promotion.trace())
+                .event(promotion.trace())?
                 .ok_or(RuntimeError::InvalidSnapshot(
                     "actor promotion receipt references unknown trace",
                 ))?;
@@ -2268,7 +2533,7 @@ impl RuntimeState {
                 ));
             }
             for trace in ancestry {
-                if !completion.causes.contains(trace) {
+                if !completion.causes().contains(trace) {
                     return Err(RuntimeError::InvalidSnapshot(
                         "promoted actor ancestry is absent from the actor promotion receipt",
                     ));
@@ -2317,14 +2582,14 @@ impl RuntimeState {
             }
             let event =
                 self.traces
-                    .event(receipt.source_trace)
+                    .event(receipt.source_trace)?
                     .ok_or(RuntimeError::InvalidSnapshot(
                         "source receipt references unknown source trace",
                     ))?;
-            if event.kind != EventKindId::new(EXPERIMENT_RECIPE_MANA_SOURCE_EVENT_KIND)
-                || event.phase != Phase::Mana
-                || !event.causes.is_empty()
-                || event.time != SimulationTime::new(receipt.executed_tick)
+            if event.kind() != EventKindId::new(EXPERIMENT_RECIPE_MANA_SOURCE_EVENT_KIND)
+                || event.phase() != Phase::Mana
+                || !event.causes().is_empty()
+                || event.time() != SimulationTime::new(receipt.executed_tick)
             {
                 return Err(RuntimeError::InvalidSnapshot(
                     "source receipt source trace is not a root source event",
@@ -2333,7 +2598,7 @@ impl RuntimeState {
             let expected_before = fingerprint_i64(0x0302, receipt.before_intensity);
             let expected_after = fingerprint_i64(0x0302, receipt.after_intensity);
             let cell_id = cell_object_id(record.target_chunk, record.cell_index);
-            if !event.effects.iter().any(|effect| {
+            if !event.effects().iter().any(|effect| {
                 effect.target().object_kind()
                     == StateObjectKindId::new(EXPERIMENT_RECIPE_MANA_SOURCE_OBJECT_KIND)
                     && effect.target().object_id() == cell_id
@@ -2359,12 +2624,7 @@ impl RuntimeState {
             .max_by_key(|state| (state.level, state.relevance))
             .map(|state| (state.relevance, state.level))
             .unwrap_or((0, 0));
-        let latest_trace = self
-            .traces
-            .iter()
-            .last()
-            .expect("runtime always retains a root trace")
-            .trace_id;
+        let latest_trace = self.history.visible_head();
         let physical_state_digest = self.physical_state_digest(time);
         let history_digest = self.history_digest();
         let population_total = self
@@ -2404,7 +2664,7 @@ impl RuntimeState {
             active_chunk_count: self.active_chunks.len() as u32,
             resolution_relevance,
             resolution_level,
-            causal_trace_count: self.traces.len() as u64,
+            causal_trace_count: self.history.visible_head().raw().saturating_add(1),
             physical_events: self.physical_events,
             mana_cell_changes: self.mana_cell_changes,
             mana_physical_effects: self.mana_physical_effects,
@@ -2916,7 +3176,7 @@ impl RuntimeState {
         for receipt in receipts {
             // A receipt whose completion trace is not in the store is not
             // evidence, so it is dropped rather than counted.
-            if self.traces.event(receipt.trace()).is_some() {
+            if self.traces.event(receipt.trace())?.is_some() {
                 completion_traces.push(receipt.trace());
             }
             dependency_traces.extend(receipt.causes().iter().copied());
@@ -2959,8 +3219,16 @@ impl RuntimeState {
     }
 
     pub(crate) fn physical_state_digest(&self, time: SimulationTime) -> PhysicalStateDigest {
+        self.physical_state_digest_for_schema(time, CURRENT_DIGEST_SCHEMA_VERSION)
+    }
+
+    pub(crate) fn physical_state_digest_for_schema(
+        &self,
+        time: SimulationTime,
+        schema_version: DigestSchemaVersion,
+    ) -> PhysicalStateDigest {
         let mut digest = CanonicalDigest::new();
-        digest.write(u64::from(CURRENT_DIGEST_SCHEMA_VERSION.raw()));
+        digest.write(u64::from(schema_version.raw()));
         digest.write(PHYSICAL_DIGEST_DOMAIN);
         digest.write(time.raw());
         digest.write(self.executed_experiment_recipe_mana_sources.len() as u64);
@@ -3212,7 +3480,7 @@ impl RuntimeState {
         write_bootstrap_record(&mut digest, &self.bootstrap);
         write_hydrology_state(&mut digest, &self.hydrology);
         PhysicalStateDigest {
-            schema_version: CURRENT_DIGEST_SCHEMA_VERSION,
+            schema_version,
             fingerprint: digest.finish(),
         }
     }
@@ -3225,13 +3493,20 @@ impl RuntimeState {
     /// sound and which trace-store property would break it.
     pub(crate) fn history_digest(&mut self) -> HistoryDigest {
         let absorbed = self.history_digest_prefix.absorbed_events();
-        let committed = self.traces.len();
+        let committed = self.history.causal_record_count();
         if committed > absorbed {
             let mut accumulator = self.history_digest_prefix.resume();
-            for event in self.traces.iter().skip(absorbed) {
+            let new_events = committed - absorbed;
+            let hot_len = self.traces.iter_hot().len();
+            for event in self
+                .traces
+                .iter_hot()
+                .skip(hot_len.saturating_sub(new_events))
+            {
                 write_trace_event(&mut accumulator, event);
             }
-            self.history_digest_prefix.advance(accumulator, committed);
+            self.history_digest_prefix
+                .advance(accumulator, absorbed.saturating_add(new_events));
         }
         let mut digest = self.history_digest_prefix.resume();
         self.write_history_digest_tail(&mut digest);
@@ -3250,18 +3525,25 @@ impl RuntimeState {
     /// accumulator from one with an absorption bug that moves both runs
     /// identically; only a reference computed a different way can.
     #[doc(hidden)]
-    pub fn history_digest_full_rescan(&self) -> HistoryDigest {
+    pub fn history_digest_full_rescan(&self) -> Result<HistoryDigest, RuntimeError> {
+        self.history_digest_full_rescan_for_schema(CURRENT_DIGEST_SCHEMA_VERSION)
+    }
+
+    pub(crate) fn history_digest_full_rescan_for_schema(
+        &self,
+        schema_version: DigestSchemaVersion,
+    ) -> Result<HistoryDigest, RuntimeError> {
         let mut digest = CanonicalDigest::new();
-        digest.write(u64::from(CURRENT_DIGEST_SCHEMA_VERSION.raw()));
+        digest.write(u64::from(schema_version.raw()));
         digest.write(HISTORY_DIGEST_DOMAIN);
-        for event in self.traces.iter() {
-            write_trace_event(&mut digest, event);
+        for event in self.history.records_for_cold_oracle()? {
+            write_owned_trace_event(&mut digest, &event);
         }
         self.write_history_digest_tail(&mut digest);
-        HistoryDigest {
-            schema_version: CURRENT_DIGEST_SCHEMA_VERSION,
+        Ok(HistoryDigest {
+            schema_version,
             fingerprint: digest.finish(),
-        }
+        })
     }
 
     /// The bounded state the history digest writes after the trace store.
@@ -3310,15 +3592,27 @@ impl RuntimeState {
         physical_state_digest: PhysicalStateDigest,
         history_digest: HistoryDigest,
     ) -> ExperimentDigest {
+        Self::canonical_state_for_schema(
+            physical_state_digest,
+            history_digest,
+            CURRENT_DIGEST_SCHEMA_VERSION,
+        )
+    }
+
+    pub(crate) fn canonical_state_for_schema(
+        physical_state_digest: PhysicalStateDigest,
+        history_digest: HistoryDigest,
+        schema_version: DigestSchemaVersion,
+    ) -> ExperimentDigest {
         let mut digest = CanonicalDigest::new();
-        digest.write(u64::from(CURRENT_DIGEST_SCHEMA_VERSION.raw()));
+        digest.write(u64::from(schema_version.raw()));
         digest.write(EXPERIMENT_DIGEST_DOMAIN);
         digest.write(u64::from(physical_state_digest.schema_version.raw()));
         digest.write_bytes(physical_state_digest.bytes());
         digest.write(u64::from(history_digest.schema_version.raw()));
         digest.write_bytes(history_digest.bytes());
         ExperimentDigest {
-            schema_version: CURRENT_DIGEST_SCHEMA_VERSION,
+            schema_version,
             fingerprint: digest.finish(),
         }
     }
@@ -3608,7 +3902,13 @@ fn import_thermal_snapshot(
         }
     }
 
-    if snapshot.conservation_receipts.len() != thermal_fields.batch_sequence() as usize {
+    // Only the newest `MAX_THERMAL_PROJECTION_BATCHES` batches stay hot; the
+    // older ones live in cold history evidence, so a long run exports fewer
+    // receipts than it has committed batches.
+    let retained_batches = thermal_fields
+        .batch_sequence()
+        .min(crate::thermal::MAX_THERMAL_PROJECTION_BATCHES as u64);
+    if snapshot.conservation_receipts.len() as u64 != retained_batches {
         return Err(RuntimeError::InvalidSnapshot(
             "thermal batch sequence does not match conservation receipts",
         ));
@@ -4228,7 +4528,7 @@ fn bootstrap_construction_error(error: BootstrapError, context: &'static str) ->
 }
 
 fn validate_trace_exists(store: &CausalTraceStore, trace: TraceId) -> Result<(), RuntimeError> {
-    if store.event(trace).is_some() {
+    if store.event(trace).ok().flatten().is_some() {
         Ok(())
     } else {
         Err(RuntimeError::InvalidSnapshot("unknown trace reference"))
@@ -4377,10 +4677,10 @@ mod tests {
         let state = runtime.lock_state().unwrap();
 
         // Then: every persisted local gate transition has Mana-phase provenance.
-        assert!(state.traces.iter().any(|event| {
-            event.phase == Phase::Mana
-                && event.kind == EventKindId::new(MATERIAL_SURFACE_MANA_EVENT_KIND)
-                && event.effects.iter().any(|effect| {
+        assert!(state.traces.iter_hot().any(|ref_e| {
+            ref_e.phase == Phase::Mana
+                && ref_e.kind == EventKindId::new(MATERIAL_SURFACE_MANA_EVENT_KIND)
+                && ref_e.effects.iter().any(|effect| {
                     effect.target().property()
                         == StatePropertyId::new(MATERIAL_SURFACE_MANA_GATE_PROPERTY)
                 })
@@ -4559,7 +4859,7 @@ mod tests {
             runtime.tick().unwrap();
             let mut state = runtime.lock_state().unwrap();
             let incremental = state.history_digest();
-            let rescanned = state.history_digest_full_rescan();
+            let rescanned = state.history_digest_full_rescan().unwrap();
             assert_eq!(
                 incremental, rescanned,
                 "incremental and full-rescan history digests diverged at tick {tick}"
@@ -4591,7 +4891,11 @@ mod tests {
         assert_eq!(polled_digest, unpolled.snapshot().unwrap().history_digest);
         assert_eq!(
             polled_digest,
-            polled.lock_state().unwrap().history_digest_full_rescan()
+            polled
+                .lock_state()
+                .unwrap()
+                .history_digest_full_rescan()
+                .unwrap()
         );
     }
 
@@ -4608,7 +4912,7 @@ mod tests {
         let mut imported = RuntimeState::import_snapshot(data.clone()).unwrap();
         assert_eq!(
             imported.history_digest(),
-            imported.history_digest_full_rescan()
+            imported.history_digest_full_rescan().unwrap()
         );
         assert_eq!(imported.history_digest(), live);
         assert_eq!(imported.history_digest(), live);
@@ -4619,14 +4923,17 @@ mod tests {
         let envelope = assemble_envelope(&data).unwrap();
         assert_eq!(
             envelope.header.history_digest,
-            imported.history_digest_full_rescan().bytes()
+            imported.history_digest_full_rescan().unwrap().bytes()
         );
 
         // Resuming and ticking on keeps the two in step past the boundary.
         let mut resumed = Runtime::from_snapshot(data).unwrap();
         resumed.run_ticks(8).unwrap();
         let mut state = resumed.lock_state().unwrap();
-        assert_eq!(state.history_digest(), state.history_digest_full_rescan());
+        assert_eq!(
+            state.history_digest(),
+            state.history_digest_full_rescan().unwrap()
+        );
     }
 
     #[test]
@@ -4652,10 +4959,20 @@ mod tests {
             ],
         )
         .unwrap();
+        // The digest follows the durable history, so the extra event goes in
+        // through the same tick transaction production uses, not around it.
+        let transaction = crate::RuntimeTickTransaction::open(
+            &mut second,
+            causafera_persistence::MAX_TOTAL_SIZE,
+            causafera_geography::MAX_HYDROLOGY_SECTION_BYTES,
+        )
+        .unwrap();
         second
             .traces
             .commit_batch(SimulationTime::new(0), Phase::Physics, vec![event])
             .unwrap();
+        let completed = second.advanced_through;
+        transaction.close(&mut second, completed).unwrap();
         let time = SimulationTime::new(0);
         assert_eq!(
             first.physical_state_digest(time),
@@ -4792,7 +5109,7 @@ mod tests {
         assert!(
             state
                 .traces
-                .iter()
+                .iter_hot()
                 .any(|event| event.phase == Phase::Action)
         );
     }
@@ -5000,7 +5317,7 @@ mod tests {
         assert!(
             state
                 .traces
-                .iter()
+                .iter_hot()
                 .any(|event| event.kind == EventKindId::new(ACTOR_REJECTION_EVENT_KIND))
         );
     }
@@ -5013,10 +5330,10 @@ mod tests {
 
         assert!(snapshot.mana_total > 1);
         assert!(snapshot.mana_physical_effects > 0);
-        assert!(state.traces.iter().any(|event| {
-            event.kind == EventKindId::new(MATERIAL_SURFACE_MANA_EVENT_KIND)
-                && event.phase == Phase::Mana
-                && event.effects.iter().any(|effect| {
+        assert!(state.traces.iter_hot().any(|ref_e| {
+            ref_e.kind == EventKindId::new(MATERIAL_SURFACE_MANA_EVENT_KIND)
+                && ref_e.phase == Phase::Mana
+                && ref_e.effects.iter().any(|effect| {
                     effect.target().object_kind()
                         == StateObjectKindId::new(MATERIAL_SURFACE_OBJECT_KIND)
                         && effect.target().property()
@@ -5035,7 +5352,7 @@ mod tests {
         let disabled_state = disabled.lock_state().unwrap();
         let mana_effect = enabled_state
             .traces
-            .iter()
+            .iter_hot()
             .find(|event| event.kind == EventKindId::new(MATERIAL_SURFACE_MANA_EVENT_KIND))
             .unwrap();
         let effected_object = mana_effect.effects[0].target().object_id();
@@ -5063,7 +5380,9 @@ mod tests {
             enabled_state
                 .traces
                 .event(sample.cause)
-                .is_some_and(|event| event.causes.contains(&mana_effect.trace_id))
+                .ok()
+                .flatten()
+                .is_some_and(|event| event.causes().contains(&mana_effect.trace_id))
         }));
     }
 

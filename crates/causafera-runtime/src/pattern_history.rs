@@ -31,6 +31,17 @@ pub struct PatternHistorySnapshot {
     pub per_pattern_cap: usize,
 }
 
+pub(crate) struct PatternHistoryUndo {
+    sample: PhysicalPatternSample,
+    evictions: Vec<PatternHistoryEviction>,
+}
+
+struct PatternHistoryEviction {
+    sample: PhysicalPatternSample,
+    insertion_index: usize,
+    per_pattern_index: usize,
+}
+
 impl PhysicalPatternHistory {
     pub fn new(global_cap: usize, per_pattern_cap: usize) -> Self {
         Self {
@@ -42,16 +53,62 @@ impl PhysicalPatternHistory {
     }
 
     pub fn push(&mut self, sample: PhysicalPatternSample) {
+        let _ = self.push_with_undo(sample);
+    }
+
+    pub(crate) fn push_with_undo(&mut self, sample: PhysicalPatternSample) -> PatternHistoryUndo {
+        let mut undo = PatternHistoryUndo {
+            sample,
+            evictions: Vec::new(),
+        };
         if self.global_cap == 0 || self.per_pattern_cap == 0 {
-            return;
+            return undo;
         }
         self.per_pattern
             .entry(sample.pattern)
             .or_default()
             .push_back(sample);
         self.insertion_order.push_back(sample);
-        self.enforce_per_pattern_cap(sample.pattern);
-        self.enforce_global_cap();
+        while self
+            .per_pattern
+            .get(&sample.pattern)
+            .is_some_and(|samples| samples.len() > self.per_pattern_cap)
+        {
+            if let Some(eviction) = self.evict_oldest_for_pattern_with_position(sample.pattern) {
+                undo.evictions.push(eviction);
+            }
+        }
+        while self.insertion_order.len() > self.global_cap {
+            if let Some(eviction) = self.evict_oldest_global_with_position() {
+                undo.evictions.push(eviction);
+            }
+        }
+        undo
+    }
+
+    pub(crate) fn undo_push(&mut self, undo: PatternHistoryUndo) {
+        if self.global_cap == 0 || self.per_pattern_cap == 0 {
+            return;
+        }
+        if self.insertion_order.back() == Some(&undo.sample) {
+            self.insertion_order.pop_back();
+        }
+        if let Some(samples) = self.per_pattern.get_mut(&undo.sample.pattern) {
+            if samples.back() == Some(&undo.sample) {
+                samples.pop_back();
+            }
+            if samples.is_empty() {
+                self.per_pattern.remove(&undo.sample.pattern);
+            }
+        }
+        for eviction in undo.evictions.into_iter().rev() {
+            self.insertion_order
+                .insert(eviction.insertion_index, eviction.sample);
+            self.per_pattern
+                .entry(eviction.sample.pattern)
+                .or_default()
+                .insert(eviction.per_pattern_index, eviction.sample);
+        }
     }
 
     pub fn extend<I>(&mut self, samples: I)
@@ -118,40 +175,30 @@ impl PhysicalPatternHistory {
         history
     }
 
-    fn enforce_per_pattern_cap(&mut self, pattern: PhysicalPatternId) {
-        loop {
-            let should_evict = self
-                .per_pattern
-                .get(&pattern)
-                .is_some_and(|samples| samples.len() > self.per_pattern_cap);
-            if !should_evict {
-                return;
-            }
-            self.evict_oldest_for_pattern(pattern);
-        }
-    }
-
-    fn enforce_global_cap(&mut self) {
-        while self.insertion_order.len() > self.global_cap {
-            self.evict_oldest_global();
-        }
-    }
-
-    fn evict_oldest_global(&mut self) {
-        let Some(sample) = self.insertion_order.pop_front() else {
-            return;
-        };
-        remove_first_matching(&mut self.per_pattern, sample);
-    }
-
-    fn evict_oldest_for_pattern(&mut self, pattern: PhysicalPatternId) {
-        let Some(sample) = self
+    fn evict_oldest_global_with_position(&mut self) -> Option<PatternHistoryEviction> {
+        let sample = self.insertion_order.pop_front()?;
+        let per_pattern_index = self
             .per_pattern
-            .get_mut(&pattern)
-            .and_then(VecDeque::pop_front)
-        else {
-            return;
-        };
+            .get(&sample.pattern)
+            .and_then(|samples| samples.iter().position(|candidate| *candidate == sample))?;
+        if let Some(samples) = self.per_pattern.get_mut(&sample.pattern) {
+            samples.remove(per_pattern_index);
+            if samples.is_empty() {
+                self.per_pattern.remove(&sample.pattern);
+            }
+        }
+        Some(PatternHistoryEviction {
+            sample,
+            insertion_index: 0,
+            per_pattern_index,
+        })
+    }
+
+    fn evict_oldest_for_pattern_with_position(
+        &mut self,
+        pattern: PhysicalPatternId,
+    ) -> Option<PatternHistoryEviction> {
+        let sample = self.per_pattern.get_mut(&pattern)?.pop_front()?;
         if self
             .per_pattern
             .get(&pattern)
@@ -159,33 +206,21 @@ impl PhysicalPatternHistory {
         {
             self.per_pattern.remove(&pattern);
         }
-        if let Some(index) = self
+        let insertion_index = self
             .insertion_order
             .iter()
-            .position(|candidate| *candidate == sample)
-        {
-            self.insertion_order.remove(index);
-        }
+            .position(|candidate| *candidate == sample)?;
+        self.insertion_order.remove(insertion_index);
+        Some(PatternHistoryEviction {
+            sample,
+            insertion_index,
+            per_pattern_index: 0,
+        })
     }
 }
 
 fn within_window(observed_at: SimulationTime, newest: SimulationTime, max_ticks: u64) -> bool {
     newest.raw().saturating_sub(observed_at.raw()) < max_ticks
-}
-
-fn remove_first_matching(
-    per_pattern: &mut BTreeMap<PhysicalPatternId, VecDeque<PhysicalPatternSample>>,
-    sample: PhysicalPatternSample,
-) {
-    let Some(samples) = per_pattern.get_mut(&sample.pattern) else {
-        return;
-    };
-    if let Some(index) = samples.iter().position(|candidate| *candidate == sample) {
-        samples.remove(index);
-    }
-    if samples.is_empty() {
-        per_pattern.remove(&sample.pattern);
-    }
 }
 
 pub(crate) struct PhysicalPatternSystem {
@@ -205,9 +240,9 @@ impl PhysicalPatternSystem {
 
     pub(crate) fn execute(&mut self) -> Result<(), RuntimeError> {
         let mut state = self.state.lock().map_err(|_| RuntimeError::StatePoisoned)?;
-        state.pending_samples.clear();
+        state.clear_pending_samples();
         if self.schedule.emits_at(self.next_time) {
-            let changed = std::mem::take(&mut state.pending_material_surface_changes);
+            let changed = state.take_pending_material_surface_changes();
             let adapter = MaterialSurfaceCarrierAdapter::new(state.config.chunk_extent);
             let emitted = changed
                 .into_iter()
@@ -227,8 +262,10 @@ impl PhysicalPatternSystem {
             state.physical_events = state
                 .physical_events
                 .saturating_add(u64::try_from(emitted.len()).unwrap_or(u64::MAX));
-            state.pending_samples.extend(emitted.iter().copied());
-            state.pattern_history.extend(emitted);
+            state.extend_pending_samples(emitted.iter().copied());
+            for sample in emitted {
+                state.push_pattern_sample(sample);
+            }
             // Terrain reaches the field but not the history, and not the event
             // count. Both retain change: a structure that is simply still there
             // has not happened again. Retaining it would let the recurrence and
@@ -236,7 +273,7 @@ impl PhysicalPatternSystem {
             // rather than anything about the world, and would evict the
             // change-driven samples those channels exist to measure.
             let terrain = self.terrain_samples(&state);
-            state.pending_samples.extend(terrain);
+            state.extend_pending_samples(terrain);
         }
         self.next_time = self.next_time.tick();
         Ok(())
@@ -318,8 +355,8 @@ pub(crate) fn trace_descends_from(
         if !visited.insert(candidate) {
             continue;
         }
-        if let Some(event) = store.event(candidate) {
-            pending.extend(event.causes.iter().copied());
+        if let Some(event) = store.event(candidate).ok().flatten() {
+            pending.extend(event.causes().iter().copied());
         }
     }
     false

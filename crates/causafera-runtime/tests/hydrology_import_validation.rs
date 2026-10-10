@@ -20,7 +20,7 @@ use support_hydrology::{enabled_runtime_config, wet_runtime_config};
 fn evolved_bytes(ticks: u64) -> (Vec<u8>, causafera_runtime::RuntimeSnapshotData) {
     let mut runtime = Runtime::new(wet_runtime_config()).expect("construction");
     runtime.run_ticks(ticks).expect("the run must commit");
-    let snapshot = runtime.export_snapshot().expect("export");
+    let snapshot = runtime.export_snapshot_with_full_history().expect("export");
     (encode_hydrology_section(&snapshot.hydrology), snapshot)
 }
 
@@ -29,7 +29,8 @@ fn import_with_section(bytes: Vec<u8>) -> Result<(), String> {
     let mut runtime = Runtime::new(wet_runtime_config()).expect("construction");
     runtime.run_ticks(3).expect("the run must commit");
     let mut envelope =
-        assemble_envelope(&runtime.export_snapshot().expect("export")).expect("assemble");
+        assemble_envelope(&runtime.export_snapshot_with_full_history().expect("export"))
+            .expect("assemble");
     envelope
         .sections
         .get_mut(&u64::from(HYDROLOGY_SECTION_ID))
@@ -125,7 +126,7 @@ fn a_forged_conservation_residual_is_refused() {
     // forgery has to be in a term — and then the residual is nonzero.
     let mut runtime = Runtime::new(wet_runtime_config()).expect("construction");
     runtime.run_ticks(3).expect("the run must commit");
-    let mut snapshot = runtime.export_snapshot().expect("export");
+    let mut snapshot = runtime.export_snapshot_with_full_history().expect("export");
 
     let trace = *snapshot
         .hydrology
@@ -168,7 +169,7 @@ fn a_forged_conservation_residual_is_refused() {
 fn a_retained_batch_missing_its_ledger_is_refused() {
     let mut runtime = Runtime::new(wet_runtime_config()).expect("construction");
     runtime.run_ticks(3).expect("the run must commit");
-    let mut snapshot = runtime.export_snapshot().expect("export");
+    let mut snapshot = runtime.export_snapshot_with_full_history().expect("export");
     let trace = *snapshot
         .hydrology
         .retained_batches
@@ -191,7 +192,7 @@ fn a_registry_that_does_not_address_its_own_carriers_is_refused() {
     // one.
     let mut runtime = Runtime::new(wet_runtime_config()).expect("construction");
     runtime.run_ticks(2).expect("the run must commit");
-    let mut snapshot = runtime.export_snapshot().expect("export");
+    let mut snapshot = runtime.export_snapshot_with_full_history().expect("export");
 
     let mut cells: Vec<_> = snapshot
         .hydrology
@@ -257,7 +258,7 @@ fn a_pending_record_scheduled_in_the_past_is_refused() {
     config.hydrology.forcing_schedule[0].scheduled_tick = 9;
     let mut runtime = Runtime::new(config).expect("construction");
     runtime.run_ticks(4).expect("the run must commit");
-    let mut snapshot = runtime.export_snapshot().expect("export");
+    let mut snapshot = runtime.export_snapshot_with_full_history().expect("export");
 
     // Rewrite the pending record to a tick the runtime has already passed.
     let record = &snapshot.hydrology.forcing[0];
@@ -305,7 +306,7 @@ fn an_applied_record_whose_timestamp_is_not_its_tick_cannot_be_constructed() {
     // testing the harness.
     let mut runtime = Runtime::new(enabled_runtime_config()).expect("construction");
     runtime.run_ticks(4).expect("the run must commit");
-    let snapshot = runtime.export_snapshot().expect("export");
+    let snapshot = runtime.export_snapshot_with_full_history().expect("export");
     let record = &snapshot.hydrology.forcing[0];
     assert_eq!(record.applied_at(), Some(record.scheduled_tick()));
 
@@ -342,7 +343,7 @@ fn a_conveyance_edge_outside_the_field_set_is_refused() {
     // solver would abort the process rather than refuse the snapshot.
     let mut runtime = Runtime::new(wet_runtime_config()).expect("construction");
     runtime.run_ticks(2).expect("the run must commit");
-    let mut snapshot = runtime.export_snapshot().expect("export");
+    let mut snapshot = runtime.export_snapshot_with_full_history().expect("export");
 
     let absent = causafera_types::ChartChunkCoord::new(
         support_hydrology::chart(),
@@ -417,7 +418,7 @@ fn evolved_with_a_foreign_trace(
 ) -> (causafera_runtime::RuntimeSnapshotData, TraceId) {
     let mut runtime = Runtime::new(config).expect("construction");
     runtime.run_ticks(ticks).expect("the run must commit");
-    let snapshot = runtime.export_snapshot().expect("export");
+    let snapshot = runtime.export_snapshot_with_full_history().expect("export");
     let foreign = snapshot.traces.events[0].trace_id;
     assert!(
         !snapshot.hydrology.retained_batches.contains(&foreign),
@@ -492,7 +493,7 @@ fn a_bucket_anchored_to_an_unknown_trace_is_refused() {
     // every later query would report it as fact.
     let mut runtime = Runtime::new(wet_runtime_config()).expect("construction");
     runtime.run_ticks(2).expect("the run must commit");
-    let mut snapshot = runtime.export_snapshot().expect("export");
+    let mut snapshot = runtime.export_snapshot_with_full_history().expect("export");
 
     let chunk = *snapshot
         .hydrology
@@ -586,7 +587,7 @@ fn a_grid_metric_that_disagrees_with_the_configuration_is_refused() {
     // configuration bootstrapped, with the numbers of the one it did not.
     let mut runtime = Runtime::new(wet_runtime_config()).expect("construction");
     runtime.run_ticks(2).expect("the run must commit");
-    let mut snapshot = runtime.export_snapshot().expect("export");
+    let mut snapshot = runtime.export_snapshot_with_full_history().expect("export");
 
     let chart = support_hydrology::chart();
     let metric = snapshot.hydrology.metrics.get(chart).expect("the metric");
@@ -613,7 +614,7 @@ fn a_forcing_record_that_disagrees_with_the_configuration_is_refused() {
     // world nobody configured to receive it.
     let mut runtime = Runtime::new(enabled_runtime_config()).expect("construction");
     runtime.run_ticks(2).expect("the run must commit");
-    let mut snapshot = runtime.export_snapshot().expect("export");
+    let mut snapshot = runtime.export_snapshot_with_full_history().expect("export");
 
     let record = &snapshot.hydrology.forcing[0];
     assert!(record.applied_at().is_none(), "still pending at tick two");
@@ -668,7 +669,7 @@ fn a_gap_in_the_retained_batch_window_is_refused() {
     // retained batch accounts for.
     let mut runtime = Runtime::new(wet_runtime_config()).expect("construction");
     runtime.run_ticks(4).expect("the run must commit");
-    let mut snapshot = runtime.export_snapshot().expect("export");
+    let mut snapshot = runtime.export_snapshot_with_full_history().expect("export");
     assert!(
         snapshot.hydrology.retained_batches.len() >= 3,
         "the window has to have a middle to remove"
@@ -690,7 +691,7 @@ fn a_retained_window_that_does_not_reach_the_current_batch_is_refused() {
     // retained batch is the one the field set counts.
     let mut runtime = Runtime::new(wet_runtime_config()).expect("construction");
     runtime.run_ticks(4).expect("the run must commit");
-    let mut snapshot = runtime.export_snapshot().expect("export");
+    let mut snapshot = runtime.export_snapshot_with_full_history().expect("export");
 
     let newest = snapshot
         .hydrology
@@ -712,7 +713,7 @@ fn a_transfer_receipt_filed_under_another_batch_is_refused() {
     // recomputed into agreement with the batch it was moved into.
     let mut runtime = Runtime::new(wet_runtime_config()).expect("construction");
     runtime.run_ticks(4).expect("the run must commit");
-    let mut snapshot = runtime.export_snapshot().expect("export");
+    let mut snapshot = runtime.export_snapshot_with_full_history().expect("export");
 
     let newest = *snapshot
         .hydrology
@@ -748,7 +749,7 @@ fn a_schedule_past_the_aggregate_member_cap_is_refused_before_allocation() {
     // member vectors are already allocated.
     let mut runtime = Runtime::new(wet_runtime_config()).expect("construction");
     runtime.run_ticks(1).expect("the run must commit");
-    let mut snapshot = runtime.export_snapshot().expect("export");
+    let mut snapshot = runtime.export_snapshot_with_full_history().expect("export");
 
     let chunk = *snapshot
         .hydrology
@@ -815,7 +816,7 @@ fn a_recipe_schedule_past_the_aggregate_member_cap_is_refused_before_allocation(
     // is a value to hand it, which is one allocation too late.
     let mut runtime = Runtime::new(wet_runtime_config()).expect("construction");
     runtime.run_ticks(1).expect("the run must commit");
-    let mut snapshot = runtime.export_snapshot().expect("export");
+    let mut snapshot = runtime.export_snapshot_with_full_history().expect("export");
 
     let chunk = *snapshot
         .hydrology
@@ -871,7 +872,7 @@ fn retained_receipts_past_the_retention_cap_are_refused_before_allocation() {
     // because a state that genuinely carried them would have to allocate them.
     let mut runtime = Runtime::new(wet_runtime_config()).expect("construction");
     runtime.run_ticks(3).expect("the run must commit");
-    let snapshot = runtime.export_snapshot().expect("export");
+    let snapshot = runtime.export_snapshot_with_full_history().expect("export");
     let newest = *snapshot
         .hydrology
         .retained_batches
@@ -913,7 +914,7 @@ fn a_resolution_policy_that_disagrees_with_the_configuration_is_refused() {
     // layer earlier.
     let mut runtime = Runtime::new(wet_runtime_config()).expect("construction");
     runtime.run_ticks(2).expect("the run must commit");
-    let mut snapshot = runtime.export_snapshot().expect("export");
+    let mut snapshot = runtime.export_snapshot_with_full_history().expect("export");
 
     let policy = snapshot.hydrology.resolution_policy;
     assert!(policy.enabled, "the fixture runs with a policy");
