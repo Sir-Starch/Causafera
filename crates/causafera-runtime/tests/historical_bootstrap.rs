@@ -8,6 +8,9 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+mod support_resume;
+use support_resume::resume_through_bundle;
+
 use causafera_core::Phase;
 use causafera_runtime::{
     ACTOR_PROMOTION_PROCESS_SCHEMA, BOOTSTRAP_STAGE_COMPLETION_EVENT_KIND, BOOTSTRAP_STAGE_COUNT,
@@ -512,31 +515,38 @@ fn constructing_the_record_does_not_advance_scheduler_time() {
 
 #[test]
 fn production_bootstrap_save_resume_preserves_record() {
-    // Given: a production runtime advanced past bootstrap.
+    // Given: a production runtime advanced past bootstrap, and a control that
+    // never stopped.
     let mut uninterrupted =
         Runtime::new(populated_config(4_109)).expect("uninterrupted bootstrap must succeed");
-    uninterrupted.run_ticks(4).expect("warm-up must run");
-    let checkpoint = uninterrupted
-        .export_snapshot()
-        .expect("checkpoint must export");
     uninterrupted
-        .run_ticks(4)
-        .expect("uninterrupted continuation must run");
+        .run_ticks(8)
+        .expect("uninterrupted run must succeed");
     let uninterrupted_snapshot = uninterrupted.snapshot().expect("summary must read");
 
-    // When: the checkpoint is written, read back, and resumed.
+    let mut saved = Runtime::new(populated_config(4_109)).expect("saved bootstrap must succeed");
+    saved.run_ticks(4).expect("warm-up must run");
+    let checkpoint = saved.export_snapshot().expect("checkpoint must export");
+
+    // When: the checkpoint's complete-trace form is written and read back, and
+    // the session is also saved as a bounded snapshot over its durable history.
     let envelope = assemble_envelope(&checkpoint).expect("envelope must assemble");
     let restored = disassemble_envelope(&envelope).expect("envelope must disassemble");
     assert_eq!(restored.bootstrap, checkpoint.bootstrap);
+    let mut legacy_resumed = Runtime::from_snapshot(restored).expect("checkpoint must resume");
+    legacy_resumed
+        .run_ticks(4)
+        .expect("legacy continuation must run");
 
-    let mut resumed = Runtime::from_snapshot(restored).expect("checkpoint must resume");
+    let mut resumed = resume_through_bundle(saved);
     resumed.run_ticks(4).expect("resumed continuation must run");
     let resumed_snapshot = resumed.snapshot().expect("resumed summary must read");
     let resumed_data = resumed
         .export_snapshot()
         .expect("resumed state must export");
 
-    // Then: the canonical record and both digests agree.
+    // Then: the canonical record and every digest agree with the control; the
+    // complete-trace import agrees on physical state, its history being its own.
     assert_eq!(resumed_data.bootstrap, checkpoint.bootstrap);
     assert_eq!(
         uninterrupted_snapshot.physical_state_digest,
@@ -545,6 +555,17 @@ fn production_bootstrap_save_resume_preserves_record() {
     assert_eq!(
         uninterrupted_snapshot.history_digest,
         resumed_snapshot.history_digest
+    );
+    assert_eq!(
+        uninterrupted_snapshot.canonical_state,
+        resumed_snapshot.canonical_state
+    );
+    assert_eq!(
+        uninterrupted_snapshot.physical_state_digest,
+        legacy_resumed
+            .snapshot()
+            .expect("legacy summary must read")
+            .physical_state_digest
     );
 }
 

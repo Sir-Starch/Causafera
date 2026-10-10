@@ -663,6 +663,27 @@ impl HistoryStore {
         })
     }
 
+    /// The logical history digest recomputed from the canonical frames.
+    ///
+    /// Folds every record of the durable generation as decoded from its
+    /// segments, then every record of the logical frames not yet published.
+    /// It shares nothing with the incrementally maintained fold except the
+    /// per-record encoding, so it is the cold oracle that fold is checked
+    /// against. It costs a read of the whole history and is never on a tick.
+    pub fn logical_digest_full_rescan(&self) -> Result<[u8; 32], PersistenceError> {
+        let mut hasher = LogicalHistoryDigest::new();
+        self.catalog
+            .for_each_record(self.durable_generation, &self.registry, |record| {
+                hasher.append(record)
+            })?;
+        for frame in &self.pending {
+            for record in &frame.records {
+                hasher.append(record)?;
+            }
+        }
+        Ok(hasher.finish())
+    }
+
     pub const fn logical_generation(&self) -> u64 {
         self.logical_generation
     }

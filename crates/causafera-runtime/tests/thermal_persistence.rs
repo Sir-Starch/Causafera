@@ -4,10 +4,13 @@ use causafera_runtime::snapshot_sections::{
     disassemble_envelope, encode_thermal_section,
 };
 use causafera_runtime::{
-    CURRENT_DIGEST_SCHEMA_VERSION, Runtime, RuntimeConfig, RuntimeError, RuntimeSnapshotData,
-    RuntimeState,
+    CURRENT_DIGEST_SCHEMA_VERSION, LEGACY_DIGEST_SCHEMA_VERSION, Runtime, RuntimeConfig,
+    RuntimeError, RuntimeSnapshotData, RuntimeState,
 };
 use causafera_types::{ChartChunkCoord, ChunkCoord, SpatialChartId};
+
+mod support_resume;
+use support_resume::resume_through_bundle;
 
 fn runtime_config(seed: u64) -> RuntimeConfig {
     RuntimeConfig::new(seed)
@@ -410,23 +413,34 @@ fn unknown_thermal_section_or_version_rejects() {
 
 #[test]
 fn thermal_persistence_literal_version_contract() {
-    // Given: the current production snapshot and its assembled envelope.
+    // Given: the current production snapshot in both container forms.
     let runtime = Runtime::new(runtime_config(1_812)).expect("runtime bootstrap must succeed");
     let snapshot = runtime.export_snapshot().expect("snapshot must export");
-    let envelope = assemble_envelope(&snapshot).expect("envelope must assemble");
+    let legacy = assemble_envelope(&snapshot).expect("legacy envelope must assemble");
+    let bounded = runtime
+        .export_bounded_envelope()
+        .expect("bounded envelope must export");
 
     // Then: thermal persistence and digest versions retain their literal wire contract.
-    // Thermal's own identifiers are unchanged. The digest schema is shared across
-    // domains, and it moved to 9 when the history/bounded contract was aligned
-    // after hydrology was added to what the physical
-    // digest covers — a declared change to the digest's scope, not to thermal's
-    // section or its payload.
+    // Thermal's own identifiers are unchanged in both. The digest schema is shared
+    // across domains: the bounded revision-2 container carries schema 9, the
+    // legacy trace-section container only ever carries schema 8 — a declared
+    // change to what the digests cover, not to thermal's section or its payload.
     assert_eq!(THERMAL_SECTION_ID, 0x000E);
     assert_eq!(THERMAL_SECTION_MAJOR, 2);
     assert_eq!(CURRENT_DIGEST_SCHEMA_VERSION.raw(), 9);
-    assert_eq!(envelope.sections[&u64::from(0x000E_u16)].section_major, 2);
-    assert_eq!(envelope.header.physical_digest_schema, 9);
-    assert_eq!(envelope.header.history_digest_schema, 9);
+    assert_eq!(LEGACY_DIGEST_SCHEMA_VERSION.raw(), 8);
+    assert_eq!(legacy.sections[&u64::from(0x000E_u16)].section_major, 2);
+    assert_eq!(legacy.header.physical_digest_schema, 8);
+    assert_eq!(legacy.header.history_digest_schema, 8);
+    assert_eq!(bounded.sections[&u64::from(0x000E_u16)].section_major, 2);
+    assert_eq!(bounded.header.physical_digest_schema, 9);
+    assert_eq!(bounded.header.history_digest_schema, 9);
+    assert_eq!(
+        bounded.sections[&u64::from(0x000E_u16)].bytes,
+        legacy.sections[&u64::from(0x000E_u16)].bytes,
+        "the thermal payload is the same bytes under either digest schema"
+    );
 }
 
 #[test]
@@ -443,18 +457,16 @@ fn save_resume_equivalence() {
     checkpointed
         .run_ticks(50)
         .expect("checkpoint runtime must execute");
-    let checkpoint = checkpointed
-        .export_snapshot()
-        .expect("checkpoint snapshot must export");
-    let mut resumed = Runtime::from_snapshot(checkpoint).expect("checkpoint must resume");
+    let mut resumed = resume_through_bundle(checkpointed);
     resumed.run_ticks(50).expect("resumed runtime must execute");
 
-    // Then: persisted thermal state and canonical identities match the uninterrupted run.
+    // Then: persisted thermal state, the complete causal history and canonical
+    // identities match the uninterrupted run.
     let resumed_export = resumed
-        .export_snapshot()
+        .export_snapshot_with_full_history()
         .expect("resumed snapshot must export");
     let continuous_export = continuous
-        .export_snapshot()
+        .export_snapshot_with_full_history()
         .expect("continuous snapshot must export");
     assert!(!resumed_export.thermal.boundary_records.is_empty());
     assert_eq!(resumed_export.thermal.receipt_batches.len(), 64);

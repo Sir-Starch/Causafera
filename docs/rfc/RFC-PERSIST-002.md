@@ -9,7 +9,7 @@
 
 This RFC accepts the causal-history storage contract required by Todo 1 of [plans/causal-history-storage.md](../../plans/causal-history-storage.md). It defines schema 9 history storage as append-only canonical causal/evidence frames plus a transactional catalog, immutable checkpoints, bounded snapshots carrying a `HistoryAnchor`, generation-pinned readers, deterministic legacy schema-8 migration, and fail-closed recovery.
 
-This document is a normative contract for future implementation work. It does not claim that durable causal-history bundles, schema 9 digests, `HistoryAnchor`, or `HistoryReader` are implemented in the current source tree.
+This document is a normative contract. What is implemented, and what is not, is recorded with its evidence in the Progress section of [plans/causal-history-storage.md](../../plans/causal-history-storage.md); this RFC does not by itself claim that any part of it exists in the source tree.
 
 ## Authority and Scope
 
@@ -60,21 +60,105 @@ The implementation that satisfies this RFC must set `CURRENT_DIGEST_SCHEMA_VERSI
 | Field group | Included inventory |
 |---|---|
 | Time and scheduler boundary | completed simulation time at the quiescent boundary |
-| Material surfaces | current surface records, condition/contact/gate state, pending physics changes, current retained thermal state, current local gate state, and bounded transition windows that still influence current material identity |
+| Material surfaces | current surface records, condition/contact/gate state, pending physics changes, current retained thermal state, and current local gate state |
 | Pattern state | current bounded pattern samples and insertion order required by future pattern evolution |
 | Mana fields | chart-qualified current field identities, observed-through time, intensity arrays, and current last-change anchors |
 | Resolution and active chunks | current relevance/level entries, evaluated-through time, resolution policy identity, active chunk coordinates, chunk relevance, total mana, event count, and last transition trace |
 | Actors and objects | objective actor body position, energy, objective feature/proposal counts, actor ancestry required for current identity, and objective actor/object membership |
 | Population/bootstrap | current population aggregates, births/deaths/material flow totals, aggregate actor pool membership, canonical bootstrap plan identity, per-stage bounded result state, terminal bootstrap receipts, and causal ancestry required to validate current initialized state |
 | Experiment recipe source receipts | bounded executed source receipts that guard against source re-execution |
-| Thermal carrier | current thermal parameters, cell energies, reservoirs, active/resident chunk sets, current boundary records, current material exchange terms, and conservation state required for future thermal evolution |
+| Thermal carrier | current thermal parameters, cell energies, reservoirs, active/resident chunk sets, current material exchange terms, and the batch sequence and last-change anchor required for future thermal evolution |
 | Hydrology | current hydrology configuration-linked state, resident/active sets, storage, conveyance, boundaries, applied/pending forcing required for future evolution, and current conservation anchors |
 
 It excludes the complete causal store, complete thermal receipt maps, complete conservation receipt maps, complete hydrology retained-batch history, retention-policy windows used only by observer/Explanation projections, and every bounded historical transition collection whose only consumers are Explanation or observer read models. A field may remain in the physical digest only when an implementation inventory proves it affects future physical evolution or current physical identity.
 
+### Schema 9 Field Inventory
+
+Every field of `RuntimeState` is exactly one of: **Physical** (written by `physical_state_digest_v9` because it changes future evolution or identifies current state), **Evidence-only** (a bounded window whose readers are Explanation, the observer and snapshot export; written by the schema 8 physical digest only, and carried under schema 9 as durable evidence records in the stream `history_digest_v9` folds), or **Not digested** (configuration, scratch, caches and counters). The classification below was made from the call sites of each field, not from its name: a window is Evidence-only when no phase of the tick reads it. The table is mirrored by `crates/causafera-runtime/src/digest_inventory.rs`, which fails when a field is added without a class, when this table and the code disagree, when the digest source writes a field its class forbids, and when an Evidence-only window moves the schema 9 physical digest.
+
+| Field | Class | Basis |
+|---|---|---|
+| `config` | Not digested | enters the experiment digest as the runtime recipe fingerprint |
+| `traces` | Not digested | bounded hot cache over the history stream |
+| `history` | Not digested | coordinator over the durable stream; its logical digest is `history_digest_v9` |
+| `tick_history` | Not digested | scratch of the open tick, absent at every quiescent boundary |
+| `tick_undo` | Not digested | scratch of the open tick |
+| `mana` | Physical | field intensities and last-change anchors drive mana evolution |
+| `thermal_fields` | Physical | cell energies, last-change anchors and the batch sequence drive thermal evolution |
+| `thermal_active_region` | Physical | selects the cells the next thermal batch evolves |
+| `thermal_boundary_records` | Evidence-only | replaced from each batch's evolution output; read only by snapshot export and Explanation; emitted as thermal boundary evidence |
+| `thermal_reservoirs` | Physical | budgets and schedules inject energy in the next batch |
+| `thermal_parameters` | Physical | constants of the next batch |
+| `pending_thermal_injections` | Not digested | cleared at the end of every thermal batch |
+| `hydrology` | Physical | current water state; its retained-batch window is classified in the hydrology table |
+| `thermal_receipts` | Evidence-only | 64-batch window of transfer receipts; read by validation, export and Explanation; emitted as thermal transfer evidence |
+| `thermal_conservation_receipts` | Evidence-only | 64-batch window of conservation ledgers; emitted as thermal conservation evidence |
+| `resolution` | Physical | relevance and level entries drive resolution transitions |
+| `resolution_policy` | Not digested | constant of the build |
+| `carrier_adapters` | Not digested | derived from configuration |
+| `active_chunks` | Physical | per-chunk relevance, mana total, event count and last transition |
+| `actors` | Physical | body position and energy feed the next actor action |
+| `actor_ancestry` | Physical | supplies the causes of the actor's next events |
+| `actor_objects` | Physical | objects the actors perceive |
+| `population_aggregates` | Physical | current population totals and material flow |
+| `aggregate_actor_pool` | Physical | membership of the aggregate actor pool |
+| `bootstrap` | Physical | canonical bootstrap record and per-stage results that validate initialization |
+| `actor_action_bounds` | Not digested | equal to the configured action bound; import rejects any other value |
+| `pending_samples` | Not digested | transient between the pattern and mana phases |
+| `pattern_history` | Physical | mana evolution reads the pattern window and resolution reads its event counts |
+| `material_surfaces` | Physical | current surface condition, contacts, gate and retained thermal state |
+| `pending_material_surface_changes` | Physical | surfaces due for the next physics pass |
+| `material_surface_transitions` | Evidence-only | bounded window read only by Explanation and observer deltas; emitted as material transition evidence |
+| `material_surface_gate_transitions` | Evidence-only | bounded window read only by Explanation and observer deltas; emitted as material gate evidence |
+| `material_surface_thermal_transitions` | Evidence-only | bounded window read only by Explanation and observer deltas; emitted as material thermal evidence |
+| `latest_physical_trace` | Not digested | not in the schema 8 digest either; the causes it supplies are recorded in the stream |
+| `latest_mana_trace` | Not digested | not in the schema 8 digest either; the causes it supplies are recorded in the stream |
+| `executed_experiment_recipe_mana_sources` | Physical | guards recipe sources against re-execution |
+| `advanced_through` | Physical | the completed time the digest is taken at |
+| `physical_events` | Not digested | observer counter, unchanged from schema 8 |
+| `mana_cell_changes` | Not digested | observer counter, unchanged from schema 8 |
+| `mana_physical_effects` | Not digested | observer counter, unchanged from schema 8 |
+| `resolution_changes` | Not digested | observer counter, unchanged from schema 8 |
+| `resolution_transitions` | Not digested | observer counter, unchanged from schema 8 |
+| `perceived_actor_features` | Not digested | observer counter, unchanged from schema 8 |
+| `subjective_actor_objects` | Not digested | observer counter, unchanged from schema 8 |
+| `actor_actions_committed` | Not digested | observer counter, unchanged from schema 8 |
+| `actor_actions_rejected` | Not digested | observer counter, unchanged from schema 8 |
+| `population_births` | Not digested | observer counter, unchanged from schema 8 |
+| `population_deaths` | Not digested | observer counter, unchanged from schema 8 |
+| `population_movements` | Not digested | observer counter, unchanged from schema 8 |
+| `actor_promotions` | Not digested | observer counter, unchanged from schema 8 |
+| `actor_demotions` | Not digested | observer counter, unchanged from schema 8 |
+| `material_activity_events` | Not digested | observer counter, unchanged from schema 8 |
+| `next_actor_id` | Not digested | allocation counter, unchanged from schema 8 |
+| `last_mana_changes` | Not digested | observer counter, unchanged from schema 8 |
+| `physical_scan_count` | Not digested | instrumentation |
+| `failure` | Not digested | the sticky error of a refused session |
+
+### Schema 9 Hydrology Field Inventory
+
+| Field | Class | Basis |
+|---|---|---|
+| `enabled` | Physical | a disabled world digests as a single zero |
+| `fields` | Physical | storage volumes, last-change anchors, forcing fingerprints and the substrate constitutive keys |
+| `conveyance` | Physical | edge storage, capacity and last-change anchors |
+| `boundaries` | Physical | the exterior-face condition of every face |
+| `metrics` | Physical | the grid metric of every registered chart |
+| `active` | Not digested | rebuilt each tick from the engine resolution field; not in the schema 8 digest either |
+| `resolution` | Physical | per-chunk hydrology level and last-change anchor |
+| `resolution_policy` | Physical | enablement and maximum level |
+| `forcing` | Physical | the whole schedule including applied records; the next tick reads `applied_at` |
+| `registry` | Physical | authoritative ordinals every causal target was written against |
+| `next_node_id` | Physical | counter every synthetic aggregation node draws from |
+| `receipts` | Not digested | per-transfer receipts are evictable detail; schema 8 digested only the conservation ledger each batch closed |
+| `conservation_receipts` | Evidence-only | ledger window; emitted as hydrology conservation evidence |
+| `retained_batches` | Evidence-only | eviction order of that window |
+
+The `Not digested` counters, `latest_*_trace` pointers and `next_actor_id` are exactly as absent from the schema 9 physical digest as they were from schema 8. This todo moves history windows out of the physical digest; it does not decide whether any of those allocation fields should enter it. That question is recorded in the plan's Progress section as open.
+
 ### History Digest V9
 
-`history_digest_v9` is a segment-boundary-independent logical history/evidence digest over the canonical record stream. It folds:
+`history_digest_v9` is a segment-boundary-independent logical history/evidence digest over the canonical record stream: a BLAKE3 fold of each record's canonical encoding, appended one record at a time by the history store, so a tick or an observer poll reads it in constant time. It folds:
 
 - all causal-event records using the field order preserved from current trace event encoding: event ID, trace ID, time, phase, kind ID, ordered causes, and ordered effects with target kind/object/property and before/after fingerprints;
 - all domain evidence records for hydrology, thermal, material-surface, bootstrap/population, experiment forcing/input records, and future registered domains;

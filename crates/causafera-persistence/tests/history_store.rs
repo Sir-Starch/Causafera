@@ -2623,3 +2623,133 @@ fn history_store_test_bundle_attempts_are_unique_and_raii_cleaned() {
         "temp_bundle_collision attempts=2 unique=true stale_pid_reused=true raii_cleanup=true"
     );
 }
+
+#[test]
+fn history_store_logical_digest_full_rescan_agrees_with_the_incremental_fold() {
+    // Given
+    let first = TempBundle::new("rescan-per-tick");
+    let second = TempBundle::new("rescan-repartitioned");
+    let mut per_tick = HistoryStore::create(first.path(), [0x61; 32], DurabilityMode::GroupCommit)
+        .expect("per tick store");
+    let mut repartitioned =
+        HistoryStore::create(second.path(), [0x61; 32], DurabilityMode::GroupCommit)
+            .expect("repartitioned store");
+
+    // When: one store publishes a frame per tick, the other splits the same
+    // record stream into four frames.
+    per_tick
+        .append_tick(vec![causal(1, vec![]), evidence(1, 1, b"k1")])
+        .expect("first tick");
+    per_tick
+        .append_tick(vec![
+            causal(2, vec![TraceId::new(1)]),
+            evidence(2, 2, b"k2"),
+        ])
+        .expect("second tick");
+    repartitioned
+        .append_tick(vec![causal(1, vec![])])
+        .expect("first causal frame");
+    repartitioned
+        .append_tick(vec![evidence(1, 1, b"k1")])
+        .expect("first evidence frame");
+    repartitioned
+        .append_tick(vec![causal(2, vec![TraceId::new(1)])])
+        .expect("second causal frame");
+    repartitioned
+        .append_tick(vec![evidence(2, 2, b"k2")])
+        .expect("second evidence frame");
+
+    // Then: the cold rescan reproduces the incremental digest while the frames
+    // are still only logical, after they are forced durable, and after reopen.
+    let pending = per_tick.status().expect("pending status").logical_digest;
+    assert_eq!(
+        per_tick
+            .logical_digest_full_rescan()
+            .expect("pending rescan"),
+        pending
+    );
+    per_tick.flush_durable().expect("force durable");
+    let durable = per_tick.status().expect("durable status").logical_digest;
+    assert_eq!(
+        per_tick
+            .logical_digest_full_rescan()
+            .expect("durable rescan"),
+        durable
+    );
+    assert_eq!(
+        durable, pending,
+        "forcing durability does not change the fold"
+    );
+    assert_eq!(
+        repartitioned
+            .logical_digest_full_rescan()
+            .expect("repartitioned rescan"),
+        durable,
+        "repartitioning the same records across frames must not change the digest"
+    );
+    drop(per_tick);
+    let reopened = HistoryStore::open(first.path()).expect("reopen");
+    assert_eq!(
+        reopened
+            .logical_digest_full_rescan()
+            .expect("reopened rescan"),
+        durable
+    );
+    println!(
+        "logical_digest_full_rescan frames=2/4 records=4 digest={}",
+        hex_digest(&durable)
+    );
+}
+
+fn hex_digest(digest: &[u8; 32]) -> String {
+    digest.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+#[test]
+fn history_store_logical_digest_ignores_where_segments_are_sealed() {
+    // Given: the same 240 large evidence records (about 8 MiB), once as one
+    // frame per record and once as a single frame, so the stores seal a
+    // different number of segments around identical content.
+    let split = TempBundle::new("seal-per-record");
+    let whole = TempBundle::new("seal-single-frame");
+    let mut per_record =
+        HistoryStore::create(split.path(), [0x62; 32], DurabilityMode::GroupCommit)
+            .expect("per record store");
+    let mut single = HistoryStore::create(whole.path(), [0x62; 32], DurabilityMode::GroupCommit)
+        .expect("single frame store");
+    let records = (1..=240).map(large_evidence).collect::<Vec<_>>();
+
+    // When
+    for record in &records {
+        per_record
+            .append_tick(vec![record.clone()])
+            .expect("one record frame");
+    }
+    single.append_tick(records).expect("single frame");
+    per_record.flush_durable().expect("force per record store");
+    single.flush_durable().expect("force single store");
+
+    // Then: the segment layouts differ and the logical digest does not.
+    let per_record_status = per_record.status().expect("per record status");
+    let single_status = single.status().expect("single status");
+    assert_ne!(
+        per_record_status.catalog_counts.segments, single_status.catalog_counts.segments,
+        "the fixture must seal a different number of segments in each store"
+    );
+    assert_eq!(
+        per_record_status.logical_digest,
+        single_status.logical_digest
+    );
+    assert_eq!(
+        per_record
+            .logical_digest_full_rescan()
+            .expect("per record rescan"),
+        single.logical_digest_full_rescan().expect("single rescan")
+    );
+    println!(
+        "segment_independent_digest segments={}/{} digest={}",
+        per_record_status.catalog_counts.segments,
+        single_status.catalog_counts.segments,
+        hex_digest(&per_record_status.logical_digest)
+    );
+}

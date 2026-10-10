@@ -48,7 +48,7 @@ fn runtime_with_durability(
     {
         let mut state = runtime.state.lock().expect("runtime state");
         let hot_budget = state.traces.hot_budget();
-        let (history, traces, history_digest_prefix) =
+        let (history, traces) =
             crate::history_transaction::RuntimeHistoryCoordinator::bootstrap_with_store(
                 &state.traces,
                 seed,
@@ -58,7 +58,6 @@ fn runtime_with_durability(
             .expect("history coordinator must install");
         state.history = history;
         state.traces = traces;
-        state.history_digest_prefix = history_digest_prefix;
     }
     (runtime, bundle)
 }

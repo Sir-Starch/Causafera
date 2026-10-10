@@ -41,13 +41,14 @@ const SCHEMA_8_PHYSICAL_DIGEST: &str =
 const SCHEMA_8_HISTORY_DIGEST: &str =
     "aa7e07d5ef7cc8e921af5b7bd7ae83d0a2c00c8a2293e324be864175e9cfae7f";
 // Schema 9 coordinates the history and bounded-snapshot contract
-// (`docs/rfc/RFC-PERSIST-002.md`). Re-recorded with the same fixture; Todo 7 of
-// `plans/causal-history-storage.md` redefines the schema-9 field inventory and
-// re-records these once more.
+// (`docs/rfc/RFC-PERSIST-002.md`). Recorded from the same fixture under the final
+// schema-9 field inventory (Todo 7 of `plans/causal-history-storage.md`): the
+// physical digest omits the thermal receipt windows, and the history digest is
+// the fold of the durable causal and evidence record stream.
 const FIXTURE_PHYSICAL_DIGEST: &str =
-    "6a0aeea7ce6e1ef3eea13216065155232ffadf4b1e5e94d3bb5983c5e806f725";
+    "5a68fd5beb3c777046f0614cc619eaa583d93f36029de96dbb1b12c483acb25e";
 const FIXTURE_HISTORY_DIGEST: &str =
-    "c9e0e80e086a772c16cef9379a5053b7262eeb1cde756526011f5a0aec712fac";
+    "4f4a4ebb7a5e992248e741571a7c2ba35bae1cebed863c21a00b220f42a3bf5a";
 
 #[test]
 fn aggregate_validation_verdict_is_input_order_independent() {
@@ -127,7 +128,17 @@ fn save_resume_equivalence_under_aggregate_validation() {
         .snapshot()
         .expect("uninterrupted snapshot must succeed");
 
-    let mut resumed = Runtime::from_snapshot(data).expect("snapshot must resume");
+    let mut legacy_resumed = Runtime::from_snapshot(data).expect("snapshot must resume");
+    legacy_resumed
+        .run_ticks(CONTINUATION_TICKS)
+        .expect("legacy resumed run must complete");
+
+    let mut saved =
+        Runtime::new(runtime_config(FIXTURE_SEED)).expect("runtime bootstrap must succeed");
+    saved
+        .run_ticks(FIXTURE_TICKS)
+        .expect("saved run must complete");
+    let mut resumed = crate::support_resume::resume_through_bundle(saved);
     resumed
         .run_ticks(CONTINUATION_TICKS)
         .expect("resumed run must complete");
@@ -144,6 +155,16 @@ fn save_resume_equivalence_under_aggregate_validation() {
     assert_eq!(
         uninterrupted_snapshot.canonical_state, resumed_snapshot.canonical_state,
         "resumed canonical state must match uninterrupted run"
+    );
+    // A complete-trace import rebuilds its own history, so only its physical
+    // state is comparable with the uninterrupted run.
+    assert_eq!(
+        uninterrupted_snapshot.physical_state_digest,
+        legacy_resumed
+            .snapshot()
+            .expect("legacy resumed snapshot must succeed")
+            .physical_state_digest,
+        "a complete-trace import must continue the same physical state"
     );
 }
 
@@ -210,18 +231,33 @@ fn digest_and_section_versions_are_unchanged() {
         "the legacy schema must keep reproducing the recorded schema-8 history digest"
     );
 
-    // And: importing the exported snapshot reproduces the same digests.
+    // And: importing the complete-trace export reproduces the physical digest (its
+    // history is rebuilt from the traces it carries), while resuming the bounded
+    // snapshot over its own durable history reproduces both.
     let data = runtime
         .export_snapshot()
         .expect("fixture snapshot must export");
-    let resumed = Runtime::from_snapshot(data).expect("exported fixture must resume");
+    let imported = Runtime::from_snapshot(data).expect("exported fixture must import");
+    assert_eq!(
+        snapshot.physical_state_digest,
+        imported
+            .snapshot()
+            .expect("imported snapshot must succeed")
+            .physical_state_digest,
+        "imported physical state digest must match the original"
+    );
+    let resumed = crate::support_resume::resume_through_bundle(runtime);
     let resumed_snapshot = resumed.snapshot().expect("resumed snapshot must succeed");
     assert_eq!(
         snapshot.physical_state_digest, resumed_snapshot.physical_state_digest,
-        "imported physical state digest must match the original"
+        "resumed physical state digest must match the original"
     );
     assert_eq!(
         snapshot.history_digest, resumed_snapshot.history_digest,
-        "imported history digest must match the original"
+        "resumed history digest must match the original"
+    );
+    assert_eq!(
+        snapshot.canonical_state, resumed_snapshot.canonical_state,
+        "resumed experiment digest must match the original"
     );
 }

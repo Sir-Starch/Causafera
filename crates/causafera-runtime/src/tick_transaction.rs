@@ -36,7 +36,6 @@ impl RuntimeTickTransaction {
         if state.tick_history.is_some() {
             return Err(RuntimeError::HistoryTransactionAlreadyOpen);
         }
-        let _ = state.history_digest();
         let history = state.history.begin()?;
         state.begin_tick_undo()?;
         state.traces.begin_transaction();
@@ -100,12 +99,6 @@ impl RuntimeTickTransaction {
                 return Err(error);
             }
         };
-        state.advance_history_digest_prefix(frame.records().iter().filter_map(
-            |record| match record {
-                causafera_core::HistoryRecord::Causal(record) => Some(record),
-                causafera_core::HistoryRecord::Evidence(_) => None,
-            },
-        ));
         if let Err(error) = state.history.finish_state_publication() {
             rollback_publication(state, &frame, receipt, self.staged)?;
             return Err(error);

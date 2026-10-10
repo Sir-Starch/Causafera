@@ -46,6 +46,9 @@ use causafera_runtime::{
 };
 use causafera_types::SimulationTime;
 
+mod support_resume;
+use support_resume::resume_through_bundle;
+
 /// The world this fixture measures. Chosen to light up every pre-hydrology
 /// subsystem that owns a snapshot section: terrain carriers, mana, thermal,
 /// material surfaces, resolution, actors (objective and subjective), the
@@ -621,7 +624,8 @@ fn pre_hydrology_digests_are_pinned() {
 
     // And: the full envelope digest moved, because the recipe section it covers
     // now records the hydrology configuration. That is the declared change at
-    // this stage; the legacy subsystem payloads are pinned separately.
+    // this stage; the legacy subsystem payloads are pinned separately. The
+    // trace-section container carries digest schema 8 only, and refuses schema 9.
     let full = runtime
         .export_snapshot_with_full_history()
         .expect("state must export with its full history");
@@ -634,10 +638,23 @@ fn pre_hydrology_digests_are_pinned() {
         PRE_HYDROLOGY_ENVELOPE_DIGEST,
         "the envelope digest must move with the recipe section"
     );
+    assert!(
+        assemble_envelope_for_digest_schema(&full, CURRENT_DIGEST_SCHEMA_VERSION).is_err(),
+        "a trace-section container under schema 9 would embed a history the digest no longer needs"
+    );
+
+    // And: the schema 9 snapshot is the bounded envelope, pinned byte for byte.
+    let bounded = runtime
+        .export_bounded_envelope()
+        .expect("state must export a bounded envelope");
+    assert!(
+        !bounded.sections.contains_key(&0x000A),
+        "a schema 9 snapshot carries no trace section"
+    );
     assert_eq!(
-        digest_hex(&encoded),
+        digest_hex(&bounded.encode().expect("bounded envelope must encode")),
         DISABLED_HYDROLOGY_ENVELOPE_DIGEST,
-        "complete envelope with a disabled hydrology recipe under schema 9"
+        "complete bounded envelope with a disabled hydrology recipe under schema 9"
     );
 
     // And: the legacy schema still reproduces the recorded schema-8 identities,
@@ -707,17 +724,20 @@ const DISABLED_HYDROLOGY_EXPERIMENT_DIGEST_SCHEMA_8: &str =
 const DISABLED_HYDROLOGY_ENVELOPE_DIGEST_SCHEMA_8: &str =
     "baf641b23243b693f3f33163b44c7d8efc3b557bc197915fbf06a1d5d08750d7";
 
-/// The same four identities under schema 9, re-recorded from the same world.
-/// Todo 7 of `plans/causal-history-storage.md` redefines the schema-9 field
-/// inventory and re-records these once more.
+/// The same four identities under schema 9, recorded from the same world under
+/// the final schema-9 field inventory (`docs/rfc/RFC-PERSIST-002.md`, Todo 7 of
+/// `plans/causal-history-storage.md`): the physical digest leaves out the
+/// evidence-only windows, the history digest folds the durable causal and
+/// evidence stream, the experiment digest adds the seed and recipe fingerprint,
+/// and the "envelope" is the bounded revision-2 snapshot with its anchor.
 const DISABLED_HYDROLOGY_PHYSICAL_DIGEST: &str =
-    "9d9c93d1ad78dcf9d2924c4f6984501200cbca6be5eb6f5ab6d615019c54682e";
+    "da49b6544e5245fecf9cb35324f33409256d8eeb418fb93c0de1e7831e19fb3d";
 const DISABLED_HYDROLOGY_HISTORY_DIGEST: &str =
-    "162455f50b0fd69be81dc61cb098599297fc29688eaee83ca466af78518134cf";
+    "e4cf4a8287a6f68a2d880e1fd3674f7bc940f7e7c3b5dd9492e1deed801ed669";
 const DISABLED_HYDROLOGY_EXPERIMENT_DIGEST: &str =
-    "cf12fb421335b5e5baf2d1f1a23e02e603d6a4ddbe63e95fdd7a241018e0835d";
+    "f9f8a835622113eb4379be9473fd08ac8ce9f59e2c8de8f538ce8538d00b2873";
 const DISABLED_HYDROLOGY_ENVELOPE_DIGEST: &str =
-    "77e0df1b3f58ad5cce5d9bd96b43f30aaffc9b0bd2d9f538d008662d17b65114";
+    "f0ca36c4270f702b092c3cce1a9de626e9ae0be3ed02676f80f956d14975052b";
 
 // ---------------------------------------------------------------------------
 // Resume equivalence
@@ -755,7 +775,8 @@ fn pre_hydrology_state_resumes_byte_identically() {
 #[test]
 fn pre_hydrology_resumed_state_continues_identically() {
     // Given: the same world run for `LEGACY_TICKS` twice, one of them resumed
-    // from a snapshot taken half way.
+    // from a snapshot taken half way, and a third resumed from the complete
+    // causal-trace export.
     let mut uninterrupted = legacy_runtime();
     let straight_through = uninterrupted
         .run_ticks(LEGACY_TICKS * 2)
@@ -768,12 +789,18 @@ fn pre_hydrology_resumed_state_continues_identically() {
     let checkpoint = interrupted
         .export_snapshot()
         .expect("checkpoint must export");
-    let mut resumed = Runtime::from_snapshot(checkpoint).expect("checkpoint must resume");
+    let mut legacy_resumed =
+        Runtime::from_snapshot(checkpoint).expect("complete-trace checkpoint must resume");
+    let mut resumed = resume_through_bundle(interrupted);
     let after_resume = resumed
         .run_ticks(LEGACY_TICKS)
         .expect("second half must tick");
+    let after_legacy_resume = legacy_resumed
+        .run_ticks(LEGACY_TICKS)
+        .expect("legacy second half must tick");
 
-    // Then: save/resume is equivalent to running straight through.
+    // Then: save/resume over the durable history is equivalent to running
+    // straight through, in every digest and in the complete causal history.
     assert_eq!(straight_through.time, after_resume.time);
     assert_eq!(
         straight_through.physical_state_digest,
@@ -781,7 +808,26 @@ fn pre_hydrology_resumed_state_continues_identically() {
     );
     assert_eq!(straight_through.history_digest, after_resume.history_digest);
     assert_eq!(
+        straight_through.canonical_state,
+        after_resume.canonical_state
+    );
+    assert_eq!(
+        uninterrupted
+            .export_snapshot_with_full_history()
+            .expect("must export"),
+        resumed
+            .export_snapshot_with_full_history()
+            .expect("must export"),
+    );
+
+    // And: a complete-trace import continues the same physical world and the
+    // same causal graph; its history digest names the stream it rebuilt.
+    assert_eq!(
+        straight_through.physical_state_digest,
+        after_legacy_resume.physical_state_digest
+    );
+    assert_eq!(
         uninterrupted.export_snapshot().expect("must export"),
-        resumed.export_snapshot().expect("must export"),
+        legacy_resumed.export_snapshot().expect("must export"),
     );
 }

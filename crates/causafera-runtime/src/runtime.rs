@@ -6,7 +6,7 @@ use std::{
 use causafera_core::{
     CausalCommitError, CausalEffect, CausalEffectError, CausalEventProposal,
     CausalEventProposalError, CausalTarget, CausalTraceStore, DEFAULT_CAUSAL_HOT_BUDGET_BYTES,
-    EventProposalKey, HistoryError, HistoryReader, Phase, Scheduler,
+    EventProposalKey, HistoryError, HistoryReader, Phase, Scheduler, StateFingerprint,
 };
 use causafera_domains::{
     ManaError, ManaField, ManaFieldSet, PhysicalPatternSample, ThermalActiveRegion,
@@ -65,7 +65,7 @@ pub(crate) const LIFECYCLE_SYSTEM_ID: u64 = 60;
 pub(crate) const BOOTSTRAP_SYSTEM_ID: u64 = 61;
 pub(crate) const THERMAL_RESERVOIR_SYSTEM_ID: u64 = 11;
 pub(crate) const THERMAL_EVOLUTION_SYSTEM_ID: u64 = 12;
-const ROOT_EVENT_KIND: u64 = 1;
+pub(crate) const ROOT_EVENT_KIND: u64 = 1;
 pub(crate) const MANA_EVENT_KIND: u64 = 3;
 pub(crate) const RESOLUTION_EVENT_KIND: u64 = 4;
 pub(crate) const ACTOR_CONTACT_ACTION_KIND: u64 = 6;
@@ -88,7 +88,7 @@ pub const MATERIAL_SURFACE_THERMAL_EXCHANGE_EVENT_KIND: u64 = 33;
 pub const BOOTSTRAP_STAGE_COMPLETION_EVENT_KIND: u64 = 34;
 pub const THERMAL_FIELD_BOOTSTRAP_EVENT_KIND: u64 = 28;
 pub const THERMAL_RESERVOIR_BOOTSTRAP_EVENT_KIND: u64 = 29;
-const RUNTIME_OBJECT_KIND: u64 = 1;
+pub(crate) const RUNTIME_OBJECT_KIND: u64 = 1;
 pub(crate) const PHYSICAL_OBJECT_KIND: u64 = 2;
 pub(crate) const MANA_OBJECT_KIND: u64 = 3;
 pub(crate) const RESOLUTION_OBJECT_KIND: u64 = 4;
@@ -101,7 +101,7 @@ pub const THERMAL_RESERVOIR_OBJECT_KIND: u64 = 10;
 pub const THERMAL_CELL_OBJECT_KIND: u64 = 11;
 pub const THERMAL_CARRIER_OBJECT_KIND: u64 = 12;
 pub const BOOTSTRAP_STAGE_OBJECT_KIND: u64 = 13;
-const ROOT_PROPERTY: u64 = 1;
+pub(crate) const ROOT_PROPERTY: u64 = 1;
 pub(crate) const PHYSICAL_PROPERTY: u64 = 2;
 pub(crate) const MANA_PROPERTY: u64 = 3;
 pub(crate) const RESOLUTION_PROPERTY: u64 = 4;
@@ -324,8 +324,7 @@ impl Runtime {
                 return Err(error);
             }
             state.history.flush_durable()?;
-            let digest_prefix = state.history_digest_prefix.clone();
-            state.history.resume(&digest_prefix)?
+            state.history.resume()?
         };
         Ok(resume)
     }
@@ -548,7 +547,7 @@ impl Runtime {
         let data = state.export_snapshot();
         let anchor = state.history.reader().anchor()?;
         let metadata = BoundedSnapshotMetadata {
-            runtime_recipe_fingerprint: [0; 32],
+            runtime_recipe_fingerprint: crate::runtime_recipe_fingerprint(&state.config),
             physical_digest: state
                 .physical_state_digest(data.recipe.completed_time)
                 .bytes(),
@@ -629,7 +628,30 @@ impl Runtime {
             &envelope,
             history_reader.as_ref(),
         )?;
-        Self::from_snapshot_with_history(data, Some(target_generation), Some(history_resume))
+        if envelope.header.runtime_recipe_fingerprint
+            != crate::runtime_recipe_fingerprint(&data.recipe.config)
+        {
+            return Err(RuntimeError::InvalidSnapshot(
+                "bounded snapshot recipe fingerprint does not match its runtime recipe",
+            ));
+        }
+        let completed_time = data.recipe.completed_time;
+        let runtime =
+            Self::from_snapshot_with_history(data, Some(target_generation), Some(history_resume))?;
+        // The header's physical digest is a claim about the state the sections
+        // describe. Recomputing it here, before the runtime is handed back,
+        // makes a snapshot whose sections were altered, or whose header was
+        // copied from another run, a refused resume rather than a quiet one.
+        let physical = runtime
+            .lock_state()?
+            .physical_state_digest(completed_time)
+            .bytes();
+        if envelope.header.physical_digest != physical {
+            return Err(RuntimeError::InvalidSnapshot(
+                "bounded snapshot physical digest does not match its state",
+            ));
+        }
+        Ok(runtime)
     }
 
     /// Decode and resume either an exact legacy snapshot or a bounded revision-2 snapshot.
@@ -986,12 +1008,6 @@ impl From<HistoryError> for RuntimeError {
 pub struct RuntimeState {
     pub(crate) config: RuntimeConfig,
     pub(crate) traces: CausalTraceStore,
-    /// Trace-store prefix already folded into `history_digest`.
-    ///
-    /// A cache of work, not state: it is rebuilt by absorbing whatever the
-    /// store holds, so it is deliberately absent from the persisted snapshot
-    /// envelope and an imported state simply starts empty and absorbs once.
-    pub(crate) history_digest_prefix: HistoryDigestPrefix,
     pub(crate) history: crate::history_transaction::RuntimeHistoryCoordinator,
     pub(crate) tick_history: Option<crate::history_transaction::HistoryTxn>,
     pub(crate) tick_undo: crate::tick_undo::TickUndoLog,
@@ -1152,16 +1168,14 @@ impl RuntimeState {
             .collect();
         let resolution_policy = Self::default_resolution_policy()?;
         let history_registry = crate::history_transaction::runtime_history_decoder_registry()?;
-        let (history, traces, history_digest_prefix) =
-            crate::history_transaction::RuntimeHistoryCoordinator::bootstrap(
-                &traces,
-                config.deterministic.world_seed,
-                Arc::clone(&history_registry),
-            )?;
+        let (history, traces) = crate::history_transaction::RuntimeHistoryCoordinator::bootstrap(
+            &traces,
+            config.deterministic.world_seed,
+            Arc::clone(&history_registry),
+        )?;
         let mut state = Self {
             config: config.clone(),
             traces,
-            history_digest_prefix,
             history,
             tick_history: None,
             tick_undo: crate::tick_undo::TickUndoLog::default(),
@@ -1229,15 +1243,13 @@ impl RuntimeState {
             .execute(&mut state)
             .map_err(|error| bootstrap_construction_error(error, "invalid bootstrap state"))?;
         state.bootstrap = bootstrap;
-        let (history, traces, history_digest_prefix) =
-            crate::history_transaction::RuntimeHistoryCoordinator::bootstrap(
-                &state.traces,
-                config.deterministic.world_seed,
-                history_registry,
-            )?;
+        let (history, traces) = crate::history_transaction::RuntimeHistoryCoordinator::bootstrap(
+            &state.traces,
+            config.deterministic.world_seed,
+            history_registry,
+        )?;
         state.history = history;
         state.traces = traces;
-        state.history_digest_prefix = history_digest_prefix;
         // Configuration is accepted only if the world it produced can be saved.
         // The bounds on cells, edges, boundaries, overrides and forcing members are
         // each satisfiable while their composition is not, so the composed size is
@@ -1588,7 +1600,7 @@ impl RuntimeState {
             ));
         }
         let hot_budget = config.hot_budget.unwrap_or(DEFAULT_CAUSAL_HOT_BUDGET_BYTES);
-        let (history, traces, history_digest_prefix) = if let Some(resume) = history_resume {
+        let (history, traces) = if let Some(resume) = history_resume {
             if !trace_snapshot.events.is_empty() {
                 return Err(RuntimeError::InvalidSnapshot(
                     "owned history resume must not contain materialized causal traces",
@@ -1613,7 +1625,6 @@ impl RuntimeState {
         let state = Self {
             config,
             traces,
-            history_digest_prefix,
             history,
             tick_history: None,
             tick_undo: crate::tick_undo::TickUndoLog::default(),
@@ -2657,7 +2668,7 @@ impl RuntimeState {
             time,
             physical_state_digest,
             history_digest,
-            canonical_state: RuntimeState::canonical_state(physical_state_digest, history_digest),
+            canonical_state: self.canonical_state(physical_state_digest, history_digest),
             mana_total,
             mana_maximum,
             mana_changed_components: self.last_mana_changes,
@@ -3227,6 +3238,13 @@ impl RuntimeState {
         time: SimulationTime,
         schema_version: DigestSchemaVersion,
     ) -> PhysicalStateDigest {
+        // Schema 8 digested the bounded historical windows (thermal receipts,
+        // conservation receipts, boundary records, the three material transition
+        // windows and the hydrology retained-batch ledgers) as physical state.
+        // Schema 9 leaves them to the history digest, where each is a durable
+        // evidence record; see the field inventory in RFC-PERSIST-002. Only the
+        // legacy migration oracle still writes them.
+        let windows_in_physical_digest = schema_version == LEGACY_DIGEST_SCHEMA_VERSION;
         let mut digest = CanonicalDigest::new();
         digest.write(u64::from(schema_version.raw()));
         digest.write(PHYSICAL_DIGEST_DOMAIN);
@@ -3260,42 +3278,44 @@ impl RuntimeState {
             write_chart_chunk(&mut digest, id.chunk);
             digest.write(u64::from(id.cell_index));
         }
-        digest.write(self.material_surface_transitions.len() as u64);
-        for transition in &self.material_surface_transitions {
-            write_chart_chunk(&mut digest, transition.id.chunk);
-            digest.write(u64::from(transition.id.cell_index));
-            digest.write(transition.occurred_at.raw());
-            digest.write(transition.before_condition as u64);
-            digest.write(transition.after_condition as u64);
-            digest.write(transition.mana_total as u64);
-            write_optional_trace(&mut digest, transition.contact_trace);
-            write_optional_trace(&mut digest, transition.mana_effect_trace);
-            digest.write(transition.transition_trace.raw());
-        }
-        digest.write(self.material_surface_gate_transitions.len() as u64);
-        for transition in &self.material_surface_gate_transitions {
-            write_chart_chunk(&mut digest, transition.id.chunk);
-            digest.write(u64::from(transition.id.cell_index));
-            digest.write(transition.occurred_at.raw());
-            digest.write(u64::from(transition.before_active));
-            digest.write(u64::from(transition.after_active));
-            digest.write(transition.local_mana_before as u64);
-            digest.write(transition.local_mana_after as u64);
-            digest.write(transition.local_mana_trace.raw());
-            write_optional_trace(&mut digest, transition.contact_trace);
-            digest.write(transition.transition_trace.raw());
-        }
-        digest.write(self.material_surface_thermal_transitions.len() as u64);
-        for transition in &self.material_surface_thermal_transitions {
-            write_chart_chunk(&mut digest, transition.id.chunk);
-            digest.write(u64::from(transition.id.cell_index));
-            digest.write(transition.occurred_at.raw());
-            digest.write(transition.before_retained as u64);
-            digest.write(transition.after_retained as u64);
-            digest.write(transition.cell_pre_state as u64);
-            digest.write(transition.signed_flux as u64);
-            digest.write(transition.cell_trace.raw());
-            digest.write(transition.transition_trace.raw());
+        if windows_in_physical_digest {
+            digest.write(self.material_surface_transitions.len() as u64);
+            for transition in &self.material_surface_transitions {
+                write_chart_chunk(&mut digest, transition.id.chunk);
+                digest.write(u64::from(transition.id.cell_index));
+                digest.write(transition.occurred_at.raw());
+                digest.write(transition.before_condition as u64);
+                digest.write(transition.after_condition as u64);
+                digest.write(transition.mana_total as u64);
+                write_optional_trace(&mut digest, transition.contact_trace);
+                write_optional_trace(&mut digest, transition.mana_effect_trace);
+                digest.write(transition.transition_trace.raw());
+            }
+            digest.write(self.material_surface_gate_transitions.len() as u64);
+            for transition in &self.material_surface_gate_transitions {
+                write_chart_chunk(&mut digest, transition.id.chunk);
+                digest.write(u64::from(transition.id.cell_index));
+                digest.write(transition.occurred_at.raw());
+                digest.write(u64::from(transition.before_active));
+                digest.write(u64::from(transition.after_active));
+                digest.write(transition.local_mana_before as u64);
+                digest.write(transition.local_mana_after as u64);
+                digest.write(transition.local_mana_trace.raw());
+                write_optional_trace(&mut digest, transition.contact_trace);
+                digest.write(transition.transition_trace.raw());
+            }
+            digest.write(self.material_surface_thermal_transitions.len() as u64);
+            for transition in &self.material_surface_thermal_transitions {
+                write_chart_chunk(&mut digest, transition.id.chunk);
+                digest.write(u64::from(transition.id.cell_index));
+                digest.write(transition.occurred_at.raw());
+                digest.write(transition.before_retained as u64);
+                digest.write(transition.after_retained as u64);
+                digest.write(transition.cell_pre_state as u64);
+                digest.write(transition.signed_flux as u64);
+                digest.write(transition.cell_trace.raw());
+                digest.write(transition.transition_trace.raw());
+            }
         }
         digest.write(self.pattern_history.len() as u64);
         for sample in self.pattern_history.samples() {
@@ -3364,61 +3384,63 @@ impl RuntimeState {
             digest.write(reservoir.bootstrap_trace.raw());
             digest.write(reservoir.last_change.raw());
         }
-        digest.write(self.thermal_receipts.len() as u64);
-        for (conservation_trace, receipts) in &self.thermal_receipts {
-            digest.write(conservation_trace.raw());
-            digest.write(receipts.len() as u64);
-            for receipt in receipts {
-                write_chart_chunk(&mut digest, receipt.cell.chunk);
-                digest.write(u64::from(receipt.cell.cell_index));
-                digest.write(receipt.pre_state.get() as u64);
-                digest.write(receipt.post_state.get() as u64);
-                write_optional_trace(&mut digest, receipt.cell_change_trace_id);
-                digest.write(receipt.faces.len() as u64);
-                for face in &receipt.faces {
-                    write_chart_chunk(&mut digest, face.neighbor.chunk);
-                    digest.write(u64::from(face.neighbor.cell_index));
-                    digest.write(face.signed_flux as u64);
-                    digest.write(face.neighbor_pre_state.get() as u64);
-                }
-                digest.write(receipt.reservoirs.len() as u64);
-                for reservoir in &receipt.reservoirs {
-                    digest.write(reservoir.id.raw());
-                    digest.write(reservoir.scheduled_injection.get() as u64);
-                    digest.write(reservoir.accepted_injection.get() as u64);
-                    digest.write(reservoir.rejected_injection.get() as u64);
-                    write_optional_trace(&mut digest, reservoir.transfer_trace_id);
-                }
-                if let Some(material) = &receipt.material {
-                    digest.write(1);
-                    digest.write(material.retained_before.get() as u64);
-                    digest.write(material.retained_after.get() as u64);
-                    digest.write(material.signed_flux as u64);
-                    digest.write(material.rejected.get() as u64);
-                } else {
-                    digest.write(0);
+        if windows_in_physical_digest {
+            digest.write(self.thermal_receipts.len() as u64);
+            for (conservation_trace, receipts) in &self.thermal_receipts {
+                digest.write(conservation_trace.raw());
+                digest.write(receipts.len() as u64);
+                for receipt in receipts {
+                    write_chart_chunk(&mut digest, receipt.cell.chunk);
+                    digest.write(u64::from(receipt.cell.cell_index));
+                    digest.write(receipt.pre_state.get() as u64);
+                    digest.write(receipt.post_state.get() as u64);
+                    write_optional_trace(&mut digest, receipt.cell_change_trace_id);
+                    digest.write(receipt.faces.len() as u64);
+                    for face in &receipt.faces {
+                        write_chart_chunk(&mut digest, face.neighbor.chunk);
+                        digest.write(u64::from(face.neighbor.cell_index));
+                        digest.write(face.signed_flux as u64);
+                        digest.write(face.neighbor_pre_state.get() as u64);
+                    }
+                    digest.write(receipt.reservoirs.len() as u64);
+                    for reservoir in &receipt.reservoirs {
+                        digest.write(reservoir.id.raw());
+                        digest.write(reservoir.scheduled_injection.get() as u64);
+                        digest.write(reservoir.accepted_injection.get() as u64);
+                        digest.write(reservoir.rejected_injection.get() as u64);
+                        write_optional_trace(&mut digest, reservoir.transfer_trace_id);
+                    }
+                    if let Some(material) = &receipt.material {
+                        digest.write(1);
+                        digest.write(material.retained_before.get() as u64);
+                        digest.write(material.retained_after.get() as u64);
+                        digest.write(material.signed_flux as u64);
+                        digest.write(material.rejected.get() as u64);
+                    } else {
+                        digest.write(0);
+                    }
                 }
             }
-        }
-        digest.write(self.thermal_conservation_receipts.len() as u64);
-        for (trace, receipt) in &self.thermal_conservation_receipts {
-            digest.write(trace.raw());
-            digest.write(receipt.tick);
-            write_i128(&mut digest, receipt.total_cell_energy_before);
-            write_i128(&mut digest, receipt.total_cell_energy_after);
-            write_i128(&mut digest, receipt.total_reservoir_budget_before);
-            write_i128(&mut digest, receipt.total_reservoir_budget_after);
-            write_i128(&mut digest, receipt.total_material_retained_before);
-            write_i128(&mut digest, receipt.total_material_retained_after);
-            write_i128(&mut digest, receipt.residual);
-        }
-        digest.write(self.thermal_boundary_records.len() as u64);
-        for record in &self.thermal_boundary_records {
-            write_chart_chunk(&mut digest, record.cell.chunk);
-            digest.write(u64::from(record.cell.cell_index));
-            write_chart_chunk(&mut digest, record.neighbor.chunk);
-            digest.write(u64::from(record.neighbor.cell_index));
-            digest.write(record.cell_pre_state.get() as u64);
+            digest.write(self.thermal_conservation_receipts.len() as u64);
+            for (trace, receipt) in &self.thermal_conservation_receipts {
+                digest.write(trace.raw());
+                digest.write(receipt.tick);
+                write_i128(&mut digest, receipt.total_cell_energy_before);
+                write_i128(&mut digest, receipt.total_cell_energy_after);
+                write_i128(&mut digest, receipt.total_reservoir_budget_before);
+                write_i128(&mut digest, receipt.total_reservoir_budget_after);
+                write_i128(&mut digest, receipt.total_material_retained_before);
+                write_i128(&mut digest, receipt.total_material_retained_after);
+                write_i128(&mut digest, receipt.residual);
+            }
+            digest.write(self.thermal_boundary_records.len() as u64);
+            for record in &self.thermal_boundary_records {
+                write_chart_chunk(&mut digest, record.cell.chunk);
+                digest.write(u64::from(record.cell.cell_index));
+                write_chart_chunk(&mut digest, record.neighbor.chunk);
+                digest.write(u64::from(record.neighbor.cell_index));
+                digest.write(record.cell_pre_state.get() as u64);
+            }
         }
         digest.write(self.resolution.evaluated_through().raw());
         for chunk in self.active_chunks.keys().copied() {
@@ -3478,52 +3500,37 @@ impl RuntimeState {
             }
         }
         write_bootstrap_record(&mut digest, &self.bootstrap);
-        write_hydrology_state(&mut digest, &self.hydrology);
+        write_hydrology_state(&mut digest, &self.hydrology, windows_in_physical_digest);
         PhysicalStateDigest {
             schema_version,
             fingerprint: digest.finish(),
         }
     }
 
-    /// The history digest, resuming from the events already absorbed.
+    /// The history digest: the logical fold of every causal and evidence record
+    /// published so far, in stream order.
     ///
-    /// Bit-identical to [`Self::history_digest_full_rescan`] for the same state,
-    /// which is the property `history_digest_matches_a_full_rescan_*` assert
-    /// rather than assume — see [`HistoryDigestPrefix`] for why resuming is
-    /// sound and which trace-store property would break it.
-    pub(crate) fn history_digest(&mut self) -> HistoryDigest {
-        let absorbed = self.history_digest_prefix.absorbed_events();
-        let committed = self.history.causal_record_count();
-        if committed > absorbed {
-            let mut accumulator = self.history_digest_prefix.resume();
-            let new_events = committed - absorbed;
-            let hot_len = self.traces.iter_hot().len();
-            for event in self
-                .traces
-                .iter_hot()
-                .skip(hot_len.saturating_sub(new_events))
-            {
-                write_trace_event(&mut accumulator, event);
-            }
-            self.history_digest_prefix
-                .advance(accumulator, absorbed.saturating_add(new_events));
-        }
-        let mut digest = self.history_digest_prefix.resume();
-        self.write_history_digest_tail(&mut digest);
+    /// Read from the history coordinator, which the store keeps current one
+    /// record at a time, so an ordinary tick or observer poll never walks the
+    /// history. The fold is over canonical record encodings and so is
+    /// independent of frame and segment boundaries, durability mode and the
+    /// hot cache. [`Self::history_digest_full_rescan`] is its cold oracle.
+    pub(crate) fn history_digest(&self) -> HistoryDigest {
         HistoryDigest {
             schema_version: CURRENT_DIGEST_SCHEMA_VERSION,
-            fingerprint: digest.finish(),
+            fingerprint: StateFingerprint::new(self.history.logical_digest()),
         }
     }
 
-    /// The history digest computed by re-walking the whole trace store.
+    /// The history digest recomputed from the stored frames.
     ///
-    /// This is the implementation `history_digest` had before it became
-    /// incremental, retained as the differential oracle its tests check against.
     /// The existing replay and locale suites compare two runs produced by the
     /// *same* implementation, so they cannot distinguish a correct incremental
-    /// accumulator from one with an absorption bug that moves both runs
-    /// identically; only a reference computed a different way can.
+    /// fold from one with an absorption bug that moves both runs identically;
+    /// only a reference computed a different way can. Under schema 9 that is a
+    /// decode of every frame from storage. Under schema 8 it is the original
+    /// trace-store walk, kept because a legacy snapshot's digests are verified
+    /// by recomputing them.
     #[doc(hidden)]
     pub fn history_digest_full_rescan(&self) -> Result<HistoryDigest, RuntimeError> {
         self.history_digest_full_rescan_for_schema(CURRENT_DIGEST_SCHEMA_VERSION)
@@ -3533,6 +3540,12 @@ impl RuntimeState {
         &self,
         schema_version: DigestSchemaVersion,
     ) -> Result<HistoryDigest, RuntimeError> {
+        if schema_version == CURRENT_DIGEST_SCHEMA_VERSION {
+            return Ok(HistoryDigest {
+                schema_version,
+                fingerprint: StateFingerprint::new(self.history.logical_digest_full_rescan()?),
+            });
+        }
         let mut digest = CanonicalDigest::new();
         digest.write(u64::from(schema_version.raw()));
         digest.write(HISTORY_DIGEST_DOMAIN);
@@ -3546,11 +3559,9 @@ impl RuntimeState {
         })
     }
 
-    /// The bounded state the history digest writes after the trace store.
-    ///
-    /// This is what keeps the incremental form possible: everything past the
-    /// unbounded trace scan is small, capped, and rewritten into a throwaway
-    /// copy of the prefix on every call.
+    /// The bounded windows a schema-8 history digest writes after the trace
+    /// store. Schema 9 has no tail: those windows are evidence records in the
+    /// stream the logical digest already folds.
     fn write_history_digest_tail(&self, digest: &mut CanonicalDigest) {
         digest.write(self.material_surfaces.len() as u64);
         for (id, surface) in &self.material_surfaces {
@@ -3588,11 +3599,16 @@ impl RuntimeState {
         }
     }
 
+    /// The experiment digest: world and recipe identity, the physical digest
+    /// and the history digest, folded together.
     pub(crate) fn canonical_state(
+        &self,
         physical_state_digest: PhysicalStateDigest,
         history_digest: HistoryDigest,
     ) -> ExperimentDigest {
         Self::canonical_state_for_schema(
+            self.config.deterministic.world_seed,
+            crate::runtime_recipe_fingerprint(&self.config),
             physical_state_digest,
             history_digest,
             CURRENT_DIGEST_SCHEMA_VERSION,
@@ -3600,6 +3616,8 @@ impl RuntimeState {
     }
 
     pub(crate) fn canonical_state_for_schema(
+        world_seed: u64,
+        recipe_fingerprint: [u8; 32],
         physical_state_digest: PhysicalStateDigest,
         history_digest: HistoryDigest,
         schema_version: DigestSchemaVersion,
@@ -3607,6 +3625,10 @@ impl RuntimeState {
         let mut digest = CanonicalDigest::new();
         digest.write(u64::from(schema_version.raw()));
         digest.write(EXPERIMENT_DIGEST_DOMAIN);
+        if schema_version != LEGACY_DIGEST_SCHEMA_VERSION {
+            digest.write(world_seed);
+            digest.write_bytes(recipe_fingerprint);
+        }
         digest.write(u64::from(physical_state_digest.schema_version.raw()));
         digest.write_bytes(physical_state_digest.bytes());
         digest.write(u64::from(history_digest.schema_version.raw()));
@@ -3624,7 +3646,7 @@ fn write_i128(digest: &mut CanonicalDigest, value: i128) {
     digest.write((bits >> 64) as u64);
 }
 
-fn runtime_system_registrations() -> Vec<SystemRegistrationSnapshot> {
+pub(crate) fn runtime_system_registrations() -> Vec<SystemRegistrationSnapshot> {
     vec![
         SystemRegistrationSnapshot {
             phase: Phase::Physics,
@@ -4621,14 +4643,25 @@ mod tests {
     }
 
     #[test]
-    fn material_transition_digest_distinguishes_absent_and_zero_trace_anchor() {
-        // Given: equivalent authoritative material histories except for a contact anchor.
-        let state = RuntimeState::new(&production_loop_config(701)).unwrap();
+    fn material_surface_digest_distinguishes_absent_and_zero_trace_anchor() {
+        // Given: equivalent material surfaces except for a contact anchor.
+        let mut absent = RuntimeState::new(&production_loop_config(701)).unwrap();
         let mut zero_anchor = RuntimeState::new(&production_loop_config(701)).unwrap();
-        zero_anchor.material_surface_transitions[0].contact_trace = Some(TraceId::new(0));
+        absent
+            .material_surfaces
+            .values_mut()
+            .next()
+            .expect("the production loop starts with a material surface")
+            .last_contact_trace = None;
+        zero_anchor
+            .material_surfaces
+            .values_mut()
+            .next()
+            .expect("the production loop starts with a material surface")
+            .last_contact_trace = Some(TraceId::new(0));
 
         // When: physical-state digests are computed for the same completed time.
-        let absent_digest = state.physical_state_digest(SimulationTime::new(0));
+        let absent_digest = absent.physical_state_digest(SimulationTime::new(0));
         let zero_digest = zero_anchor.physical_state_digest(SimulationTime::new(0));
 
         // Then: Option presence is part of the canonical authoritative representation.
@@ -4854,30 +4887,30 @@ mod tests {
     #[test]
     fn history_digest_matches_a_full_rescan_at_every_tick() {
         let mut runtime = Runtime::new(production_loop_config(17)).unwrap();
-        let mut absorbed_at_start = 0;
+        let mut previous = runtime.lock_state().unwrap().history_digest();
         for tick in 1..=48 {
             runtime.tick().unwrap();
-            let mut state = runtime.lock_state().unwrap();
+            let state = runtime.lock_state().unwrap();
             let incremental = state.history_digest();
             let rescanned = state.history_digest_full_rescan().unwrap();
             assert_eq!(
                 incremental, rescanned,
                 "incremental and full-rescan history digests diverged at tick {tick}"
             );
-            let absorbed = state.history_digest_prefix.absorbed_events();
-            assert!(
-                absorbed > absorbed_at_start,
-                "tick {tick} committed no events, so this tick tested nothing"
+            assert_ne!(
+                incremental, previous,
+                "tick {tick} committed no records, so this tick tested nothing"
             );
-            absorbed_at_start = absorbed;
+            previous = incremental;
         }
     }
 
     #[test]
-    fn history_digest_is_independent_of_how_often_it_was_observed() {
+    fn history_digest_is_independent_of_runtime_presentation_state() {
         // Observer polls run the same `RuntimeState::snapshot` that `tick` does,
-        // so a prefix that double-absorbed, or advanced without absorbing, would
-        // make the digest depend on how often a session happened to look at it.
+        // so a digest that advanced when it was read would depend on how often a
+        // session happened to look at it. Presentation state (polling, delivery,
+        // locale) must not reach the fold.
         let mut polled = Runtime::new(production_loop_config(29)).unwrap();
         let mut unpolled = Runtime::new(production_loop_config(29)).unwrap();
         for _ in 0..24 {
@@ -4900,46 +4933,84 @@ mod tests {
     }
 
     #[test]
-    fn history_digest_matches_a_full_rescan_across_export_import_and_resume() {
-        let mut runtime = Runtime::new(production_loop_config(23)).unwrap();
+    fn history_digest_matches_export_import_resume() {
+        // Given: a session saved as a bounded snapshot at tick 24.
+        let config = production_loop_config(23);
+        let mut runtime = Runtime::new(config.clone()).unwrap();
         runtime.run_ticks(24).unwrap();
         let live = runtime.snapshot().unwrap().history_digest;
-        let data = runtime.export_snapshot().unwrap();
+        let bytes = runtime.export_bounded_envelope().unwrap().encode().unwrap();
+        let envelope = causafera_persistence::SnapshotEnvelope::decode(&bytes).unwrap();
 
-        // An imported state has absorbed nothing, so its first call rebuilds the
-        // whole prefix in one pass; it has to land on the same bytes the live
-        // runtime reached incrementally, and stay there when called again.
-        let mut imported = RuntimeState::import_snapshot(data.clone()).unwrap();
+        // Then: the snapshot header names the digest the bundle published.
+        assert_eq!(envelope.header.history_digest, live.bytes());
+
+        // When: the bundle is handed to a resumed session.
+        let resume = runtime.into_history_resume().unwrap();
+        let mut resumed = Runtime::from_bounded_snapshot_bytes(&bytes, resume).unwrap();
+
+        // Then: it resumes at the same digest, the cold oracle agrees, and the
+        // two stay in step past the boundary and match an uninterrupted run.
+        assert_eq!(resumed.snapshot().unwrap().history_digest, live);
+        resumed.run_ticks(8).unwrap();
+        let continued = resumed.snapshot().unwrap().history_digest;
+        assert_ne!(
+            continued, live,
+            "eight further ticks must extend the stream"
+        );
+        assert_eq!(
+            continued,
+            resumed
+                .lock_state()
+                .unwrap()
+                .history_digest_full_rescan()
+                .unwrap()
+        );
+        let mut uninterrupted = Runtime::new(config).unwrap();
+        uninterrupted.run_ticks(32).unwrap();
+        assert_eq!(uninterrupted.snapshot().unwrap().history_digest, continued);
+    }
+
+    #[test]
+    fn a_complete_trace_import_starts_its_own_history_lineage() {
+        // Given: a legacy-shaped export carrying the complete causal trace.
+        let mut runtime = Runtime::new(production_loop_config(23)).unwrap();
+        runtime.run_ticks(24).unwrap();
+        let live = runtime.snapshot().unwrap();
+        let data = runtime.export_snapshot_with_full_history().unwrap();
+
+        // When: it is imported.
+        let imported = RuntimeState::import_snapshot(data.clone()).unwrap();
+
+        // Then: the physical state is the same, but the history is the one the
+        // import rebuilt: the traces it carried and none of the typed evidence a
+        // single-file snapshot cannot hold. Its digest therefore names that
+        // stream, agrees with its own cold rescan, and is not the live digest.
+        assert_eq!(
+            imported.physical_state_digest(live.time),
+            live.physical_state_digest
+        );
         assert_eq!(
             imported.history_digest(),
             imported.history_digest_full_rescan().unwrap()
         );
-        assert_eq!(imported.history_digest(), live);
-        assert_eq!(imported.history_digest(), live);
+        assert_ne!(imported.history_digest(), live.history_digest);
 
-        // `assemble_envelope` computes the header digest through that same
-        // import path, and the header is what a later reader compares against,
-        // so an absorption bug would be written into every exported snapshot.
+        // The legacy header digests are still recomputed with the schema-8 rules.
         let envelope = assemble_envelope(&data).unwrap();
         assert_eq!(
             envelope.header.history_digest,
-            imported.history_digest_full_rescan().unwrap().bytes()
-        );
-
-        // Resuming and ticking on keeps the two in step past the boundary.
-        let mut resumed = Runtime::from_snapshot(data).unwrap();
-        resumed.run_ticks(8).unwrap();
-        let mut state = resumed.lock_state().unwrap();
-        assert_eq!(
-            state.history_digest(),
-            state.history_digest_full_rescan().unwrap()
+            imported
+                .history_digest_full_rescan_for_schema(LEGACY_DIGEST_SCHEMA_VERSION)
+                .unwrap()
+                .bytes()
         );
     }
 
     #[test]
     fn identical_physical_state_can_have_different_history_digest() {
         let config = RuntimeConfig::new(13);
-        let mut first = RuntimeState::new(&config).unwrap();
+        let first = RuntimeState::new(&config).unwrap();
         let mut second = RuntimeState::new(&config).unwrap();
         let event = CausalEventProposal::new(
             EventProposalKey::new(99, 0, 0),
@@ -4980,14 +5051,8 @@ mod tests {
         );
         assert_ne!(first.history_digest(), second.history_digest());
         assert_ne!(
-            RuntimeState::canonical_state(
-                first.physical_state_digest(time),
-                first.history_digest()
-            ),
-            RuntimeState::canonical_state(
-                second.physical_state_digest(time),
-                second.history_digest()
-            ),
+            first.canonical_state(first.physical_state_digest(time), first.history_digest()),
+            second.canonical_state(second.physical_state_digest(time), second.history_digest()),
         );
     }
 

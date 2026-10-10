@@ -149,7 +149,11 @@ pub fn main() -> Result<(), CliError> {
         Commands::Save { seed, ticks, path } => {
             let mut runtime = Runtime::from_seed(seed)?;
             runtime.run_ticks(ticks)?;
-            let data = runtime.export_snapshot()?;
+            // The single-file container carries the complete causal trace, so it
+            // needs the complete history rather than the bounded hot suffix. A
+            // durable bundle replaces this boundary (Todo 8 of
+            // `plans/causal-history-storage.md`).
+            let data = runtime.export_snapshot_with_full_history()?;
             let envelope = assemble_envelope(&data)?;
             let path = std::path::Path::new(&path);
             write_snapshot_file(path, &envelope)?;

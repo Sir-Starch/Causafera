@@ -45,6 +45,11 @@ pub(crate) struct RuntimeHistoryCoordinator {
     logical_generation: u64,
     durable_generation: u64,
     visible_head: TraceId,
+    /// The logical history digest after the last published frame: a BLAKE3
+    /// fold of every causal and evidence record in stream order, maintained by
+    /// the store one record at a time. Cached here so reading it is infallible
+    /// and constant-time; the cold oracle is [`Self::logical_digest_full_rescan`].
+    logical_digest: [u8; 32],
     pending: VecDeque<FrameSummary>,
     handed_off_generation: u64,
     failure: Option<HistoryCommitPhase>,
@@ -68,7 +73,6 @@ impl Drop for TemporaryHistoryRoot {
 #[derive(Clone)]
 pub struct RuntimeHistoryResume {
     coordinator: RuntimeHistoryCoordinator,
-    digest_prefix: crate::HistoryDigestPrefix,
 }
 
 pub(crate) struct HistoryTxn {
@@ -249,6 +253,7 @@ impl Clone for RuntimeHistoryCoordinator {
             logical_generation: self.logical_generation,
             durable_generation: self.durable_generation,
             visible_head: self.visible_head,
+            logical_digest: self.logical_digest,
             pending: self.pending.clone(),
             handed_off_generation: self.handed_off_generation,
             failure: self.failure,
@@ -266,14 +271,7 @@ impl RuntimeHistoryResume {
     pub(crate) fn install(
         self,
         hot_budget: usize,
-    ) -> Result<
-        (
-            RuntimeHistoryCoordinator,
-            CausalTraceStore,
-            crate::HistoryDigestPrefix,
-        ),
-        RuntimeError,
-    > {
+    ) -> Result<(RuntimeHistoryCoordinator, CausalTraceStore), RuntimeError> {
         let traces = CausalTraceStore::with_cold_reader(
             self.coordinator.reader.clone(),
             hot_budget,
@@ -281,7 +279,7 @@ impl RuntimeHistoryResume {
         )?;
         let mut coordinator = self.coordinator;
         coordinator.owned_resume = true;
-        Ok((coordinator, traces, self.digest_prefix))
+        Ok((coordinator, traces))
     }
 }
 
@@ -296,23 +294,14 @@ impl RuntimeHistoryCoordinator {
         self.owned_resume
     }
 
-    pub(crate) fn resume(
-        &self,
-        digest_prefix: &crate::HistoryDigestPrefix,
-    ) -> Result<RuntimeHistoryResume, RuntimeError> {
+    pub(crate) fn resume(&self) -> Result<RuntimeHistoryResume, RuntimeError> {
         if self.logical_generation != self.durable_generation || !self.pending.is_empty() {
             return Err(RuntimeError::InvalidSnapshot(
                 "history resume requires a forced durable generation",
             ));
         }
-        if digest_prefix.absorbed_events() != self.reader.causal_record_count() {
-            return Err(RuntimeError::InvalidSnapshot(
-                "history digest prefix does not cover the durable frontier",
-            ));
-        }
         Ok(RuntimeHistoryResume {
             coordinator: self.clone(),
-            digest_prefix: digest_prefix.clone(),
         })
     }
 
@@ -326,7 +315,7 @@ impl RuntimeHistoryCoordinator {
         traces: &CausalTraceStore,
         world_seed: u64,
         registry: Arc<EvidenceDecoderRegistry>,
-    ) -> Result<(Self, CausalTraceStore, crate::HistoryDigestPrefix), RuntimeError> {
+    ) -> Result<(Self, CausalTraceStore), RuntimeError> {
         Self::bootstrap_with_registry_at_generation(
             traces,
             world_seed,
@@ -342,7 +331,7 @@ impl RuntimeHistoryCoordinator {
         hot_budget: usize,
         target_generation: Option<u64>,
         registry: Arc<EvidenceDecoderRegistry>,
-    ) -> Result<(Self, CausalTraceStore, crate::HistoryDigestPrefix), RuntimeError> {
+    ) -> Result<(Self, CausalTraceStore), RuntimeError> {
         let (store, cleanup_root) = temporary_history_store_with_registry(world_seed, registry)?;
         Self::bootstrap_with_store_and_cleanup(
             traces,
@@ -360,7 +349,7 @@ impl RuntimeHistoryCoordinator {
         world_seed: u64,
         hot_budget: usize,
         store: HistoryStore,
-    ) -> Result<(Self, CausalTraceStore, crate::HistoryDigestPrefix), RuntimeError> {
+    ) -> Result<(Self, CausalTraceStore), RuntimeError> {
         Self::bootstrap_with_store_and_cleanup(traces, world_seed, hot_budget, store, None, None)
     }
 
@@ -371,7 +360,7 @@ impl RuntimeHistoryCoordinator {
         mut store: HistoryStore,
         cleanup_root: Option<PathBuf>,
         target_generation: Option<u64>,
-    ) -> Result<(Self, CausalTraceStore, crate::HistoryDigestPrefix), RuntimeError> {
+    ) -> Result<(Self, CausalTraceStore), RuntimeError> {
         if store.namespace() != &runtime_history_namespace(world_seed) {
             return Err(RuntimeError::InvalidSnapshot(
                 "history store namespace does not match runtime world seed",
@@ -453,8 +442,6 @@ impl RuntimeHistoryCoordinator {
             durable_causal_record_count,
         )?);
         let visible_head = durable_anchor.frontier().trace_id;
-        let mut digest_prefix = crate::HistoryDigestPrefix::new();
-        digest_prefix.advance_owned(&records);
         let bounded = CausalTraceStore::with_cold_reader(reader.clone(), hot_budget, records)?;
         Ok((
             Self {
@@ -465,6 +452,7 @@ impl RuntimeHistoryCoordinator {
                 logical_generation: durable_anchor.logical_generation(),
                 durable_generation: durable_anchor.durable_generation(),
                 visible_head,
+                logical_digest: *durable_anchor.logical_digest(),
                 pending: VecDeque::new(),
                 handed_off_generation: durable_anchor.logical_generation(),
                 failure: None,
@@ -472,7 +460,6 @@ impl RuntimeHistoryCoordinator {
                 owned_resume: false,
             },
             bounded,
-            digest_prefix,
         ))
     }
 
@@ -551,6 +538,7 @@ impl RuntimeHistoryCoordinator {
             frame: frame.records.clone(),
         };
         self.logical_generation = persisted.logical_generation();
+        self.logical_digest = *persisted.logical_digest();
         self.handed_off_generation = persisted.logical_generation();
         if let Some(last) = frame.last_trace() {
             self.visible_head = last;
@@ -659,6 +647,7 @@ impl RuntimeHistoryCoordinator {
         )?;
         let _ = self.pending.pop_back();
         self.logical_generation = receipt.previous_generation;
+        self.logical_digest = receipt.previous_digest_bytes;
         self.visible_head = receipt.previous_frontier.trace_id;
         Ok(())
     }
@@ -687,15 +676,26 @@ impl RuntimeHistoryCoordinator {
         self.pending.iter().map(|frame| frame.records).sum()
     }
 
-    pub(crate) fn causal_record_count(&self) -> usize {
-        self.reader.causal_record_count()
-    }
-
     pub(crate) fn pending_trace_range(&self) -> (Option<TraceId>, Option<TraceId>) {
         (
             self.pending.front().and_then(|frame| frame.first_trace),
             self.pending.back().and_then(|frame| frame.last_trace),
         )
+    }
+
+    /// The history digest of the stream published so far.
+    pub(crate) const fn logical_digest(&self) -> [u8; 32] {
+        self.logical_digest
+    }
+
+    /// The same digest recomputed by decoding every frame from storage.
+    ///
+    /// The cold oracle `logical_digest` is checked against. Reads the whole
+    /// history, so it is never on a tick.
+    pub(crate) fn logical_digest_full_rescan(&self) -> Result<[u8; 32], RuntimeError> {
+        #[cfg(test)]
+        WHOLE_HISTORY_SCANS.with(|scans| scans.set(scans.get() + 1));
+        Ok(self.lock_store()?.logical_digest_full_rescan()?)
     }
 
     pub(crate) fn records_for_cold_oracle(&self) -> Result<Vec<OwnedCausalRecord>, RuntimeError> {
@@ -1373,7 +1373,7 @@ mod tests {
             DurabilityMode::GroupCommit,
         )
         .expect("history store creates");
-        let (mut coordinator, _, _) =
+        let (mut coordinator, _) =
             RuntimeHistoryCoordinator::bootstrap_with_store(&traces, 7, traces.hot_budget(), store)
                 .expect("coordinator handoff creates");
         traces
@@ -1457,7 +1457,7 @@ mod tests {
         .expect("history store creates");
 
         // When
-        let (coordinator, _, _) = RuntimeHistoryCoordinator::bootstrap_with_store_and_cleanup(
+        let (coordinator, _) = RuntimeHistoryCoordinator::bootstrap_with_store_and_cleanup(
             &traces,
             17,
             traces.hot_budget(),

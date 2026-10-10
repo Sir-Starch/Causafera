@@ -3329,23 +3329,30 @@ fn require_empty(dec: &LittleEndianDecoder<'_>) -> Result<(), PersistenceError> 
     }
 }
 
-/// Assemble a `RuntimeSnapshotData` into a canonical `SnapshotEnvelope`.
+/// Assemble a `RuntimeSnapshotData` into the legacy single-file container.
+///
+/// That container (codec revision 1) embeds the complete causal trace section
+/// `0x000A` and carries digest schema 8. Digest schema 9 has no such form: its
+/// history digest folds the durable record stream, so a snapshot is the bounded
+/// revision-2 envelope that [`crate::Runtime::export_bounded_envelope`] writes,
+/// with a `HistoryAnchor` instead of the history. This function therefore
+/// writes schema 8 and exists for legacy export and migration inputs.
 pub fn assemble_envelope(data: &RuntimeSnapshotData) -> Result<SnapshotEnvelope, PersistenceError> {
-    assemble_envelope_for_digest_schema(data, crate::CURRENT_DIGEST_SCHEMA_VERSION)
+    assemble_envelope_for_digest_schema(data, crate::LEGACY_DIGEST_SCHEMA_VERSION)
 }
 
-/// Assemble a snapshot using one of the supported authoritative digest
-/// schemas. Schema 8 is retained only for deterministic legacy export and
-/// migration fixtures; new snapshots use [`crate::CURRENT_DIGEST_SCHEMA_VERSION`].
+/// Assemble the legacy container under an explicit digest schema.
+///
+/// Only [`crate::LEGACY_DIGEST_SCHEMA_VERSION`] is accepted. A `0x000A`
+/// container under schema 9 would put a complete history into a snapshot whose
+/// identity no longer depends on one, so it is refused rather than written.
 pub fn assemble_envelope_for_digest_schema(
     data: &RuntimeSnapshotData,
     digest_schema: crate::DigestSchemaVersion,
 ) -> Result<SnapshotEnvelope, PersistenceError> {
-    if digest_schema != crate::LEGACY_DIGEST_SCHEMA_VERSION
-        && digest_schema != crate::CURRENT_DIGEST_SCHEMA_VERSION
-    {
+    if digest_schema != crate::LEGACY_DIGEST_SCHEMA_VERSION {
         return Err(PersistenceError::codec(
-            "unsupported authoritative digest schema",
+            "the legacy trace-section container carries digest schema 8 only",
         ));
     }
     let mut sections = std::collections::BTreeMap::new();
@@ -3506,17 +3513,13 @@ pub fn assemble_envelope_for_digest_schema(
     }
 
     let (physical_digest, history_digest) = {
-        let mut temp_state = RuntimeState::import_snapshot(data.clone())
+        let temp_state = RuntimeState::import_snapshot(data.clone())
             .map_err(|e| PersistenceError::codec(format!("digest computation failed: {e}")))?;
         let phys =
             temp_state.physical_state_digest_for_schema(data.recipe.completed_time, digest_schema);
-        let hist = if digest_schema == crate::CURRENT_DIGEST_SCHEMA_VERSION {
-            temp_state.history_digest()
-        } else {
-            temp_state
-                .history_digest_full_rescan_for_schema(digest_schema)
-                .map_err(|e| PersistenceError::codec(format!("digest computation failed: {e}")))?
-        };
+        let hist = temp_state
+            .history_digest_full_rescan_for_schema(digest_schema)
+            .map_err(|e| PersistenceError::codec(format!("digest computation failed: {e}")))?;
         (phys.bytes(), hist.bytes())
     };
 
@@ -3584,14 +3587,13 @@ pub fn disassemble_envelope(
         }
     }
     let legacy = crate::LEGACY_DIGEST_SCHEMA_VERSION.raw();
-    let current = crate::CURRENT_DIGEST_SCHEMA_VERSION.raw();
     let schemas = (
         envelope.header.physical_digest_schema,
         envelope.header.history_digest_schema,
     );
-    if schemas != (legacy, legacy) && schemas != (current, current) {
+    if schemas != (legacy, legacy) {
         return Err(PersistenceError::codec(
-            "unsupported authoritative digest schema",
+            "the legacy trace-section container carries digest schema 8 only",
         ));
     }
     disassemble_envelope_with_traces(envelope, None)
@@ -5580,7 +5582,7 @@ mod tests {
         let mut runtime = Runtime::from_seed(42).unwrap();
         runtime.run_ticks(10).unwrap();
 
-        let data = runtime.export_snapshot().unwrap();
+        let data = runtime.export_snapshot_with_full_history().unwrap();
         let completed_time = data.recipe.completed_time;
 
         let mut resumed = Runtime::from_snapshot(data).unwrap();
@@ -5594,6 +5596,40 @@ mod tests {
         let original_snapshot = original.snapshot().unwrap();
         let resumed_snapshot = resumed.snapshot().unwrap();
 
+        // A complete-trace import rebuilds the history from the causal records
+        // it was given, so its history digest names that lineage (see
+        // `a_complete_trace_import_starts_its_own_history_lineage`). What the
+        // snapshot does carry, the physical state, must continue identically.
+        assert_eq!(
+            original_snapshot.physical_state_digest,
+            resumed_snapshot.physical_state_digest
+        );
+        assert_eq!(
+            resumed_snapshot.history_digest,
+            resumed
+                .lock_state()
+                .unwrap()
+                .history_digest_full_rescan()
+                .unwrap()
+        );
+    }
+
+    #[test]
+    fn runtime_from_bounded_snapshot_resumes_at_completed_tick() {
+        let mut runtime = Runtime::from_seed(42).unwrap();
+        runtime.run_ticks(10).unwrap();
+        let bytes = runtime.export_bounded_envelope().unwrap().encode().unwrap();
+        let resume = runtime.into_history_resume().unwrap();
+
+        let mut resumed = Runtime::from_bounded_snapshot_bytes(&bytes, resume).unwrap();
+        assert_eq!(resumed.current_time().raw(), 10);
+        resumed.run_ticks(5).unwrap();
+
+        let mut original = Runtime::from_seed(42).unwrap();
+        original.run_ticks(15).unwrap();
+
+        let original_snapshot = original.snapshot().unwrap();
+        let resumed_snapshot = resumed.snapshot().unwrap();
         assert_eq!(
             original_snapshot.physical_state_digest,
             resumed_snapshot.physical_state_digest
@@ -5601,6 +5637,10 @@ mod tests {
         assert_eq!(
             original_snapshot.history_digest,
             resumed_snapshot.history_digest
+        );
+        assert_eq!(
+            original_snapshot.canonical_state,
+            resumed_snapshot.canonical_state
         );
     }
 

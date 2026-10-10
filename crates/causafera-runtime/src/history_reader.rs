@@ -169,20 +169,6 @@ impl RuntimeHistoryReader {
         Ok(())
     }
 
-    pub(crate) fn causal_record_count(&self) -> usize {
-        self.inner
-            .lock()
-            .map(|index| {
-                index.cold_causal_records
-                    + index
-                        .overlay
-                        .iter()
-                        .filter(|record| matches!(record, HistoryRecord::Causal(_)))
-                        .count()
-            })
-            .unwrap_or(usize::MAX)
-    }
-
     pub(crate) fn rollback(
         &self,
         previous_generation: u64,

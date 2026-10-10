@@ -8,9 +8,8 @@ use causafera_resolution::ResolutionField;
 use causafera_types::{ChartChunkCoord, SimulationTime, TraceId};
 
 use crate::{
-    ActorId, ActorPhysicalObject, ActorState, ExperimentRecipeManaSourceReceipt,
-    HistoryDigestPrefix, MaterialSurface, MaterialSurfaceId, PopulationAggregate, RuntimeError,
-    RuntimeState,
+    ActorId, ActorPhysicalObject, ActorState, ExperimentRecipeManaSourceReceipt, MaterialSurface,
+    MaterialSurfaceId, PopulationAggregate, RuntimeError, RuntimeState,
 };
 
 type UndoAction = Box<dyn FnOnce(&mut RuntimeState) + Send>;
@@ -23,7 +22,6 @@ pub(crate) struct TickUndoLog {
 }
 
 struct TickScalarUndo {
-    history_digest_prefix: HistoryDigestPrefix,
     advanced_through: SimulationTime,
     latest_physical_trace: TraceId,
     latest_mana_trace: Option<TraceId>,
@@ -52,7 +50,6 @@ struct TickScalarUndo {
 impl TickScalarUndo {
     fn capture(state: &RuntimeState) -> Self {
         Self {
-            history_digest_prefix: state.history_digest_prefix.clone(),
             advanced_through: state.advanced_through,
             latest_physical_trace: state.latest_physical_trace,
             latest_mana_trace: state.latest_mana_trace,
@@ -80,7 +77,6 @@ impl TickScalarUndo {
     }
 
     fn restore(self, state: &mut RuntimeState) {
-        state.history_digest_prefix = self.history_digest_prefix;
         state.advanced_through = self.advanced_through;
         state.latest_physical_trace = self.latest_physical_trace;
         state.latest_mana_trace = self.latest_mana_trace;
@@ -445,16 +441,6 @@ impl RuntimeState {
 
     pub(crate) fn push_executed_source(&mut self, receipt: ExperimentRecipeManaSourceReceipt) {
         self.executed_experiment_recipe_mana_sources.push(receipt);
-    }
-
-    pub(crate) fn advance_history_digest_prefix<'a>(
-        &mut self,
-        records: impl Iterator<Item = &'a causafera_core::OwnedCausalRecord>,
-    ) {
-        let previous = self.history_digest_prefix.clone();
-        self.history_digest_prefix.advance_history_records(records);
-        self.tick_undo
-            .push_undo(move |state| state.history_digest_prefix = previous);
     }
 }
 

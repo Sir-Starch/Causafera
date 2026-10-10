@@ -1,3 +1,8 @@
+// The inventory test includes an integration-test fixture by path; that file names
+// this crate the way an integration test does.
+#[cfg(test)]
+extern crate self as causafera_runtime;
+
 mod actors;
 mod benchmark;
 mod benchmark_validation;
@@ -5,9 +10,13 @@ mod bootstrap;
 mod bounded_snapshot;
 mod carrier;
 mod config;
+#[cfg(test)]
+mod digest_inventory;
 mod digests;
 mod experiment;
 mod field_raster;
+#[cfg(test)]
+mod history_digest_tests;
 mod history_reader;
 mod history_transaction;
 mod hydrology;
@@ -20,6 +29,7 @@ mod mana;
 mod material_surface;
 mod pattern_history;
 mod population;
+mod recipe_identity;
 mod resolution;
 pub mod runtime;
 pub mod snapshot_sections;
@@ -49,6 +59,7 @@ pub(crate) use mana::*;
 pub use material_surface::*;
 pub use pattern_history::*;
 pub use population::*;
+pub use recipe_identity::runtime_recipe_fingerprint;
 pub(crate) use resolution::*;
 pub use runtime::*;
 pub use snapshot_sections::*;
