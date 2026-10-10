@@ -8,6 +8,7 @@ mod benchmark;
 mod benchmark_validation;
 mod bootstrap;
 mod bounded_snapshot;
+mod bundle;
 mod carrier;
 mod config;
 #[cfg(test)]
@@ -47,6 +48,7 @@ pub use benchmark::*;
 pub use benchmark_validation::MaterialSurfaceLoopBenchmarkError;
 pub use bootstrap::*;
 pub use bounded_snapshot::*;
+pub use bundle::{BundleOptions, BundleRecovery, BundleSave, CheckpointCadence, LostLogicalRange};
 pub use carrier::*;
 pub use config::*;
 pub use digests::*;

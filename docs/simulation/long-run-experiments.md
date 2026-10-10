@@ -42,6 +42,30 @@ cargo run -p causafera-cli -- lab long-run --seed 42 --ticks 1000 \
 
 CLI names and rendered summaries are non-authoritative developer metadata. Wall-clock measurements are excluded from canonical replay results.
 
+### Saving and resuming a run
+
+```text
+cargo run -p causafera-cli -- save --seed 42 --ticks 1000 --path run.bundle
+cargo run -p causafera-cli -- resume --path run.bundle --ticks 1000
+cargo run -p causafera-cli -- run --seed 42 --ticks 1000 --history run.bundle --durability every-tick
+```
+
+A saved run is a **bundle directory**, not a file: the whole causal and evidence history
+(`catalog.sqlite`, `segments/`), a checkpoint of the bounded state, and a portable snapshot of it
+(`checkpoints/`, `snapshots/`). `save` creates it before the first tick and refuses any path that
+already holds data. `resume` opens it, restores the latest checkpoint, re-executes and checks every
+durable tick after that checkpoint, and then continues, appending to the same bundle and saving
+again; running `resume --ticks 100` twice is therefore 200 ticks of progress, where the legacy
+single-file snapshot started from the same point both times. `--ticks 0` only opens and verifies.
+
+Durability is `group` by default (published when 32 ticks or 250 ms have accumulated, so a crash can
+lose the last group) or `every-tick` (nothing reported as done is lost). `resume` prints
+`lost_ticks` and `lost_generations` for the ticks a crash had flushed but not published; they are
+reported, never promoted, and the resumed run simulates them again identically. A legacy
+single-file snapshot cannot be resumed in place; converting one (`resume --migrate-to`) needs the
+migration proof of Todo 10 in `plans/causal-history-storage.md` and is not available yet. `run`
+and `lab` keep their history in a temporary store unless `run --history` names a bundle.
+
 ## Bounded material-surface diagnostic
 
 The production `Runtime::new` benchmark harness was run twice in release mode with one promoted

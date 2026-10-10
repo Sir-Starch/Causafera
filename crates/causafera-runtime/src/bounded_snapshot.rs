@@ -256,7 +256,7 @@ fn disassemble_bounded_envelope_with_trace_snapshot(
 ) -> Result<RuntimeSnapshotData, PersistenceError> {
     validate_bounded_sections(envelope)?;
     let anchor = history_anchor_from_bounded_envelope(envelope)?;
-    if history.anchor()? != anchor {
+    if !anchors_agree(&history.anchor()?, &anchor) {
         return Err(PersistenceError::InvalidHistoryAnchor {
             invariant: "history reader anchor does not match bounded envelope",
         });
@@ -296,6 +296,29 @@ pub fn disassemble_snapshot_bytes(
             "unsupported snapshot codec revision {revision}"
         ))),
     }
+}
+
+/// Whether a snapshot's anchor and the reader's describe the same history.
+///
+/// Everything that identifies the history must be equal: namespace, generations,
+/// frontier, logical digest, storage root, digest schemas, evidence manifest
+/// and durability. The checkpoint pointer is the exception. A snapshot that is
+/// itself the payload of a checkpoint cannot name that checkpoint, so it
+/// carries the one before it, while the reader at the same generation already
+/// points at the checkpoint the snapshot was saved into. The pointer is
+/// navigation, not identity; a bundle checks it against its catalog when it is
+/// opened.
+fn anchors_agree(reader: &HistoryAnchor, snapshot: &HistoryAnchor) -> bool {
+    reader.namespace() == snapshot.namespace()
+        && reader.logical_generation() == snapshot.logical_generation()
+        && reader.durable_generation() == snapshot.durable_generation()
+        && reader.frontier() == snapshot.frontier()
+        && reader.logical_digest() == snapshot.logical_digest()
+        && reader.storage_root() == snapshot.storage_root()
+        && reader.physical_digest_schema() == snapshot.physical_digest_schema()
+        && reader.history_digest_schema() == snapshot.history_digest_schema()
+        && reader.evidence_manifest_digest() == snapshot.evidence_manifest_digest()
+        && reader.durability() == snapshot.durability()
 }
 
 fn validate_bounded_sections(envelope: &SnapshotEnvelope) -> Result<(), PersistenceError> {

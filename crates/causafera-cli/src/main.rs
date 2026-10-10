@@ -3,11 +3,15 @@ use causafera_explanation::{
     ClaimEvidenceState, ComparisonContext, ExplanationReport, FrameAssessment, NumericClaimValue,
 };
 use causafera_lab::{ExperimentError, ExperimentRunner};
-use causafera_persistence::{PersistenceError, read_snapshot_file, write_snapshot_file};
-use causafera_runtime::{Runtime, RuntimeError, assemble_envelope, disassemble_envelope};
+use causafera_persistence::PersistenceError;
+use causafera_runtime::{Runtime, RuntimeError};
 use causafera_types::SimulationTime;
 use clap::{Parser, Subcommand};
 use thiserror::Error;
+
+mod bundles;
+
+use bundles::DurabilityArg;
 
 #[derive(Parser)]
 #[command(name = "causafera")]
@@ -38,31 +42,60 @@ pub enum Commands {
         suppression_through: u64,
     },
     /// Run the causal simulation for a bounded number of ticks.
+    ///
+    /// The history lives in a temporary store unless `--history` names a bundle
+    /// directory to keep it in.
     Run {
         #[arg(long, default_value_t = 0)]
         seed: u64,
         #[arg(long, default_value_t = 100)]
         ticks: u64,
+        /// Keep the run's durable history in a new bundle at this path.
+        #[arg(long)]
+        history: Option<String>,
+        #[arg(long, value_enum, default_value_t = DurabilityArg::Group)]
+        durability: DurabilityArg,
     },
-    /// Save a snapshot of the current runtime state.
+    /// Run, then save the session as a new bundle directory.
+    ///
+    /// The directory is created before the first tick and must not exist yet
+    /// (or must be empty). `--ticks 0` saves tick zero.
     Save {
         #[arg(long, default_value_t = 0)]
         seed: u64,
         #[arg(long, default_value_t = 100)]
         ticks: u64,
-        #[arg(long, default_value = "causafera.snapshot")]
+        #[arg(long, default_value = "causafera.bundle")]
         path: String,
+        #[arg(long, value_enum, default_value_t = DurabilityArg::Group)]
+        durability: DurabilityArg,
     },
-    /// Resume a simulation from a saved snapshot and continue running.
+    /// Open a saved bundle, report what a crash cost it, and continue running.
+    ///
+    /// The run is appended to the bundle and saved again, so the next resume
+    /// continues from here. `--ticks 0` only opens and verifies.
     Resume {
-        #[arg(long, default_value = "causafera.snapshot")]
+        #[arg(long, default_value = "causafera.bundle")]
         path: String,
         #[arg(long, default_value_t = 100)]
         ticks: u64,
+        /// Convert a legacy single-file snapshot into a new bundle at this path.
+        #[arg(long)]
+        migrate_to: Option<String>,
     },
 }
 
-pub fn main() -> Result<(), CliError> {
+fn main() -> std::process::ExitCode {
+    match run() {
+        Ok(()) => std::process::ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("error: {error}");
+            std::process::ExitCode::FAILURE
+        }
+    }
+}
+
+fn run() -> Result<(), CliError> {
     let cli = Cli::parse();
     match cli.command {
         Commands::Doctor => doctor()?,
@@ -125,9 +158,21 @@ pub fn main() -> Result<(), CliError> {
             );
             render_explanation_report(&report.explanation_report);
         }
-        Commands::Run { seed, ticks } => {
-            let mut runtime = Runtime::from_seed(seed)?;
-            let snapshot = runtime.run_ticks(ticks)?;
+        Commands::Run {
+            seed,
+            ticks,
+            history,
+            durability,
+        } => {
+            if ticks == 0 {
+                return Err(RuntimeError::InvalidTickCount { ticks }.into());
+            }
+            let snapshot = if let Some(history) = &history {
+                bundles::create_run_and_save(seed, ticks, history, durability)?
+                    .ok_or(RuntimeError::InvalidTickCount { ticks })?
+            } else {
+                Runtime::from_seed(seed)?.run_ticks(ticks)?
+            };
             println!("simulation_status=ok strict_mode=true");
             println!(
                 "ticks={} traces={} physical_events={} mana_changes={} resolution_changes={}",
@@ -145,41 +190,28 @@ pub fn main() -> Result<(), CliError> {
                 snapshot.resolution_level,
                 fingerprint_hex(snapshot.canonical_state.fingerprint),
             );
+            match &history {
+                Some(path) => println!("history_status=retained path={path}"),
+                None => println!("history_status=temporary"),
+            }
         }
-        Commands::Save { seed, ticks, path } => {
-            let mut runtime = Runtime::from_seed(seed)?;
-            runtime.run_ticks(ticks)?;
-            // The single-file container carries the complete causal trace, so it
-            // needs the complete history rather than the bounded hot suffix. A
-            // durable bundle replaces this boundary (Todo 8 of
-            // `plans/causal-history-storage.md`).
-            let data = runtime.export_snapshot_with_full_history()?;
-            let envelope = assemble_envelope(&data)?;
-            let path = std::path::Path::new(&path);
-            write_snapshot_file(path, &envelope)?;
-            println!("snapshot_status=ok path={} ticks={}", path.display(), ticks);
+        Commands::Save {
+            seed,
+            ticks,
+            path,
+            durability,
+        } => {
+            bundles::create_run_and_save(seed, ticks, &path, durability)?;
         }
-        Commands::Resume { path, ticks } => {
-            let path = std::path::Path::new(&path);
-            let envelope = read_snapshot_file(path)?;
-            let data = disassemble_envelope(&envelope)?;
-            let mut runtime = Runtime::from_snapshot(data)?;
-            let completed = runtime.current_time().raw();
-            let snapshot = runtime.run_ticks(ticks)?;
-            println!(
-                "resume_status=ok path={} resumed_at={} new_ticks={} total_ticks={}",
-                path.display(),
-                completed,
-                ticks,
-                snapshot.time.raw(),
-            );
-            println!(
-                "traces={} physical_events={} mana_changes={} resolution_changes={}",
-                snapshot.causal_trace_count,
-                snapshot.physical_events,
-                snapshot.mana_cell_changes,
-                snapshot.resolution_changes,
-            );
+        Commands::Resume {
+            path,
+            ticks,
+            migrate_to,
+        } => {
+            if migrate_to.is_some() {
+                return Err(CliError::MigrationUnavailable);
+            }
+            bundles::open_run_and_save(&path, ticks)?;
         }
     }
     Ok(())
@@ -302,6 +334,17 @@ pub enum CliError {
     UnknownLabSelector { name: String },
     #[error("strict replay mismatch")]
     StrictReplayMismatch,
+    #[error(
+        "{path} is a legacy single-file snapshot, which cannot be resumed in place; it can only \
+         be converted into a bundle with `resume --migrate-to <new-dir>`, and that migration is \
+         not available yet (plans/causal-history-storage.md Todo 10)"
+    )]
+    LegacySnapshotFile { path: String },
+    #[error(
+        "`--migrate-to` is not available yet: converting a legacy single-file snapshot needs a \
+         migration proof, which is Todo 10 of plans/causal-history-storage.md"
+    )]
+    MigrationUnavailable,
     #[error(transparent)]
     Runtime(#[from] RuntimeError),
     #[error(transparent)]

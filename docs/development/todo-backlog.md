@@ -863,6 +863,7 @@ Round eight closed two of this class inside the bootstrap plan's scope — `acto
 **Observer Implications:** None
 **Explanation Implications:** Paged queries must not depend on frame boundaries
 **Out of Scope:** Compression, sharding, and changing what a tick records
+**Interacts with:** `Runtime::open_bundle` replays the durable ticks after a bundle's latest checkpoint and requires one stored frame per tick (it checks that the frames after the checkpoint equal the generations after it). Splitting a tick into several frames under one generation must change that pairing from frame ordinals to generations
 **Evidence:** `MAX_HISTORY_RECORDS_PER_FRAME` was drafted at 65,536 and a default nine-chunk hydrology tick commits about 68,000 records, so the observer session failed on its first tick with `RecordLimitExceeded`. The bounds were raised to 524,288 records and 128 MiB (`plans/causal-history-storage.md` Decision log, 2026-10-10). The widest configurable active region (`active_chunk_radius` 4, area shape, 81 chunks) is about nine times a nine-chunk tick, so it still approaches the raised record bound
 
 ## TODO-GEO-004: Coherent Surface Material Regions

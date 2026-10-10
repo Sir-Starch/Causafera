@@ -174,8 +174,27 @@ pub struct SchedulerRegistration {
 
 impl Runtime {
     pub fn new(config: RuntimeConfig) -> Result<Self, RuntimeError> {
+        Self::with_history(
+            config,
+            &crate::history_transaction::HistoryTarget::Temporary,
+        )
+    }
+
+    pub(crate) fn with_history(
+        config: RuntimeConfig,
+        target: &crate::history_transaction::HistoryTarget,
+    ) -> Result<Self, RuntimeError> {
         let config = config.validate()?;
-        let state = Arc::new(Mutex::new(RuntimeState::new(&config)?));
+        let state = RuntimeState::new_in(&config, target)?;
+        Ok(Self::assemble(&config, state))
+    }
+
+    /// The scheduler and systems for `config`, over an already built `state`.
+    ///
+    /// Registration order is the stream key of every system (plan risk R7), so
+    /// every constructor goes through here rather than registering its own.
+    pub(crate) fn assemble(config: &RuntimeConfig, state: RuntimeState) -> Self {
+        let state = Arc::new(Mutex::new(state));
         let mut scheduler = Scheduler::new(config.deterministic.clone());
         let mut scheduler_registrations = Vec::new();
         let mut register = |scheduler: &mut Scheduler, phase, system| {
@@ -257,13 +276,13 @@ impl Runtime {
             Phase::Physics,
             Box::new(crate::HydrologyRuntimeSystem::new(Arc::clone(&state))),
         );
-        Ok(Self {
+        Self {
             scheduler,
             state,
             scheduler_registrations,
             snapshot_budget: causafera_persistence::MAX_TOTAL_SIZE,
             hydrology_section_budget: causafera_geography::MAX_HYDROLOGY_SECTION_BYTES,
-        })
+        }
     }
 
     /// A read-only copy of the runtime's hydrology state.
@@ -588,14 +607,8 @@ impl Runtime {
                 "runtime system registrations do not match compiled registry",
             ));
         }
-        let config = data.recipe.config.clone();
-        let mut runtime = Self::new(config)?;
-        runtime
-            .scheduler
-            .set_current_time(data.recipe.completed_time);
-        runtime
-            .scheduler
-            .restore_system_times(data.recipe.completed_time.tick());
+        let config = data.recipe.config.clone().validate()?;
+        let completed_time = data.recipe.completed_time;
         let restored_state = RuntimeState::import_snapshot_with_history_generation(
             data,
             target_generation,
@@ -606,7 +619,11 @@ impl Runtime {
         // the data itself to compute its digests, and a size check inside import
         // would call assembly, which would call import.
         crate::tick_transaction::require_exportable(&restored_state)?;
-        *runtime.lock_state()? = restored_state;
+        let mut runtime = Self::assemble(&config, restored_state);
+        runtime.scheduler.set_current_time(completed_time);
+        runtime
+            .scheduler
+            .restore_system_times(completed_time.tick());
         Ok(runtime)
     }
 
@@ -803,6 +820,19 @@ pub enum RuntimeError {
     HistoryTransactionNotOpen,
     #[error("runtime systems did not advance through the scheduler time")]
     PhaseDesynchronized,
+    #[error("{path} already exists and is not an empty directory, so no bundle is created there")]
+    BundleExists { path: String },
+    #[error("this session's history is not a durable bundle")]
+    NotABundle,
+    #[error("the bundle has no checkpoint to resume from")]
+    BundleWithoutCheckpoint,
+    #[error("bundle verification failed: {reason}")]
+    BundleInvalid { reason: &'static str },
+    #[error("replaying generation {generation} diverged from the bundle: {reason}")]
+    ReplayDiverged {
+        generation: u64,
+        reason: &'static str,
+    },
     #[error("runtime history commit rejected at {phase:?}")]
     HistoryCommitRejected {
         phase: crate::history_transaction::HistoryCommitPhase,
@@ -1081,7 +1111,22 @@ pub struct ActiveChunkState {
 }
 
 impl RuntimeState {
+    #[cfg(test)]
     pub(crate) fn new(config: &RuntimeConfig) -> Result<Self, RuntimeError> {
+        Self::new_in(
+            config,
+            &crate::history_transaction::HistoryTarget::Temporary,
+        )
+    }
+
+    /// A freshly bootstrapped state whose durable history lives at `target`.
+    ///
+    /// The bootstrap recipe itself always runs over a scratch store; only the
+    /// store handed to the finished state is the requested one.
+    pub(crate) fn new_in(
+        config: &RuntimeConfig,
+        target: &crate::history_transaction::HistoryTarget,
+    ) -> Result<Self, RuntimeError> {
         let mut traces = if let Some(budget) = config.hot_budget {
             CausalTraceStore::with_hot_budget(budget)
         } else {
@@ -1243,11 +1288,13 @@ impl RuntimeState {
             .execute(&mut state)
             .map_err(|error| bootstrap_construction_error(error, "invalid bootstrap state"))?;
         state.bootstrap = bootstrap;
-        let (history, traces) = crate::history_transaction::RuntimeHistoryCoordinator::bootstrap(
-            &state.traces,
-            config.deterministic.world_seed,
-            history_registry,
-        )?;
+        let (history, traces) =
+            crate::history_transaction::RuntimeHistoryCoordinator::bootstrap_in(
+                &state.traces,
+                config.deterministic.world_seed,
+                history_registry,
+                target,
+            )?;
         state.history = history;
         state.traces = traces;
         // Configuration is accepted only if the world it produced can be saved.

@@ -177,11 +177,6 @@ fn every_false_claim_in_a_bounded_snapshot_is_refused_before_a_runtime_exists() 
         &expect_anchor_mismatch,
     );
     check(
-        "anchor_checkpoint_digest_bit_flipped",
-        tampered(&envelope, |_, anchor| flip(&mut anchor.checkpoint_digest)),
-        &expect_anchor_mismatch,
-    );
-    check(
         "anchor_evidence_manifest_bit_flipped",
         tampered(&envelope, |_, anchor| {
             flip(&mut anchor.evidence_manifest_digest);
@@ -237,5 +232,20 @@ fn every_false_claim_in_a_bounded_snapshot_is_refused_before_a_runtime_exists() 
     let resumed = Runtime::from_bounded_snapshot_bytes(&bytes, resume.clone())
         .expect("the intact snapshot resumes after every refusal");
     assert_eq!(resumed.current_time().raw(), 12);
-    assert_eq!(recorded.len(), 10);
+    assert_eq!(recorded.len(), 9);
+}
+
+#[test]
+fn the_checkpoint_pointer_in_an_anchor_is_navigation_and_not_identity() {
+    // Given: a snapshot whose anchor points at a different checkpoint.
+    let (envelope, _, resume) = saved_session();
+    let bytes = tampered(&envelope, |_, anchor| flip(&mut anchor.checkpoint_digest));
+
+    // Then: it still resumes at the runtime boundary, because a snapshot saved
+    // into a checkpoint cannot name that checkpoint and so carries the one before
+    // it, while the history at the same generation already points at the new one.
+    // The pointer is checked against the catalog when a bundle is opened.
+    Runtime::from_bounded_snapshot_bytes(&bytes, resume)
+        .map(|_| ())
+        .expect("the pointer is not part of the history's identity");
 }

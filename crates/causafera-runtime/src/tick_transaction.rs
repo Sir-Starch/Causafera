@@ -108,6 +108,7 @@ impl RuntimeTickTransaction {
             return Err(error.into());
         }
         state.commit_tick_undo();
+        state.checkpoint_if_due();
         Ok(())
     }
 }

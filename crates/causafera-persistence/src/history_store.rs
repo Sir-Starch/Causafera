@@ -34,9 +34,9 @@ use rusqlite::{
 
 use crate::history_tail::{TailChain, UnpublishedTail, scan_unpublished_tail};
 use crate::{
-    CheckpointEnvelope, CheckpointMetadata, EvidenceManifestDigest, HISTORY_FRAME_HEADER_LEN,
-    HistoryFrameHeaderFields, HistoryStoreReader, LogicalHistoryDigest, PersistenceError,
-    decode_checkpoint_with_generations, decode_history_frame, encode_checkpoint,
+    CheckpointEnvelope, CheckpointMetadata, DecodedHistoryFrame, EvidenceManifestDigest,
+    HISTORY_FRAME_HEADER_LEN, HistoryFrameHeaderFields, HistoryStoreReader, LogicalHistoryDigest,
+    PersistenceError, decode_checkpoint_with_generations, decode_history_frame, encode_checkpoint,
     encode_history_frame, logical_history_digest, sealed_segment_identity,
 };
 
@@ -324,6 +324,15 @@ impl AppendReceipt {
     pub const fn evidence_manifest_digest(&self) -> &[u8; 32] {
         &self.evidence_manifest_digest
     }
+}
+
+/// A durable frame as stored: its logical generation, the digest of the history
+/// before it, and its records.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StoredFrame {
+    pub generation: u64,
+    pub prior_logical_digest: [u8; 32],
+    pub records: Vec<HistoryRecord>,
 }
 
 /// A portable snapshot registered in a bundle's catalog.
@@ -1389,6 +1398,50 @@ impl HistoryStore {
         Ok(bytes)
     }
 
+    /// The first frame ordinal and the number of durable frames published after
+    /// `generation`: the frames a replay from a checkpoint at `generation` covers.
+    pub fn frames_after_generation(
+        &self,
+        generation: u64,
+    ) -> Result<(Option<u64>, u64), PersistenceError> {
+        self.catalog.frames_after_generation(generation)
+    }
+
+    /// How many causal events and evidence records the history holds through
+    /// `generation`.
+    pub fn record_counts_at(&self, generation: u64) -> Result<(u64, u64), PersistenceError> {
+        self.catalog.record_counts_at(generation)
+    }
+
+    /// One durable frame by ordinal, decoded and verified against the catalog.
+    pub fn read_frame(&self, ordinal: u64) -> Result<Option<StoredFrame>, PersistenceError> {
+        Ok(self
+            .catalog
+            .read_frame(ordinal, &self.registry)?
+            .map(|frame| StoredFrame {
+                generation: frame.header().fields.catalog_generation,
+                prior_logical_digest: frame.header().fields.prior_logical_history_digest,
+                records: frame.records().to_vec(),
+            }))
+    }
+
+    /// The checkpoint with the highest generation, verified against the catalog,
+    /// or `None` for a bundle that has not published one.
+    pub fn latest_checkpoint(&self) -> Result<Option<CheckpointEnvelope>, PersistenceError> {
+        self.catalog
+            .latest_checkpoint()?
+            .map(|checkpoint| {
+                self.catalog
+                    .read_checkpoint(&checkpoint, self.namespace, &self.registry)
+            })
+            .transpose()
+    }
+
+    /// `(generation, digest)` of every published checkpoint, oldest first.
+    pub fn checkpoint_digests(&self) -> Result<Vec<(u64, [u8; 32])>, PersistenceError> {
+        self.catalog.checkpoint_digests()
+    }
+
     pub fn seal_active(&mut self) -> Result<SealedSegment, PersistenceError> {
         self.flush_durable()?;
         if self.active_end == 0 {
@@ -2110,6 +2163,43 @@ impl SqliteHistoryCatalog {
             .and_then(parse_snapshot_row)
     }
 
+    fn latest_checkpoint(&self) -> Result<Option<CatalogCheckpoint>, PersistenceError> {
+        self.connection
+            .query_row(
+                "SELECT generation,time,digest,relative_path FROM checkpoints ORDER BY generation DESC LIMIT 1",
+                [],
+                checkpoint_from_row,
+            )
+            .optional()
+            .map_err(|error| sqlite_error("read latest checkpoint", error))
+            .and_then(parse_checkpoint_row)
+    }
+
+    fn checkpoint_digests(&self) -> Result<Vec<(u64, [u8; 32])>, PersistenceError> {
+        let mut statement = self
+            .connection
+            .prepare("SELECT generation,digest FROM checkpoints ORDER BY generation")
+            .map_err(|error| sqlite_error("prepare checkpoint digests", error))?;
+        let rows = statement
+            .query_map([], |row| {
+                Ok((row.get::<_, i64>(0)?, row.get::<_, Vec<u8>>(1)?))
+            })
+            .map_err(|error| sqlite_error("query checkpoint digests", error))?;
+        rows.map(|row| {
+            let (generation, digest) =
+                row.map_err(|error| sqlite_error("read checkpoint digest", error))?;
+            Ok((
+                from_i64(generation)?,
+                digest
+                    .try_into()
+                    .map_err(|_| PersistenceError::HistoryCatalogInvariant {
+                        invariant: "checkpoint digest width",
+                    })?,
+            ))
+        })
+        .collect()
+    }
+
     fn read_checkpoint(
         &self,
         checkpoint: &CatalogCheckpoint,
@@ -2676,68 +2766,145 @@ impl SqliteHistoryCatalog {
             )
             .map_err(|error| sqlite_error("prepare streamed frame query", error))?;
         let rows = statement
-            .query_map([to_i64(generation)?], |row| {
-                Ok((
-                    row.get::<_, i64>(0)?,
-                    row.get::<_, i64>(1)?,
-                    row.get::<_, i64>(2)?,
-                    row.get::<_, String>(3)?,
-                    row.get::<_, i64>(4)?,
-                    row.get::<_, Option<Vec<u8>>>(5)?,
-                    row.get::<_, i64>(6)?,
-                    row.get::<_, i64>(7)?,
-                    row.get::<_, Vec<u8>>(8)?,
-                ))
-            })
+            .query_map([to_i64(generation)?], frame_row)
             .map_err(|error| sqlite_error("query streamed frames", error))?;
         for row in rows {
-            let (_row_generation, ordinal, segment, path, sealed, identity, start, end, digest) =
-                row.map_err(|error| sqlite_error("read streamed frame", error))?;
-            if sealed != 0 && sealed != 1 {
-                return Err(PersistenceError::HistoryCatalogInvariant {
-                    invariant: "segment sealed flag is invalid",
-                });
-            }
-            let start = from_i64(start)?;
-            let end = from_i64(end)?;
-            validate_frame_range(start..end, MAX_STORED_FRAME_BYTES)?;
-            let segment = from_i64(segment)?;
-            let identity = identity
-                .map(|bytes| {
-                    bytes
-                        .try_into()
-                        .map_err(|_| PersistenceError::HistoryCatalogInvariant {
-                            invariant: "segment identity width",
-                        })
-                })
-                .transpose()?;
-            let path = resolve_segment_path(
-                &self.root,
-                segment,
-                sealed != 0,
-                identity,
-                Path::new(&path),
-                true,
-            )?;
-            let digest: [u8; 32] =
-                digest
-                    .try_into()
-                    .map_err(|_| PersistenceError::HistoryCatalogInvariant {
-                        invariant: "frame digest width",
-                    })?;
-            let bytes = read_exact_range(&path, start..end, MAX_STORED_FRAME_BYTES)?;
-            let decoded = decode_history_frame(&bytes, registry)?;
-            if decoded.header().fields.namespace != self.namespace()?
-                || decoded.header().frame_digest != digest
-            {
-                return Err(PersistenceError::HistoryCatalogInvariant {
-                    invariant: "catalog frame does not match canonical frame",
-                });
-            }
-            callback(from_i64(ordinal)?, decoded.records())?;
+            let row = row.map_err(|error| sqlite_error("read streamed frame", error))?;
+            let (ordinal, decoded) = self.decode_frame_row(row, registry)?;
+            callback(ordinal, decoded.records())?;
         }
         Ok(())
     }
+
+    fn record_counts_at(&self, generation: u64) -> Result<(u64, u64), PersistenceError> {
+        let count = |table: &'static str| -> Result<u64, PersistenceError> {
+            let value: i64 = self
+                .connection
+                .query_row(
+                    &format!("SELECT COUNT(*) FROM {table} WHERE generation<=?1"),
+                    [to_i64(generation)?],
+                    |row| row.get(0),
+                )
+                .map_err(|error| sqlite_error("count records at generation", error))?;
+            from_i64(value)
+        };
+        Ok((count("events")?, count("evidence")?))
+    }
+
+    /// The frame with this ordinal, decoded and checked against the catalog row.
+    fn read_frame(
+        &self,
+        ordinal: u64,
+        registry: &EvidenceDecoderRegistry,
+    ) -> Result<Option<DecodedHistoryFrame>, PersistenceError> {
+        let row = self
+            .connection
+            .query_row(
+                "SELECT f.generation,f.frame_ordinal,f.segment_sequence,s.relative_path,
+                        s.sealed,s.identity,f.start_offset,f.end_offset,f.frame_digest
+                 FROM frames f JOIN segments s ON s.sequence=f.segment_sequence
+                 WHERE f.frame_ordinal=?1",
+                [to_i64(ordinal)?],
+                frame_row,
+            )
+            .optional()
+            .map_err(|error| sqlite_error("read frame by ordinal", error))?;
+        row.map(|row| self.decode_frame_row(row, registry).map(|(_, frame)| frame))
+            .transpose()
+    }
+
+    /// The first frame ordinal and the number of durable frames published after
+    /// `generation`.
+    fn frames_after_generation(
+        &self,
+        generation: u64,
+    ) -> Result<(Option<u64>, u64), PersistenceError> {
+        let (first, count): (Option<i64>, i64) = self
+            .connection
+            .query_row(
+                "SELECT MIN(frame_ordinal),COUNT(*) FROM frames WHERE generation>?1",
+                [to_i64(generation)?],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .map_err(|error| sqlite_error("count frames after generation", error))?;
+        Ok((first.map(from_i64).transpose()?, from_i64(count)?))
+    }
+
+    fn decode_frame_row(
+        &self,
+        row: FrameRow,
+        registry: &EvidenceDecoderRegistry,
+    ) -> Result<(u64, DecodedHistoryFrame), PersistenceError> {
+        let (_row_generation, ordinal, segment, path, sealed, identity, start, end, digest) = row;
+        if sealed != 0 && sealed != 1 {
+            return Err(PersistenceError::HistoryCatalogInvariant {
+                invariant: "segment sealed flag is invalid",
+            });
+        }
+        let start = from_i64(start)?;
+        let end = from_i64(end)?;
+        validate_frame_range(start..end, MAX_STORED_FRAME_BYTES)?;
+        let segment = from_i64(segment)?;
+        let identity = identity
+            .map(|bytes| {
+                bytes
+                    .try_into()
+                    .map_err(|_| PersistenceError::HistoryCatalogInvariant {
+                        invariant: "segment identity width",
+                    })
+            })
+            .transpose()?;
+        let path = resolve_segment_path(
+            &self.root,
+            segment,
+            sealed != 0,
+            identity,
+            Path::new(&path),
+            true,
+        )?;
+        let digest: [u8; 32] =
+            digest
+                .try_into()
+                .map_err(|_| PersistenceError::HistoryCatalogInvariant {
+                    invariant: "frame digest width",
+                })?;
+        let bytes = read_exact_range(&path, start..end, MAX_STORED_FRAME_BYTES)?;
+        let decoded = decode_history_frame(&bytes, registry)?;
+        if decoded.header().fields.namespace != self.namespace()?
+            || decoded.header().frame_digest != digest
+        {
+            return Err(PersistenceError::HistoryCatalogInvariant {
+                invariant: "catalog frame does not match canonical frame",
+            });
+        }
+        Ok((from_i64(ordinal)?, decoded))
+    }
+}
+
+type FrameRow = (
+    i64,
+    i64,
+    i64,
+    String,
+    i64,
+    Option<Vec<u8>>,
+    i64,
+    i64,
+    Vec<u8>,
+);
+
+fn frame_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<FrameRow> {
+    Ok((
+        row.get(0)?,
+        row.get(1)?,
+        row.get(2)?,
+        row.get(3)?,
+        row.get(4)?,
+        row.get(5)?,
+        row.get(6)?,
+        row.get(7)?,
+        row.get(8)?,
+    ))
 }
 
 impl HistoryCatalog for SqliteHistoryCatalog {

@@ -169,6 +169,34 @@ impl RuntimeHistoryReader {
         Ok(())
     }
 
+    /// Replace the digests the anchors carry, once a replay has reached the
+    /// history's durable head and they are known exactly.
+    pub(crate) fn set_digests(
+        &self,
+        logical_digest: [u8; 32],
+        storage_root: [u8; 32],
+        evidence_manifest_digest: [u8; 32],
+    ) -> Result<(), HistoryError> {
+        let mut index = self
+            .inner
+            .lock()
+            .map_err(|_| HistoryError::ReaderOperationUnavailable)?;
+        index.logical_digest = logical_digest;
+        index.storage_root = storage_root;
+        index.evidence_manifest_digest = evidence_manifest_digest;
+        Ok(())
+    }
+
+    /// Record that a checkpoint with this digest is now the latest one, so the
+    /// anchors this reader hands out point at it.
+    pub(crate) fn set_checkpoint_digest(&self, digest: [u8; 32]) -> Result<(), HistoryError> {
+        self.inner
+            .lock()
+            .map_err(|_| HistoryError::ReaderOperationUnavailable)?
+            .checkpoint_digest = digest;
+        Ok(())
+    }
+
     pub(crate) fn rollback(
         &self,
         previous_generation: u64,

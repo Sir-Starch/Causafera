@@ -1,5 +1,5 @@
 use std::collections::{BTreeSet, VecDeque};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
@@ -10,7 +10,10 @@ use causafera_core::{
     MAX_FRAME_DECODED_BYTES, MAX_HISTORY_RECORDS_PER_FRAME, OwnedCausalRecord,
     canonical_history_records, validate_frame_shape,
 };
-use causafera_persistence::{DurabilityMode, HistoryStore, HistoryStoreReader};
+use causafera_persistence::{
+    CheckpointMetadata, CheckpointPolicy, CheckpointThreshold, DurabilityMode, HistoryStore,
+    HistoryStoreReader, should_checkpoint,
+};
 #[cfg(test)]
 use causafera_persistence::{FailurePoint, HistoryStoreStatus};
 use causafera_types::{EventId, TraceId};
@@ -37,6 +40,16 @@ struct FrameSummary {
     frame: Vec<HistoryRecord>,
 }
 
+/// Where a session's durable history lives.
+#[derive(Clone, Debug)]
+pub(crate) enum HistoryTarget {
+    /// A scratch bundle removed when the session ends: `Runtime::new`, tests,
+    /// and every session that was not asked to keep its history.
+    Temporary,
+    /// A named bundle that outlives the session.
+    Bundle { root: PathBuf, mode: DurabilityMode },
+}
+
 pub(crate) struct RuntimeHistoryCoordinator {
     reader: Arc<RuntimeHistoryReader>,
     store: Arc<Mutex<HistoryStore>>,
@@ -54,6 +67,17 @@ pub(crate) struct RuntimeHistoryCoordinator {
     handed_off_generation: u64,
     failure: Option<HistoryCommitPhase>,
     force_storage_flush: bool,
+    /// The named bundle this history is, if it is one that outlives the session.
+    bundle: Option<PathBuf>,
+    /// Set when the session is dropped to simulate a crash: shutdown then skips
+    /// the flush a clean exit performs.
+    abandoned: bool,
+    /// How far the durable history has run past the latest checkpoint.
+    cadence: CadenceCounters,
+    /// Set while the session re-executes frames the bundle already holds.
+    replay: Option<ReplayCursor>,
+    /// The failure of the last automatic checkpoint, if it has not succeeded since.
+    checkpoint_error: Option<RuntimeError>,
     /// Set when this coordinator came from a bounded snapshot's owned history,
     /// not from importing a complete causal-trace snapshot. A complete import is
     /// validated against the whole history it carries; an owned resume is
@@ -73,6 +97,65 @@ impl Drop for TemporaryHistoryRoot {
 #[derive(Clone)]
 pub struct RuntimeHistoryResume {
     coordinator: RuntimeHistoryCoordinator,
+}
+
+/// What a reopened bundle needs re-executed: the frames after its checkpoint.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct ReplayPlan {
+    pub checkpoint_generation: u64,
+    pub first_ordinal: u64,
+    pub frames: u64,
+}
+
+/// How far a bundle's durable history has run past its latest checkpoint.
+#[derive(Clone, Copy, Debug)]
+struct CadenceCounters {
+    policy: crate::CheckpointCadence,
+    ticks: u64,
+    bytes: u64,
+}
+
+impl CadenceCounters {
+    const fn new(policy: crate::CheckpointCadence) -> Self {
+        Self {
+            policy,
+            ticks: 0,
+            bytes: 0,
+        }
+    }
+
+    fn due(&self) -> bool {
+        should_checkpoint(
+            self.ticks,
+            self.bytes,
+            &CheckpointPolicy {
+                threshold: CheckpointThreshold::Coordinator {
+                    ticks: self.policy.ticks,
+                    bytes: self.policy.frame_bytes,
+                },
+                force: false,
+            },
+        )
+    }
+}
+
+/// Frames a reopened bundle holds past its latest checkpoint, which the session
+/// re-executes (and checks) instead of appending.
+#[derive(Clone, Copy, Debug)]
+struct ReplayCursor {
+    next_ordinal: u64,
+    remaining: u64,
+    durable_digest: [u8; 32],
+    evidence_manifest_digest: [u8; 32],
+}
+
+/// What a bundle save published.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct BundleSaveReceipt {
+    pub generation: u64,
+    pub checkpoint_digest: [u8; 32],
+    pub snapshot_digest: [u8; 32],
+    pub snapshot_path: PathBuf,
 }
 
 pub(crate) struct HistoryTxn {
@@ -95,9 +178,23 @@ pub(crate) struct HistoryPublishReceipt {
     previous_digest_bytes: [u8; 32],
     previous_frontier: HistoryFrontier,
     frame_records: usize,
+    /// The replay position before this frame, restored if the frame is rolled back.
+    replay: Option<(u64, u64)>,
 }
 
 static NEXT_TEMP_STORE: AtomicU64 = AtomicU64::new(0);
+
+#[cfg(test)]
+thread_local! {
+    /// Makes a replay see a stored frame that is one record short, so a test can
+    /// show that a re-executed tick which differs from the bundle is refused.
+    static REPLAY_TAMPER: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+#[cfg(test)]
+pub(crate) fn tamper_replayed_stored_frames(enabled: bool) {
+    REPLAY_TAMPER.with(|tamper| tamper.set(enabled));
+}
 
 pub(crate) fn runtime_history_namespace(world_seed: u64) -> [u8; 32] {
     let mut namespace = [0_u8; 32];
@@ -258,6 +355,11 @@ impl Clone for RuntimeHistoryCoordinator {
             handed_off_generation: self.handed_off_generation,
             failure: self.failure,
             force_storage_flush: self.force_storage_flush,
+            bundle: self.bundle.clone(),
+            abandoned: self.abandoned,
+            cadence: self.cadence,
+            replay: self.replay,
+            checkpoint_error: self.checkpoint_error.clone(),
             owned_resume: self.owned_resume,
         }
     }
@@ -457,10 +559,336 @@ impl RuntimeHistoryCoordinator {
                 handed_off_generation: durable_anchor.logical_generation(),
                 failure: None,
                 force_storage_flush: false,
+                bundle: None,
+                abandoned: false,
+                cadence: CadenceCounters::new(crate::CheckpointCadence::default()),
+                replay: None,
+                checkpoint_error: None,
                 owned_resume: false,
             },
             bounded,
         ))
+    }
+
+    /// A coordinator over `target`, bootstrapped from the genesis records in
+    /// `traces`.
+    pub(crate) fn bootstrap_in(
+        traces: &CausalTraceStore,
+        world_seed: u64,
+        registry: Arc<EvidenceDecoderRegistry>,
+        target: &HistoryTarget,
+    ) -> Result<(Self, CausalTraceStore), RuntimeError> {
+        match target {
+            HistoryTarget::Temporary => Self::bootstrap(traces, world_seed, registry),
+            HistoryTarget::Bundle { root, mode } => {
+                let store = HistoryStore::create_with_registry(
+                    root,
+                    runtime_history_namespace(world_seed),
+                    *mode,
+                    registry,
+                )?;
+                let (mut coordinator, bounded) = Self::bootstrap_with_store_and_cleanup(
+                    traces,
+                    world_seed,
+                    traces.hot_budget(),
+                    store,
+                    None,
+                    None,
+                )?;
+                coordinator.bundle = Some(root.clone());
+                Ok((coordinator, bounded))
+            }
+        }
+    }
+
+    /// A resume handle over a bundle that was opened from disk.
+    ///
+    /// Without a replay plan the handle is at the bundle's durable head and
+    /// nothing is appended: the history is exactly what the bundle holds. With
+    /// one it is pinned at the checkpoint the session restores from, and the
+    /// durable frames after it are re-executed rather than appended.
+    pub(crate) fn resume_open_bundle(
+        store: HistoryStore,
+        root: &Path,
+        cadence: crate::CheckpointCadence,
+        replay: Option<ReplayPlan>,
+    ) -> Result<RuntimeHistoryResume, RuntimeError> {
+        let (durable_reader, events, evidence, cursor) = match replay {
+            None => {
+                let counts = store.catalog().counts()?;
+                (
+                    store.durable_reader()?,
+                    counts.events,
+                    counts.evidence,
+                    None,
+                )
+            }
+            Some(plan) => {
+                let (events, evidence) = store.record_counts_at(plan.checkpoint_generation)?;
+                let status = store.status()?;
+                (
+                    store.reader_at_durable_generation(plan.checkpoint_generation)?,
+                    events,
+                    evidence,
+                    Some(ReplayCursor {
+                        next_ordinal: plan.first_ordinal,
+                        remaining: plan.frames,
+                        durable_digest: status.durable_digest,
+                        evidence_manifest_digest: status.durable_evidence_manifest_digest,
+                    }),
+                )
+            }
+        };
+        let durable_anchor = durable_reader.anchor()?;
+        let record_count = events
+            .checked_add(evidence)
+            .and_then(|count| usize::try_from(count).ok())
+            .ok_or(HistoryError::ArithmeticOverflow)?;
+        let causal_count = usize::try_from(events).map_err(|_| HistoryError::ArithmeticOverflow)?;
+        let shared_reader = Arc::new(SharedHistoryReader::new(durable_reader));
+        let cold_reader: Arc<dyn CausalHistoryReader> = shared_reader.clone();
+        let reader = Arc::new(RuntimeHistoryReader::new(
+            cold_reader,
+            record_count,
+            causal_count,
+        )?);
+        Ok(RuntimeHistoryResume {
+            coordinator: Self {
+                reader,
+                store: Arc::new(Mutex::new(store)),
+                durable_reader: shared_reader,
+                cleanup_root: None,
+                logical_generation: durable_anchor.logical_generation(),
+                durable_generation: durable_anchor.durable_generation(),
+                visible_head: durable_anchor.frontier().trace_id,
+                logical_digest: *durable_anchor.logical_digest(),
+                pending: VecDeque::new(),
+                handed_off_generation: durable_anchor.logical_generation(),
+                failure: None,
+                force_storage_flush: false,
+                bundle: Some(root.to_path_buf()),
+                abandoned: false,
+                cadence: CadenceCounters::new(cadence),
+                replay: cursor,
+                checkpoint_error: None,
+                owned_resume: true,
+            },
+        })
+    }
+
+    /// End a replay: the session is at the bundle's durable head.
+    ///
+    /// Every replayed frame matched, so the history the session now holds is
+    /// the history the bundle recorded; this only moves the reader and the
+    /// durable bookkeeping from the checkpoint's generation to that head.
+    pub(crate) fn finish_replay(&mut self) -> Result<(), RuntimeError> {
+        let Some(cursor) = self.replay else {
+            return Ok(());
+        };
+        if cursor.remaining != 0 {
+            return Err(RuntimeError::ReplayDiverged {
+                generation: self.logical_generation,
+                reason: "the replay ended before the bundle's durable head",
+            });
+        }
+        self.replay = None;
+        self.reader.set_digests(
+            cursor.durable_digest,
+            cursor.durable_digest,
+            cursor.evidence_manifest_digest,
+        )?;
+        self.logical_digest = cursor.durable_digest;
+        self.install_durable_state()
+    }
+
+    /// One replayed frame: check it against the stored frame it re-executes
+    /// and advance the session's view of its history as if it had been appended.
+    fn publish_replayed(
+        &mut self,
+        frame: &PreparedHistoryFrame,
+    ) -> Result<HistoryPublishReceipt, RuntimeError> {
+        let Some(cursor) = self.replay else {
+            return Err(RuntimeError::InvalidSnapshot("no replay is in progress"));
+        };
+        self.reader
+            .validate_append(frame.generation, &frame.records)?;
+        #[allow(unused_mut, reason = "only a test corrupts the stored frame")]
+        let mut stored = self.lock_store()?.read_frame(cursor.next_ordinal)?.ok_or(
+            RuntimeError::ReplayDiverged {
+                generation: frame.generation,
+                reason: "the bundle has no stored frame for this tick",
+            },
+        )?;
+        #[cfg(test)]
+        if REPLAY_TAMPER.with(std::cell::Cell::get) {
+            stored.records.pop();
+        }
+        if stored.generation != frame.generation {
+            return Err(RuntimeError::ReplayDiverged {
+                generation: frame.generation,
+                reason: "the stored frame belongs to a different generation",
+            });
+        }
+        if stored.records != frame.records {
+            return Err(RuntimeError::ReplayDiverged {
+                generation: frame.generation,
+                reason: "the re-executed tick produced different records than the bundle holds",
+            });
+        }
+        let (previous_generation, previous_digest, previous_frontier) =
+            self.reader.publication_preimage()?;
+        let previous_digest_bytes = self.reader.logical_digest_bytes()?;
+        let anchor = self.reader.anchor()?;
+        self.reader.append(
+            frame.generation,
+            &frame.records,
+            *anchor.logical_digest(),
+            *anchor.storage_root(),
+            *anchor.evidence_manifest_digest(),
+        )?;
+        self.pending.push_back(FrameSummary {
+            generation: frame.generation,
+            first_trace: frame.first_trace(),
+            last_trace: frame.last_trace(),
+            records: frame.records.len(),
+            frame: frame.records.clone(),
+        });
+        self.logical_generation = frame.generation;
+        self.handed_off_generation = frame.generation;
+        if let Some(last) = frame.last_trace() {
+            self.visible_head = last;
+        }
+        self.replay = Some(ReplayCursor {
+            next_ordinal: cursor.next_ordinal + 1,
+            remaining: cursor.remaining - 1,
+            ..cursor
+        });
+        Ok(HistoryPublishReceipt {
+            previous_generation,
+            previous_digest,
+            previous_digest_bytes,
+            previous_frontier,
+            frame_records: frame.records.len(),
+            replay: Some((cursor.next_ordinal, cursor.remaining)),
+        })
+    }
+
+    pub(crate) fn set_cadence(&mut self, cadence: crate::CheckpointCadence) {
+        self.cadence = CadenceCounters::new(cadence);
+    }
+
+    /// Whether the durable history has run far enough past its latest checkpoint
+    /// that the next quiescent durable frontier should be checkpointed.
+    pub(crate) fn checkpoint_due(&self) -> bool {
+        self.bundle.is_some()
+            && self.replay.is_none()
+            && self.pending.is_empty()
+            && self.logical_generation == self.durable_generation
+            && self.cadence.due()
+    }
+
+    pub(crate) fn note_checkpoint_failure(&mut self, error: RuntimeError) {
+        self.checkpoint_error = Some(error);
+    }
+
+    pub(crate) fn checkpoint_error(&self) -> Option<RuntimeError> {
+        self.checkpoint_error.clone()
+    }
+
+    /// Publish a checkpoint (no portable snapshot) of the durable frontier, the
+    /// automatic kind taken when the history has run far past the last one.
+    pub(crate) fn checkpoint_only(
+        &mut self,
+        bytes: &[u8],
+        anchor: &HistoryAnchor,
+        metadata: &CheckpointMetadata,
+    ) -> Result<(), RuntimeError> {
+        let mut store = self.lock_store()?;
+        let generation = store.durable_generation();
+        let existing = store
+            .checkpoint_at_durable_generation(generation)?
+            .filter(|existing| existing.header.durable_generation == generation);
+        let digest = match existing {
+            Some(existing) => existing.digest,
+            None => *store.publish_checkpoint(anchor, metadata, bytes)?.digest(),
+        };
+        drop(store);
+        self.reader.set_checkpoint_digest(digest)?;
+        self.cadence.ticks = 0;
+        self.cadence.bytes = 0;
+        self.checkpoint_error = None;
+        Ok(())
+    }
+
+    /// The scratch directory a temporary history lives in, if it is one.
+    #[cfg(test)]
+    pub(crate) fn temporary_root(&self) -> Option<&Path> {
+        self.cleanup_root.as_ref().map(|root| root.0.as_path())
+    }
+
+    /// The root of the named bundle this history is, if it is one.
+    pub(crate) fn bundle_root(&self) -> Option<&Path> {
+        self.bundle.as_deref()
+    }
+
+    /// Mark the session crashed: dropping it will not run the clean-shutdown flush.
+    pub(crate) fn abandon(&mut self) {
+        self.abandoned = true;
+    }
+
+    pub(crate) const fn is_abandoned(&self) -> bool {
+        self.abandoned
+    }
+
+    /// Force the pending group, then publish a checkpoint and a portable
+    /// snapshot of the durable frontier.
+    ///
+    /// `bytes` is the bounded snapshot exported after the group was forced, so
+    /// its anchor names exactly this generation. The checkpoint is skipped when
+    /// the generation already has one (a second save with no tick between).
+    pub(crate) fn save(
+        &mut self,
+        bytes: &[u8],
+        anchor: &HistoryAnchor,
+        metadata: &CheckpointMetadata,
+    ) -> Result<BundleSaveReceipt, RuntimeError> {
+        if self.bundle.is_none() {
+            return Err(RuntimeError::NotABundle);
+        }
+        let mut store = self.lock_store()?;
+        let generation = store.durable_generation();
+        if anchor.durable_generation() != generation || anchor.logical_generation() != generation {
+            return Err(RuntimeError::BundleInvalid {
+                reason: "the snapshot anchor is not at the bundle's durable frontier",
+            });
+        }
+        // `checkpoint_at_durable_generation` answers with the latest checkpoint
+        // *linked* to the generation, which is an earlier one unless this
+        // generation has its own; only an exact match is already saved.
+        let (checkpoint_digest, snapshot) = match store
+            .checkpoint_at_durable_generation(generation)?
+            .filter(|existing| existing.header.durable_generation == generation)
+        {
+            Some(existing) => {
+                let snapshot = store.publish_snapshot(generation, &existing.payload)?;
+                (existing.digest, snapshot)
+            }
+            None => {
+                let digest = *store.publish_checkpoint(anchor, metadata, bytes)?.digest();
+                (digest, store.publish_snapshot(generation, bytes)?)
+            }
+        };
+        drop(store);
+        self.reader.set_checkpoint_digest(checkpoint_digest)?;
+        self.cadence.ticks = 0;
+        self.cadence.bytes = 0;
+        self.checkpoint_error = None;
+        Ok(BundleSaveReceipt {
+            generation,
+            checkpoint_digest,
+            snapshot_digest: *snapshot.digest(),
+            snapshot_path: snapshot.path().to_path_buf(),
+        })
     }
 
     pub(crate) fn begin(&self) -> Result<HistoryTxn, RuntimeError> {
@@ -495,6 +923,9 @@ impl RuntimeHistoryCoordinator {
         &mut self,
         frame: &PreparedHistoryFrame,
     ) -> Result<HistoryPublishReceipt, RuntimeError> {
+        if self.replay.is_some() {
+            return self.publish_replayed(frame);
+        }
         self.reject(HistoryCommitPhase::BeforeFramePublication)?;
         self.reader
             .validate_append(frame.generation, &frame.records)?;
@@ -549,7 +980,11 @@ impl RuntimeHistoryCoordinator {
             previous_digest_bytes,
             previous_frontier,
             frame_records: frame.records.len(),
+            replay: None,
         };
+        let range = persisted.range();
+        self.cadence.ticks += 1;
+        self.cadence.bytes += range.end.saturating_sub(range.start);
         self.pending.push_back(summary);
         if persisted_durable_generation == persisted.logical_generation() {
             self.install_durable_state()?
@@ -649,6 +1084,13 @@ impl RuntimeHistoryCoordinator {
         self.logical_generation = receipt.previous_generation;
         self.logical_digest = receipt.previous_digest_bytes;
         self.visible_head = receipt.previous_frontier.trace_id;
+        if let (Some((next_ordinal, remaining)), Some(cursor)) = (receipt.replay, self.replay) {
+            self.replay = Some(ReplayCursor {
+                next_ordinal,
+                remaining,
+                ..cursor
+            });
+        }
         Ok(())
     }
 
