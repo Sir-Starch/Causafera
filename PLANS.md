@@ -68,10 +68,12 @@ Progress
   checks are green. RED or partially integrated work is not a checkpoint.
 - Create an atomic local checkpoint commit after every completed green wave. The commit must contain
   the wave's implementation and direct tests, stage only the documented file allowlist, and be
-  recorded in the ExecPlan Progress section with the commands that passed.
+  recorded in the ExecPlan Progress section with the commands that passed. These commits are
+  mandatory execution checkpoints, not a final optional cleanup step.
 - Do not begin a second implementation wave while a completed prior wave exists only as uncommitted
-  working-tree state. If commits are explicitly prohibited, pause after the first green wave and
-  obtain authorization before continuing.
+  working-tree state. If a higher-priority instruction requires explicit commit authorization,
+  obtain it before starting implementation; if commits are prohibited, do not begin another wave
+  or claim the plan complete without its checkpoints.
 - Parallel writing agents never own Git state. They must not run `git checkout`, `git restore`,
   `git reset`, `git clean`, `git stash`, staging, or commit commands. The lead agent reads every
   touched file, runs verification, integrates the wave, and creates the checkpoint.

@@ -155,8 +155,10 @@ Protecting unrelated and uncommitted work outranks convenience.
   verified green wave. Never checkpoint a RED, uncompilable, or partially integrated state, and never
   carry multiple completed waves only in the working tree. Before each checkpoint, inspect status and
   both staged and unstaged diffs, stage only the wave's allowlist, rerun its focused verification, and
-  record the commit hash and evidence in the ExecPlan Progress section. If checkpoint commits are
-  prohibited, stop after one green wave and request authorization.
+  record the commit hash and evidence in the ExecPlan Progress section. Checkpoint commits are a
+  required part of plan execution, not optional follow-up work. If a higher-priority instruction
+  requires explicit commit authorization, obtain it before starting implementation; if commits are
+  prohibited, do not start another wave or claim plan completion without them.
 - **Delegation.** A delegated writing agent does not own Git state and must not run staging, commit,
   or worktree-discarding commands unless its task is explicitly Git-only. The coordinating agent owns
   integration, recovery, staging, and commits.
