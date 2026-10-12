@@ -134,3 +134,28 @@ pub fn open_run_and_save(path: &str, ticks: u64) -> Result<(), CliError> {
     runtime.shutdown()?;
     Ok(())
 }
+
+pub fn migrate_run_and_save(source: &str, destination: &str, ticks: u64) -> Result<(), CliError> {
+    let source = Path::new(source);
+    let destination = Path::new(destination);
+    let mut runtime =
+        Runtime::migrate_legacy_snapshot(source, destination, BundleOptions::default())?;
+    let proof =
+        causafera_runtime::LegacyMigrationProof::read(destination)?.ok_or(CliError::Runtime(
+            causafera_runtime::RuntimeError::InvalidSnapshot("migration proof missing"),
+        ))?;
+    println!(
+        "migration_status=ok source={} destination={} source_events={} evidence_records={} generation={}",
+        source.display(),
+        destination.display(),
+        proof.source_causal_events,
+        proof.destination_evidence_records,
+        proof.destination_generation,
+    );
+    if ticks > 0 {
+        runtime.run_ticks(ticks)?;
+        runtime.save_bundle()?;
+    }
+    runtime.shutdown()?;
+    Ok(())
+}

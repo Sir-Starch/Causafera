@@ -582,6 +582,8 @@ dependencies = [
  "causafera-resolution",
  "causafera-types",
  "causafera-world",
+ "serde",
+ "serde_json",
  "thiserror 2.0.19",
 ]
 

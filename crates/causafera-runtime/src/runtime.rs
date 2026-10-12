@@ -960,7 +960,7 @@ impl Runtime {
         Self::from_snapshot_with_history(data, target_generation, None)
     }
 
-    fn from_snapshot_with_history(
+    pub(crate) fn from_snapshot_with_history(
         data: RuntimeSnapshotData,
         target_generation: Option<u64>,
         history_resume: Option<RuntimeHistoryResume>,

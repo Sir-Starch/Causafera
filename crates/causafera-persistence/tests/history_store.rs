@@ -30,6 +30,7 @@ use causafera_types::{
 
 static NEXT_TEMP: AtomicU64 = AtomicU64::new(0);
 static TEMP_CREATION_LOCK: Mutex<()> = Mutex::new(());
+static RECOVERY_PROCESS_LOCK: Mutex<()> = Mutex::new(());
 const WRITER_LOCK_CHILD_BUNDLE: &str = "CAUSAFERA_HISTORY_WRITER_LOCK_CHILD_BUNDLE";
 const RECOVERY_CHILD_BUNDLE: &str = "CAUSAFERA_HISTORY_RECOVERY_CHILD_BUNDLE";
 const RECOVERY_CHILD_POINT: &str = "CAUSAFERA_HISTORY_RECOVERY_CHILD_POINT";
@@ -185,13 +186,48 @@ fn history_recovery_child_process() {
                 .publish_snapshot(1, b"portable snapshot")
                 .expect("child snapshot");
         }
+        "clean" => {
+            store
+                .append_tick(vec![causal(2, vec![TraceId::new(1)])])
+                .expect("child append before clean exit");
+            store.flush_durable().expect("clean flush");
+            return;
+        }
         _ => panic!("unknown recovery operation"),
     }
     panic!("the requested crash boundary was not reached");
 }
 
 #[test]
+fn history_recovery_clean_exit_publishes_complete_generation_in_both_modes() {
+    let _process_guard = RECOVERY_PROCESS_LOCK.lock().expect("recovery process lock");
+    for mode in [DurabilityMode::GroupCommit, DurabilityMode::EveryTick] {
+        let temp = TempBundle::new(&format!("clean-process-exit-{mode:?}"));
+        let mut store = HistoryStore::create(temp.path(), [0x77; 32], mode).expect("store");
+        store
+            .append_tick(vec![causal(1, vec![])])
+            .expect("first frame");
+        store.flush_durable().expect("first frame durable");
+        drop(store);
+        let output = Command::new(env::current_exe().expect("test binary"))
+            .arg("--exact")
+            .arg("history_recovery_child_process")
+            .env(RECOVERY_CHILD_BUNDLE, temp.path())
+            .env(RECOVERY_CHILD_POINT, "none")
+            .env(RECOVERY_CHILD_OPERATION, "clean")
+            .output()
+            .expect("start clean child");
+        assert!(output.status.success(), "{output:?}");
+        let reopened = HistoryStore::open(temp.path()).expect("clean generation reopens");
+        assert_eq!(reopened.durable_generation(), 2);
+        assert_eq!(reopened.catalog().counts().expect("counts").events, 2);
+        assert_eq!(reopened.recovered_tail().frames, 0);
+    }
+}
+
+#[test]
 fn history_recovery_process_crash_matrix() {
+    let _process_guard = RECOVERY_PROCESS_LOCK.lock().expect("recovery process lock");
     for mode in [DurabilityMode::GroupCommit, DurabilityMode::EveryTick] {
         for (operation, points) in [
             (
@@ -3130,6 +3166,7 @@ fn history_store_refuses_snapshots_it_cannot_stand_behind() {
 
 #[test]
 fn history_recovery_snapshot_faults_restore_catalog_and_retry() {
+    let _process_guard = RECOVERY_PROCESS_LOCK.lock().expect("recovery process lock");
     for point in [
         FailurePoint::AfterSnapshotSyncBeforeCatalogCommit,
         FailurePoint::AfterSnapshotCatalogCommitBeforeRootSync,

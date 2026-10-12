@@ -449,6 +449,16 @@ impl RuntimeHistoryResume {
 }
 
 impl RuntimeHistoryCoordinator {
+    pub(crate) fn register_migration_proof(
+        &self,
+        reference: causafera_persistence::MigrationProofReference,
+    ) -> Result<(), RuntimeError> {
+        self.store
+            .lock()
+            .map_err(|_| RuntimeError::InvalidSnapshot("history store lock poisoned"))?
+            .register_migration_proof(reference)?;
+        Ok(())
+    }
     pub(crate) fn reader(&self) -> Arc<dyn CausalHistoryReader> {
         self.reader.clone()
     }

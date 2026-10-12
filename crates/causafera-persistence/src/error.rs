@@ -129,6 +129,8 @@ pub enum PersistenceError {
     CheckpointDigestMismatch,
     #[error("snapshot file does not match its registered digest")]
     SnapshotDigestMismatch,
+    #[error("migration proof does not match its catalog reference")]
+    MigrationProofMismatch,
     #[error("checkpoint payload length {length} exceeds maximum {max}")]
     CheckpointPayloadTooLarge { length: u64, max: u64 },
     #[error("{remaining} trailing bytes remain after the checkpoint payload")]

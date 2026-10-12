@@ -578,6 +578,58 @@ pub fn encode_thermal_section(snapshot: &ThermalSnapshot) -> Vec<u8> {
     buf
 }
 
+pub(crate) fn encode_legacy_thermal_transfer(
+    receipt: &ThermalCellTransferReceiptSnapshot,
+) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    let mut enc = LittleEndianEncoder::new(&mut bytes);
+    enc.write_u64(receipt.conservation_trace.raw());
+    encode_thermal_cell_key(&mut enc, receipt.cell);
+    enc.write_i64(receipt.pre_state);
+    enc.write_i64(receipt.post_state);
+    encode_option_trace(&mut enc, receipt.cell_change_trace_id);
+    enc.write_u64(receipt.faces.len() as u64);
+    for face in &receipt.faces {
+        encode_thermal_face_record(&mut enc, *face);
+    }
+    enc.write_u64(receipt.reservoirs.len() as u64);
+    for reservoir in &receipt.reservoirs {
+        encode_thermal_reservoir_transfer_record(&mut enc, *reservoir);
+    }
+    encode_thermal_material_transfer_record(&mut enc, receipt.material);
+    bytes
+}
+
+pub(crate) fn encode_legacy_thermal_conservation(
+    receipt: &ThermalConservationReceiptSnapshot,
+) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    let mut enc = LittleEndianEncoder::new(&mut bytes);
+    enc.write_u64(receipt.trace.raw());
+    enc.write_u64(receipt.tick);
+    for value in [
+        receipt.total_cell_energy_before,
+        receipt.total_cell_energy_after,
+        receipt.total_reservoir_budget_before,
+        receipt.total_reservoir_budget_after,
+        receipt.total_material_retained_before,
+        receipt.total_material_retained_after,
+        receipt.residual,
+    ] {
+        encode_i128(&mut enc, value);
+    }
+    bytes
+}
+
+pub(crate) fn encode_legacy_thermal_boundary(record: &ThermalBoundaryRecordSnapshot) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    let mut enc = LittleEndianEncoder::new(&mut bytes);
+    encode_thermal_cell_key(&mut enc, record.cell);
+    encode_thermal_cell_key(&mut enc, record.neighbor);
+    enc.write_i64(record.cell_pre_state);
+    bytes
+}
+
 pub fn decode_thermal_section(bytes: &[u8]) -> Result<ThermalSnapshot, PersistenceError> {
     let mut dec = LittleEndianDecoder::new(bytes);
     let parameters = causafera_domains::ThermalParameters {
@@ -1000,6 +1052,51 @@ pub fn encode_material_surface_section(snapshot: &MaterialSurfaceSnapshot) -> Ve
         enc.write_u64(transition.transition_trace.raw());
     }
     buf
+}
+
+pub(crate) fn encode_legacy_material_transition(transition: &MaterialSurfaceTransition) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    let mut enc = LittleEndianEncoder::new(&mut bytes);
+    encode_material_surface_id(&mut enc, transition.id);
+    enc.write_u64(transition.occurred_at.raw());
+    enc.write_i64(transition.before_condition);
+    enc.write_i64(transition.after_condition);
+    enc.write_i64(transition.mana_total);
+    encode_option_trace(&mut enc, transition.contact_trace);
+    encode_option_trace(&mut enc, transition.mana_effect_trace);
+    enc.write_u64(transition.transition_trace.raw());
+    bytes
+}
+
+pub(crate) fn encode_legacy_material_gate(transition: &MaterialSurfaceGateTransition) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    let mut enc = LittleEndianEncoder::new(&mut bytes);
+    encode_material_surface_id(&mut enc, transition.id);
+    enc.write_u64(transition.occurred_at.raw());
+    encode_bool(&mut enc, transition.before_active);
+    encode_bool(&mut enc, transition.after_active);
+    enc.write_i64(transition.local_mana_before);
+    enc.write_i64(transition.local_mana_after);
+    enc.write_u64(transition.local_mana_trace.raw());
+    encode_option_trace(&mut enc, transition.contact_trace);
+    enc.write_u64(transition.transition_trace.raw());
+    bytes
+}
+
+pub(crate) fn encode_legacy_material_thermal(
+    transition: &MaterialSurfaceThermalTransition,
+) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    let mut enc = LittleEndianEncoder::new(&mut bytes);
+    encode_material_surface_id(&mut enc, transition.id);
+    enc.write_u64(transition.occurred_at.raw());
+    enc.write_i64(transition.before_retained);
+    enc.write_i64(transition.after_retained);
+    enc.write_i64(transition.cell_pre_state);
+    enc.write_i64(transition.signed_flux);
+    enc.write_u64(transition.cell_trace.raw());
+    enc.write_u64(transition.transition_trace.raw());
+    bytes
 }
 
 pub fn decode_material_surface_section(
@@ -4022,6 +4119,47 @@ fn encode_hydrology_receipt(enc: &mut LittleEndianEncoder<'_>, receipt: &Hydrolo
             }
         }
     }
+}
+
+pub(crate) fn encode_legacy_hydrology_receipt(receipt: &HydrologyTransferReceipt) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    encode_hydrology_receipt(&mut LittleEndianEncoder::new(&mut bytes), receipt);
+    bytes
+}
+
+pub(crate) fn encode_legacy_hydrology_conservation(
+    receipt: &causafera_domains::HydrologyConservationReceipt,
+) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    encode_hydrology_conservation(&mut LittleEndianEncoder::new(&mut bytes), receipt);
+    bytes
+}
+
+pub(crate) fn encode_legacy_hydrology_forcing(
+    record: &causafera_geography::HydrologyForcingRecord,
+) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    let mut enc = LittleEndianEncoder::new(&mut bytes);
+    enc.write_u64(record.forcing_id());
+    enc.write_u64(record.scheduled_tick());
+    enc.write_u64(record.precipitation_volume().get());
+    enc.write_u64(record.potential_et_volume().get());
+    enc.write_u64(record.external_inflow_volume().get());
+    enc.write_u64(record.origin_trace().raw());
+    enc.write_u64(record.producer_policy_schema());
+    match record.applied_at() {
+        None => encode_bool(&mut enc, false),
+        Some(tick) => {
+            encode_bool(&mut enc, true);
+            enc.write_u64(tick);
+        }
+    }
+    enc.write_u64(record.targets().len() as u64);
+    for member in record.targets() {
+        encode_hydrology_cell(&mut enc, member.cell);
+        enc.write_u64(member.weight.get());
+    }
+    bytes
 }
 
 fn encode_carrier(enc: &mut LittleEndianEncoder<'_>, carrier: HydrologyCarrierKey) {

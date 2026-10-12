@@ -208,10 +208,11 @@ fn run() -> Result<(), CliError> {
             ticks,
             migrate_to,
         } => {
-            if migrate_to.is_some() {
-                return Err(CliError::MigrationUnavailable);
+            if let Some(destination) = migrate_to {
+                bundles::migrate_run_and_save(&path, &destination, ticks)?;
+            } else {
+                bundles::open_run_and_save(&path, ticks)?;
             }
-            bundles::open_run_and_save(&path, ticks)?;
         }
     }
     Ok(())
@@ -335,16 +336,9 @@ pub enum CliError {
     #[error("strict replay mismatch")]
     StrictReplayMismatch,
     #[error(
-        "{path} is a legacy single-file snapshot, which cannot be resumed in place; it can only \
-         be converted into a bundle with `resume --migrate-to <new-dir>`, and that migration is \
-         not available yet (plans/causal-history-storage.md Todo 10)"
+        "{path} is a legacy single-file snapshot; use `resume --migrate-to <new-dir>` to convert it"
     )]
     LegacySnapshotFile { path: String },
-    #[error(
-        "`--migrate-to` is not available yet: converting a legacy single-file snapshot needs a \
-         migration proof, which is Todo 10 of plans/causal-history-storage.md"
-    )]
-    MigrationUnavailable,
     #[error(transparent)]
     Runtime(#[from] RuntimeError),
     #[error(transparent)]

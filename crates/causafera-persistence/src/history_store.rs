@@ -49,6 +49,7 @@ const GROUP_MAX_MILLIS: u64 = 250;
 const CATALOG_ID_QUERY_BATCH: usize = 900;
 const SEGMENT_IDENTITY_MAGIC: &[u8] = b"CFSG";
 const CATALOG_SCHEMA_VERSION: i64 = 2;
+const MAX_MIGRATION_PROOF_BYTES: u64 = 4 * 1024 * 1024;
 pub(crate) const MAX_STORED_FRAME_BYTES: u64 =
     (causafera_core::MAX_FRAME_DECODED_BYTES + HISTORY_FRAME_HEADER_LEN) as u64;
 
@@ -237,6 +238,12 @@ pub struct HistoryStoreStatus {
     pub evidence_manifest_digest: [u8; 32],
     pub durable_evidence_manifest_digest: [u8; 32],
     pub catalog_counts: CatalogCounts,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct MigrationProofReference {
+    pub source_digest: [u8; 32],
+    pub file_digest: [u8; 32],
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -662,6 +669,9 @@ impl HistoryStore {
         let namespace = catalog.namespace()?;
         let mode = catalog.mode()?;
         let durable_generation = catalog.durable_generation()?;
+        if let Some(reference) = catalog.migration_proof_reference()? {
+            verify_migration_proof_file(root, reference)?;
+        }
         let (active_sequence, active_relative_path, durable_end) = catalog.raw_active_segment()?;
         let active_path = resolve_segment_path(
             root,
@@ -770,6 +780,23 @@ impl HistoryStore {
     /// are the logical ticks a crash lost, reported so the loss is not silent.
     pub const fn recovered_tail(&self) -> UnpublishedTail {
         self.recovered_tail
+    }
+
+    pub fn migration_proof_reference(
+        &self,
+    ) -> Result<Option<MigrationProofReference>, PersistenceError> {
+        self.catalog.migration_proof_reference()
+    }
+
+    pub fn register_migration_proof(
+        &mut self,
+        reference: MigrationProofReference,
+    ) -> Result<(), PersistenceError> {
+        verify_migration_proof_file(&self.root, reference)?;
+        self.catalog.register_migration_proof(reference)?;
+        File::open(&self.root)
+            .and_then(|directory| directory.sync_all())
+            .map_err(|error| io_error("sync migration proof catalog", &self.root, error))
     }
 
     /// The logical history digest recomputed from the canonical frames.
@@ -1787,6 +1814,58 @@ impl SqliteHistoryCatalog {
                 invariant: "unsupported durability mode",
             }),
         }
+    }
+
+    fn migration_proof_reference(
+        &self,
+    ) -> Result<Option<MigrationProofReference>, PersistenceError> {
+        let bytes: Option<Vec<u8>> = self
+            .connection
+            .query_row(
+                "SELECT value FROM metadata WHERE key='migration_proof'",
+                [],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|error| sqlite_error("read migration proof reference", error))?;
+        bytes
+            .map(|bytes| {
+                let bytes: [u8; 64] = bytes
+                    .try_into()
+                    .map_err(|_| PersistenceError::MigrationProofMismatch)?;
+                let mut source_digest = [0; 32];
+                let mut file_digest = [0; 32];
+                source_digest.copy_from_slice(&bytes[..32]);
+                file_digest.copy_from_slice(&bytes[32..]);
+                Ok(MigrationProofReference {
+                    source_digest,
+                    file_digest,
+                })
+            })
+            .transpose()
+    }
+
+    fn register_migration_proof(
+        &mut self,
+        reference: MigrationProofReference,
+    ) -> Result<(), PersistenceError> {
+        if let Some(existing) = self.migration_proof_reference()? {
+            return if existing == reference {
+                Ok(())
+            } else {
+                Err(PersistenceError::MigrationProofMismatch)
+            };
+        }
+        let mut bytes = Vec::with_capacity(64);
+        bytes.extend_from_slice(&reference.source_digest);
+        bytes.extend_from_slice(&reference.file_digest);
+        self.connection
+            .execute(
+                "INSERT INTO metadata(key,value) VALUES ('migration_proof', ?1)",
+                params![bytes],
+            )
+            .map_err(|error| sqlite_error("register migration proof", error))?;
+        Ok(())
     }
 
     fn insert_active_segment(
@@ -3507,6 +3586,30 @@ fn resolve_catalog_path(
         }
         Err(error) => Err(io_error("inspect catalog path", &candidate, error)),
     }
+}
+
+fn verify_migration_proof_file(
+    root: &Path,
+    reference: MigrationProofReference,
+) -> Result<(), PersistenceError> {
+    let name = reference
+        .source_digest
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    let relative = PathBuf::from("migration").join(format!("{name}.proof"));
+    let path = resolve_catalog_path(root, &relative, "migration", "proof", true)?;
+    let length = fs::metadata(&path)
+        .map_err(|error| io_error("read migration proof metadata", &path, error))?
+        .len();
+    if length > MAX_MIGRATION_PROOF_BYTES {
+        return Err(PersistenceError::MigrationProofMismatch);
+    }
+    let bytes = read_exact_range(&path, 0..length, MAX_MIGRATION_PROOF_BYTES)?;
+    if blake3::hash(&bytes).as_bytes() != &reference.file_digest {
+        return Err(PersistenceError::MigrationProofMismatch);
+    }
+    Ok(())
 }
 
 fn open_existing_active(path: &Path) -> Result<File, PersistenceError> {

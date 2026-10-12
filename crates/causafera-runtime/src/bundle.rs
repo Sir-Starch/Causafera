@@ -109,13 +109,13 @@ pub struct BundleRecovery {
     pub unaccounted_bytes: u64,
 }
 
-fn bundle_io(operation: &'static str, error: &std::io::Error) -> RuntimeError {
+pub(crate) fn bundle_io(operation: &'static str, error: &std::io::Error) -> RuntimeError {
     RuntimeError::SnapshotAssembly(PersistenceError::codec(format!("{operation}: {error}")))
 }
 
 /// Whether `root` already existed (as an empty directory), refusing anything
 /// else so that no bundle is ever created over existing data.
-fn require_fresh_root(root: &Path) -> Result<bool, RuntimeError> {
+pub(crate) fn require_fresh_root(root: &Path) -> Result<bool, RuntimeError> {
     match std::fs::metadata(root) {
         Ok(metadata) => {
             let empty = metadata.is_dir()
@@ -138,7 +138,7 @@ fn require_fresh_root(root: &Path) -> Result<bool, RuntimeError> {
 
 /// Remove what a failed `create_bundle` left behind, and only that: the
 /// directory it made, or the contents of the empty directory it was given.
-fn discard_failed_bundle(root: &Path, existed_empty: bool) {
+pub(crate) fn discard_failed_bundle(root: &Path, existed_empty: bool) {
     if existed_empty {
         if let Ok(entries) = std::fs::read_dir(root) {
             for entry in entries.flatten() {
@@ -285,6 +285,16 @@ impl Runtime {
     ) -> Result<(Self, BundleRecovery), RuntimeError> {
         let registry = runtime_history_decoder_registry()?;
         let store = HistoryStore::open_with_registry(root, registry)?;
+        if let Some(reference) = store.migration_proof_reference()? {
+            let proof = crate::legacy_migration::LegacyMigrationProof::read(root)?
+                .ok_or(RuntimeError::InvalidSnapshot("migration proof is missing"))?;
+            if proof.source_envelope_digest != reference.source_digest {
+                return Err(RuntimeError::InvalidSnapshot(
+                    "migration proof source mismatch",
+                ));
+            }
+            proof.verify_against_store(&store)?;
+        }
         let tail = store.recovered_tail();
         let checkpoint = store
             .latest_checkpoint()?

@@ -214,18 +214,51 @@ fn a_legacy_single_file_snapshot_names_the_migration_target() {
     assert!(error.contains("--migrate-to"), "{error}");
     assert!(error.contains("legacy"), "{error}");
 
-    // And: the flag is accepted but the migration, which needs its proof, is
-    // not available yet, so it refuses rather than guessing.
     let target = temp.join("migrated");
-    let error = failed(&causafera(&[
+    let source_before = fs::read(&file).expect("source before migration");
+    let output = succeeded(&causafera(&[
         "resume",
         "--path",
         path_arg(&file),
         "--migrate-to",
         path_arg(&target),
+        "--ticks",
+        "0",
     ]));
-    assert!(error.contains("not available yet"), "{error}");
-    assert!(!target.exists());
+    assert!(output.contains("migration_status=ok"), "{output}");
+    assert_eq!(
+        fs::read(&file).expect("source after migration"),
+        source_before
+    );
+    assert_eq!(
+        Runtime::open_bundle(&target)
+            .expect("bundle reopens")
+            .0
+            .current_time()
+            .raw(),
+        3
+    );
+}
+
+#[test]
+fn checked_in_legacy_snapshot_migrates_through_the_cli() {
+    let temp = TempDir::new("legacy-migration");
+    let source = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../causafera-runtime/tests/fixtures/causal-history/schema-8-baseline.otps");
+    let destination = temp.join("migrated");
+    let output = succeeded(&causafera(&[
+        "resume",
+        "--path",
+        path_arg(&source),
+        "--migrate-to",
+        path_arg(&destination),
+        "--ticks",
+        "1",
+    ]));
+    assert!(output.contains("migration_status=ok"), "{output}");
+    assert!(output.contains("source_events=37862"), "{output}");
+    let (runtime, _) = Runtime::open_bundle(&destination).expect("migrated CLI bundle reopens");
+    assert_eq!(runtime.current_time().raw(), 5);
 }
 
 #[test]

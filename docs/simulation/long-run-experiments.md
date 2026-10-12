@@ -56,15 +56,21 @@ A saved run is a **bundle directory**, not a file: the whole causal and evidence
 already holds data. `resume` opens it, restores the latest checkpoint, re-executes and checks every
 durable tick after that checkpoint, and then continues, appending to the same bundle and saving
 again; running `resume --ticks 100` twice is therefore 200 ticks of progress, where the legacy
-single-file snapshot started from the same point both times. `--ticks 0` only opens and verifies.
+single-file snapshot started from the same point both times. For an existing bundle, `--ticks 0`
+only opens and verifies.
 
 Durability is `group` by default (published when 32 ticks or 250 ms have accumulated, so a crash can
 lose the last group) or `every-tick` (nothing reported as done is lost). `resume` prints
 `lost_ticks` and `lost_generations` for the ticks a crash had flushed but not published; they are
 reported, never promoted, and the resumed run simulates them again identically. A legacy
-single-file snapshot cannot be resumed in place; converting one (`resume --migrate-to`) needs the
-migration proof of Todo 10 in `plans/causal-history-storage.md` and is not available yet. `run`
-and `lab` keep their history in a temporary store unless `run --history` names a bundle.
+single-file snapshot cannot be resumed in place. Convert an accepted schema-8 file with
+`cargo run -p causafera-cli -- resume --path legacy.otps --migrate-to run.bundle --ticks 0`.
+Migration validates the source, copies its complete causal graph and available legacy receipts,
+and publishes a new bundle with a catalog-bound proof of the source and destination identities.
+The source remains unchanged; rerunning the same conversion opens the existing bundle without
+duplicating records. The proof names gaps in typed legacy evidence, so a complete causal graph
+does not imply complete historical Explanation. `run` and `lab` keep their history in a temporary
+store unless `run --history` names a bundle.
 
 ## Bounded material-surface diagnostic
 
