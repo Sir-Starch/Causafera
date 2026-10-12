@@ -80,6 +80,9 @@ pub enum FailurePoint {
     AfterAppendCatalogCommitAfterRootSync,
     AfterSealCatalogCommitAfterRootSync,
     AfterCheckpointCatalogCommitAfterRootSync,
+    AfterSnapshotSyncBeforeCatalogCommit,
+    AfterSnapshotCatalogCommitBeforeRootSync,
+    AfterSnapshotCatalogCommitAfterRootSync,
 }
 
 impl FailurePoint {
@@ -100,6 +103,9 @@ impl FailurePoint {
             Self::AfterAppendCatalogCommitAfterRootSync => 13,
             Self::AfterSealCatalogCommitAfterRootSync => 14,
             Self::AfterCheckpointCatalogCommitAfterRootSync => 15,
+            Self::AfterSnapshotSyncBeforeCatalogCommit => 16,
+            Self::AfterSnapshotCatalogCommitBeforeRootSync => 17,
+            Self::AfterSnapshotCatalogCommitAfterRootSync => 18,
         }
     }
 
@@ -133,6 +139,15 @@ impl FailurePoint {
             }
             Self::AfterCheckpointCatalogCommitAfterRootSync => {
                 "after_checkpoint_catalog_commit_after_root_sync"
+            }
+            Self::AfterSnapshotSyncBeforeCatalogCommit => {
+                "after_snapshot_sync_before_catalog_commit"
+            }
+            Self::AfterSnapshotCatalogCommitBeforeRootSync => {
+                "after_snapshot_catalog_commit_before_root_sync"
+            }
+            Self::AfterSnapshotCatalogCommitAfterRootSync => {
+                "after_snapshot_catalog_commit_after_root_sync"
             }
         }
     }
@@ -647,18 +662,39 @@ impl HistoryStore {
         let namespace = catalog.namespace()?;
         let mode = catalog.mode()?;
         let durable_generation = catalog.durable_generation()?;
-        catalog.verify_sealed_segments(namespace)?;
-        catalog.verify_checkpoints(namespace, durable_generation, &registry)?;
-        catalog.rebuild_indexes_if_incomplete(&registry, hooks.as_ref())?;
-        let (active_sequence, active_relative_path, durable_end) = catalog.active_segment()?;
+        let (active_sequence, active_relative_path, durable_end) = catalog.raw_active_segment()?;
         let active_path = resolve_segment_path(
             root,
             active_sequence,
             false,
             None,
             &active_relative_path,
-            true,
+            false,
         )?;
+        if !active_path.exists() {
+            recover_renamed_active_segment(
+                root,
+                namespace,
+                active_sequence,
+                &active_path,
+                durable_end,
+            )?;
+        }
+        catalog.verify_sealed_segments(namespace)?;
+        catalog.verify_checkpoints(namespace, durable_generation, &registry)?;
+        catalog.rebuild_indexes_if_incomplete(&registry, hooks.as_ref())?;
+        if active_path
+            .metadata()
+            .map_err(|error| io_error("read active segment metadata", &active_path, error))?
+            .len()
+            < durable_end
+        {
+            return Err(io_error(
+                "read active segment",
+                &active_path,
+                std::io::Error::from(std::io::ErrorKind::UnexpectedEof),
+            ));
+        }
         let mut active_file = open_existing_active(&active_path)?;
         active_file
             .seek(SeekFrom::Start(durable_end))
@@ -1357,13 +1393,21 @@ impl HistoryStore {
         let final_preexisted = final_path.exists();
         fs::rename(&staging_path, &final_path)
             .map_err(|error| io_error("publish snapshot file", &staging_path, error))?;
+        let mut catalog_published = false;
         let publication = (|| {
             sync_directory(&self.root.join("snapshots"), self.hooks.as_ref())?;
+            self.fail(FailurePoint::AfterSnapshotSyncBeforeCatalogCommit)?;
             self.catalog
                 .publish_snapshot(generation, digest, &relative_path)?;
-            sync_directory(&self.root, self.hooks.as_ref())
+            catalog_published = true;
+            self.fail(FailurePoint::AfterSnapshotCatalogCommitBeforeRootSync)?;
+            sync_directory(&self.root, self.hooks.as_ref())?;
+            self.fail(FailurePoint::AfterSnapshotCatalogCommitAfterRootSync)
         })();
         if let Err(error) = publication {
+            if catalog_published {
+                self.catalog.rollback_snapshot(generation, digest)?;
+            }
             if !final_preexisted {
                 let _ = fs::remove_file(&final_path);
             }
@@ -2160,6 +2204,26 @@ impl SqliteHistoryCatalog {
                 ],
             )
             .map_err(|error| sqlite_error("insert snapshot", error))?;
+        Ok(())
+    }
+
+    fn rollback_snapshot(
+        &mut self,
+        generation: u64,
+        digest: [u8; 32],
+    ) -> Result<(), PersistenceError> {
+        let deleted = self
+            .connection
+            .execute(
+                "DELETE FROM snapshots WHERE generation=?1 AND digest=?2",
+                params![to_i64(generation)?, digest.as_slice()],
+            )
+            .map_err(|error| sqlite_error("rollback snapshot", error))?;
+        if deleted != 1 {
+            return Err(PersistenceError::HistoryCatalogInvariant {
+                invariant: "snapshot rollback preimage does not match catalog",
+            });
+        }
         Ok(())
     }
 
@@ -3452,6 +3516,74 @@ fn open_existing_active(path: &Path) -> Result<File, PersistenceError> {
         .truncate(false)
         .open(path)
         .map_err(|error| io_error("open active segment", path, error))
+}
+
+fn recover_renamed_active_segment(
+    root: &Path,
+    namespace: [u8; 32],
+    sequence: u64,
+    active_path: &Path,
+    durable_end: u64,
+) -> Result<(), PersistenceError> {
+    let segments = root.join("segments");
+    let entries = fs::read_dir(&segments)
+        .map_err(|error| io_error("scan segments after interrupted seal", &segments, error))?;
+    let mut recovered = None;
+    for entry in entries {
+        let entry = entry.map_err(|error| io_error("read segment entry", &segments, error))?;
+        if !entry
+            .file_type()
+            .map_err(|error| io_error("inspect segment entry", &entry.path(), error))?
+            .is_file()
+        {
+            continue;
+        }
+        let name = entry.file_name();
+        let Some(name) = name.to_str() else {
+            continue;
+        };
+        if name.starts_with("active-") || !name.ends_with(".cfs") || name.len() != 68 {
+            continue;
+        }
+        let relative = PathBuf::from("segments").join(name);
+        let candidate = resolve_catalog_path(root, &relative, "segments", "cfs", true)?;
+        if candidate
+            .metadata()
+            .map_err(|error| io_error("inspect renamed segment", &candidate, error))?
+            .len()
+            != durable_end
+        {
+            continue;
+        }
+        let bytes = read_exact_range(&candidate, 0..durable_end, max_stored_segment_bytes()?)?;
+        let identity =
+            sealed_segment_identity(&segment_identity_header(namespace, sequence), &[&bytes]);
+        if name != format!("{}.cfs", hex(&identity)) {
+            continue;
+        }
+        if recovered.replace(bytes).is_some() {
+            return Err(PersistenceError::HistoryCatalogInvariant {
+                invariant: "ambiguous interrupted seal recovery",
+            });
+        }
+    }
+    let bytes = recovered.ok_or(PersistenceError::HistoryCatalogPathMissing {
+        path: format!("segments/active-{sequence}.cfs"),
+    })?;
+    let staged = root
+        .join("staging")
+        .join(format!("recover-active-{sequence}.tmp"));
+    let mut file = File::create(&staged)
+        .map_err(|error| io_error("stage interrupted seal recovery", &staged, error))?;
+    file.write_all(&bytes)
+        .and_then(|_| file.sync_all())
+        .map_err(|error| io_error("sync interrupted seal recovery", &staged, error))?;
+    drop(file);
+    fs::rename(&staged, active_path)
+        .map_err(|error| io_error("restore active segment", active_path, error))?;
+    File::open(&segments)
+        .and_then(|directory| directory.sync_all())
+        .map_err(|error| io_error("sync restored active segment", &segments, error))
 }
 
 fn open_new_active(root: &Path, relative: &Path) -> Result<File, PersistenceError> {

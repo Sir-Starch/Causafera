@@ -31,6 +31,9 @@ use causafera_types::{
 static NEXT_TEMP: AtomicU64 = AtomicU64::new(0);
 static TEMP_CREATION_LOCK: Mutex<()> = Mutex::new(());
 const WRITER_LOCK_CHILD_BUNDLE: &str = "CAUSAFERA_HISTORY_WRITER_LOCK_CHILD_BUNDLE";
+const RECOVERY_CHILD_BUNDLE: &str = "CAUSAFERA_HISTORY_RECOVERY_CHILD_BUNDLE";
+const RECOVERY_CHILD_POINT: &str = "CAUSAFERA_HISTORY_RECOVERY_CHILD_POINT";
+const RECOVERY_CHILD_OPERATION: &str = "CAUSAFERA_HISTORY_RECOVERY_CHILD_OPERATION";
 
 struct TempBundle(PathBuf);
 
@@ -124,6 +127,183 @@ impl HistoryStoreHooks for TestHooks {
                 self.directory_syncs.fetch_add(1, Ordering::SeqCst)
             }
         };
+    }
+}
+
+struct CrashHooks {
+    point: String,
+}
+
+impl HistoryStoreHooks for CrashHooks {
+    fn monotonic_millis(&self) -> u64 {
+        0
+    }
+
+    fn should_fail(&self, point: FailurePoint) -> bool {
+        if point.name() == self.point {
+            std::process::exit(87);
+        }
+        false
+    }
+}
+
+#[test]
+fn history_recovery_child_process() {
+    let Ok(root) = env::var(RECOVERY_CHILD_BUNDLE) else {
+        return;
+    };
+    let point = env::var(RECOVERY_CHILD_POINT).expect("crash point");
+    let operation = env::var(RECOVERY_CHILD_OPERATION).expect("crash operation");
+    let hooks = Arc::new(CrashHooks { point });
+    let mut store = HistoryStore::open_with_hooks(Path::new(&root), hooks).expect("child open");
+    match operation.as_str() {
+        "append" => {
+            store
+                .append_tick(vec![causal(2, vec![TraceId::new(1)])])
+                .expect("child append");
+            store.flush_durable().expect("child flush");
+        }
+        "seal" => {
+            store.seal_active().expect("child seal");
+        }
+        "checkpoint" => {
+            let anchor = store
+                .durable_reader()
+                .expect("reader")
+                .anchor()
+                .expect("anchor");
+            store
+                .publish_checkpoint(
+                    &anchor,
+                    &checkpoint_metadata(anchor.frontier().time),
+                    b"checkpoint state",
+                )
+                .expect("child checkpoint");
+        }
+        "snapshot" => {
+            store
+                .publish_snapshot(1, b"portable snapshot")
+                .expect("child snapshot");
+        }
+        _ => panic!("unknown recovery operation"),
+    }
+    panic!("the requested crash boundary was not reached");
+}
+
+#[test]
+fn history_recovery_process_crash_matrix() {
+    for mode in [DurabilityMode::GroupCommit, DurabilityMode::EveryTick] {
+        for (operation, points) in [
+            (
+                "append",
+                &[
+                    FailurePoint::BeforeFrameFlush,
+                    FailurePoint::AfterFrameFlushBeforeSync,
+                    FailurePoint::AfterSegmentSyncBeforeCatalogCommit,
+                    FailurePoint::DuringCatalogCommit,
+                    FailurePoint::AfterCatalogCommitBeforeRootSync,
+                    FailurePoint::AfterAppendCatalogCommitAfterRootSync,
+                ][..],
+            ),
+            (
+                "seal",
+                &[
+                    FailurePoint::SealRename,
+                    FailurePoint::AfterSealRenameBeforeNewActive,
+                    FailurePoint::AfterSealNewActiveBeforeCatalogCommit,
+                    FailurePoint::AfterSealCatalogCommitBeforeRootSync,
+                    FailurePoint::AfterSealCatalogCommitAfterRootSync,
+                ][..],
+            ),
+            (
+                "checkpoint",
+                &[
+                    FailurePoint::AfterCheckpointSyncBeforeCatalogCommit,
+                    FailurePoint::AfterCheckpointCatalogCommitBeforeRootSync,
+                    FailurePoint::AfterCheckpointCatalogCommitAfterRootSync,
+                ][..],
+            ),
+            (
+                "snapshot",
+                &[
+                    FailurePoint::AfterSnapshotSyncBeforeCatalogCommit,
+                    FailurePoint::AfterSnapshotCatalogCommitBeforeRootSync,
+                    FailurePoint::AfterSnapshotCatalogCommitAfterRootSync,
+                ][..],
+            ),
+        ] {
+            for point in points {
+                let temp = TempBundle::new(&format!("process-crash-{mode:?}-{}", point.name()));
+                let mut store = HistoryStore::create(temp.path(), [0x77; 32], mode).expect("store");
+                store
+                    .append_tick(vec![causal(1, vec![])])
+                    .expect("first frame");
+                store.flush_durable().expect("first frame durable");
+                drop(store);
+
+                let output = Command::new(env::current_exe().expect("test binary"))
+                    .arg("--exact")
+                    .arg("history_recovery_child_process")
+                    .env(RECOVERY_CHILD_BUNDLE, temp.path())
+                    .env(RECOVERY_CHILD_POINT, point.name())
+                    .env(RECOVERY_CHILD_OPERATION, operation)
+                    .output()
+                    .expect("start crash child");
+                assert_eq!(
+                    output.status.code(),
+                    Some(87),
+                    "{} {point:?}: {output:?}",
+                    operation
+                );
+
+                let reopened = HistoryStore::open(temp.path()).unwrap_or_else(|error| {
+                    let files = fs::read_dir(temp.path().join("segments"))
+                        .expect("segment directory")
+                        .map(|entry| entry.expect("segment entry").file_name())
+                        .collect::<Vec<_>>();
+                    panic!("complete generation opens: {error:?}; files={files:?}")
+                });
+                let generation = reopened.durable_generation();
+                assert!(matches!(generation, 1 | 2));
+                let counts = reopened.catalog().counts().expect("catalog counts");
+                assert_eq!(counts.events, generation);
+                let catalog_committed = matches!(
+                    point,
+                    FailurePoint::AfterCatalogCommitBeforeRootSync
+                        | FailurePoint::AfterAppendCatalogCommitAfterRootSync
+                        | FailurePoint::AfterCheckpointCatalogCommitBeforeRootSync
+                        | FailurePoint::AfterCheckpointCatalogCommitAfterRootSync
+                        | FailurePoint::AfterSnapshotCatalogCommitBeforeRootSync
+                        | FailurePoint::AfterSnapshotCatalogCommitAfterRootSync
+                );
+                assert_eq!(
+                    generation,
+                    u64::from(operation == "append" && catalog_committed) + 1
+                );
+                assert_eq!(
+                    counts.checkpoints,
+                    u64::from(operation == "checkpoint" && catalog_committed)
+                );
+                assert_eq!(
+                    counts.snapshots,
+                    u64::from(operation == "snapshot" && catalog_committed)
+                );
+                let tail = reopened.recovered_tail();
+                assert!(tail.frames <= 1);
+                if tail.frames == 1 {
+                    assert_eq!(
+                        (tail.first_generation, tail.last_generation),
+                        (Some(2), Some(2))
+                    );
+                }
+                println!(
+                    "{{\"mode\":\"{mode:?}\",\"operation\":\"{operation}\",\"point\":\"{}\",\"durable_generation\":{generation},\"events\":{},\"lost_ticks\":{}}}",
+                    point.name(),
+                    counts.events,
+                    tail.frames
+                );
+            }
+        }
     }
 }
 
@@ -2946,4 +3126,47 @@ fn history_store_refuses_snapshots_it_cannot_stand_behind() {
         store.read_snapshot(1),
         Err(PersistenceError::SnapshotDigestMismatch)
     ));
+}
+
+#[test]
+fn history_recovery_snapshot_faults_restore_catalog_and_retry() {
+    for point in [
+        FailurePoint::AfterSnapshotSyncBeforeCatalogCommit,
+        FailurePoint::AfterSnapshotCatalogCommitBeforeRootSync,
+        FailurePoint::AfterSnapshotCatalogCommitAfterRootSync,
+    ] {
+        // Given: a complete durable frame and an injected snapshot publication fault.
+        let temp = TempBundle::new(point.name());
+        let hooks = Arc::new(TestHooks::default());
+        let mut store = HistoryStore::create_with_hooks(
+            temp.path(),
+            [0x76; 32],
+            DurabilityMode::EveryTick,
+            hooks.clone(),
+        )
+        .expect("store");
+        store
+            .append_tick(vec![causal(1, vec![])])
+            .expect("durable frame");
+        hooks.fail_once(point);
+
+        // When: publication reaches the injected boundary and returns an error.
+        let failure = store
+            .publish_snapshot(1, b"bounded snapshot")
+            .expect_err("injected snapshot failure");
+        assert!(matches!(
+            failure,
+            PersistenceError::InjectedHistoryFailure { point: actual } if actual == point
+        ));
+        drop(store);
+
+        // Then: restart sees the complete durable frame and no partial snapshot.
+        let mut reopened = HistoryStore::open(temp.path()).expect("reopen durable head");
+        assert_eq!(reopened.durable_generation(), 1);
+        assert_eq!(reopened.catalog().counts().expect("counts").snapshots, 0);
+        reopened
+            .publish_snapshot(1, b"bounded snapshot")
+            .expect("retry publishes the snapshot once");
+        assert_eq!(reopened.catalog().counts().expect("counts").snapshots, 1);
+    }
 }
