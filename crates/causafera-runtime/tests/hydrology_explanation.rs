@@ -8,7 +8,16 @@
 
 mod support_hydrology;
 
-use causafera_core::{EvidenceSchemaId, HistoryQuery, HistoryReader, HistoryRecord};
+use std::{
+    fs,
+    path::PathBuf,
+    sync::atomic::{AtomicU64, Ordering},
+    time::{Duration, Instant},
+};
+
+use causafera_core::{
+    CausalCommitError, EvidenceSchemaId, HistoryError, HistoryQuery, HistoryReader, HistoryRecord,
+};
 use causafera_explanation::{
     ClaimEvidenceState, DeterministicExplanationRenderer, ExplanationClaim,
     ExplanationClaimSchemaId, FrameAssessment, HYDROLOGY_BOUNDARY_EXPORT_SCHEMA,
@@ -19,10 +28,31 @@ use causafera_explanation::{
     HYDROLOGY_WATER_TABLE_RANGE_SCHEMA, HydrologyConservationClaim, HydrologyStorageClaim,
     HydrologyTransferPathClaim, NumericClaimValue, ObserverLocale, exact_volume,
 };
-use causafera_runtime::{HYDROLOGY_CONSERVATION_EVENT_KIND, Runtime, RuntimeConfig, RuntimeError};
+use causafera_runtime::{
+    BundleOptions, HYDROLOGY_CONSERVATION_EVENT_KIND, Runtime, RuntimeConfig, RuntimeError,
+};
 use causafera_types::{ChartChunkCoord, ChunkCoord, SpatialChartId, TraceId, WaterVolume};
 
 use support_hydrology::{enabled_runtime_config, wet_runtime_config};
+
+struct TempBundle(PathBuf);
+
+impl TempBundle {
+    fn new() -> Self {
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        Self(std::env::temp_dir().join(format!(
+            "causafera-hydrology-explanation-p{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        )))
+    }
+}
+
+impl Drop for TempBundle {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
 
 fn ticked(config: RuntimeConfig, ticks: u64) -> Runtime {
     let mut runtime = Runtime::new(config).expect("the runtime must bootstrap");
@@ -330,6 +360,72 @@ fn an_evicted_batch_keeps_forcing_claims_supported_by_history() {
             .flat_map(|claim| &claim.evidence_traces)
             .all(|trace| history.event(*trace).expect("trace query").is_some())
     );
+}
+
+#[test]
+fn a_corrupt_referenced_segment_refuses_historical_hydrology_claims() {
+    let bundle = TempBundle::new();
+    let mut runtime = Runtime::create_bundle(
+        sparse_forcing_runtime_config(),
+        &bundle.0,
+        BundleOptions::default(),
+    )
+    .expect("create history bundle");
+    runtime.run_ticks(3).expect("commit forcing batch");
+    let batch = *runtime
+        .hydrology_state()
+        .retained_batches
+        .last()
+        .expect("committed hydrology batch");
+    runtime.run_ticks(11).expect("evict the selected batch");
+    assert!(!runtime.hydrology_state().retained_batches.contains(&batch));
+    runtime.save_bundle().expect("make history durable");
+    let intact = runtime
+        .observer_hydrology_explanation_for_batch(batch, None)
+        .expect("intact historical Explanation");
+    assert_eq!(
+        claim(&intact.frames[0].claims, HYDROLOGY_FORCING_ACCEPTED_SCHEMA).evidence_state,
+        ClaimEvidenceState::Supported
+    );
+    let history = runtime
+        .history_reader()
+        .expect("runtime history reader")
+        .pin_snapshot()
+        .expect("pinned history reader");
+    for later_batch in runtime.hydrology_state().retained_batches {
+        assert!(
+            history
+                .event(later_batch)
+                .expect("later batch query")
+                .is_some()
+        );
+    }
+
+    let mut damaged = 0;
+    for entry in fs::read_dir(bundle.0.join("segments")).expect("segment directory") {
+        let path = entry.expect("segment entry").path();
+        let mut bytes = fs::read(&path).expect("segment bytes");
+        if let Some(first) = bytes.first_mut() {
+            *first ^= 0xFF;
+            fs::write(&path, bytes).expect("damage segment");
+            damaged += 1;
+        }
+    }
+    assert!(damaged > 0, "the bundle must contain referenced segments");
+
+    let start = Instant::now();
+    let error = runtime
+        .observer_hydrology_explanation_for_batch(batch, None)
+        .expect_err("corrupt history cannot support a claim");
+    println!("MARKER:corrupt_history error={error:?}");
+    assert!(matches!(
+        error,
+        RuntimeError::CausalCommit(CausalCommitError::HistoryRead(
+            HistoryError::ReaderOperationUnavailable | HistoryError::IntegrityFailure { .. }
+        ))
+    ));
+    assert!(start.elapsed() < Duration::from_secs(30));
+    assert!(!runtime.hydrology_state().retained_batches.contains(&batch));
 }
 
 #[test]
