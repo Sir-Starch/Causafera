@@ -14,18 +14,19 @@ use std::{
 };
 
 #[cfg(test)]
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::cell::Cell;
 
 use causafera_core::{
     CausalTarget, DomainEvidenceRecord, EvidenceDecoderRegistry, EvidenceSchemaId, HistoryAnchor,
-    HistoryAnchorFields, HistoryDurability, HistoryError, HistoryFrontier, HistoryPage,
-    HistoryPageItem, HistoryQuery, HistoryReader, HistoryRecord, OwnedCausalRecord,
+    HistoryAnchorFields, HistoryCheckpoint, HistoryDurability, HistoryError, HistoryFrontier,
+    HistoryPage, HistoryPageItem, HistoryQuery, HistoryReader, HistoryRecord, OwnedCausalRecord,
 };
 use causafera_types::{EventId, TraceId};
 use rusqlite::{Connection, OpenFlags, OptionalExtension, params};
 
 use crate::{
-    CatalogCheckpoint, DecodedHistoryFrame, DurabilityMode, PersistenceError, decode_history_frame,
+    CatalogCheckpoint, DecodedHistoryFrame, DurabilityMode, PersistenceError,
+    decode_checkpoint_with_generations, decode_history_frame,
     history_store::{
         MAX_STORED_FRAME_BYTES, from_i64, key, read_exact_range, resolve_segment_path,
     },
@@ -37,7 +38,9 @@ const CAUSAL_OVERLAY_QUERY_IDS: usize = 900;
 const MAX_CACHED_FRAMES: usize = 8;
 
 #[cfg(test)]
-static CAUSAL_OVERLAY_EVENT_INDEX_BATCHES: AtomicUsize = AtomicUsize::new(0);
+thread_local! {
+    static CAUSAL_OVERLAY_EVENT_INDEX_BATCHES: Cell<usize> = const { Cell::new(0) };
+}
 
 #[derive(Clone, Copy)]
 struct IndexedCausalLocation {
@@ -254,7 +257,10 @@ impl HistoryStoreReader {
             .connection
             .lock()
             .map_err(|_| HistoryError::ReaderOperationUnavailable)?;
-        operation(&connection, &self.source).map_err(|_| HistoryError::ReaderOperationUnavailable)
+        operation(&connection, &self.source).map_err(|error| match error {
+            PersistenceError::History(error) => error,
+            _ => HistoryError::ReaderOperationUnavailable,
+        })
     }
 
     fn overlay_event(&self, trace_id: TraceId) -> Option<OwnedCausalRecord> {
@@ -283,12 +289,24 @@ impl HistoryStoreReader {
         let mut bytes = 0_usize;
         for value in values.iter().skip(start) {
             if selected.len() == query.max_records() {
+                if selected.is_empty() {
+                    return Err(HistoryError::QueryRecordLimitExceeded {
+                        requested: 1,
+                        max: query.max_records(),
+                    });
+                }
                 break;
             }
             let next = bytes
                 .checked_add(value.decoded_size())
                 .ok_or(HistoryError::ArithmeticOverflow)?;
             if next > query.max_bytes() {
+                if selected.is_empty() {
+                    return Err(HistoryError::QueryByteLimitExceeded {
+                        requested: next,
+                        max: query.max_bytes(),
+                    });
+                }
                 break;
             }
             bytes = next;
@@ -446,6 +464,10 @@ impl HistoryStoreReader {
 }
 
 impl HistoryReader for HistoryStoreReader {
+    fn pin_snapshot(&self) -> Result<Arc<dyn HistoryReader>, HistoryError> {
+        Ok(Arc::new(self.clone()))
+    }
+
     fn all_records_for_oracle(&self) -> Result<Vec<OwnedCausalRecord>, HistoryError> {
         HistoryStoreReader::all_records_for_oracle(self)
     }
@@ -488,7 +510,7 @@ impl HistoryReader for HistoryStoreReader {
             let mut locations = BTreeMap::new();
             for chunk in cold_records.chunks(CAUSAL_OVERLAY_QUERY_IDS) {
                 #[cfg(test)]
-                CAUSAL_OVERLAY_EVENT_INDEX_BATCHES.fetch_add(1, Ordering::SeqCst);
+                CAUSAL_OVERLAY_EVENT_INDEX_BATCHES.with(|batches| batches.set(batches.get() + 1));
                 let placeholders = (2..=chunk.len() + 1)
                     .map(|index| format!("?{index}"))
                     .collect::<Vec<_>>()
@@ -728,6 +750,20 @@ impl HistoryReader for HistoryStoreReader {
         )
     }
 
+    fn child_count(&self, trace_id: TraceId) -> Result<u64, HistoryError> {
+        self.with_connection(|connection, source| {
+            let count = connection
+                .query_row(
+                    "SELECT COUNT(*) FROM cause_edges e JOIN events c ON c.trace_id=e.child_trace
+                     WHERE e.parent_trace=?1 AND c.generation<=?2",
+                    params![key(trace_id.raw()), to_i64(source.cold_generation)?],
+                    |row| row.get::<_, i64>(0),
+                )
+                .map_err(|error| catalog_error("count child index", error))?;
+            from_i64(count)
+        })
+    }
+
     fn latest_matching_event_before(
         &self,
         target: CausalTarget,
@@ -844,26 +880,373 @@ impl HistoryReader for HistoryStoreReader {
         )
     }
 
+    fn evidence_count(
+        &self,
+        schema_id: EvidenceSchemaId,
+        canonical_key: &[u8],
+    ) -> Result<u64, HistoryError> {
+        self.with_connection(|connection, source| {
+            let count = connection
+                .query_row(
+                    "SELECT COUNT(*) FROM evidence WHERE schema_id=?1 AND canonical_key=?2 AND generation<=?3",
+                    params![key(schema_id.raw()), canonical_key, to_i64(source.cold_generation)?],
+                    |row| row.get::<_, i64>(0),
+                )
+                .map_err(|error| catalog_error("count evidence index", error))?;
+            from_i64(count)
+        })
+    }
+
+    fn evidence_by_anchor(
+        &self,
+        schema_id: EvidenceSchemaId,
+        anchor: TraceId,
+        query: HistoryQuery,
+    ) -> Result<HistoryPage<DomainEvidenceRecord>, HistoryError> {
+        let mut values = Vec::new();
+        let mut has_more = false;
+        let mut bytes = 0_usize;
+        self.with_connection(|connection, source| {
+            let limit = u64::try_from(query.max_records())?
+                .checked_add(1)
+                .ok_or(PersistenceError::HistoryArithmeticOverflow)?;
+            let mut statement = connection
+                .prepare(
+                    "SELECT frame_ordinal,record_ordinal FROM evidence_anchors
+                     WHERE schema_id=?1 AND anchor_trace=?2 AND generation<=?3
+                     ORDER BY generation,frame_ordinal,record_ordinal LIMIT ?4 OFFSET ?5",
+                )
+                .map_err(|error| catalog_error("prepare evidence anchor query", error))?;
+            let rows = statement
+                .query_map(
+                    params![
+                        key(schema_id.raw()),
+                        key(anchor.raw()),
+                        to_i64(source.cold_generation)?,
+                        to_i64(limit)?,
+                        to_i64(query.offset())?
+                    ],
+                    |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
+                )
+                .map_err(|error| catalog_error("query evidence anchor index", error))?;
+            for row in rows {
+                let (frame, ordinal) =
+                    row.map_err(|error| catalog_error("read evidence anchor index", error))?;
+                let Some(HistoryRecord::Evidence(record)) =
+                    record_at(connection, source, from_i64(frame)?, from_i64(ordinal)?)?
+                else {
+                    return Err(index_mismatch());
+                };
+                if record.schema_id() != schema_id || !record.causal_anchors().contains(&anchor) {
+                    return Err(index_mismatch());
+                }
+                let record_bytes = record.decoded_size();
+                if values.len() == query.max_records() {
+                    if values.is_empty() {
+                        return Err(PersistenceError::History(
+                            HistoryError::QueryRecordLimitExceeded {
+                                requested: 1,
+                                max: query.max_records(),
+                            },
+                        ));
+                    }
+                    has_more = true;
+                    break;
+                }
+                let next_bytes = bytes
+                    .checked_add(record_bytes)
+                    .ok_or(HistoryError::ArithmeticOverflow)?;
+                if next_bytes > query.max_bytes() {
+                    if values.is_empty() {
+                        return Err(PersistenceError::History(
+                            HistoryError::QueryByteLimitExceeded {
+                                requested: record_bytes,
+                                max: query.max_bytes(),
+                            },
+                        ));
+                    }
+                    has_more = true;
+                    break;
+                }
+                bytes = next_bytes;
+                values.push(record);
+            }
+            Ok(())
+        })?;
+        let next = has_more
+            .then(|| {
+                query
+                    .offset()
+                    .checked_add(u64::try_from(values.len()).unwrap_or(u64::MAX))
+                    .ok_or(HistoryError::ArithmeticOverflow)
+            })
+            .transpose()?;
+        HistoryPage::new(values, next, query)
+    }
+
+    fn evidence_by_anchor_count(
+        &self,
+        schema_id: EvidenceSchemaId,
+        anchor: TraceId,
+    ) -> Result<u64, HistoryError> {
+        self.with_connection(|connection, source| {
+            let count = connection
+                .query_row(
+                    "SELECT COUNT(*) FROM evidence_anchors WHERE schema_id=?1 AND anchor_trace=?2 AND generation<=?3",
+                    params![key(schema_id.raw()), key(anchor.raw()), to_i64(source.cold_generation)?],
+                    |row| row.get::<_, i64>(0),
+                )
+                .map_err(|error| catalog_error("count evidence anchor index", error))?;
+            from_i64(count)
+        })
+    }
+
+    fn evidence_by_key_prefix(
+        &self,
+        schema_id: EvidenceSchemaId,
+        canonical_key_prefix: &[u8],
+        query: HistoryQuery,
+    ) -> Result<HistoryPage<DomainEvidenceRecord>, HistoryError> {
+        let mut values = Vec::new();
+        let mut has_more = false;
+        let mut bytes = 0_usize;
+        self.with_connection(|connection, source| {
+            let limit = u64::try_from(query.max_records())?
+                .checked_add(1)
+                .ok_or(PersistenceError::HistoryArithmeticOverflow)?;
+            let successor = prefix_successor(canonical_key_prefix);
+            let key_range = if successor.is_some() {
+                "canonical_key>=?2 AND canonical_key<?3"
+            } else {
+                "canonical_key>=?2"
+            };
+            let sql = format!(
+                "SELECT frame_ordinal,record_ordinal FROM evidence
+                 WHERE schema_id=?1 AND {key_range} AND generation<=?4
+                 ORDER BY generation,frame_ordinal,record_ordinal LIMIT ?5 OFFSET ?6"
+            );
+            let mut statement = connection
+                .prepare(&sql)
+                .map_err(|error| catalog_error("prepare evidence key prefix query", error))?;
+            let mut rows = statement
+                .query(params![
+                    key(schema_id.raw()),
+                    canonical_key_prefix,
+                    successor.as_deref(),
+                    to_i64(source.cold_generation)?,
+                    to_i64(limit)?,
+                    to_i64(query.offset())?
+                ])
+                .map_err(|error| catalog_error("query evidence key prefix index", error))?;
+            while let Some(row) = rows
+                .next()
+                .map_err(|error| catalog_error("read evidence key prefix index", error))?
+            {
+                let frame = from_i64(
+                    row.get::<_, i64>(0)
+                        .map_err(|error| catalog_error("read evidence prefix frame", error))?,
+                )?;
+                let ordinal = from_i64(
+                    row.get::<_, i64>(1)
+                        .map_err(|error| catalog_error("read evidence prefix ordinal", error))?,
+                )?;
+                let Some(HistoryRecord::Evidence(record)) =
+                    record_at(connection, source, frame, ordinal)?
+                else {
+                    return Err(index_mismatch());
+                };
+                if record.schema_id() != schema_id
+                    || !record.canonical_key().starts_with(canonical_key_prefix)
+                {
+                    return Err(index_mismatch());
+                }
+                let record_bytes = record.decoded_size();
+                if values.len() == query.max_records() {
+                    if values.is_empty() {
+                        return Err(PersistenceError::History(
+                            HistoryError::QueryRecordLimitExceeded {
+                                requested: 1,
+                                max: query.max_records(),
+                            },
+                        ));
+                    }
+                    has_more = true;
+                    break;
+                }
+                let next_bytes = bytes
+                    .checked_add(record_bytes)
+                    .ok_or(HistoryError::ArithmeticOverflow)?;
+                if next_bytes > query.max_bytes() {
+                    if values.is_empty() {
+                        return Err(PersistenceError::History(
+                            HistoryError::QueryByteLimitExceeded {
+                                requested: record_bytes,
+                                max: query.max_bytes(),
+                            },
+                        ));
+                    }
+                    has_more = true;
+                    break;
+                }
+                bytes = next_bytes;
+                values.push(record);
+            }
+            Ok(())
+        })?;
+        let next = has_more
+            .then(|| {
+                query
+                    .offset()
+                    .checked_add(u64::try_from(values.len()).unwrap_or(u64::MAX))
+                    .ok_or(HistoryError::ArithmeticOverflow)
+            })
+            .transpose()?;
+        HistoryPage::new(values, next, query)
+    }
+
+    fn evidence_by_key_prefix_count(
+        &self,
+        schema_id: EvidenceSchemaId,
+        canonical_key_prefix: &[u8],
+    ) -> Result<u64, HistoryError> {
+        self.with_connection(|connection, source| {
+            let successor = prefix_successor(canonical_key_prefix);
+            let count = if let Some(successor) = successor.as_deref() {
+                connection
+                    .query_row(
+                        "SELECT COUNT(*) FROM evidence WHERE schema_id=?1 AND canonical_key>=?2 AND canonical_key<?3 AND generation<=?4",
+                        params![key(schema_id.raw()), canonical_key_prefix, successor, to_i64(source.cold_generation)?],
+                        |row| row.get::<_, i64>(0),
+                    )
+                    .map_err(|error| catalog_error("count evidence key prefix index", error))?
+            } else {
+                connection
+                    .query_row(
+                        "SELECT COUNT(*) FROM evidence WHERE schema_id=?1 AND canonical_key>=?2 AND generation<=?3",
+                        params![key(schema_id.raw()), canonical_key_prefix, to_i64(source.cold_generation)?],
+                        |row| row.get::<_, i64>(0),
+                    )
+                    .map_err(|error| catalog_error("count evidence key prefix index", error))?
+            };
+            from_i64(count)
+        })
+    }
+
     fn walk_ancestors(
         &self,
         trace_id: TraceId,
         max_depth: usize,
         query: HistoryQuery,
     ) -> Result<HistoryPage<TraceId>, HistoryError> {
-        let mut frontier = vec![(trace_id, 0_usize)];
-        let mut visited = BTreeSet::new();
-        while let Some((current, depth)) = frontier.pop() {
-            if depth >= max_depth {
-                continue;
+        match self.walk_ancestors_bounded(
+            trace_id,
+            causafera_core::HistoryWalkBudget::new(
+                max_depth,
+                causafera_core::HistoryWalkBudget::MAX_NODES,
+            )?,
+            query,
+        )? {
+            causafera_core::HistoryQueryOutcome::Complete(page)
+            | causafera_core::HistoryQueryOutcome::Partial(page) => Ok(page),
+            causafera_core::HistoryQueryOutcome::Missing => {
+                HistoryPage::new(Vec::new(), None, query)
             }
-            let parents = self.parents(current, HistoryQuery::new(0, 64, 64 * 1024)?)?;
-            for parent in parents.records().iter().rev() {
-                if visited.insert(*parent) {
-                    frontier.push((*parent, depth + 1));
-                }
+            causafera_core::HistoryQueryOutcome::Unknown => {
+                Err(HistoryError::ReaderOperationUnavailable)
             }
+            causafera_core::HistoryQueryOutcome::IntegrityError(error) => Err(error),
         }
-        Self::page(&visited.into_iter().collect::<Vec<_>>(), query)
+    }
+
+    fn checkpoint_at(
+        &self,
+        time: causafera_types::SimulationTime,
+    ) -> Result<Option<HistoryCheckpoint>, HistoryError> {
+        let connection = self
+            .source
+            .connection
+            .lock()
+            .map_err(|_| HistoryError::ReaderOperationUnavailable)?;
+        let row = connection
+            .query_row(
+                "SELECT generation,time,digest,relative_path FROM checkpoints
+                 WHERE time<=?1 AND generation<=?2 ORDER BY time DESC,generation DESC LIMIT 1",
+                params![
+                    key(time.raw()),
+                    to_i64(self.source.cold_generation).map_err(integrity_error)?
+                ],
+                |row| {
+                    Ok((
+                        row.get::<_, i64>(0)?,
+                        row.get::<_, Vec<u8>>(1)?,
+                        row.get::<_, Vec<u8>>(2)?,
+                        row.get::<_, String>(3)?,
+                    ))
+                },
+            )
+            .optional()
+            .map_err(|error| integrity_error(catalog_error("query checkpoint index", error)))?;
+        let Some((generation, indexed_time, indexed_digest, relative_path)) = row else {
+            return Ok(None);
+        };
+        let generation = from_i64(generation).map_err(integrity_error)?;
+        let indexed_time = key_from_bytes(indexed_time).map_err(integrity_error)?;
+        let digest: [u8; 32] = indexed_digest
+            .as_slice()
+            .try_into()
+            .map_err(|_| integrity_error("checkpoint digest width is invalid"))?;
+        let relative_path = PathBuf::from(relative_path);
+        let mut components = relative_path.components();
+        if !matches!(components.next(), Some(std::path::Component::Normal(part)) if part == "checkpoints")
+            || !matches!(components.next(), Some(std::path::Component::Normal(_)))
+            || components.next().is_some()
+        {
+            return Err(HistoryError::IntegrityFailure {
+                details: "checkpoint catalog path is not canonical".into(),
+            });
+        }
+        let root =
+            self.source
+                .root
+                .canonicalize()
+                .map_err(|error| HistoryError::IntegrityFailure {
+                    details: format!("resolve history root: {error}"),
+                })?;
+        let path = root.join(&relative_path).canonicalize().map_err(|error| {
+            HistoryError::IntegrityFailure {
+                details: format!("resolve checkpoint file: {error}"),
+            }
+        })?;
+        if !path.starts_with(&root) {
+            return Err(HistoryError::IntegrityFailure {
+                details: "checkpoint path escapes history root".into(),
+            });
+        }
+        let bytes = std::fs::read(&path).map_err(|error| HistoryError::IntegrityFailure {
+            details: format!("read checkpoint file: {error}"),
+        })?;
+        let envelope = decode_checkpoint_with_generations(&bytes, generation, generation)
+            .map_err(integrity_error)?;
+        if envelope.digest != digest
+            || envelope.header.namespace[..] != self.source.namespace[..16]
+            || envelope.header.completed_time.raw() != indexed_time
+            || envelope.header.completed_time.raw() > time.raw()
+        {
+            return Err(HistoryError::IntegrityFailure {
+                details: "checkpoint catalog row does not match checkpoint payload".into(),
+            });
+        }
+        Ok(Some(HistoryCheckpoint {
+            time: envelope.header.completed_time,
+            frontier: envelope.header.frontier,
+            digest,
+        }))
+    }
+}
+
+fn integrity_error(error: impl std::fmt::Display) -> HistoryError {
+    HistoryError::IntegrityFailure {
+        details: error.to_string(),
     }
 }
 
@@ -898,7 +1281,7 @@ pub(crate) fn validate_catalog_indexes(
             ))
         })
         .map_err(|error| catalog_error("query catalog index validation", error))?;
-    let mut expected = (0_u64, 0_u64, 0_u64, 0_u64);
+    let mut expected = (0_u64, 0_u64, 0_u64, 0_u64, 0_u64);
     for row in rows {
         let (
             _row_generation,
@@ -989,12 +1372,24 @@ pub(crate) fn validate_catalog_indexes(
                     .count(),
             )?)
             .ok_or(PersistenceError::HistoryArithmeticOverflow)?;
+        expected.4 = expected
+            .4
+            .checked_add(decoded.records().iter().try_fold(0_u64, |total, record| {
+                match record {
+                    HistoryRecord::Evidence(evidence) => total
+                        .checked_add(u64::try_from(evidence.causal_anchors().len())?)
+                        .ok_or(PersistenceError::HistoryArithmeticOverflow),
+                    HistoryRecord::Causal(_) => Ok(total),
+                }
+            })?)
+            .ok_or(PersistenceError::HistoryArithmeticOverflow)?;
     }
     let actual = (
         catalog_count(connection, "events", generation)?,
         catalog_count(connection, "cause_edges", generation)?,
         catalog_count(connection, "effect_edges", generation)?,
         catalog_count(connection, "evidence", generation)?,
+        catalog_count(connection, "evidence_anchors", generation)?,
     );
     if actual != expected {
         return Err(index_mismatch());
@@ -1243,6 +1638,30 @@ pub(crate) fn validate_indexed_frame(
                 {
                     return Err(index_mismatch());
                 }
+                let mut anchors = connection
+                    .prepare(
+                        "SELECT anchor_trace FROM evidence_anchors
+                         WHERE frame_ordinal=?1 AND record_ordinal=?2 AND generation<=?3
+                         ORDER BY anchor_trace",
+                    )
+                    .map_err(|error| {
+                        catalog_error("prepare evidence anchor index values", error)
+                    })?;
+                let anchor_rows = anchors
+                    .query_map(
+                        params![to_i64(frame)?, ordinal, to_i64(generation)?],
+                        |row| row.get::<_, Vec<u8>>(0),
+                    )
+                    .map_err(|error| catalog_error("query evidence anchor index values", error))?;
+                let mut actual_anchors = Vec::new();
+                for row in anchor_rows {
+                    actual_anchors.push(TraceId::new(key_from_bytes(row.map_err(|error| {
+                        catalog_error("read evidence anchor index value", error)
+                    })?)?));
+                }
+                if actual_anchors != evidence.causal_anchors() {
+                    return Err(index_mismatch());
+                }
             }
         }
     }
@@ -1281,6 +1700,14 @@ fn catalog_error(operation: &'static str, error: rusqlite::Error) -> Persistence
     }
 }
 
+fn prefix_successor(prefix: &[u8]) -> Option<Vec<u8>> {
+    let mut successor = prefix.to_vec();
+    let index = successor.iter().rposition(|byte| *byte != u8::MAX)?;
+    successor[index] += 1;
+    successor.truncate(index + 1);
+    Some(successor)
+}
+
 fn index_mismatch() -> PersistenceError {
     PersistenceError::HistoryCatalogInvariant {
         invariant: "derived catalog index rows do not match canonical frames",
@@ -1303,7 +1730,8 @@ mod tests {
     };
 
     use causafera_core::{
-        CausalEffect, CausalTarget, HistoryReader, HistoryRecord, OwnedCausalRecord, Phase,
+        CausalEffect, CausalTarget, Criticality, DomainEvidenceRecord, EvidenceSchemaVersion,
+        HistoryQuery, HistoryReader, HistoryRecord, MAX_QUERY_PAGE_BYTES, OwnedCausalRecord, Phase,
         StateFingerprint,
     };
     use causafera_types::{
@@ -1355,6 +1783,8 @@ mod tests {
                 .append_tick(vec![second.clone()])
                 .expect("second frame");
             let reader = store.durable_reader().expect("indexed reader");
+            assert_eq!(reader.child_count(TraceId::new(1)).expect("child count"), 1);
+            assert_eq!(reader.child_count(TraceId::new(2)).expect("leaf count"), 0);
             let expected = [first, second]
                 .into_iter()
                 .map(|record| match record {
@@ -1363,12 +1793,12 @@ mod tests {
                 })
                 .collect::<Vec<_>>();
 
-            CAUSAL_OVERLAY_EVENT_INDEX_BATCHES.store(0, Ordering::SeqCst);
+            CAUSAL_OVERLAY_EVENT_INDEX_BATCHES.with(|batches| batches.set(0));
             reader
                 .validate_causal_overlay(&expected)
                 .expect("exact overlay validates");
 
-            let batches = CAUSAL_OVERLAY_EVENT_INDEX_BATCHES.load(Ordering::SeqCst);
+            let batches = CAUSAL_OVERLAY_EVENT_INDEX_BATCHES.with(Cell::get);
             println!(
                 "indexed_overlay catalog_event_index_batches={batches} records={}",
                 expected.len()
@@ -1382,5 +1812,302 @@ mod tests {
         let result = scenario();
         fs::remove_dir_all(&root).expect("remove test bundle root");
         result.expect("batched overlay validation test");
+    }
+
+    #[test]
+    fn evidence_by_anchor_is_indexed_and_paged_in_canonical_order() {
+        let root = std::env::temp_dir().join(format!(
+            "causafera-history-reader-anchor-{}-{}",
+            std::process::id(),
+            NEXT_TEST_ROOT.fetch_add(1, Ordering::Relaxed)
+        ));
+        fs::create_dir(&root).expect("create test bundle root");
+        let scenario = || {
+            let mut store = HistoryStore::create(&root, [0xAA; 32], DurabilityMode::EveryTick)
+                .expect("create test store");
+            let origin = TraceId::new(0);
+            let evidence = |sequence, key: &[u8]| {
+                let payload = vec![sequence as u8];
+                HistoryRecord::Evidence(
+                    DomainEvidenceRecord::new(
+                        sequence,
+                        EvidenceSchemaId::new(19),
+                        EvidenceSchemaVersion::new(1, 0),
+                        Criticality::ExplanationOnly,
+                        SimulationTime::new(sequence),
+                        vec![origin],
+                        key.to_vec(),
+                        payload.clone(),
+                        StateFingerprint::new(*blake3::hash(&payload).as_bytes()),
+                    )
+                    .expect("evidence is valid"),
+                )
+            };
+            store
+                .append_tick(vec![
+                    causal(0, Vec::new()),
+                    evidence(8, b"a"),
+                    evidence(9, b"b"),
+                ])
+                .expect("append evidence frame");
+            let reader = store.durable_reader().expect("reader");
+            assert_eq!(
+                reader
+                    .evidence_by_anchor_count(EvidenceSchemaId::new(19), origin)
+                    .expect("anchor count"),
+                2
+            );
+            let first = reader
+                .evidence_by_anchor(
+                    EvidenceSchemaId::new(19),
+                    origin,
+                    HistoryQuery::new(0, 1, 1024).expect("first page query"),
+                )
+                .expect("first page");
+            assert_eq!(first.records()[0].canonical_key(), b"a");
+            assert_eq!(first.next_offset(), Some(1));
+            let second = reader
+                .evidence_by_anchor(
+                    EvidenceSchemaId::new(19),
+                    origin,
+                    HistoryQuery::new(1, 1, 1024).expect("second page query"),
+                )
+                .expect("second page");
+            assert_eq!(second.records()[0].canonical_key(), b"b");
+            assert_eq!(second.next_offset(), None);
+            assert_eq!(
+                reader
+                    .evidence_by_key_prefix_count(EvidenceSchemaId::new(19), b"b")
+                    .expect("prefix count"),
+                1
+            );
+            let prefix_page = reader
+                .evidence_by_key_prefix(
+                    EvidenceSchemaId::new(19),
+                    b"b",
+                    HistoryQuery::page(0).expect("prefix query"),
+                )
+                .expect("prefix page");
+            assert_eq!(prefix_page.records()[0].canonical_key(), b"b");
+            assert_eq!(prefix_page.next_offset(), None);
+            assert_eq!(prefix_successor(&[0x12, 0xFF]), Some(vec![0x13]));
+            assert_eq!(prefix_successor(&[0xFF, 0xFF]), None);
+            assert_eq!(
+                reader
+                    .evidence_by_anchor_count(EvidenceSchemaId::new(19), TraceId::new(999))
+                    .expect("missing anchor count"),
+                0
+            );
+            drop(reader);
+            drop(store);
+
+            let catalog = rusqlite::Connection::open(root.join("catalog.sqlite"))
+                .expect("open catalog for migration fixture");
+            catalog
+                .execute_batch(
+                    "DROP INDEX evidence_anchor_lookup;
+                     DROP TABLE evidence_anchors;
+                     PRAGMA user_version=1;",
+                )
+                .expect("simulate a pre-anchor-index catalog");
+            drop(catalog);
+
+            let reopened = HistoryStore::open(&root).expect("migrate old catalog");
+            let reader = reopened.durable_reader().expect("reader after migration");
+            assert_eq!(
+                reader
+                    .evidence_by_anchor_count(EvidenceSchemaId::new(19), origin)
+                    .expect("migrated anchor count"),
+                2
+            );
+        };
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(scenario));
+        fs::remove_dir_all(root).expect("remove test bundle root");
+        result.expect("indexed evidence anchor test");
+    }
+
+    #[test]
+    fn oversized_evidence_queries_fail_instead_of_returning_a_stuck_cursor() {
+        let root = std::env::temp_dir().join(format!(
+            "causafera-history-reader-oversized-evidence-{}-{}",
+            std::process::id(),
+            NEXT_TEST_ROOT.fetch_add(1, Ordering::Relaxed)
+        ));
+        fs::create_dir(&root).expect("create test bundle root");
+        let scenario = || {
+            let mut store = HistoryStore::create(&root, [0xAB; 32], DurabilityMode::EveryTick)
+                .expect("create test store");
+            let anchor = TraceId::new(0);
+            let key = [anchor.raw().to_le_bytes().as_slice(), b"/transfer"].concat();
+            let payload = vec![0x5A; MAX_QUERY_PAGE_BYTES + 1];
+            let evidence = DomainEvidenceRecord::new(
+                1,
+                EvidenceSchemaId::new(20),
+                EvidenceSchemaVersion::new(1, 0),
+                Criticality::ExplanationOnly,
+                SimulationTime::new(1),
+                vec![anchor],
+                key.clone(),
+                payload.clone(),
+                StateFingerprint::new(*blake3::hash(&payload).as_bytes()),
+            )
+            .expect("large evidence is structurally valid");
+            store
+                .append_tick(vec![
+                    causal(0, Vec::new()),
+                    HistoryRecord::Evidence(evidence),
+                ])
+                .expect("persist large evidence frame");
+            let reader = store.durable_reader().expect("reader");
+            let anchor_error = reader
+                .evidence_by_anchor(
+                    EvidenceSchemaId::new(20),
+                    anchor,
+                    HistoryQuery::page(0).expect("anchor query"),
+                )
+                .expect_err("oversized record cannot fit a bounded page");
+            assert!(matches!(
+                anchor_error,
+                HistoryError::QueryByteLimitExceeded {
+                    requested,
+                    max: MAX_QUERY_PAGE_BYTES
+                } if requested > MAX_QUERY_PAGE_BYTES
+            ));
+            let prefix_error = reader
+                .evidence_by_key_prefix(
+                    EvidenceSchemaId::new(20),
+                    &anchor.raw().to_le_bytes(),
+                    HistoryQuery::page(0).expect("prefix query"),
+                )
+                .expect_err("oversized record cannot fit a bounded page");
+            assert!(matches!(
+                prefix_error,
+                HistoryError::QueryByteLimitExceeded {
+                    requested,
+                    max: MAX_QUERY_PAGE_BYTES
+                } if requested > MAX_QUERY_PAGE_BYTES
+            ));
+        };
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(scenario));
+        fs::remove_dir_all(root).expect("remove test bundle root");
+        result.expect("oversized evidence pagination test");
+    }
+
+    #[test]
+    fn checkpoint_query_returns_only_a_verified_checkpoint_at_or_before_time() {
+        let root = std::env::temp_dir().join(format!(
+            "causafera-history-reader-checkpoint-{}-{}",
+            std::process::id(),
+            NEXT_TEST_ROOT.fetch_add(1, Ordering::Relaxed)
+        ));
+        fs::create_dir(&root).expect("create test bundle root");
+        let scenario = || {
+            let mut store = HistoryStore::create(&root, [0xA8; 32], DurabilityMode::EveryTick)
+                .expect("create test store");
+            let anchor = store
+                .durable_reader()
+                .expect("reader")
+                .anchor()
+                .expect("anchor");
+            let metadata = crate::CheckpointMetadata {
+                runtime_recipe_fingerprint: [1; 32],
+                input_fingerprint: [2; 32],
+                physical_digest: [3; 32],
+                completed_time: SimulationTime::new(0),
+            };
+            store
+                .publish_checkpoint(&anchor, &metadata, b"checkpoint payload")
+                .expect("publish checkpoint");
+            let reader = store.durable_reader().expect("reader after checkpoint");
+            assert!(
+                reader
+                    .checkpoint_at(SimulationTime::new(0))
+                    .expect("checkpoint query")
+                    .is_some()
+            );
+            assert!(
+                reader
+                    .checkpoint_at(SimulationTime::new(1))
+                    .expect("later checkpoint query")
+                    .is_some()
+            );
+        };
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(scenario));
+        fs::remove_dir_all(root).expect("remove test bundle root");
+        result.expect("checkpoint query test");
+    }
+
+    #[test]
+    #[ignore = "manual query latency probe for Todo 9"]
+    fn measure_ten_thousand_node_ancestor_query() {
+        use std::time::Instant;
+
+        use causafera_core::HistoryWalkBudget;
+
+        let root = std::env::temp_dir().join(format!(
+            "causafera-history-reader-ancestor-{}-{}",
+            std::process::id(),
+            NEXT_TEST_ROOT.fetch_add(1, Ordering::Relaxed)
+        ));
+        fs::create_dir(&root).expect("create test bundle root");
+        let scenario = || {
+            let mut store = HistoryStore::create(&root, [0xA9; 32], DurabilityMode::EveryTick)
+                .expect("create test store");
+            let records = (0..10_000)
+                .map(|sequence| {
+                    let parents = (sequence > 0)
+                        .then(|| TraceId::new(sequence - 1))
+                        .into_iter()
+                        .collect();
+                    causal(sequence, parents)
+                })
+                .collect();
+            store.append_tick(records).expect("append chain frame");
+            store.flush_durable().expect("flush chain frame");
+            let reader = store.durable_reader().expect("durable reader");
+            let mut first_page_samples = Vec::with_capacity(20);
+            let mut full_walk_samples = Vec::with_capacity(20);
+            let mut page_count = 0_usize;
+            let mut decoded_bytes = 0_usize;
+            for _ in 0..20 {
+                let started = Instant::now();
+                let mut cursor = reader
+                    .ancestor_cursor(TraceId::new(9_999))
+                    .expect("create ancestor cursor")
+                    .expect("ancestor root exists");
+                let budget = HistoryWalkBudget::new(10_000, 10_000).expect("walk budget");
+                let query = HistoryQuery::page(0).expect("query page");
+                let mut ancestors = 0_usize;
+                page_count = 0;
+                loop {
+                    let page_started = Instant::now();
+                    let result = reader
+                        .walk_ancestor_page(cursor, budget, query)
+                        .expect("ancestor page");
+                    if page_count == 0 {
+                        first_page_samples.push(page_started.elapsed().as_micros());
+                        decoded_bytes = result.page().decoded_bytes();
+                        assert_eq!(result.page().records().len(), 256);
+                    }
+                    ancestors += result.page().records().len();
+                    page_count += 1;
+                    match result.into_next_cursor() {
+                        Some(next) => cursor = next,
+                        None => break,
+                    }
+                }
+                full_walk_samples.push(started.elapsed().as_micros());
+                assert_eq!(ancestors, 9_999);
+            }
+            first_page_samples.sort_unstable();
+            full_walk_samples.sort_unstable();
+            eprintln!(
+                "todo9_ancestor_probe nodes=10000 runs=20 first_page_p95_us={} full_40_page_p95_us={} first_page_records=256 first_page_decoded_bytes={} pages_per_query={}",
+                first_page_samples[18], full_walk_samples[18], decoded_bytes, page_count
+            );
+        };
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(scenario));
+        fs::remove_dir_all(root).expect("remove test bundle root");
+        result.expect("10,000-node ancestor probe");
     }
 }

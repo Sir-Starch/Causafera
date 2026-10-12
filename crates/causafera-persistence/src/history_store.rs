@@ -23,6 +23,9 @@ use std::{
     time::Instant,
 };
 
+#[cfg(test)]
+use std::cell::Cell;
+
 use causafera_core::{
     EvidenceDecoderRegistry, HistoryAnchor, HistoryAnchorFields, HistoryError, HistoryFrontier,
     HistoryRecord, OwnedCausalRecord, canonical_history_records,
@@ -45,12 +48,14 @@ const GROUP_MAX_TICKS: usize = 32;
 const GROUP_MAX_MILLIS: u64 = 250;
 const CATALOG_ID_QUERY_BATCH: usize = 900;
 const SEGMENT_IDENTITY_MAGIC: &[u8] = b"CFSG";
-const CATALOG_SCHEMA_VERSION: i64 = 1;
+const CATALOG_SCHEMA_VERSION: i64 = 2;
 pub(crate) const MAX_STORED_FRAME_BYTES: u64 =
     (causafera_core::MAX_FRAME_DECODED_BYTES + HISTORY_FRAME_HEADER_LEN) as u64;
 
 #[cfg(test)]
-static CAUSAL_VALIDATION_CATALOG_LOOKUPS: AtomicUsize = AtomicUsize::new(0);
+thread_local! {
+    static CAUSAL_VALIDATION_CATALOG_LOOKUPS: Cell<usize> = const { Cell::new(0) };
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DurabilityMode {
@@ -1598,9 +1603,27 @@ impl SqliteHistoryCatalog {
                 invariant: "catalog.sqlite is missing",
             });
         }
-        let catalog = Self::connect(root, &path)?;
+        let mut catalog = Self::connect(root, &path)?;
+        catalog.migrate_anchor_index()?;
         catalog.verify_schema()?;
         Ok(catalog)
+    }
+
+    fn migrate_anchor_index(&mut self) -> Result<(), PersistenceError> {
+        let version: i64 = self
+            .connection
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .map_err(|error| sqlite_error("read catalog schema version", error))?;
+        if version == 1 {
+            self.connection
+                .execute_batch(
+                    "CREATE TABLE evidence_anchors(generation INTEGER NOT NULL REFERENCES generations(id), schema_id BLOB NOT NULL CHECK(length(schema_id)=8), anchor_trace BLOB NOT NULL CHECK(length(anchor_trace)=8), frame_ordinal INTEGER NOT NULL REFERENCES frames(frame_ordinal), record_ordinal INTEGER NOT NULL, PRIMARY KEY(frame_ordinal,record_ordinal,anchor_trace));
+                     CREATE INDEX evidence_anchor_lookup ON evidence_anchors(schema_id,anchor_trace,generation,frame_ordinal,record_ordinal);
+                     PRAGMA user_version=2;",
+                )
+                .map_err(|error| sqlite_error("migrate evidence anchor index", error))?;
+        }
+        Ok(())
     }
 
     fn connect(root: &Path, path: &Path) -> Result<Self, PersistenceError> {
@@ -1631,6 +1654,7 @@ impl SqliteHistoryCatalog {
                  CREATE TABLE cause_edges(generation INTEGER NOT NULL REFERENCES generations(id), parent_trace BLOB NOT NULL CHECK(length(parent_trace)=8), child_trace BLOB NOT NULL CHECK(length(child_trace)=8), ordinal INTEGER NOT NULL, PRIMARY KEY(child_trace, ordinal));
                  CREATE TABLE effect_edges(generation INTEGER NOT NULL REFERENCES generations(id), trace_id BLOB NOT NULL REFERENCES events(trace_id), ordinal INTEGER NOT NULL, object_kind BLOB NOT NULL CHECK(length(object_kind)=8), object_id BLOB NOT NULL CHECK(length(object_id)=8), property_id BLOB NOT NULL CHECK(length(property_id)=8), PRIMARY KEY(trace_id, ordinal));
                  CREATE TABLE evidence(generation INTEGER NOT NULL REFERENCES generations(id), schema_id BLOB NOT NULL CHECK(length(schema_id)=8), canonical_key BLOB NOT NULL, frame_ordinal INTEGER NOT NULL REFERENCES frames(frame_ordinal), record_ordinal INTEGER NOT NULL, payload_digest BLOB NOT NULL CHECK(length(payload_digest)=32), PRIMARY KEY(frame_ordinal, record_ordinal));
+                 CREATE TABLE evidence_anchors(generation INTEGER NOT NULL REFERENCES generations(id), schema_id BLOB NOT NULL CHECK(length(schema_id)=8), anchor_trace BLOB NOT NULL CHECK(length(anchor_trace)=8), frame_ordinal INTEGER NOT NULL REFERENCES frames(frame_ordinal), record_ordinal INTEGER NOT NULL, PRIMARY KEY(frame_ordinal,record_ordinal,anchor_trace));
                  CREATE TABLE inputs(generation INTEGER NOT NULL REFERENCES generations(id), input_sequence BLOB NOT NULL CHECK(length(input_sequence)=8), payload_digest BLOB NOT NULL CHECK(length(payload_digest)=32), PRIMARY KEY(generation,input_sequence));
                  CREATE TABLE checkpoints(generation INTEGER PRIMARY KEY REFERENCES generations(id), time BLOB NOT NULL CHECK(length(time)=8), digest BLOB NOT NULL CHECK(length(digest)=32), relative_path TEXT NOT NULL);
                  CREATE TABLE snapshots(generation INTEGER PRIMARY KEY REFERENCES generations(id), digest BLOB NOT NULL CHECK(length(digest)=32), relative_path TEXT NOT NULL);
@@ -1639,7 +1663,8 @@ impl SqliteHistoryCatalog {
                  CREATE INDEX cause_edges_parent_child ON cause_edges(parent_trace, child_trace);
                  CREATE INDEX effect_latest_matching ON effect_edges(object_kind, object_id, property_id, trace_id DESC);
                  CREATE INDEX evidence_schema_key ON evidence(schema_id, canonical_key, generation, frame_ordinal, record_ordinal);
-                 PRAGMA user_version=1;",
+                 CREATE INDEX evidence_anchor_lookup ON evidence_anchors(schema_id,anchor_trace,generation,frame_ordinal,record_ordinal);
+                 PRAGMA user_version=2;",
             )
             .map_err(|error| sqlite_error("create catalog schema", error))
     }
@@ -1662,6 +1687,7 @@ impl SqliteHistoryCatalog {
             "cause_edges",
             "effect_edges",
             "evidence",
+            "evidence_anchors",
             "inputs",
             "checkpoints",
             "snapshots",
@@ -1957,6 +1983,7 @@ impl SqliteHistoryCatalog {
         for table in [
             "effect_edges",
             "cause_edges",
+            "evidence_anchors",
             "evidence",
             "events",
             "inputs",
@@ -2389,7 +2416,7 @@ impl SqliteHistoryCatalog {
         let mut existing = BTreeSet::new();
         for batch in encoded.chunks(CATALOG_ID_QUERY_BATCH) {
             #[cfg(test)]
-            CAUSAL_VALIDATION_CATALOG_LOOKUPS.fetch_add(1, Ordering::SeqCst);
+            CAUSAL_VALIDATION_CATALOG_LOOKUPS.with(|lookups| lookups.set(lookups.get() + 1));
             let placeholders = std::iter::repeat_n("?", batch.len())
                 .collect::<Vec<_>>()
                 .join(",");
@@ -2632,7 +2659,7 @@ impl SqliteHistoryCatalog {
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(|error| sqlite_error("begin index rebuild", error))?;
-        tx.execute_batch("DELETE FROM cause_edges; DELETE FROM effect_edges; DELETE FROM evidence; DELETE FROM events;")
+        tx.execute_batch("DELETE FROM cause_edges; DELETE FROM effect_edges; DELETE FROM evidence_anchors; DELETE FROM evidence; DELETE FROM events;")
             .map_err(|error| sqlite_error("delete derived indexes", error))?;
         if hooks.should_fail(FailurePoint::IndexDeletion) {
             return Err(PersistenceError::InjectedHistoryFailure {
@@ -2665,6 +2692,7 @@ impl SqliteHistoryCatalog {
             count(&self.connection, "cause_edges")?,
             count(&self.connection, "effect_edges")?,
             count(&self.connection, "evidence")?,
+            count(&self.connection, "evidence_anchors")?,
         );
         let generation = self.durable_generation()?;
         let indexes_match = match self.indexes_match_canonical(generation, registry) {
@@ -2684,12 +2712,14 @@ impl SqliteHistoryCatalog {
         &self,
         generation: u64,
         registry: &EvidenceDecoderRegistry,
-    ) -> Result<(u64, u64, u64, u64), PersistenceError> {
-        let mut total = (0_u64, 0_u64, 0_u64, 0_u64);
+    ) -> Result<(u64, u64, u64, u64, u64), PersistenceError> {
+        let mut total = (0_u64, 0_u64, 0_u64, 0_u64, 0_u64);
         self.for_each_decoded_frame(generation, registry, |_, records| {
             let frame = records.iter().try_fold(
-                (0_u64, 0_u64, 0_u64, 0_u64),
-                |(events, causes, effects, evidence), record| -> Result<_, PersistenceError> {
+                (0_u64, 0_u64, 0_u64, 0_u64, 0_u64),
+                |(events, causes, effects, evidence, anchors),
+                 record|
+                 -> Result<_, PersistenceError> {
                     match record {
                         HistoryRecord::Causal(event) => Ok((
                             events
@@ -2702,13 +2732,17 @@ impl SqliteHistoryCatalog {
                                 .checked_add(u64::try_from(event.effects().len())?)
                                 .ok_or(PersistenceError::HistoryArithmeticOverflow)?,
                             evidence,
+                            anchors,
                         )),
-                        HistoryRecord::Evidence(_) => Ok((
+                        HistoryRecord::Evidence(record) => Ok((
                             events,
                             causes,
                             effects,
                             evidence
                                 .checked_add(1)
+                                .ok_or(PersistenceError::HistoryArithmeticOverflow)?,
+                            anchors
+                                .checked_add(u64::try_from(record.causal_anchors().len())?)
                                 .ok_or(PersistenceError::HistoryArithmeticOverflow)?,
                         )),
                     }
@@ -2729,6 +2763,10 @@ impl SqliteHistoryCatalog {
             total.3 = total
                 .3
                 .checked_add(frame.3)
+                .ok_or(PersistenceError::HistoryArithmeticOverflow)?;
+            total.4 = total
+                .4
+                .checked_add(frame.4)
                 .ok_or(PersistenceError::HistoryArithmeticOverflow)?;
             Ok(())
         })?;
@@ -3095,6 +3133,11 @@ fn insert_indexes(
             "INSERT INTO evidence(generation,schema_id,canonical_key,frame_ordinal,record_ordinal,payload_digest) VALUES (?1,?2,?3,?4,?5,?6)",
         )
         .map_err(|error| sqlite_error("prepare evidence index", error))?;
+    let mut insert_evidence_anchor = tx
+        .prepare(
+            "INSERT INTO evidence_anchors(generation,schema_id,anchor_trace,frame_ordinal,record_ordinal) VALUES (?1,?2,?3,?4,?5)",
+        )
+        .map_err(|error| sqlite_error("prepare evidence anchor index", error))?;
     for (record_ordinal, record) in records.iter().enumerate() {
         match record {
             HistoryRecord::Causal(event) => {
@@ -3143,6 +3186,17 @@ fn insert_indexes(
                         evidence.payload_digest().bytes().as_slice()
                     ])
                     .map_err(|error| sqlite_error("insert evidence index", error))?;
+                for anchor in evidence.causal_anchors() {
+                    insert_evidence_anchor
+                        .execute(params![
+                            to_i64(generation)?,
+                            key(evidence.schema_id().raw()),
+                            key(anchor.raw()),
+                            to_i64(frame_ordinal)?,
+                            to_i64(u64::try_from(record_ordinal)?)?
+                        ])
+                        .map_err(|error| sqlite_error("insert evidence anchor index", error))?;
+                }
             }
         }
     }
@@ -3811,14 +3865,14 @@ mod tests {
         let records = (1_u64..=4_096)
             .map(|sequence| causal(sequence, vec![TraceId::new(sequence - 1)]))
             .collect::<Vec<_>>();
-        CAUSAL_VALIDATION_CATALOG_LOOKUPS.store(0, Ordering::SeqCst);
+        CAUSAL_VALIDATION_CATALOG_LOOKUPS.with(|lookups| lookups.set(0));
 
         // When: the append-boundary validator checks the batch against real SQLite state.
         validate_causal_batch_against_catalog(&store.catalog, &records, &store.pending)
             .expect("valid causal batch");
 
         // Then: catalog work is batched rather than one query per parent record.
-        let lookups = CAUSAL_VALIDATION_CATALOG_LOOKUPS.load(Ordering::SeqCst);
+        let lookups = CAUSAL_VALIDATION_CATALOG_LOOKUPS.with(Cell::get);
         println!(
             "causal_validation records={} catalog_queries={lookups}",
             records.len()

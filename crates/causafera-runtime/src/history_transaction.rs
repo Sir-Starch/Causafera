@@ -287,6 +287,10 @@ impl SharedHistoryReader {
 }
 
 impl CausalHistoryReader for SharedHistoryReader {
+    fn pin_snapshot(&self) -> Result<Arc<dyn CausalHistoryReader>, HistoryError> {
+        self.with_reader(|reader| reader.pin_snapshot())
+    }
+
     fn all_records_for_oracle(&self) -> Result<Vec<OwnedCausalRecord>, HistoryError> {
         self.with_reader(|reader| reader.all_records_for_oracle())
     }
@@ -322,6 +326,10 @@ impl CausalHistoryReader for SharedHistoryReader {
         self.with_reader(|reader| reader.children(trace_id, query))
     }
 
+    fn child_count(&self, trace_id: TraceId) -> Result<u64, HistoryError> {
+        self.with_reader(|reader| reader.child_count(trace_id))
+    }
+
     fn latest_matching_event_before(
         &self,
         target: CausalTarget,
@@ -337,6 +345,61 @@ impl CausalHistoryReader for SharedHistoryReader {
         query: HistoryQuery,
     ) -> Result<HistoryPage<DomainEvidenceRecord>, HistoryError> {
         self.with_reader(|reader| reader.evidence(schema_id, canonical_key, query))
+    }
+
+    fn evidence_count(
+        &self,
+        schema_id: EvidenceSchemaId,
+        canonical_key: &[u8],
+    ) -> Result<u64, HistoryError> {
+        self.with_reader(|reader| reader.evidence_count(schema_id, canonical_key))
+    }
+
+    fn evidence_by_anchor(
+        &self,
+        schema_id: causafera_core::EvidenceSchemaId,
+        anchor: TraceId,
+        query: HistoryQuery,
+    ) -> Result<causafera_core::HistoryPage<causafera_core::DomainEvidenceRecord>, HistoryError>
+    {
+        self.with_reader(|reader| reader.evidence_by_anchor(schema_id, anchor, query))
+    }
+
+    fn evidence_by_anchor_count(
+        &self,
+        schema_id: causafera_core::EvidenceSchemaId,
+        anchor: TraceId,
+    ) -> Result<u64, HistoryError> {
+        self.with_reader(|reader| reader.evidence_by_anchor_count(schema_id, anchor))
+    }
+
+    fn evidence_by_key_prefix(
+        &self,
+        schema_id: causafera_core::EvidenceSchemaId,
+        canonical_key_prefix: &[u8],
+        query: HistoryQuery,
+    ) -> Result<causafera_core::HistoryPage<causafera_core::DomainEvidenceRecord>, HistoryError>
+    {
+        self.with_reader(|reader| {
+            reader.evidence_by_key_prefix(schema_id, canonical_key_prefix, query)
+        })
+    }
+
+    fn evidence_by_key_prefix_count(
+        &self,
+        schema_id: causafera_core::EvidenceSchemaId,
+        canonical_key_prefix: &[u8],
+    ) -> Result<u64, HistoryError> {
+        self.with_reader(|reader| {
+            reader.evidence_by_key_prefix_count(schema_id, canonical_key_prefix)
+        })
+    }
+
+    fn checkpoint_at(
+        &self,
+        time: causafera_types::SimulationTime,
+    ) -> Result<Option<causafera_core::HistoryCheckpoint>, HistoryError> {
+        self.with_reader(|reader| reader.checkpoint_at(time))
     }
 }
 
@@ -1504,6 +1567,7 @@ mod tests {
     };
 
     use super::*;
+    use crate::{Runtime, RuntimeConfig};
 
     #[derive(Debug)]
     struct RuntimeSyntheticDecoder;
@@ -1863,6 +1927,54 @@ mod tests {
             traces.event(TraceId::new(1)).expect("trace event")
         );
         assert!(coordinator.visible_head().raw() > 0);
+    }
+
+    #[test]
+    fn runtime_history_reader_pin_survives_a_durable_generation_flush() {
+        let mut runtime = Runtime::new(RuntimeConfig::new(0xC0FFEE)).expect("runtime bootstraps");
+        let live_reader = runtime.history_reader().expect("live reader");
+        let initial_anchor = live_reader.anchor().expect("initial anchor");
+        let pinned = live_reader.pin_snapshot().expect("production pin succeeds");
+        assert_eq!(
+            pinned.anchor().expect("pinned anchor").logical_generation(),
+            initial_anchor.logical_generation()
+        );
+
+        runtime.run_ticks(1).expect("runtime advances one tick");
+        let post_tick_head = runtime
+            .history_status()
+            .expect("post-tick history status")
+            .visible_head;
+        runtime
+            .export_bounded_envelope()
+            .expect("force a durable history generation");
+
+        let updated_reader = runtime.history_reader().expect("updated reader");
+        let updated_anchor = updated_reader.anchor().expect("updated anchor");
+        assert!(
+            updated_anchor.logical_generation() > initial_anchor.logical_generation(),
+            "a tick must publish a new logical generation"
+        );
+        assert!(
+            updated_anchor.durable_generation() > initial_anchor.durable_generation(),
+            "bounded export must force the new durable generation"
+        );
+        assert_eq!(
+            pinned.anchor().expect("pinned anchor remains fixed"),
+            initial_anchor
+        );
+        assert_eq!(
+            pinned.event(post_tick_head).expect("pinned lookup"),
+            None,
+            "pinned generation must not expose the post-pin event"
+        );
+        assert!(
+            updated_reader
+                .event(post_tick_head)
+                .expect("updated lookup")
+                .is_some(),
+            "live reader must expose the flushed event"
+        );
     }
 
     #[test]

@@ -69,6 +69,18 @@ pub enum HistoryError {
     QueryRecordLimitExceeded { requested: usize, max: usize },
     #[error("query byte limit {requested} exceeds maximum {max}")]
     QueryByteLimitExceeded { requested: usize, max: usize },
+    #[error(
+        "history query page continuation must advance beyond offset {offset}, got {next_offset}"
+    )]
+    QueryPageDoesNotAdvance { offset: u64, next_offset: u64 },
+    #[error("query depth budget {requested} exceeds maximum {max}")]
+    QueryDepthLimitExceeded { requested: usize, max: usize },
+    #[error("query node budget {requested} exceeds maximum {max}")]
+    QueryNodeLimitExceeded { requested: usize, max: usize },
+    #[error("cursor-based history query requires offset zero")]
+    QueryCursorOffsetMustBeZero,
+    #[error("history query cursor does not match the reader generation")]
+    StaleQueryCursor,
     #[error("history arithmetic overflow")]
     ArithmeticOverflow,
     #[error("history range {offset}+{length} exceeds buffer length {total}")]
@@ -93,6 +105,8 @@ pub enum HistoryError {
     DurableGenerationAhead { logical: u64, durable: u64 },
     #[error("history reader operation is unavailable")]
     ReaderOperationUnavailable,
+    #[error("history integrity check failed: {details}")]
+    IntegrityFailure { details: String },
     #[error("causal hot cache requires {required} bytes but its budget is {budget}")]
     HotBudgetExceeded { required: usize, budget: usize },
     #[error("hot record {trace_id:?} does not match the cold reader")]

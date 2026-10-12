@@ -654,6 +654,13 @@ fn provenance_query_and_page_enforce_record_and_byte_limits() {
         HistoryPage::new(vec![SizedItem(4), SizedItem(5)], None, query),
         Err(HistoryError::QueryByteLimitExceeded { .. })
     ));
+    assert_eq!(
+        HistoryPage::<SizedItem>::new(vec![], Some(query.offset()), query),
+        Err(HistoryError::QueryPageDoesNotAdvance {
+            offset: query.offset(),
+            next_offset: query.offset(),
+        })
+    );
 
     let max_page_query =
         HistoryQuery::new(0, MAX_QUERY_PAGE_RECORDS, MAX_QUERY_PAGE_BYTES).unwrap();
@@ -1203,6 +1210,18 @@ fn provenance_transaction_local_dag_writes_read_cold_parents_and_remain_atomic()
     assert_eq!(first.records(), &[TraceId::new(51)]);
     assert_eq!(second.records(), &[TraceId::new(52)]);
     assert_eq!(second.next_offset(), None);
+    let first_range = store
+        .indexed_range(HistoryQuery::new(0, 2, 4096).unwrap())
+        .unwrap();
+    assert_eq!(first_range.records().len(), 2);
+    let second_range = store
+        .indexed_range(HistoryQuery::new(first_range.next_offset().unwrap(), 2, 4096).unwrap())
+        .unwrap();
+    assert!(matches!(
+        second_range.records(),
+        [HistoryRecord::Causal(record)] if record.trace_id() == child_trace
+    ));
+    assert_eq!(second_range.next_offset(), None);
     assert!(store.hot_bytes() <= store.hot_budget());
 }
 

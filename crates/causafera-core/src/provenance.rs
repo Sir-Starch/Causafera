@@ -1291,11 +1291,12 @@ impl CausalTraceStore {
         if overlay.is_empty() || cold.next_offset().is_some() {
             return Ok(cold);
         }
-        let overlay_query = HistoryQuery::new(
-            0,
-            query.max_records() - cold.records().len(),
-            query.max_bytes() - cold.decoded_bytes(),
-        )?;
+        let remaining_records = query.max_records() - cold.records().len();
+        let remaining_bytes = query.max_bytes() - cold.decoded_bytes();
+        if remaining_records == 0 || remaining_bytes < overlay[0].decoded_size() {
+            return HistoryPage::new(cold.records().to_vec(), Some(HOT_CHILD_CURSOR_FLAG), query);
+        }
+        let overlay_query = HistoryQuery::new(0, remaining_records, remaining_bytes)?;
         let overlay_page = Self::page(&overlay, overlay_query)?;
         let mut children = cold.records().to_vec();
         children.extend_from_slice(overlay_page.records());
@@ -1344,11 +1345,12 @@ impl CausalTraceStore {
             if cold.next_offset().is_some() || hot.is_empty() {
                 return Ok(cold);
             }
-            let overlay_query = HistoryQuery::new(
-                0,
-                query.max_records().saturating_sub(cold.records().len()),
-                query.max_bytes().saturating_sub(cold.decoded_bytes()),
-            )?;
+            let remaining_records = query.max_records().saturating_sub(cold.records().len());
+            let remaining_bytes = query.max_bytes().saturating_sub(cold.decoded_bytes());
+            if remaining_records == 0 || remaining_bytes < hot[0].decoded_size() {
+                return HistoryPage::new(cold.records().to_vec(), Some(cold_count), query);
+            }
+            let overlay_query = HistoryQuery::new(0, remaining_records, remaining_bytes)?;
             let overlay = Self::page(&hot, overlay_query)?;
             let mut records = cold.records().to_vec();
             records.extend_from_slice(overlay.records());

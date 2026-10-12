@@ -23,6 +23,7 @@ mod history_transaction;
 mod hydrology;
 mod hydrology_config;
 mod hydrology_events;
+mod hydrology_history_explanation;
 mod hydrology_projection;
 mod hydrology_undo;
 mod hydrology_validation;

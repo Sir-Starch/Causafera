@@ -3,8 +3,9 @@ use std::sync::{Arc, Mutex};
 
 use causafera_core::{
     CausalHistoryReader, CausalTarget, DomainEvidenceRecord, EvidenceSchemaId, HistoryAnchor,
-    HistoryAnchorFields, HistoryDurability, HistoryError, HistoryFrontier, HistoryPage,
-    HistoryPageItem, HistoryQuery, HistoryRecord, OwnedCausalRecord,
+    HistoryAnchorFields, HistoryCheckpoint, HistoryDurability, HistoryError, HistoryFrontier,
+    HistoryPage, HistoryPageItem, HistoryQuery, HistoryQueryOutcome, HistoryRecord,
+    HistoryWalkBudget, OwnedCausalRecord,
 };
 use causafera_types::{EventId, TraceId};
 
@@ -15,7 +16,7 @@ pub(crate) struct RuntimeHistoryReader {
     inner: Mutex<HistoryIndex>,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct HistoryIndex {
     cold: Arc<dyn CausalHistoryReader>,
     cold_records: usize,
@@ -32,7 +33,7 @@ struct HistoryIndex {
     overlay: Vec<HistoryRecord>,
     overlay_events: BTreeMap<TraceId, usize>,
     overlay_event_ids: BTreeMap<EventId, usize>,
-    overlay_evidence: BTreeMap<(EvidenceSchemaId, Vec<u8>), usize>,
+    overlay_evidence: BTreeMap<(EvidenceSchemaId, Vec<u8>), Vec<usize>>,
 }
 
 impl RuntimeHistoryReader {
@@ -124,10 +125,11 @@ impl RuntimeHistoryReader {
                     index.overlay_event_ids.insert(record.event_id(), position);
                 }
                 HistoryRecord::Evidence(record) => {
-                    index.overlay_evidence.insert(
-                        (record.schema_id(), record.canonical_key().to_vec()),
-                        position,
-                    );
+                    index
+                        .overlay_evidence
+                        .entry((record.schema_id(), record.canonical_key().to_vec()))
+                        .or_default()
+                        .push(position);
                 }
             }
         }
@@ -217,23 +219,33 @@ impl RuntimeHistoryReader {
         let new_len = index.overlay.len() - records.len();
         let removed = index.overlay[new_len..]
             .iter()
-            .map(|record| match record {
-                HistoryRecord::Causal(record) => {
-                    (Some((record.trace_id(), record.event_id())), None)
-                }
+            .enumerate()
+            .map(|(offset, record)| match record {
+                HistoryRecord::Causal(record) => (
+                    Some((record.trace_id(), record.event_id())),
+                    None,
+                    new_len + offset,
+                ),
                 HistoryRecord::Evidence(record) => (
                     None,
                     Some((record.schema_id(), record.canonical_key().to_vec())),
+                    new_len + offset,
                 ),
             })
             .collect::<Vec<_>>();
-        for (causal, evidence) in removed {
+        for (causal, evidence, position) in removed {
             if let Some((trace_id, event_id)) = causal {
                 index.overlay_events.remove(&trace_id);
                 index.overlay_event_ids.remove(&event_id);
             }
-            if let Some(key) = evidence {
-                index.overlay_evidence.remove(&key);
+            if let Some(key) = evidence
+                && let Some(positions) = index.overlay_evidence.get_mut(&key)
+            {
+                positions.retain(|candidate| *candidate != position);
+                let remove_key = positions.is_empty();
+                if remove_key {
+                    index.overlay_evidence.remove(&key);
+                }
             }
         }
         index.overlay.truncate(new_len);
@@ -298,6 +310,18 @@ impl RuntimeHistoryReader {
 }
 
 impl CausalHistoryReader for RuntimeHistoryReader {
+    fn pin_snapshot(&self) -> Result<Arc<dyn CausalHistoryReader>, HistoryError> {
+        let mut snapshot = self
+            .inner
+            .lock()
+            .map_err(|_| HistoryError::ReaderOperationUnavailable)?
+            .clone();
+        snapshot.cold = snapshot.cold.pin_snapshot()?;
+        Ok(Arc::new(Self {
+            inner: Mutex::new(snapshot),
+        }))
+    }
+
     fn anchor(&self) -> Result<HistoryAnchor, HistoryError> {
         let index = self
             .inner
@@ -380,6 +404,7 @@ impl CausalHistoryReader for RuntimeHistoryReader {
                 .map_err(|_| HistoryError::ReaderOperationUnavailable)?;
             Arc::clone(&index.cold)
         };
+        let cold_count = cold.child_count(trace_id)?;
         let page = cold.children(trace_id, query)?;
         if page.next_offset().is_some() {
             return Ok(page);
@@ -395,7 +420,29 @@ impl CausalHistoryReader for RuntimeHistoryReader {
             }
             _ => None,
         }));
-        page_values_at(&values, query, query.offset())
+        if query.offset() < cold_count {
+            page_values_at(&values, query, query.offset())
+        } else {
+            page_values_at(&values, query, cold_count)
+        }
+    }
+
+    fn child_count(&self, trace_id: TraceId) -> Result<u64, HistoryError> {
+        let (cold, overlay) = {
+            let index = self
+                .inner
+                .lock()
+                .map_err(|_| HistoryError::ReaderOperationUnavailable)?;
+            let overlay = index
+                .overlay
+                .iter()
+                .filter(|record| matches!(record, HistoryRecord::Causal(event) if event.causes().contains(&trace_id)))
+                .count();
+            (Arc::clone(&index.cold), overlay)
+        };
+        cold.child_count(trace_id)?
+            .checked_add(u64::try_from(overlay).map_err(|_| HistoryError::ArithmeticOverflow)?)
+            .ok_or(HistoryError::ArithmeticOverflow)
     }
 
     fn latest_matching_event_before(
@@ -448,6 +495,7 @@ impl CausalHistoryReader for RuntimeHistoryReader {
                 .map_err(|_| HistoryError::ReaderOperationUnavailable)?;
             Arc::clone(&index.cold)
         };
+        let cold_count = cold.evidence_count(schema_id, canonical_key)?;
         let page = cold.evidence(schema_id, canonical_key, query)?;
         if page.next_offset().is_some() {
             return Ok(page);
@@ -457,14 +505,202 @@ impl CausalHistoryReader for RuntimeHistoryReader {
             .inner
             .lock()
             .map_err(|_| HistoryError::ReaderOperationUnavailable)?;
-        if let Some(position) = index
+        if let Some(positions) = index
             .overlay_evidence
             .get(&(schema_id, canonical_key.to_vec()))
-            && let Some(HistoryRecord::Evidence(record)) = index.overlay.get(*position)
         {
-            values.push(record.clone());
+            values.extend(positions.iter().filter_map(
+                |position| match index.overlay.get(*position) {
+                    Some(HistoryRecord::Evidence(record)) => Some(record.clone()),
+                    _ => None,
+                },
+            ));
         }
-        page_values_at(&values, query, query.offset())
+        if query.offset() < cold_count {
+            page_values_at(&values, query, query.offset())
+        } else {
+            page_values_at(&values, query, cold_count)
+        }
+    }
+
+    fn evidence_count(
+        &self,
+        schema_id: EvidenceSchemaId,
+        canonical_key: &[u8],
+    ) -> Result<u64, HistoryError> {
+        let (cold, overlay) = {
+            let index = self
+                .inner
+                .lock()
+                .map_err(|_| HistoryError::ReaderOperationUnavailable)?;
+            let overlay = index
+                .overlay_evidence
+                .get(&(schema_id, canonical_key.to_vec()))
+                .map_or(0, Vec::len);
+            (Arc::clone(&index.cold), overlay)
+        };
+        cold.evidence_count(schema_id, canonical_key)?
+            .checked_add(u64::try_from(overlay).map_err(|_| HistoryError::ArithmeticOverflow)?)
+            .ok_or(HistoryError::ArithmeticOverflow)
+    }
+
+    fn evidence_by_anchor(
+        &self,
+        schema_id: EvidenceSchemaId,
+        anchor: TraceId,
+        query: HistoryQuery,
+    ) -> Result<HistoryPage<DomainEvidenceRecord>, HistoryError> {
+        let cold = {
+            let index = self
+                .inner
+                .lock()
+                .map_err(|_| HistoryError::ReaderOperationUnavailable)?;
+            Arc::clone(&index.cold)
+        };
+        let cold_count = cold.evidence_by_anchor_count(schema_id, anchor)?;
+        let page = cold.evidence_by_anchor(schema_id, anchor, query)?;
+        if page.next_offset().is_some() {
+            return Ok(page);
+        }
+        let mut values = page.records().to_vec();
+        let index = self
+            .inner
+            .lock()
+            .map_err(|_| HistoryError::ReaderOperationUnavailable)?;
+        values.extend(index.overlay.iter().filter_map(|record| match record {
+            HistoryRecord::Evidence(record)
+                if record.schema_id() == schema_id && record.causal_anchors().contains(&anchor) =>
+            {
+                Some(record.clone())
+            }
+            _ => None,
+        }));
+        let base_offset = if query.offset() < cold_count {
+            query.offset()
+        } else {
+            cold_count
+        };
+        page_values_at(&values, query, base_offset)
+    }
+
+    fn evidence_by_anchor_count(
+        &self,
+        schema_id: EvidenceSchemaId,
+        anchor: TraceId,
+    ) -> Result<u64, HistoryError> {
+        let (cold, overlay) = {
+            let index = self
+                .inner
+                .lock()
+                .map_err(|_| HistoryError::ReaderOperationUnavailable)?;
+            let overlay = index
+                .overlay
+                .iter()
+                .filter(|record| {
+                    matches!(record, HistoryRecord::Evidence(evidence) if evidence.schema_id() == schema_id && evidence.causal_anchors().contains(&anchor))
+                })
+                .count();
+            (Arc::clone(&index.cold), overlay)
+        };
+        cold.evidence_by_anchor_count(schema_id, anchor)?
+            .checked_add(u64::try_from(overlay).map_err(|_| HistoryError::ArithmeticOverflow)?)
+            .ok_or(HistoryError::ArithmeticOverflow)
+    }
+
+    fn evidence_by_key_prefix(
+        &self,
+        schema_id: EvidenceSchemaId,
+        canonical_key_prefix: &[u8],
+        query: HistoryQuery,
+    ) -> Result<HistoryPage<DomainEvidenceRecord>, HistoryError> {
+        let cold = {
+            let index = self
+                .inner
+                .lock()
+                .map_err(|_| HistoryError::ReaderOperationUnavailable)?;
+            Arc::clone(&index.cold)
+        };
+        let cold_count = cold.evidence_by_key_prefix_count(schema_id, canonical_key_prefix)?;
+        let page = cold.evidence_by_key_prefix(schema_id, canonical_key_prefix, query)?;
+        if page.next_offset().is_some() {
+            return Ok(page);
+        }
+        let mut values = page.records().to_vec();
+        let index = self
+            .inner
+            .lock()
+            .map_err(|_| HistoryError::ReaderOperationUnavailable)?;
+        values.extend(index.overlay.iter().filter_map(|record| match record {
+            HistoryRecord::Evidence(record)
+                if record.schema_id() == schema_id
+                    && record.canonical_key().starts_with(canonical_key_prefix) =>
+            {
+                Some(record.clone())
+            }
+            _ => None,
+        }));
+        let base_offset = if query.offset() < cold_count {
+            query.offset()
+        } else {
+            cold_count
+        };
+        page_values_at(&values, query, base_offset)
+    }
+
+    fn evidence_by_key_prefix_count(
+        &self,
+        schema_id: EvidenceSchemaId,
+        canonical_key_prefix: &[u8],
+    ) -> Result<u64, HistoryError> {
+        let (cold, overlay) = {
+            let index = self
+                .inner
+                .lock()
+                .map_err(|_| HistoryError::ReaderOperationUnavailable)?;
+            let overlay = index
+                .overlay
+                .iter()
+                .filter(|record| {
+                    matches!(record, HistoryRecord::Evidence(evidence) if evidence.schema_id() == schema_id && evidence.canonical_key().starts_with(canonical_key_prefix))
+                })
+                .count();
+            (Arc::clone(&index.cold), overlay)
+        };
+        cold.evidence_by_key_prefix_count(schema_id, canonical_key_prefix)?
+            .checked_add(u64::try_from(overlay).map_err(|_| HistoryError::ArithmeticOverflow)?)
+            .ok_or(HistoryError::ArithmeticOverflow)
+    }
+
+    fn walk_ancestors(
+        &self,
+        trace_id: TraceId,
+        max_depth: usize,
+        query: HistoryQuery,
+    ) -> Result<HistoryPage<TraceId>, HistoryError> {
+        match self.walk_ancestors_bounded(
+            trace_id,
+            HistoryWalkBudget::new(max_depth, HistoryWalkBudget::MAX_NODES)?,
+            query,
+        )? {
+            HistoryQueryOutcome::Complete(page) | HistoryQueryOutcome::Partial(page) => Ok(page),
+            HistoryQueryOutcome::Missing => HistoryPage::new(Vec::new(), None, query),
+            HistoryQueryOutcome::Unknown => Err(HistoryError::ReaderOperationUnavailable),
+            HistoryQueryOutcome::IntegrityError(error) => Err(error),
+        }
+    }
+
+    fn checkpoint_at(
+        &self,
+        time: causafera_types::SimulationTime,
+    ) -> Result<Option<HistoryCheckpoint>, HistoryError> {
+        let cold = {
+            let index = self
+                .inner
+                .lock()
+                .map_err(|_| HistoryError::ReaderOperationUnavailable)?;
+            index.cold.pin_snapshot()?
+        };
+        cold.checkpoint_at(time)
     }
 }
 
@@ -658,6 +894,321 @@ fn page_values_at<T: HistoryPageItem + Clone>(
     HistoryPage::new(selected, next, query)
 }
 
+#[cfg(test)]
+mod pagination_regression_tests {
+    use super::*;
+    use causafera_core::{
+        CausalEffect, CausalTarget, HistoryQueryStatus, HistoryReader, Phase, StateFingerprint,
+    };
+    use causafera_types::{EventKindId, SimulationTime, StateObjectKindId, StatePropertyId};
+
+    #[test]
+    fn pin_snapshot_keeps_generation_and_overlay_after_live_append() {
+        let effect = CausalEffect::new(
+            CausalTarget::new(StateObjectKindId::new(8), 9, StatePropertyId::new(10)),
+            StateFingerprint::new([1; 32]),
+            StateFingerprint::new([2; 32]),
+        )
+        .expect("effect is valid");
+        let root = OwnedCausalRecord::new(
+            0,
+            EventId::new(0),
+            TraceId::new(0),
+            SimulationTime::new(0),
+            Phase::Physics,
+            EventKindId::new(6),
+            Vec::new(),
+            vec![effect],
+        )
+        .expect("root is valid");
+        let next = OwnedCausalRecord::new(
+            1,
+            EventId::new(1),
+            TraceId::new(1),
+            SimulationTime::new(1),
+            Phase::Physics,
+            EventKindId::new(6),
+            vec![TraceId::new(0)],
+            vec![effect],
+        )
+        .expect("next is valid");
+        let reader = RuntimeHistoryReader::new_for_test([0; 16], vec![root]).expect("reader");
+        let pinned = reader.pin_snapshot().expect("pinned reader");
+
+        reader
+            .append(
+                1,
+                &[HistoryRecord::Causal(next.clone())],
+                [3; 32],
+                [4; 32],
+                [5; 32],
+            )
+            .expect("append");
+
+        assert_eq!(
+            pinned.anchor().expect("pinned anchor").logical_generation(),
+            0
+        );
+        assert_eq!(pinned.event(next.trace_id()).expect("pinned event"), None);
+        assert_eq!(
+            reader.event(next.trace_id()).expect("live event"),
+            Some(next)
+        );
+    }
+
+    #[test]
+    fn ancestor_query_returns_partial_at_its_node_budget() {
+        let effect = CausalEffect::new(
+            CausalTarget::new(StateObjectKindId::new(8), 9, StatePropertyId::new(10)),
+            StateFingerprint::new([1; 32]),
+            StateFingerprint::new([2; 32]),
+        )
+        .expect("effect is valid");
+        let records = (0..5)
+            .map(|index| {
+                OwnedCausalRecord::new(
+                    index,
+                    EventId::new(index),
+                    TraceId::new(index),
+                    SimulationTime::new(index),
+                    Phase::Physics,
+                    EventKindId::new(6),
+                    (index > 0)
+                        .then(|| TraceId::new(index - 1))
+                        .into_iter()
+                        .collect(),
+                    vec![effect],
+                )
+                .expect("chain record is valid")
+            })
+            .collect();
+        let reader = RuntimeHistoryReader::new_for_test([0; 16], records).expect("reader");
+        let outcome = reader
+            .walk_ancestors_bounded(
+                TraceId::new(4),
+                HistoryWalkBudget::new(10, 2).expect("budget"),
+                HistoryQuery::new(0, 256, 4 * 1024 * 1024).expect("page"),
+            )
+            .expect("bounded query");
+
+        let HistoryQueryOutcome::Partial(page) = outcome else {
+            panic!("node budget must produce a partial outcome");
+        };
+        assert_eq!(page.records(), &[TraceId::new(2), TraceId::new(3)]);
+    }
+
+    #[test]
+    fn ancestor_query_reports_missing_unknown_and_integrity_failure_distinctly() {
+        let budget = HistoryWalkBudget::new(10, 10).expect("budget");
+        let query = HistoryQuery::page(0).expect("page");
+        let missing = RuntimeHistoryReader::new_for_test([0; 16], Vec::new())
+            .expect("empty reader")
+            .walk_ancestors_bounded(TraceId::new(99), budget, query)
+            .expect("missing query");
+        assert_eq!(missing.status(), HistoryQueryStatus::Missing);
+
+        let effect = CausalEffect::new(
+            CausalTarget::new(StateObjectKindId::new(8), 9, StatePropertyId::new(10)),
+            StateFingerprint::new([1; 32]),
+            StateFingerprint::new([2; 32]),
+        )
+        .expect("effect is valid");
+        let root = OwnedCausalRecord::new(
+            0,
+            EventId::new(0),
+            TraceId::new(0),
+            SimulationTime::new(0),
+            Phase::Physics,
+            EventKindId::new(6),
+            Vec::new(),
+            vec![effect],
+        )
+        .expect("root is valid");
+        let unavailable_reader =
+            ParentFailureReader::new(root.clone(), HistoryError::ReaderOperationUnavailable);
+        let unavailable = unavailable_reader
+            .walk_ancestors_bounded(TraceId::new(0), budget, query)
+            .expect("unavailable ancestry query");
+        assert_eq!(unavailable.status(), HistoryQueryStatus::Unknown);
+
+        let integrity_reader = ParentFailureReader::new(
+            root,
+            HistoryError::IntegrityFailure {
+                details: "injected parent-index corruption".to_owned(),
+            },
+        );
+        let integrity = integrity_reader
+            .walk_ancestors_bounded(TraceId::new(0), budget, query)
+            .expect("integrity outcome is explicit");
+        assert_eq!(integrity.status(), HistoryQueryStatus::IntegrityError);
+        assert!(matches!(
+            integrity,
+            HistoryQueryOutcome::IntegrityError(HistoryError::IntegrityFailure { .. })
+        ));
+    }
+
+    #[test]
+    fn ancestor_cursor_advances_across_pages_without_repeating_ancestors() {
+        let effect = CausalEffect::new(
+            CausalTarget::new(StateObjectKindId::new(8), 9, StatePropertyId::new(10)),
+            StateFingerprint::new([1; 32]),
+            StateFingerprint::new([2; 32]),
+        )
+        .expect("effect is valid");
+        let records = (0..3)
+            .map(|index| {
+                OwnedCausalRecord::new(
+                    index,
+                    EventId::new(index),
+                    TraceId::new(index),
+                    SimulationTime::new(index),
+                    Phase::Physics,
+                    EventKindId::new(6),
+                    (index > 0)
+                        .then(|| TraceId::new(index - 1))
+                        .into_iter()
+                        .collect(),
+                    vec![effect],
+                )
+                .expect("chain record is valid")
+            })
+            .collect();
+        let reader = RuntimeHistoryReader::new_for_test([0; 16], records).expect("reader");
+        let cursor = reader
+            .ancestor_cursor(TraceId::new(2))
+            .expect("cursor creation")
+            .expect("root event exists");
+        let budget = HistoryWalkBudget::new(10, 10).expect("budget");
+        let query = HistoryQuery::new(0, 1, 8).expect("one-record page");
+
+        let first = reader
+            .walk_ancestor_page(cursor, budget, query)
+            .expect("first ancestor page");
+        assert_eq!(first.page().records(), &[TraceId::new(1)]);
+        assert_eq!(first.status(), HistoryQueryStatus::Partial);
+        let second = reader
+            .walk_ancestor_page(
+                first.into_next_cursor().expect("continuation"),
+                budget,
+                query,
+            )
+            .expect("second ancestor page");
+        assert_eq!(second.page().records(), &[TraceId::new(0)]);
+        assert_eq!(second.status(), HistoryQueryStatus::Complete);
+        assert!(second.next_cursor().is_none());
+    }
+
+    #[test]
+    fn evidence_pagination_uses_absolute_offset_across_cold_and_overlay_records() {
+        use causafera_core::{Criticality, EvidenceSchemaVersion, StateFingerprint};
+        use causafera_types::SimulationTime;
+
+        let schema_id = EvidenceSchemaId::new(71);
+        let key = b"shared-test-key";
+        let evidence = |sequence, payload: &[u8]| {
+            DomainEvidenceRecord::new(
+                sequence,
+                schema_id,
+                EvidenceSchemaVersion::new(1, 0),
+                Criticality::ExplanationOnly,
+                SimulationTime::new(sequence),
+                vec![TraceId::new(17)],
+                key.to_vec(),
+                payload.to_vec(),
+                StateFingerprint::new([sequence as u8; 32]),
+            )
+            .expect("evidence is valid")
+        };
+        let cold = Arc::new(TestColdReader::with_evidence(
+            [0; 16],
+            Vec::new(),
+            vec![evidence(0, b"cold-0"), evidence(1, b"cold-1")],
+        ));
+        let reader = RuntimeHistoryReader::new(cold, 2, 0).expect("reader");
+        let overlay = evidence(2, b"overlay-2");
+        {
+            let mut index = reader.inner.lock().expect("reader lock");
+            index.overlay.push(HistoryRecord::Evidence(overlay.clone()));
+            index
+                .overlay_evidence
+                .insert((schema_id, key.to_vec()), vec![0]);
+        }
+
+        let query = HistoryQuery::new(1, 2, 4096).expect("query");
+        let page = reader.evidence(schema_id, key, query).expect("page");
+        assert_eq!(page.records(), &[evidence(1, b"cold-1"), overlay]);
+        assert_eq!(page.next_offset(), None);
+
+        let query = HistoryQuery::new(2, 1, 4096).expect("query");
+        let page = reader.evidence(schema_id, key, query).expect("page");
+        assert_eq!(page.records(), &[evidence(2, b"overlay-2")]);
+        assert_eq!(page.next_offset(), None);
+
+        let page = reader
+            .evidence_by_anchor(
+                schema_id,
+                TraceId::new(17),
+                HistoryQuery::new(1, 2, 4096).expect("anchor query"),
+            )
+            .expect("anchored page");
+        assert_eq!(
+            page.records(),
+            &[evidence(1, b"cold-1"), evidence(2, b"overlay-2")]
+        );
+        assert_eq!(page.next_offset(), None);
+
+        let page = reader
+            .evidence_by_key_prefix(
+                schema_id,
+                b"shared-",
+                HistoryQuery::new(1, 2, 4096).expect("prefix query"),
+            )
+            .expect("prefix page");
+        assert_eq!(
+            page.records(),
+            &[evidence(1, b"cold-1"), evidence(2, b"overlay-2")]
+        );
+        assert_eq!(page.next_offset(), None);
+    }
+
+    #[derive(Debug)]
+    struct ParentFailureReader {
+        inner: TestColdReader,
+        error: HistoryError,
+    }
+
+    impl ParentFailureReader {
+        fn new(root: OwnedCausalRecord, error: HistoryError) -> Self {
+            Self {
+                inner: TestColdReader::new([0; 16], vec![root]).expect("cold reader"),
+                error,
+            }
+        }
+    }
+
+    impl CausalHistoryReader for ParentFailureReader {
+        fn anchor(&self) -> Result<HistoryAnchor, HistoryError> {
+            self.inner.anchor()
+        }
+
+        fn event(&self, trace_id: TraceId) -> Result<Option<OwnedCausalRecord>, HistoryError> {
+            self.inner.event(trace_id)
+        }
+
+        fn records(&self, query: HistoryQuery) -> Result<HistoryPage<HistoryRecord>, HistoryError> {
+            self.inner.records(query)
+        }
+
+        fn parents(
+            &self,
+            _trace_id: TraceId,
+            _query: HistoryQuery,
+        ) -> Result<HistoryPage<TraceId>, HistoryError> {
+            Err(self.error.clone())
+        }
+    }
+}
+
 fn digest_bytes(bytes: [u8; 32]) -> CanonicalDigest {
     let mut digest = CanonicalDigest::new();
     for chunk in bytes.as_chunks::<8>().0 {
@@ -671,6 +1222,7 @@ fn digest_bytes(bytes: [u8; 32]) -> CanonicalDigest {
 struct TestColdReader {
     namespace: [u8; 16],
     records: Vec<HistoryRecord>,
+    evidence: Vec<DomainEvidenceRecord>,
 }
 
 #[cfg(test)]
@@ -679,12 +1231,33 @@ impl TestColdReader {
         Ok(Self {
             namespace,
             records: records.into_iter().map(HistoryRecord::Causal).collect(),
+            evidence: Vec::new(),
         })
+    }
+
+    fn with_evidence(
+        namespace: [u8; 16],
+        records: Vec<OwnedCausalRecord>,
+        evidence: Vec<DomainEvidenceRecord>,
+    ) -> Self {
+        Self {
+            namespace,
+            records: records.into_iter().map(HistoryRecord::Causal).collect(),
+            evidence,
+        }
     }
 }
 
 #[cfg(test)]
 impl CausalHistoryReader for TestColdReader {
+    fn pin_snapshot(&self) -> Result<Arc<dyn CausalHistoryReader>, HistoryError> {
+        Ok(Arc::new(Self {
+            namespace: self.namespace,
+            records: self.records.clone(),
+            evidence: self.evidence.clone(),
+        }))
+    }
+
     fn anchor(&self) -> Result<HistoryAnchor, HistoryError> {
         let frontier = self
             .records
@@ -743,10 +1316,96 @@ impl CausalHistoryReader for TestColdReader {
 
     fn evidence(
         &self,
-        _schema_id: EvidenceSchemaId,
-        _canonical_key: &[u8],
+        schema_id: EvidenceSchemaId,
+        canonical_key: &[u8],
         query: HistoryQuery,
     ) -> Result<HistoryPage<DomainEvidenceRecord>, HistoryError> {
-        page_values(&[], query)
+        let matching = self
+            .evidence
+            .iter()
+            .filter(|record| {
+                record.schema_id() == schema_id && record.canonical_key() == canonical_key
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        page_values(&matching, query)
+    }
+
+    fn evidence_by_anchor(
+        &self,
+        schema_id: EvidenceSchemaId,
+        anchor: TraceId,
+        query: HistoryQuery,
+    ) -> Result<HistoryPage<DomainEvidenceRecord>, HistoryError> {
+        let matching = self
+            .evidence
+            .iter()
+            .filter(|record| {
+                record.schema_id() == schema_id && record.causal_anchors().contains(&anchor)
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        page_values(&matching, query)
+    }
+
+    fn evidence_by_anchor_count(
+        &self,
+        schema_id: EvidenceSchemaId,
+        anchor: TraceId,
+    ) -> Result<u64, HistoryError> {
+        Ok(self
+            .evidence
+            .iter()
+            .filter(|record| {
+                record.schema_id() == schema_id && record.causal_anchors().contains(&anchor)
+            })
+            .count() as u64)
+    }
+
+    fn evidence_by_key_prefix(
+        &self,
+        schema_id: EvidenceSchemaId,
+        canonical_key_prefix: &[u8],
+        query: HistoryQuery,
+    ) -> Result<HistoryPage<DomainEvidenceRecord>, HistoryError> {
+        let matching = self
+            .evidence
+            .iter()
+            .filter(|record| {
+                record.schema_id() == schema_id
+                    && record.canonical_key().starts_with(canonical_key_prefix)
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        page_values(&matching, query)
+    }
+
+    fn evidence_by_key_prefix_count(
+        &self,
+        schema_id: EvidenceSchemaId,
+        canonical_key_prefix: &[u8],
+    ) -> Result<u64, HistoryError> {
+        Ok(self
+            .evidence
+            .iter()
+            .filter(|record| {
+                record.schema_id() == schema_id
+                    && record.canonical_key().starts_with(canonical_key_prefix)
+            })
+            .count() as u64)
+    }
+
+    fn evidence_count(
+        &self,
+        schema_id: EvidenceSchemaId,
+        canonical_key: &[u8],
+    ) -> Result<u64, HistoryError> {
+        Ok(self
+            .evidence
+            .iter()
+            .filter(|record| {
+                record.schema_id() == schema_id && record.canonical_key() == canonical_key
+            })
+            .count() as u64)
     }
 }

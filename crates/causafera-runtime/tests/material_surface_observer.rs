@@ -193,6 +193,34 @@ fn bounded_history_retains_latest_mana_anchor_for_observer_and_explanation() {
 }
 
 #[test]
+fn bootstrap_explanation_reads_completion_traces_after_hot_eviction() {
+    let mut config = production_loop_config(989);
+    config.hot_budget = Some(64 * 1024);
+    let mut runtime = Runtime::new(config).expect("runtime bootstrap must fit the hot budget");
+    let before = runtime
+        .observer_bootstrap_record_explanation()
+        .expect("bootstrap explanation must be available");
+    let completion_trace = before.frames[0].claims[0].evidence_traces[0];
+
+    runtime
+        .run_ticks(16)
+        .expect("ticks must evict old records from the bounded hot cache");
+    let exported = runtime.export_snapshot().expect("snapshot must export");
+    assert!(
+        exported
+            .traces
+            .events
+            .iter()
+            .all(|event| event.trace_id != completion_trace)
+    );
+
+    let after = runtime
+        .observer_bootstrap_record_explanation()
+        .expect("bootstrap completion evidence must remain queryable from pinned history");
+    assert_eq!(before.frames[0].claims, after.frames[0].claims);
+}
+
+#[test]
 fn observer_source_evidence_is_bounded_and_redacted() {
     // Given: an enabled source recipe that produces a material consequence through the live loop.
     let mut runtime = Runtime::new(source_config(985, 3, 1))

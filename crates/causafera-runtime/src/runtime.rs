@@ -5,8 +5,9 @@ use std::{
 
 use causafera_core::{
     CausalCommitError, CausalEffect, CausalEffectError, CausalEventProposal,
-    CausalEventProposalError, CausalTarget, CausalTraceStore, DEFAULT_CAUSAL_HOT_BUDGET_BYTES,
-    EventProposalKey, HistoryError, HistoryReader, Phase, Scheduler, StateFingerprint,
+    CausalEventProposalError, CausalTarget, CausalTraceStore, Criticality,
+    DEFAULT_CAUSAL_HOT_BUDGET_BYTES, EventProposalKey, HistoryError, HistoryQuery, HistoryReader,
+    Phase, Scheduler, StateFingerprint,
 };
 use causafera_domains::{
     ManaError, ManaField, ManaFieldSet, PhysicalPatternSample, ThermalActiveRegion,
@@ -423,32 +424,159 @@ impl Runtime {
     pub fn observer_material_surface_loop_explanation(
         &self,
     ) -> Result<ExplanationReport, RuntimeError> {
-        let state = self.lock_state()?;
-        if let Some(error) = state.failure.clone() {
-            return Err(error);
-        }
-        state.material_surface_loop_explanation(self.scheduler.current_time(), None)
+        self.pinned_material_surface_loop_explanation(None)
     }
 
     pub fn observer_material_surface_loop_explanation_for_surface(
         &self,
         surface: MaterialSurfaceId,
     ) -> Result<ExplanationReport, RuntimeError> {
-        let state = self.lock_state()?;
-        if let Some(error) = state.failure.clone() {
-            return Err(error);
-        }
-        state.material_surface_loop_explanation(self.scheduler.current_time(), Some(surface))
+        self.pinned_material_surface_loop_explanation(Some(surface))
     }
 
     pub fn observer_thermal_conservation_explanation(
         &self,
     ) -> Result<ExplanationReport, RuntimeError> {
-        let state = self.lock_state()?;
-        if let Some(error) = state.failure.clone() {
-            return Err(error);
+        self.pinned_observer_explanation(|state, time| state.thermal_conservation_explanation(time))
+    }
+
+    pub fn observer_thermal_conservation_explanation_for_trace(
+        &self,
+        conservation_trace: TraceId,
+    ) -> Result<ExplanationReport, RuntimeError> {
+        let (time, world_seed, history) = {
+            let state = self.lock_state()?;
+            if let Some(error) = state.failure.clone() {
+                return Err(error);
+            }
+            (
+                self.scheduler.current_time(),
+                state.config.deterministic.world_seed,
+                state.history.reader().pin_snapshot()?,
+            )
+        };
+        let page = history.evidence(
+            crate::THERMAL_CONSERVATION_EVIDENCE_SCHEMA,
+            &conservation_trace.raw().to_le_bytes(),
+            HistoryQuery::new(0, 1, 4 * 1024 * 1024)?,
+        )?;
+        if page.next_offset().is_some() {
+            return Err(RuntimeError::InvalidSnapshot(
+                "duplicate thermal conservation evidence key",
+            ));
         }
-        state.thermal_conservation_explanation(self.scheduler.current_time())
+        let transfer_page = history.evidence_by_anchor(
+            crate::thermal::THERMAL_TRANSFER_EVIDENCE_SCHEMA,
+            conservation_trace,
+            HistoryQuery::new(0, 256, 4 * 1024 * 1024)?,
+        )?;
+        if transfer_page.next_offset().is_some() {
+            return Err(RuntimeError::HistoryQueryPartial {
+                schema_id: crate::thermal::THERMAL_TRANSFER_EVIDENCE_SCHEMA.raw(),
+            });
+        }
+        let mut reservoir_transfer_traces = BTreeSet::new();
+        let mut neighbor_transfer_traces = BTreeSet::new();
+        for record in transfer_page.records() {
+            if record.criticality() != Criticality::ExplanationOnly {
+                return Err(RuntimeError::from(HistoryError::UnsupportedReplaySchema {
+                    schema_id: record.schema_id(),
+                    version: record.version(),
+                }));
+            }
+            if record.version() != crate::thermal::THERMAL_EVIDENCE_VERSION
+                || !record.causal_anchors().contains(&conservation_trace)
+            {
+                return Err(RuntimeError::InvalidSnapshot(
+                    "thermal transfer evidence has invalid version or causal anchor",
+                ));
+            }
+            for anchor in record.causal_anchors() {
+                if *anchor == conservation_trace {
+                    continue;
+                }
+                let event = history
+                    .event(*anchor)?
+                    .ok_or(RuntimeError::InvalidSnapshot(
+                        "thermal transfer evidence refers to a missing causal event",
+                    ))?;
+                match event.kind().raw() {
+                    THERMAL_RESERVOIR_TRANSFER_EVENT_KIND => {
+                        reservoir_transfer_traces.insert(*anchor);
+                    }
+                    THERMAL_CELL_CHANGE_EVENT_KIND => {
+                        neighbor_transfer_traces.insert(*anchor);
+                    }
+                    _ => {
+                        return Err(RuntimeError::InvalidSnapshot(
+                            "thermal transfer evidence refers to an unexpected event kind",
+                        ));
+                    }
+                }
+            }
+        }
+        let claim = if let Some(record) = page.records().first() {
+            if record.criticality() != Criticality::ExplanationOnly {
+                return Err(RuntimeError::from(HistoryError::UnsupportedReplaySchema {
+                    schema_id: record.schema_id(),
+                    version: record.version(),
+                }));
+            }
+            let payload = record.canonical_payload();
+            if record.version() != crate::THERMAL_EVIDENCE_VERSION
+                || payload.len() != 120
+                || !record.causal_anchors().contains(&conservation_trace)
+                || history.event(conservation_trace)?.is_none()
+            {
+                return Err(RuntimeError::InvalidSnapshot(
+                    "thermal conservation evidence has invalid causal anchors or payload",
+                ));
+            }
+            let mut values = [0_i128; 7];
+            for (index, value) in values.iter_mut().enumerate() {
+                let start = 8 + index * 16;
+                *value =
+                    i128::from_le_bytes(payload[start..start + 16].try_into().map_err(|_| {
+                        RuntimeError::InvalidSnapshot("malformed thermal conservation evidence")
+                    })?);
+            }
+            let receipt = ThermalConservationReceipt {
+                tick: u64::from_le_bytes(payload[..8].try_into().map_err(|_| {
+                    RuntimeError::InvalidSnapshot("malformed thermal conservation evidence")
+                })?),
+                total_cell_energy_before: values[0],
+                total_cell_energy_after: values[1],
+                total_reservoir_budget_before: values[2],
+                total_reservoir_budget_after: values[3],
+                total_material_retained_before: values[4],
+                total_material_retained_after: values[5],
+                residual: values[6],
+            };
+            ThermalCarrierConservationClaim {
+                receipt,
+                observation_start: SimulationTime::new(receipt.tick),
+                observation_end: time,
+                conservation_trace,
+                reservoir_transfer_traces: reservoir_transfer_traces.into_iter().collect(),
+                neighbor_transfer_traces: neighbor_transfer_traces.into_iter().collect(),
+            }
+            .to_explanation_claim()
+        } else {
+            ExplanationClaim::unknown(
+                causafera_explanation::THERMAL_CARRIER_CONSERVATION_SCHEMA,
+                NumericClaimValue::scalar(0),
+                ComparisonContext::None,
+            )
+        }
+        .map_err(|_| {
+            RuntimeError::InvalidSnapshot("invalid thermal conservation Explanation claim")
+        })?;
+        let frame = ExplanationFrame::new(time, vec![claim]).map_err(|_| {
+            RuntimeError::InvalidSnapshot("invalid thermal conservation Explanation frame")
+        })?;
+        ExplanationReport::new(ExperimentId::new(world_seed), vec![frame]).map_err(|_| {
+            RuntimeError::InvalidSnapshot("invalid thermal conservation Explanation report")
+        })
     }
 
     /// Typed hydrology evidence for one chunk, or for the whole resident scope.
@@ -461,22 +589,51 @@ impl Runtime {
         &self,
         scope: Option<ChartChunkCoord>,
     ) -> Result<ExplanationReport, RuntimeError> {
-        let state = self.lock_state()?;
-        if let Some(error) = state.failure.clone() {
-            return Err(error);
-        }
-        let time = self.scheduler.current_time();
-        let claims = state
-            .hydrology
-            .explanation_claims(scope)
-            .map_err(|_| RuntimeError::InvalidSnapshot("invalid hydrology Explanation claim"))?;
+        let (time, world_seed, hydrology, history) = {
+            let state = self.lock_state()?;
+            if let Some(error) = state.failure.clone() {
+                return Err(error);
+            }
+            (
+                self.scheduler.current_time(),
+                state.config.deterministic.world_seed,
+                state.hydrology.clone(),
+                state.history.reader().pin_snapshot()?,
+            )
+        };
+        let claims = hydrology
+            .explanation_claims_with_history(history.as_ref(), scope)
+            .map_err(map_hydrology_explanation_error)?;
         let frame = ExplanationFrame::new(time, claims)
             .map_err(|_| RuntimeError::InvalidSnapshot("invalid hydrology Explanation frame"))?;
-        ExplanationReport::new(
-            ExperimentId::new(state.config.deterministic.world_seed),
-            vec![frame],
-        )
-        .map_err(|_| RuntimeError::InvalidSnapshot("invalid hydrology Explanation report"))
+        ExplanationReport::new(ExperimentId::new(world_seed), vec![frame])
+            .map_err(|_| RuntimeError::InvalidSnapshot("invalid hydrology Explanation report"))
+    }
+
+    pub fn observer_hydrology_explanation_for_batch(
+        &self,
+        conservation_trace: TraceId,
+        scope: Option<ChartChunkCoord>,
+    ) -> Result<ExplanationReport, RuntimeError> {
+        let (time, world_seed, hydrology, history) = {
+            let state = self.lock_state()?;
+            if let Some(error) = state.failure.clone() {
+                return Err(error);
+            }
+            (
+                self.scheduler.current_time(),
+                state.config.deterministic.world_seed,
+                state.hydrology.clone(),
+                state.history.reader().pin_snapshot()?,
+            )
+        };
+        let claims = hydrology
+            .explanation_claims_for_batch_with_history(history.as_ref(), scope, conservation_trace)
+            .map_err(map_hydrology_explanation_error)?;
+        let frame = ExplanationFrame::new(time, claims)
+            .map_err(|_| RuntimeError::InvalidSnapshot("invalid hydrology Explanation frame"))?;
+        ExplanationReport::new(ExperimentId::new(world_seed), vec![frame])
+            .map_err(|_| RuntimeError::InvalidSnapshot("invalid hydrology Explanation report"))
     }
 
     /// The queried surface's most recent retained-heat exchange (`TODO-THERMAL-002`), independent
@@ -487,11 +644,111 @@ impl Runtime {
         &self,
         surface: MaterialSurfaceId,
     ) -> Result<ExplanationReport, RuntimeError> {
-        let state = self.lock_state()?;
-        if let Some(error) = state.failure.clone() {
-            return Err(error);
+        self.pinned_observer_explanation(|state, time| {
+            state.material_surface_thermal_explanation(time, surface)
+        })
+    }
+
+    pub fn observer_material_surface_thermal_explanation_for_trace(
+        &self,
+        surface: MaterialSurfaceId,
+        transition_trace: TraceId,
+    ) -> Result<ExplanationReport, RuntimeError> {
+        let (time, world_seed, retained_energy, history) = {
+            let state = self.lock_state()?;
+            if let Some(error) = state.failure.clone() {
+                return Err(error);
+            }
+            let material_surface = state
+                .material_surfaces
+                .get(&surface)
+                .ok_or(RuntimeError::InvalidSnapshot("unknown material surface"))?;
+            (
+                self.scheduler.current_time(),
+                state.config.deterministic.world_seed,
+                material_surface.thermal.retained_energy.get(),
+                state.history.reader().pin_snapshot()?,
+            )
+        };
+        let mut key = Vec::with_capacity(30);
+        key.extend_from_slice(&surface.chunk.chart.raw().to_le_bytes());
+        key.extend_from_slice(&surface.chunk.chunk.x.to_le_bytes());
+        key.extend_from_slice(&surface.chunk.chunk.y.to_le_bytes());
+        key.extend_from_slice(&surface.chunk.chunk.z.to_le_bytes());
+        key.extend_from_slice(&surface.cell_index.to_le_bytes());
+        key.extend_from_slice(&transition_trace.raw().to_le_bytes());
+        let page = history.evidence(
+            crate::MATERIAL_SURFACE_THERMAL_EVIDENCE_SCHEMA,
+            &key,
+            HistoryQuery::new(0, 1, 4 * 1024 * 1024)?,
+        )?;
+        if page.next_offset().is_some() {
+            return Err(RuntimeError::InvalidSnapshot(
+                "duplicate material-surface thermal evidence key",
+            ));
         }
-        state.material_surface_thermal_explanation(self.scheduler.current_time(), surface)
+        let claim =
+            if let Some(record) = page.records().first() {
+                if record.criticality() != Criticality::ExplanationOnly {
+                    return Err(RuntimeError::from(HistoryError::UnsupportedReplaySchema {
+                        schema_id: record.schema_id(),
+                        version: record.version(),
+                    }));
+                }
+                let payload = record.canonical_payload();
+                if record.version() != crate::MATERIAL_SURFACE_EVIDENCE_VERSION
+                    || payload.len() != 78
+                    || payload[..22] != key[..22]
+                {
+                    return Err(RuntimeError::InvalidSnapshot(
+                        "malformed material-surface thermal evidence",
+                    ));
+                }
+                let before_retained =
+                    i64::from_le_bytes(payload[30..38].try_into().map_err(|_| {
+                        RuntimeError::InvalidSnapshot("malformed thermal evidence")
+                    })?);
+                let after_retained =
+                    i64::from_le_bytes(payload[38..46].try_into().map_err(|_| {
+                        RuntimeError::InvalidSnapshot("malformed thermal evidence")
+                    })?);
+                let cell_trace =
+                    TraceId::new(u64::from_le_bytes(payload[62..70].try_into().map_err(
+                        |_| RuntimeError::InvalidSnapshot("malformed thermal evidence"),
+                    )?));
+                let recorded_transition =
+                    TraceId::new(u64::from_le_bytes(payload[70..78].try_into().map_err(
+                        |_| RuntimeError::InvalidSnapshot("malformed thermal evidence"),
+                    )?));
+                if recorded_transition != transition_trace
+                    || !record.causal_anchors().contains(&transition_trace)
+                    || !record.causal_anchors().contains(&cell_trace)
+                    || history.event(transition_trace)?.is_none()
+                    || history.event(cell_trace)?.is_none()
+                {
+                    return Err(RuntimeError::InvalidSnapshot(
+                        "material-surface thermal evidence has invalid causal anchors",
+                    ));
+                }
+                MaterialSurfaceThermalExchangeClaim {
+                    before_retained,
+                    after_retained,
+                    transition_trace,
+                    cell_trace,
+                }
+                .to_explanation_claim()
+            } else {
+                MaterialSurfaceThermalExchangeClaim::unknown(retained_energy)
+            }
+            .map_err(|_| {
+                RuntimeError::InvalidSnapshot("invalid material surface thermal Explanation claim")
+            })?;
+        let frame = ExplanationFrame::new(time, vec![claim]).map_err(|_| {
+            RuntimeError::InvalidSnapshot("invalid material surface thermal Explanation frame")
+        })?;
+        ExplanationReport::new(ExperimentId::new(world_seed), vec![frame]).map_err(|_| {
+            RuntimeError::InvalidSnapshot("invalid material surface thermal Explanation report")
+        })
     }
 
     /// Typed evidence that the current initial state was causally initialized.
@@ -500,11 +757,117 @@ impl Runtime {
     /// unknown/zero-confidence state rather than erroring, so an observer can
     /// tell "no evidence" apart from "a failed query".
     pub fn observer_bootstrap_record_explanation(&self) -> Result<ExplanationReport, RuntimeError> {
-        let state = self.lock_state()?;
-        if let Some(error) = state.failure.clone() {
-            return Err(error);
+        self.pinned_observer_explanation(|state, time| state.bootstrap_record_explanation(time))
+    }
+
+    fn pinned_observer_explanation(
+        &self,
+        build: impl FnOnce(&RuntimeState, SimulationTime) -> Result<ExplanationReport, RuntimeError>,
+    ) -> Result<ExplanationReport, RuntimeError> {
+        let (report, history) = {
+            let state = self.lock_state()?;
+            if let Some(error) = state.failure.clone() {
+                return Err(error);
+            }
+            let history = state.history.reader().pin_snapshot()?;
+            let report = build(&state, self.scheduler.current_time())?;
+            (report, history)
+        };
+        for trace in report
+            .frames
+            .iter()
+            .flat_map(|frame| frame.claims.iter())
+            .flat_map(|claim| claim.evidence_traces.iter().copied())
+        {
+            if history.event(trace)?.is_none() {
+                return Err(RuntimeError::InvalidSnapshot(
+                    "Explanation references a trace absent from its pinned history",
+                ));
+            }
         }
-        state.bootstrap_record_explanation(self.scheduler.current_time())
+        Ok(report)
+    }
+
+    fn pinned_material_surface_loop_explanation(
+        &self,
+        surface: Option<MaterialSurfaceId>,
+    ) -> Result<ExplanationReport, RuntimeError> {
+        let (time, history, transition, receipts) = {
+            let state = self.lock_state()?;
+            if let Some(error) = state.failure.clone() {
+                return Err(error);
+            }
+            let scoped_surface = surface.or_else(|| {
+                state
+                    .material_surface_gate_transitions
+                    .last()
+                    .map(|transition| transition.id)
+            });
+            let transition = state
+                .material_surface_transitions
+                .iter()
+                .rev()
+                .filter(|transition| scoped_surface.is_none_or(|id| transition.id == id))
+                .find(|transition| transition.mana_effect_trace.is_some())
+                .or_else(|| {
+                    state
+                        .material_surface_transitions
+                        .iter()
+                        .rev()
+                        .filter(|transition| scoped_surface.is_none_or(|id| transition.id == id))
+                        .find(|transition| transition.contact_trace.is_some())
+                })
+                .or_else(|| {
+                    scoped_surface.and_then(|id| {
+                        state
+                            .material_surface_transitions
+                            .iter()
+                            .rev()
+                            .find(|transition| transition.id == id)
+                    })
+                })
+                .or_else(|| {
+                    surface
+                        .is_none()
+                        .then(|| state.material_surface_transitions.last())
+                        .flatten()
+                })
+                .copied();
+            (
+                self.scheduler.current_time(),
+                state.history.reader().pin_snapshot()?,
+                transition,
+                state.executed_experiment_recipe_mana_sources.clone(),
+            )
+        };
+        let mana_evidence = match transition {
+            Some(transition) => material_surface_mana_transition_evidence_from_history(
+                history.as_ref(),
+                &receipts,
+                &transition,
+            )?,
+            None => (None, None, None),
+        };
+        let report = {
+            let state = self.lock_state()?;
+            if let Some(error) = state.failure.clone() {
+                return Err(error);
+            }
+            state.material_surface_loop_explanation(time, surface, mana_evidence)?
+        };
+        for trace in report
+            .frames
+            .iter()
+            .flat_map(|frame| frame.claims.iter())
+            .flat_map(|claim| claim.evidence_traces.iter().copied())
+        {
+            if history.event(trace)?.is_none() {
+                return Err(RuntimeError::InvalidSnapshot(
+                    "Explanation references a trace absent from its pinned history",
+                ));
+            }
+        }
+        Ok(report)
     }
 
     pub fn export_snapshot(&self) -> Result<RuntimeSnapshotData, RuntimeError> {
@@ -865,6 +1228,8 @@ pub enum RuntimeError {
     ActorCognition(#[from] causafera_cognition::SceneUpdateError),
     #[error("snapshot is invalid: {0}")]
     InvalidSnapshot(&'static str),
+    #[error("historical evidence query for schema {schema_id} exceeded its bounded page budget")]
+    HistoryQueryPartial { schema_id: u64 },
     #[error("hydrology limits schema {schema} is not supported")]
     HydrologyLimitsSchemaUnknown { schema: u16 },
     #[error("hydrology bootstrap parameter schema {schema} is not supported")]
@@ -1032,6 +1397,63 @@ impl From<HistoryError> for RuntimeError {
     fn from(error: HistoryError) -> Self {
         Self::CausalCommit(CausalCommitError::HistoryRead(error))
     }
+}
+
+fn map_hydrology_explanation_error(
+    error: crate::hydrology_history_explanation::HydrologyExplanationError,
+) -> RuntimeError {
+    match error {
+        crate::hydrology_history_explanation::HydrologyExplanationError::History(error) => {
+            RuntimeError::from(error)
+        }
+        crate::hydrology_history_explanation::HydrologyExplanationError::Integrity(message) => {
+            RuntimeError::InvalidSnapshot(message)
+        }
+        crate::hydrology_history_explanation::HydrologyExplanationError::PartialEvidence {
+            schema_id,
+        } => RuntimeError::HistoryQueryPartial {
+            schema_id: schema_id.raw(),
+        },
+        crate::hydrology_history_explanation::HydrologyExplanationError::Explanation(_) => {
+            RuntimeError::InvalidSnapshot("invalid hydrology Explanation claim")
+        }
+    }
+}
+
+type MaterialSurfaceManaEvidence = (Option<TraceId>, Option<i64>, Option<i64>);
+
+fn material_surface_mana_transition_evidence_from_history(
+    history: &dyn HistoryReader,
+    receipts: &[ExperimentRecipeManaSourceReceipt],
+    transition: &MaterialSurfaceTransition,
+) -> Result<MaterialSurfaceManaEvidence, RuntimeError> {
+    let Some(mana_effect_trace) = transition.mana_effect_trace else {
+        return Ok((None, None, None));
+    };
+    let Some(mana_effect_event) = history.event(mana_effect_trace)? else {
+        return Ok((None, None, None));
+    };
+    let mut mana_transition_trace = None;
+    for cause in mana_effect_event.causes() {
+        if history.event(*cause)?.is_some_and(|event| {
+            event.kind() == EventKindId::new(MANA_EVENT_KIND)
+                || event.kind() == EventKindId::new(EXPERIMENT_RECIPE_MANA_SOURCE_EVENT_KIND)
+        }) {
+            mana_transition_trace = Some(*cause);
+            break;
+        }
+    }
+    let Some(mana_transition_trace) = mana_transition_trace else {
+        return Ok((None, None, None));
+    };
+    let receipt = receipts
+        .iter()
+        .find(|receipt| receipt.source_trace == mana_transition_trace);
+    Ok((
+        Some(mana_transition_trace),
+        receipt.map(|receipt| receipt.before_intensity),
+        receipt.map(|receipt| receipt.after_intensity),
+    ))
 }
 
 /// Every value one tick may mutate, in one place.
@@ -3089,6 +3511,7 @@ impl RuntimeState {
         &self,
         time: SimulationTime,
         surface: Option<MaterialSurfaceId>,
+        mana_evidence: (Option<TraceId>, Option<i64>, Option<i64>),
     ) -> Result<ExplanationReport, RuntimeError> {
         let explicit_surface = surface;
         let scoped_surface = surface.or_else(|| {
@@ -3160,12 +3583,7 @@ impl RuntimeState {
                 RuntimeError::InvalidSnapshot("invalid material surface Explanation report")
             });
         };
-        let (mana_transition_trace, mana_before, mana_after) =
-            material_surface_mana_transition_evidence(
-                &self.traces,
-                &self.executed_experiment_recipe_mana_sources,
-                &transition,
-            );
+        let (mana_transition_trace, mana_before, mana_after) = mana_evidence;
         let claim = MaterialSurfaceLoopClaim {
             before_condition: transition.before_condition,
             after_condition: transition.after_condition,
@@ -3232,11 +3650,7 @@ impl RuntimeState {
         let mut completion_traces = Vec::with_capacity(receipts.len());
         let mut dependency_traces = BTreeSet::new();
         for receipt in receipts {
-            // A receipt whose completion trace is not in the store is not
-            // evidence, so it is dropped rather than counted.
-            if self.traces.event(receipt.trace())?.is_some() {
-                completion_traces.push(receipt.trace());
-            }
+            completion_traces.push(receipt.trace());
             dependency_traces.extend(receipt.causes().iter().copied());
         }
         let claim = HistoricalBootstrapRecordClaim {
