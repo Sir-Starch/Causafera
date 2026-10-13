@@ -176,10 +176,23 @@ pub fn decode_trace_section(bytes: &[u8]) -> Result<CausalTraceSnapshot, Persist
 
     let next_event_id = dec.read_u64()?;
     let next_trace_id = dec.read_u64()?;
-    let event_count = dec.read_u64()? as usize;
+    let event_count = usize::try_from(dec.read_u64()?)
+        .map_err(|_| PersistenceError::codec("event count exceeds usize"))?;
 
     if event_count > u32::MAX as usize {
         return Err(PersistenceError::codec("event count exceeds u32"));
+    }
+    // Each event needs five fixed fields and two offset entries; the offset
+    // arrays also have one leading entry apiece. Reject impossible counts
+    // before any count-sized allocation on an untrusted legacy section.
+    let minimum_bytes = event_count
+        .checked_mul(42)
+        .and_then(|bytes| bytes.checked_add(8))
+        .ok_or_else(|| PersistenceError::codec("event count overflows trace section size"))?;
+    if minimum_bytes > dec.remaining() {
+        return Err(PersistenceError::codec(
+            "event count exceeds trace section bytes",
+        ));
     }
 
     let mut events = Vec::with_capacity(event_count);
@@ -225,9 +238,17 @@ pub fn decode_trace_section(bytes: &[u8]) -> Result<CausalTraceSnapshot, Persist
     for _ in 0..=event_count {
         cause_offsets.push(dec.read_u32()?);
     }
+    if cause_offsets.first() != Some(&0) || cause_offsets.windows(2).any(|pair| pair[0] > pair[1]) {
+        return Err(PersistenceError::codec("invalid cause offsets"));
+    }
 
     // Read flat causes.
     let total_causes = cause_offsets.last().copied().unwrap_or(0) as usize;
+    if total_causes > dec.remaining() / 8 {
+        return Err(PersistenceError::codec(
+            "cause count exceeds trace section bytes",
+        ));
+    }
     let mut causes = Vec::with_capacity(total_causes);
     for _ in 0..total_causes {
         causes.push(TraceId::new(dec.read_u64()?));
@@ -238,9 +259,18 @@ pub fn decode_trace_section(bytes: &[u8]) -> Result<CausalTraceSnapshot, Persist
     for _ in 0..=event_count {
         effect_offsets.push(dec.read_u32()?);
     }
+    if effect_offsets.first() != Some(&0) || effect_offsets.windows(2).any(|pair| pair[0] > pair[1])
+    {
+        return Err(PersistenceError::codec("invalid effect offsets"));
+    }
 
     // Read flat effects.
     let total_effects = effect_offsets.last().copied().unwrap_or(0) as usize;
+    if total_effects > dec.remaining() / 88 {
+        return Err(PersistenceError::codec(
+            "effect count exceeds trace section bytes",
+        ));
+    }
     let mut effects = Vec::with_capacity(total_effects);
     for _ in 0..total_effects {
         let object_kind = StateObjectKindId::new(dec.read_u64()?);
@@ -4816,6 +4846,35 @@ mod tests {
                 "children mismatch for {trace_id:?}"
             );
         }
+    }
+
+    #[test]
+    fn legacy_trace_decoder_rejects_invalid_offsets_without_panicking() {
+        let mut bytes = Vec::new();
+        let mut enc = LittleEndianEncoder::new(&mut bytes);
+        enc.write_u64(2);
+        enc.write_u64(2);
+        enc.write_u64(1);
+        enc.write_u64(1);
+        enc.write_u64(1);
+        enc.write_u64(0);
+        enc.write_u16(u16::from(Phase::Physics.id().0));
+        enc.write_u64(1);
+        enc.write_u32(1);
+        enc.write_u32(0);
+        enc.write_u32(0);
+        enc.write_u32(0);
+        assert!(decode_trace_section(&bytes).is_err());
+    }
+
+    #[test]
+    fn legacy_trace_decoder_rejects_count_exceeding_section_bytes() {
+        let mut bytes = Vec::new();
+        let mut enc = LittleEndianEncoder::new(&mut bytes);
+        enc.write_u64(1);
+        enc.write_u64(1);
+        enc.write_u64(u64::from(u32::MAX));
+        assert!(decode_trace_section(&bytes).is_err());
     }
 
     #[test]
