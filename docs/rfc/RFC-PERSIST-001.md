@@ -5,6 +5,8 @@
 **Depends on:** RFC-TRACE-001, RFC-GEO-002, RFC-MANA-001, RFC-RES-001, RFC-HIST-001, RFC-EXPLAIN-001
 **Replaces:** `TODO-PERSIST-001` (pending → accepted)
 
+**Current boundary:** This RFC retains the v1 envelope and legacy one-file snapshot contracts. [RFC-PERSIST-002](RFC-PERSIST-002.md) supersedes its deferred full-history storage with schema-9 bundles, bounded snapshots carrying a history anchor, and explicit schema-8 migration.
+
 ## Summary
 
 Define the first bounded, versioned, canonical binary snapshot format that can export a completed-tick runtime state, survive atomic file write, and reconstruct an identical simulation whose physical-state and causal-history digests match the original at every matched checkpoint after restoration.

@@ -256,7 +256,7 @@ pays for itself needs either homogeneous substrate or a tolerance the current
 contract deliberately refuses; measuring it is future work and this section states
 so rather than reporting the level number as if it were a saving.
 
-## Causal History Storage Scale: Todo 11 Interim Measurements
+## Causal History Storage Scale and Open Wet-Path Defect
 
 `cargo run --release -p causafera-runtime --example performance_baseline -- history-scale`
 measures a persistent `HistoryStore` with one new synthetic causal record per measured tick.
@@ -315,10 +315,19 @@ all digests matched and recovery reported no lost or replayed ticks. Every conse
 residual was zero. Hot history was 4,194,192 of 4,194,304 allowed bytes, and the
 35,221,300-byte snapshot omitted `0x000A`. The bundle occupied about 8.3 GiB,
 including a roughly 4.5 GiB catalog; this is not evidence of constant cold storage.
-The requested 1,000-tick wet run and its recovery remain unverified: the 100-tick
-end-to-end run took about 18.5 minutes, so a 1,000-tick run would likely breach the
-user's no-many-hour-tests constraint. `TODO-HYDRO-002` and canonical plan Todo 11
-remain open. These observations are in `.omo/evidence/causal-history-storage/task-11.json`,
+The measured wet simulation cost is 5.319 s/tick on average across these 100 ticks,
+and reopening the saved world took longer than ticking it. A read-only catalog count
+found 12,468,343 records (7,431,871 causal events and 5,036,472 evidence records)
+after 100 ticks. This is an observed performance defect, tracked by `TODO-PERF-004`,
+not an acceptable target or proof that a longer run has usable throughput. The 100-tick
+sample alone cannot identify which portion of tick time belongs to hydrology, evidence
+encoding, catalog insertion, sync, or other work. The saved-bundle open path currently
+traverses durable history, consistent with the growing reopen measurements; its exact
+cost breakdown remains to be profiled. The requested 1,000-tick wet run and its recovery
+were not run under the user's no-long-tests instruction. The revised causal-history
+plan closes structural storage verification with the 100-tick control and synthetic
+history-age sweep, while `TODO-PERF-004` retains throughput and long-run validation.
+These observations are in `.omo/evidence/causal-history-storage/task-11.json`,
 `task-11-hydrology-probe.ndjson`, `task-11-hydrology-12-lru.ndjson`, and
 `task-11-hydrology-100.ndjson`.
 The old `ceiling` mode was removed from the current harness because its 100,000-tick
