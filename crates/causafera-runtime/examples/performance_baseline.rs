@@ -18,8 +18,11 @@ use std::time::Instant;
 use causafera_cognition::SceneUpdateError;
 use causafera_runtime::{
     ActiveChunkShape, MAX_RUNNABLE_SCENE_CUES, Runtime, RuntimeConfig, RuntimeError,
-    measure_digest_cost, worst_case_scene_cue_count,
+    measure_digest_cost, measure_history_store_status, worst_case_scene_cue_count,
 };
+
+#[path = "performance_baseline/history_scale.rs"]
+mod history_scale;
 
 /// Named, not ad hoc: `plans/performance-baseline-and-digest-cost.md` Wave 1 commits to this
 /// exact repetition count.
@@ -29,6 +32,18 @@ fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().collect();
     if args.len() >= 4 && args[1] == "--worker" {
         return run_worker(&args[2], &args[3]);
+    }
+    if args.get(1).map(String::as_str) == Some("history-scale") {
+        return match history_scale::run(args.get(2).map(String::as_str)) {
+            Ok(report) => {
+                println!("{report}");
+                ExitCode::SUCCESS
+            }
+            Err(error) => {
+                eprintln!("history-scale failed: {error}");
+                ExitCode::FAILURE
+            }
+        };
     }
     print_metadata();
     match args.get(1).map(String::as_str) {
@@ -46,7 +61,9 @@ fn main() -> ExitCode {
         Some("digest-cost") => run_digest_cost_sweep(),
         Some(other) => {
             eprintln!("unknown mode: {other}");
-            eprintln!("expected one of: boundary-sweep, worst-case-contact, digest-cost");
+            eprintln!(
+                "expected one of: boundary-sweep, worst-case-contact, digest-cost, history-scale"
+            );
             ExitCode::FAILURE
         }
         None => {
@@ -601,10 +618,10 @@ fn run_worker(case_index: &str, pass: &str) -> ExitCode {
         }
     };
 
-    let trace_events = match runtime.export_snapshot() {
-        Ok(exported) => exported.traces.events.len() as u64,
+    let trace_events = match measure_history_store_status(&runtime) {
+        Ok(status) => status.causal_events,
         Err(error) => {
-            println!("ERROR export_snapshot {error}");
+            println!("ERROR history_status {error}");
             return ExitCode::FAILURE;
         }
     };

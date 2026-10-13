@@ -7,7 +7,7 @@
 //! cold/recovery APIs on `HistoryStore`, never to this ordinary reader.
 
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::{BTreeMap, BTreeSet, VecDeque},
     fmt,
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
@@ -62,13 +62,39 @@ struct ReaderSource {
     root: PathBuf,
     registry: Arc<EvidenceDecoderRegistry>,
     connection: Mutex<Connection>,
-    frame_cache: Mutex<BTreeMap<u64, Arc<DecodedHistoryFrame>>>,
+    frame_cache: Mutex<FrameCache>,
     /// Frames whose derived index rows this reader has already checked against
     /// their canonical records. Frames are immutable, so one check per reader is
     /// enough; without it every page re-validates its whole frame.
     validated_frames: Mutex<BTreeSet<u64>>,
     namespace: [u8; 32],
     cold_generation: u64,
+}
+
+#[derive(Default)]
+struct FrameCache {
+    frames: BTreeMap<u64, Arc<DecodedHistoryFrame>>,
+    recent: VecDeque<u64>,
+}
+
+impl FrameCache {
+    fn get(&mut self, ordinal: u64) -> Option<Arc<DecodedHistoryFrame>> {
+        let frame = self.frames.get(&ordinal)?.clone();
+        self.recent.retain(|cached| *cached != ordinal);
+        self.recent.push_back(ordinal);
+        Some(frame)
+    }
+
+    fn insert(&mut self, ordinal: u64, frame: Arc<DecodedHistoryFrame>) {
+        self.recent.retain(|cached| *cached != ordinal);
+        self.frames.insert(ordinal, frame);
+        self.recent.push_back(ordinal);
+        while self.frames.len() > MAX_CACHED_FRAMES {
+            if let Some(oldest) = self.recent.pop_front() {
+                self.frames.remove(&oldest);
+            }
+        }
+    }
 }
 
 impl fmt::Debug for HistoryStoreReader {
@@ -143,7 +169,7 @@ impl HistoryStoreReader {
                 root: root.to_path_buf(),
                 registry,
                 connection: Mutex::new(connection),
-                frame_cache: Mutex::new(BTreeMap::new()),
+                frame_cache: Mutex::new(FrameCache::default()),
                 validated_frames: Mutex::new(BTreeSet::new()),
                 namespace,
                 cold_generation,
@@ -170,7 +196,7 @@ impl HistoryStoreReader {
             root: self.source.root.clone(),
             registry: Arc::clone(&self.source.registry),
             connection: Mutex::new(connection),
-            frame_cache: Mutex::new(BTreeMap::new()),
+            frame_cache: Mutex::new(FrameCache::default()),
             validated_frames: Mutex::new(BTreeSet::new()),
             namespace: self.source.namespace,
             cold_generation: anchor.durable_generation(),
@@ -1417,15 +1443,14 @@ fn indexed_frame(
     source: &ReaderSource,
     frame_ordinal: u64,
 ) -> Result<Option<Arc<DecodedHistoryFrame>>, PersistenceError> {
-    if let Some(frame) = source
+    let cached = source
         .frame_cache
         .lock()
         .map_err(|_| PersistenceError::HistoryCatalogInvariant {
             invariant: "history frame cache lock",
         })?
-        .get(&frame_ordinal)
-        .cloned()
-    {
+        .get(frame_ordinal);
+    if let Some(frame) = cached {
         return Ok(Some(frame));
     }
     let row = connection
@@ -1481,20 +1506,13 @@ fn indexed_frame(
     {
         return Err(index_mismatch());
     }
-    let mut cache =
-        source
-            .frame_cache
-            .lock()
-            .map_err(|_| PersistenceError::HistoryCatalogInvariant {
-                invariant: "history frame cache lock",
-            })?;
-    cache.insert(frame_ordinal, Arc::clone(&decoded));
-    while cache.len() > MAX_CACHED_FRAMES {
-        let Some(oldest) = cache.keys().next().copied() else {
-            break;
-        };
-        cache.remove(&oldest);
-    }
+    source
+        .frame_cache
+        .lock()
+        .map_err(|_| PersistenceError::HistoryCatalogInvariant {
+            invariant: "history frame cache lock",
+        })?
+        .insert(frame_ordinal, Arc::clone(&decoded));
     Ok(Some(decoded))
 }
 
@@ -1763,6 +1781,50 @@ mod tests {
             )
             .expect("test causal record is valid"),
         )
+    }
+
+    #[test]
+    fn a_frequently_revisited_old_frame_survives_bounded_cache_eviction() {
+        let root = std::env::temp_dir().join(format!(
+            "causafera-history-reader-cache-{}-{}",
+            std::process::id(),
+            NEXT_TEST_ROOT.fetch_add(1, Ordering::Relaxed)
+        ));
+        fs::create_dir(&root).expect("create test bundle root");
+        let scenario = || {
+            let mut store = HistoryStore::create(&root, [0xA8; 32], DurabilityMode::EveryTick)
+                .expect("create test store");
+            for sequence in 1..=u64::try_from(MAX_CACHED_FRAMES + 2).expect("cache size fits") {
+                store
+                    .append_tick(vec![causal(sequence, Vec::new())])
+                    .expect("append one frame");
+            }
+            let reader = store.durable_reader().expect("indexed reader");
+            reader.event(TraceId::new(1)).expect("first event");
+            let first_frame = *reader
+                .source
+                .frame_cache
+                .lock()
+                .expect("cache lock")
+                .frames
+                .keys()
+                .next()
+                .expect("first frame is cached");
+            for sequence in 2..=u64::try_from(MAX_CACHED_FRAMES + 2).expect("cache size fits") {
+                reader.event(TraceId::new(sequence)).expect("indexed event");
+            }
+            reader.event(TraceId::new(1)).expect("revisit first event");
+            let cache = reader.source.frame_cache.lock().expect("cache lock");
+            assert_eq!(cache.frames.len(), MAX_CACHED_FRAMES);
+            assert!(
+                cache.frames.contains_key(&first_frame),
+                "a revisited old frame must remain cached for repeated anchor reads"
+            );
+            Ok::<(), String>(())
+        };
+        let result = scenario();
+        fs::remove_dir_all(&root).expect("remove test bundle root");
+        result.expect("bounded cache eviction test");
     }
 
     #[test]

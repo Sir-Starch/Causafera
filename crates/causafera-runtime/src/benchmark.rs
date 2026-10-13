@@ -2,6 +2,7 @@ use std::time::Instant;
 
 use causafera_observer_api::{ObserverQuery, QueryStatus};
 use causafera_observer_wire::{ProtocolHandler, decode_response, encode_query};
+use causafera_persistence::HistoryStoreStatus;
 use causafera_types::{ChartChunkCoord, ChunkCoord};
 
 use crate::benchmark_validation::{
@@ -164,6 +165,16 @@ pub fn measure_digest_cost(runtime: &Runtime) -> Result<DigestCostSample, Runtim
         physical_state_digest_ns,
         history_digest_ns,
     })
+}
+
+/// Read storage counters outside a timed tick; catalog counts may read SQLite.
+pub fn measure_history_store_status(runtime: &Runtime) -> Result<HistoryStoreStatus, RuntimeError> {
+    runtime
+        .state
+        .lock()
+        .map_err(|_| RuntimeError::StatePoisoned)?
+        .history
+        .backend_status()
 }
 
 pub fn run_material_surface_loop_benchmark(

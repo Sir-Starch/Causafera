@@ -10,12 +10,12 @@ use causafera_core::{
     MAX_FRAME_DECODED_BYTES, MAX_HISTORY_RECORDS_PER_FRAME, OwnedCausalRecord,
     canonical_history_records, validate_frame_shape,
 };
+#[cfg(test)]
+use causafera_persistence::FailurePoint;
 use causafera_persistence::{
     CheckpointMetadata, CheckpointPolicy, CheckpointThreshold, DurabilityMode, HistoryStore,
-    HistoryStoreReader, should_checkpoint,
+    HistoryStoreReader, HistoryStoreStatus, should_checkpoint,
 };
-#[cfg(test)]
-use causafera_persistence::{FailurePoint, HistoryStoreStatus};
 use causafera_types::{EventId, TraceId};
 
 use crate::history_reader::RuntimeHistoryReader;
@@ -1080,7 +1080,6 @@ impl RuntimeHistoryCoordinator {
         self.install_durable_state()
     }
 
-    #[cfg(test)]
     pub(crate) fn backend_status(&self) -> Result<HistoryStoreStatus, RuntimeError> {
         self.lock_store()?
             .status()

@@ -18,9 +18,9 @@ use std::{
     path::{Path, PathBuf},
     sync::{
         Arc,
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicU64, AtomicUsize, Ordering},
     },
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 #[cfg(test)]
@@ -238,6 +238,30 @@ pub struct HistoryStoreStatus {
     pub evidence_manifest_digest: [u8; 32],
     pub durable_evidence_manifest_digest: [u8; 32],
     pub catalog_counts: CatalogCounts,
+    /// Cumulative elapsed wall time spent in append calls.
+    pub append_elapsed_wall_time: Duration,
+    /// Number of active-segment sync calls made while publishing appended frames.
+    pub durable_sync_count: u64,
+    /// Cumulative elapsed wall time spent syncing active segments for append publication.
+    pub durable_sync_elapsed_wall_time: Duration,
+    /// Number of catalog publication commit calls made for appended frames.
+    pub catalog_commit_count: u64,
+    /// Cumulative elapsed wall time spent committing appended frames to the catalog.
+    pub catalog_commit_elapsed_wall_time: Duration,
+    /// Number of explicit full-history digest rescans requested by callers.
+    pub logical_digest_full_rescan_count: u64,
+    /// Number of catalog-driven traversals over all committed frames.
+    pub catalog_full_scan_count: u64,
+}
+
+/// Hot-path instrumentation without catalog queries or filesystem scans.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct HistoryStoreInstrumentation {
+    pub append_elapsed_wall_time: Duration,
+    pub durable_sync_count: u64,
+    pub durable_sync_elapsed_wall_time: Duration,
+    pub logical_digest_full_rescan_count: u64,
+    pub catalog_full_scan_count: u64,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -278,6 +302,7 @@ pub trait HistoryCatalog {
 pub struct SqliteHistoryCatalog {
     root: PathBuf,
     connection: Connection,
+    full_scan_count: AtomicU64,
 }
 
 impl fmt::Debug for SqliteHistoryCatalog {
@@ -534,6 +559,12 @@ pub struct HistoryStore {
     evidence_manifest_digest: [u8; 32],
     durable_evidence_manifest_digest: [u8; 32],
     evidence_hasher: EvidenceManifestDigest,
+    append_elapsed_wall_time: Duration,
+    durable_sync_count: u64,
+    durable_sync_elapsed_wall_time: Duration,
+    catalog_commit_count: u64,
+    catalog_commit_elapsed_wall_time: Duration,
+    logical_digest_full_rescan_count: AtomicU64,
     hooks: Arc<dyn HistoryStoreHooks>,
     recovered_tail: UnpublishedTail,
     _writer_lease: WriterLease,
@@ -635,6 +666,12 @@ impl HistoryStore {
             evidence_manifest_digest: EvidenceManifestDigest::new().finish(),
             durable_evidence_manifest_digest: EvidenceManifestDigest::new().finish(),
             evidence_hasher: EvidenceManifestDigest::new(),
+            append_elapsed_wall_time: Duration::ZERO,
+            durable_sync_count: 0,
+            durable_sync_elapsed_wall_time: Duration::ZERO,
+            catalog_commit_count: 0,
+            catalog_commit_elapsed_wall_time: Duration::ZERO,
+            logical_digest_full_rescan_count: AtomicU64::new(0),
             hooks,
             recovered_tail: UnpublishedTail::default(),
             _writer_lease: lease,
@@ -768,6 +805,12 @@ impl HistoryStore {
             evidence_manifest_digest,
             durable_evidence_manifest_digest: evidence_manifest_digest,
             evidence_hasher,
+            append_elapsed_wall_time: Duration::ZERO,
+            durable_sync_count: 0,
+            durable_sync_elapsed_wall_time: Duration::ZERO,
+            catalog_commit_count: 0,
+            catalog_commit_elapsed_wall_time: Duration::ZERO,
+            logical_digest_full_rescan_count: AtomicU64::new(0),
             hooks,
             recovered_tail,
             _writer_lease: lease,
@@ -807,6 +850,8 @@ impl HistoryStore {
     /// per-record encoding, so it is the cold oracle that fold is checked
     /// against. It costs a read of the whole history and is never on a tick.
     pub fn logical_digest_full_rescan(&self) -> Result<[u8; 32], PersistenceError> {
+        self.logical_digest_full_rescan_count
+            .fetch_add(1, Ordering::Relaxed);
         let mut hasher = LogicalHistoryDigest::new();
         self.catalog
             .for_each_record(self.durable_generation, &self.registry, |record| {
@@ -860,7 +905,28 @@ impl HistoryStore {
             evidence_manifest_digest: self.evidence_manifest_digest,
             durable_evidence_manifest_digest: self.durable_evidence_manifest_digest,
             catalog_counts: self.catalog.counts()?,
+            append_elapsed_wall_time: self.append_elapsed_wall_time,
+            durable_sync_count: self.durable_sync_count,
+            durable_sync_elapsed_wall_time: self.durable_sync_elapsed_wall_time,
+            catalog_commit_count: self.catalog_commit_count,
+            catalog_commit_elapsed_wall_time: self.catalog_commit_elapsed_wall_time,
+            logical_digest_full_rescan_count: self
+                .logical_digest_full_rescan_count
+                .load(Ordering::Relaxed),
+            catalog_full_scan_count: self.catalog.full_scan_count.load(Ordering::Relaxed),
         })
+    }
+
+    pub fn instrumentation(&self) -> HistoryStoreInstrumentation {
+        HistoryStoreInstrumentation {
+            append_elapsed_wall_time: self.append_elapsed_wall_time,
+            durable_sync_count: self.durable_sync_count,
+            durable_sync_elapsed_wall_time: self.durable_sync_elapsed_wall_time,
+            logical_digest_full_rescan_count: self
+                .logical_digest_full_rescan_count
+                .load(Ordering::Relaxed),
+            catalog_full_scan_count: self.catalog.full_scan_count.load(Ordering::Relaxed),
+        }
     }
 
     pub fn inject_failure(&self, point: Option<FailurePoint>) {
@@ -871,14 +937,24 @@ impl HistoryStore {
         &mut self,
         records: Vec<HistoryRecord>,
     ) -> Result<AppendReceipt, PersistenceError> {
-        self.append_tick_transaction(records, false)
+        let started = Instant::now();
+        let result = self.append_tick_transaction(records, false);
+        self.append_elapsed_wall_time = self
+            .append_elapsed_wall_time
+            .saturating_add(started.elapsed());
+        result
     }
 
     pub fn append_tick_durable(
         &mut self,
         records: Vec<HistoryRecord>,
     ) -> Result<AppendReceipt, PersistenceError> {
-        self.append_tick_transaction(records, true)
+        let started = Instant::now();
+        let result = self.append_tick_transaction(records, true);
+        self.append_elapsed_wall_time = self
+            .append_elapsed_wall_time
+            .saturating_add(started.elapsed());
+        result
     }
 
     pub fn advance_logical_generation(
@@ -1068,20 +1144,33 @@ impl HistoryStore {
                 .map_err(|error| io_error("flush active segment", &self.active_path(), error))?;
             self.hooks.observe(HistoryStoreObservation::FrameFlush);
             self.fail(FailurePoint::AfterFrameFlushBeforeSync)?;
-            self.active_file
+            let sync_started = Instant::now();
+            let sync_result = self
+                .active_file
                 .sync_all()
-                .map_err(|error| io_error("sync active segment", &self.active_path(), error))?;
+                .map_err(|error| io_error("sync active segment", &self.active_path(), error));
+            self.durable_sync_count = self.durable_sync_count.saturating_add(1);
+            self.durable_sync_elapsed_wall_time = self
+                .durable_sync_elapsed_wall_time
+                .saturating_add(sync_started.elapsed());
+            sync_result?;
             self.hooks.observe(HistoryStoreObservation::SegmentSync);
             sync_directory(&self.root.join("segments"), self.hooks.as_ref())?;
             self.fail(FailurePoint::AfterSegmentSyncBeforeCatalogCommit)?;
-            self.catalog.publish(
+            let commit_started = Instant::now();
+            let commit_result = self.catalog.publish(
                 self.durable_generation,
                 self.logical_generation,
                 self.logical_digest,
                 &self.pending,
                 &self.registry,
                 self.hooks.as_ref(),
-            )?;
+            );
+            self.catalog_commit_count = self.catalog_commit_count.saturating_add(1);
+            self.catalog_commit_elapsed_wall_time = self
+                .catalog_commit_elapsed_wall_time
+                .saturating_add(commit_started.elapsed());
+            commit_result?;
             self.hooks.observe(HistoryStoreObservation::CatalogCommit);
             self.fail(FailurePoint::AfterCatalogCommitBeforeRootSync)?;
             sync_directory(&self.root, self.hooks.as_ref())?;
@@ -1711,6 +1800,7 @@ impl SqliteHistoryCatalog {
         Ok(Self {
             root: root.to_path_buf(),
             connection,
+            full_scan_count: AtomicU64::new(0),
         })
     }
 
@@ -2937,6 +3027,7 @@ impl SqliteHistoryCatalog {
         registry: &EvidenceDecoderRegistry,
         mut callback: impl FnMut(u64, &[HistoryRecord]) -> Result<(), PersistenceError>,
     ) -> Result<(), PersistenceError> {
+        self.full_scan_count.fetch_add(1, Ordering::Relaxed);
         let mut statement = self
             .connection
             .prepare(

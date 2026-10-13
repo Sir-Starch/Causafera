@@ -400,6 +400,115 @@ fn assert_same_run(resumed: &mut Runtime, control: &mut Runtime) {
     );
 }
 
+fn assert_same_frontier(control: &Runtime, bundle: &Runtime, frontier: &str) {
+    let control_summary = control.snapshot().expect("control summary");
+    let bundle_summary = bundle.snapshot().expect("bundle summary");
+    assert_eq!(
+        bundle_summary.time, control_summary.time,
+        "{frontier}: completed time"
+    );
+    assert_eq!(
+        bundle_summary.physical_state_digest, control_summary.physical_state_digest,
+        "{frontier}: physical digest"
+    );
+    assert_eq!(
+        bundle_summary.history_digest, control_summary.history_digest,
+        "{frontier}: history digest"
+    );
+    assert_eq!(
+        bundle_summary.canonical_state, control_summary.canonical_state,
+        "{frontier}: canonical state"
+    );
+}
+
+#[test]
+fn bundle_replay_matches_control_at_logical_durable_and_checkpoint_frontiers() {
+    const CHECKPOINT_TICKS: u64 = 4;
+    const CHECKPOINT_REPLAY_TICKS: u64 = 4;
+
+    for (name, mode) in MODES {
+        let temp = TempDir::new(&format!("frontiers-{name}"));
+        let root = temp.bundle();
+        let mut config = RuntimeConfig::new(95);
+        config.active_chunk_radius = 0;
+        config.hydrology.enabled = false;
+        config.pattern_schedule.interval_ticks = 1_000;
+        let mut control = Runtime::new(config.clone()).expect("control");
+        let mut bundle = Runtime::create_bundle(config, &root, options(mode)).expect("bundle");
+        let genesis = bundle.history_status().expect("genesis status");
+
+        // At the logical frontier, the live bundle session has the same
+        // authoritative digests as a run that never stopped.
+        for tick in 1..=CHECKPOINT_TICKS {
+            control.tick().expect("control reaches logical frontier");
+            bundle.tick().expect("bundle reaches logical frontier");
+            assert_same_frontier(&control, &bundle, &format!("logical frontier {tick}"));
+        }
+        let logical = bundle.history_status().expect("logical status");
+        assert_eq!(
+            logical.logical_generation,
+            genesis.logical_generation + CHECKPOINT_TICKS
+        );
+        match mode {
+            DurabilityMode::GroupCommit => {
+                assert_eq!(
+                    logical.pending_ticks,
+                    usize::try_from(CHECKPOINT_TICKS).expect("test tick count fits usize")
+                );
+                assert!(logical.logical_generation > logical.durable_generation);
+            }
+            DurabilityMode::EveryTick => {
+                assert_eq!(logical.pending_ticks, 0);
+                assert_eq!(logical.logical_generation, logical.durable_generation);
+            }
+        }
+
+        // Save forces that generation durable and establishes its checkpoint.
+        let checkpoint = bundle.save_bundle().expect("forced durable checkpoint");
+        let durable = bundle.history_status().expect("durable status");
+        assert_eq!(durable.logical_generation, durable.durable_generation);
+        assert_eq!(checkpoint.generation, durable.durable_generation);
+        assert_eq!(checkpoint.completed_time.raw(), CHECKPOINT_TICKS);
+        assert_same_frontier(&control, &bundle, "forced durable frontier");
+
+        // Publish a short suffix past the checkpoint, then crash and require
+        // open to restore that checkpoint and replay each durable frame.
+        for tick in (CHECKPOINT_TICKS + 1)..=(CHECKPOINT_TICKS + CHECKPOINT_REPLAY_TICKS) {
+            control.tick().expect("control reaches replay head");
+            bundle.tick().expect("bundle reaches replay head");
+            assert_same_frontier(&control, &bundle, &format!("replay suffix frontier {tick}"));
+        }
+        bundle.flush_durable().expect("replay suffix is durable");
+        assert_same_frontier(&control, &bundle, "replay suffix durable frontier");
+        bundle.simulate_crash();
+
+        let (mut resumed, recovery) = Runtime::open_bundle(&root).expect("checkpoint replay");
+        assert_eq!(
+            recovery.checkpoint_generation, checkpoint.generation,
+            "{name}"
+        );
+        assert_eq!(recovery.replayed_ticks, CHECKPOINT_REPLAY_TICKS, "{name}");
+        assert_eq!(
+            recovery.completed_time.raw(),
+            CHECKPOINT_TICKS + CHECKPOINT_REPLAY_TICKS
+        );
+        assert_eq!(
+            recovery.lost, None,
+            "{name}: all replay frames were durable"
+        );
+        assert_same_run(&mut resumed, &mut control);
+        println!(
+            "MARKER:bundle_frontier mode={name} logical_generation={} logical_durable_generation={} logical_pending_ticks={} durable_generation={} checkpoint_generation={} replayed_ticks={} full_history_equal=true",
+            logical.logical_generation,
+            logical.durable_generation,
+            logical.pending_ticks,
+            durable.durable_generation,
+            recovery.checkpoint_generation,
+            recovery.replayed_ticks
+        );
+    }
+}
+
 #[test]
 fn a_crash_after_published_groups_is_replayed_to_the_durable_head() {
     // Given: a group-commit session that ran 40 ticks and died. How many of them

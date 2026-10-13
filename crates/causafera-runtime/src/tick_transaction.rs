@@ -1206,7 +1206,7 @@ mod tests {
 
     #[test]
     fn hot_overlay_stays_bounded_at_required_logical_scales() {
-        for events in [100_u64, 10_000, 1_000_000] {
+        for events in [100_u64, 1_000, 10_000, 1_000_000] {
             let last = synthetic_record(events - 1);
             let budget = last.canonical_field_size().expect("record bytes");
             let reader: Arc<dyn CausalHistoryReader> = Arc::new(SyntheticHistoryReader { events });
@@ -1253,6 +1253,11 @@ mod tests {
             let initial = runtime.history_status().expect("history status");
             for expected in 1..=1_000 {
                 runtime.tick().expect("1,000 ticks must complete");
+                assert_eq!(
+                    crate::history_transaction::whole_history_scans(),
+                    0,
+                    "ordinary tick {expected} never executes a whole-history scan"
+                );
                 let status = runtime.history_status().expect("history status");
                 assert_eq!(
                     status.logical_generation,

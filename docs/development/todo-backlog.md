@@ -1073,7 +1073,7 @@ The prior decision of extent 6 is void, along with its stated 98.1% convergence 
 **Observer Implications:** The observer already reports the refusal as a limit rather than as a fault (`errorKind: "export-cap"`); that treatment stays until the ceiling is far enough away to be unreachable in practice. The replay capture's default length is pinned to this ceiling and should be raised with it
 **Explanation Implications:** Claims whose retained evidence is evicted must report insufficiency, never a narrowed number
 **Out of Scope:** Raising `MAX_TOTAL_SIZE`, which moves the wall rather than removing it; GPU work; reducing the active chunk set as a permanent answer
-**Evidence:** `plans/hydrology.md` Progress and `docs/performance/benchmarks.md`; reproduced by `cargo run -p causafera-observer --example capture_replay -- <out> 7 14 1`
+**Evidence:** `plans/hydrology.md` Progress and `docs/performance/benchmarks.md`; reproduced by `cargo run -p causafera-observer --example capture_replay -- <out> 7 14 1`. Current three-, 12-, and 100-tick wet bundle probes stayed under the export cap and reopened exactly after a bounded reader-cache fix; the required 1,000-tick run remains unverified (see the Todo 11 interim measurements in `docs/performance/benchmarks.md`).
 
 ## TODO-HYDRO-003: Hydrology Solver Module Size
 **Status:** Pending

@@ -9,7 +9,7 @@ use std::{
         Arc, Mutex,
         atomic::{AtomicU64, AtomicUsize, Ordering},
     },
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 use causafera_core::{
@@ -21,8 +21,9 @@ use causafera_core::{
 use causafera_persistence::{
     CheckpointMetadata, DurabilityMode, EMPTY_EVIDENCE_MANIFEST_DIGEST, FailurePoint,
     HISTORY_FRAME_HEADER_LEN, HistoryStore, HistoryStoreHooks, HistoryStoreObservation,
-    PersistenceError, decode_checkpoint, encode_checkpoint, evidence_manifest_digest_full_rescan,
-    evidence_manifest_full_rescan_count, reset_evidence_manifest_full_rescan_counter,
+    HistoryStoreStatus, PersistenceError, decode_checkpoint, encode_checkpoint,
+    evidence_manifest_digest_full_rescan, evidence_manifest_full_rescan_count,
+    reset_evidence_manifest_full_rescan_counter,
 };
 use causafera_types::{
     EventId, EventKindId, SimulationTime, StateObjectKindId, StatePropertyId, TraceId,
@@ -35,6 +36,17 @@ const WRITER_LOCK_CHILD_BUNDLE: &str = "CAUSAFERA_HISTORY_WRITER_LOCK_CHILD_BUND
 const RECOVERY_CHILD_BUNDLE: &str = "CAUSAFERA_HISTORY_RECOVERY_CHILD_BUNDLE";
 const RECOVERY_CHILD_POINT: &str = "CAUSAFERA_HISTORY_RECOVERY_CHILD_POINT";
 const RECOVERY_CHILD_OPERATION: &str = "CAUSAFERA_HISTORY_RECOVERY_CHILD_OPERATION";
+
+fn authoritative_status(mut status: HistoryStoreStatus) -> HistoryStoreStatus {
+    status.append_elapsed_wall_time = Duration::ZERO;
+    status.durable_sync_count = 0;
+    status.durable_sync_elapsed_wall_time = Duration::ZERO;
+    status.catalog_commit_count = 0;
+    status.catalog_commit_elapsed_wall_time = Duration::ZERO;
+    status.logical_digest_full_rescan_count = 0;
+    status.catalog_full_scan_count = 0;
+    status
+}
 
 struct TempBundle(PathBuf);
 
@@ -670,7 +682,7 @@ fn history_store_logical_generation_advance_failure_is_atomic() {
         }
     ));
     let after = store.status().expect("read rolled-back status");
-    assert_eq!(after, before);
+    assert_eq!(authoritative_status(after), authoritative_status(before));
     drop(store);
     let reopened = HistoryStore::open(temp.path()).expect("reopen rolled-back bundle");
     let reopened_status = reopened.status().expect("read reopened status");
@@ -1387,7 +1399,10 @@ fn history_store_post_commit_checkpoint_failure_is_reversible() {
                 point: FailurePoint::AfterCheckpointCatalogCommitAfterRootSync
             }
         ));
-        assert_eq!(store.status().expect("status after failure"), before);
+        assert_eq!(
+            authoritative_status(store.status().expect("status after failure")),
+            authoritative_status(before)
+        );
         assert_eq!(
             fs::read_dir(temp.path().join("checkpoints"))
                 .expect("checkpoint directory")
@@ -1412,7 +1427,10 @@ fn history_store_post_commit_checkpoint_failure_is_reversible() {
     assert!(receipt.path().is_file());
     drop(store);
     let reopened = HistoryStore::open(temp.path()).expect("reopen checkpoint");
-    assert_eq!(reopened.status().expect("reopened status"), after_retry);
+    assert_eq!(
+        authoritative_status(reopened.status().expect("reopened status")),
+        authoritative_status(after_retry)
+    );
     println!(
         "post_backend_retry point={} same_process=true reopen=true",
         FailurePoint::AfterCheckpointCatalogCommitAfterRootSync.name()
@@ -1615,7 +1633,10 @@ fn history_store_auto_seal_failure_restores_active_file_and_catalog() {
         }
     };
 
-    assert_eq!(store.status().expect("status after seal failure"), before);
+    assert_eq!(
+        authoritative_status(store.status().expect("status after seal failure")),
+        authoritative_status(before)
+    );
     let active = store.active_segment_path();
     assert!(active.is_file());
     assert_eq!(store.catalog().counts().expect("catalog").segments, 1);
@@ -1633,7 +1654,10 @@ fn history_store_auto_seal_failure_restores_active_file_and_catalog() {
     assert_eq!(after.catalog_counts.segments, 2);
     drop(store);
     let reopened = HistoryStore::open(temp.path()).expect("reopen after automatic seal retry");
-    assert_eq!(reopened.status().expect("reopened status"), after);
+    assert_eq!(
+        authoritative_status(reopened.status().expect("reopened status")),
+        authoritative_status(after)
+    );
     println!(
         "automatic_seal_failure point=seal_rename failed_sequence={} unchanged=true catalog_rows_unchanged=true retry=true reopen=true",
         failed_sequence
@@ -2393,7 +2417,10 @@ fn history_store_failed_durable_append_is_atomic_in_process() {
                 error,
                 PersistenceError::InjectedHistoryFailure { point: actual } if actual == point
             ));
-            assert_eq!(store.status().expect("status after failure"), before);
+            assert_eq!(
+                authoritative_status(store.status().expect("status after failure")),
+                authoritative_status(before)
+            );
             assert_eq!(
                 fs::metadata(store.active_segment_path())
                     .expect("active segment metadata")
@@ -2418,7 +2445,10 @@ fn history_store_failed_durable_append_is_atomic_in_process() {
         drop(store);
 
         let reopened = HistoryStore::open(temp.path()).expect("reopen retry result");
-        assert_eq!(reopened.status().expect("reopened status"), after);
+        assert_eq!(
+            authoritative_status(reopened.status().expect("reopened status")),
+            authoritative_status(after)
+        );
     }
 }
 
@@ -2667,7 +2697,10 @@ fn history_store_post_commit_append_and_seal_failures_are_reversible() {
                 error,
                 PersistenceError::InjectedHistoryFailure { point: actual } if actual == point
             ));
-            assert_eq!(store.status().expect("status after failure"), before);
+            assert_eq!(
+                authoritative_status(store.status().expect("status after failure")),
+                authoritative_status(before)
+            );
             assert_eq!(
                 fs::metadata(&active).expect("active metadata").len(),
                 before.active_extent
@@ -2694,7 +2727,10 @@ fn history_store_post_commit_append_and_seal_failures_are_reversible() {
         assert_eq!(after.durable_generation, 1);
         drop(store);
         let reopened = HistoryStore::open(temp.path()).expect("reopen after retry");
-        assert_eq!(reopened.status().expect("reopened status"), after);
+        assert_eq!(
+            authoritative_status(reopened.status().expect("reopened status")),
+            authoritative_status(after)
+        );
         println!(
             "post_backend_retry point={} same_process=true reopen=true generation=1",
             point.name()
@@ -2744,7 +2780,10 @@ fn history_store_post_commit_append_and_seal_failures_are_reversible() {
                 error,
                 PersistenceError::InjectedHistoryFailure { point: actual } if actual == point
             ));
-            assert_eq!(store.status().expect("status after seal failure"), before);
+            assert_eq!(
+                authoritative_status(store.status().expect("status after seal failure")),
+                authoritative_status(before)
+            );
             assert_eq!(store.active_segment_path(), active);
             assert_eq!(segment_names(), before_segments);
             let directory_syncs_after = hooks.directory_syncs.load(Ordering::SeqCst);
@@ -2766,8 +2805,8 @@ fn history_store_post_commit_append_and_seal_failures_are_reversible() {
         drop(store);
         let reopened = HistoryStore::open(temp.path()).expect("reopen after seal failure");
         assert_eq!(
-            reopened.status().expect("reopened seal status"),
-            after_retry
+            authoritative_status(reopened.status().expect("reopened seal status")),
+            authoritative_status(after_retry)
         );
         println!(
             "post_backend_retry point={} same_process=true reopen=true unchanged_before_retry=true",
@@ -2914,6 +2953,84 @@ fn history_store_logical_digest_full_rescan_agrees_with_the_incremental_fold() {
     println!(
         "logical_digest_full_rescan frames=2/4 records=4 digest={}",
         hex_digest(&durable)
+    );
+}
+
+#[test]
+fn history_store_append_metrics_track_sync_policy_without_rescanning() {
+    // Given: stores configured with each durability policy and three identical ticks.
+    let every_tick_bundle = TempBundle::new("append-metrics-every-tick");
+    let group_commit_bundle = TempBundle::new("append-metrics-group-commit");
+    let mut every_tick = HistoryStore::create(
+        every_tick_bundle.path(),
+        [0x63; 32],
+        DurabilityMode::EveryTick,
+    )
+    .expect("every-tick store");
+    let mut group_commit = HistoryStore::create(
+        group_commit_bundle.path(),
+        [0x63; 32],
+        DurabilityMode::GroupCommit,
+    )
+    .expect("group-commit store");
+
+    // When: each store receives three ordinary append calls.
+    for id in 1..=3 {
+        every_tick
+            .append_tick(vec![causal(id, vec![])])
+            .expect("every-tick append");
+        group_commit
+            .append_tick(vec![causal(id, vec![])])
+            .expect("group-commit append");
+    }
+
+    // Then: append never invokes the cold digest oracle, and durability policy
+    // determines the count of segment syncs and catalog commits.
+    let every_tick_status = every_tick.status().expect("every-tick status");
+    let group_commit_status = group_commit.status().expect("group-commit status");
+    assert_eq!(every_tick_status.logical_digest_full_rescan_count, 0);
+    assert_eq!(group_commit_status.logical_digest_full_rescan_count, 0);
+    assert_eq!(every_tick_status.catalog_full_scan_count, 0);
+    assert_eq!(group_commit_status.catalog_full_scan_count, 0);
+    assert_eq!(every_tick_status.durable_sync_count, 3);
+    assert_eq!(every_tick_status.catalog_commit_count, 3);
+    assert_eq!(group_commit_status.durable_sync_count, 0);
+    assert_eq!(group_commit_status.catalog_commit_count, 0);
+    assert!(!every_tick_status.append_elapsed_wall_time.is_zero());
+    assert!(!group_commit_status.append_elapsed_wall_time.is_zero());
+
+    group_commit.flush_durable().expect("flush group commit");
+    let flushed_group_status = group_commit.status().expect("flushed group status");
+    assert_eq!(flushed_group_status.durable_sync_count, 1);
+    assert_eq!(flushed_group_status.catalog_commit_count, 1);
+    assert_eq!(flushed_group_status.logical_digest_full_rescan_count, 0);
+    assert_eq!(flushed_group_status.catalog_full_scan_count, 0);
+
+    every_tick
+        .logical_digest_full_rescan()
+        .expect("explicit full rescan");
+    assert_eq!(
+        every_tick
+            .status()
+            .expect("status after explicit rescan")
+            .logical_digest_full_rescan_count,
+        1
+    );
+    assert_eq!(
+        every_tick
+            .status()
+            .expect("status after explicit rescan")
+            .catalog_full_scan_count,
+        1
+    );
+    println!(
+        "append_metrics every_tick_syncs={} group_commit_syncs={} explicit_rescans={}",
+        every_tick_status.durable_sync_count,
+        flushed_group_status.durable_sync_count,
+        every_tick
+            .status()
+            .expect("final every-tick status")
+            .logical_digest_full_rescan_count
     );
 }
 
