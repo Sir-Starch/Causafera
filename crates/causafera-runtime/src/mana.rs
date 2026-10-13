@@ -96,8 +96,8 @@ impl ManaRuntimeSystem {
                 .collect::<Result<Vec<_>, _>>()?;
             traces_by_chunk.insert(*chunk, field_traces);
         }
-        state.mana = proposal.commit(&traces_by_chunk)?;
-        state.pending_samples.clear();
+        state.replace_mana(proposal.commit(&traces_by_chunk)?);
+        state.clear_pending_samples();
         state.last_mana_changes = changed_count;
         state.mana_cell_changes = state
             .mana_cell_changes
@@ -110,7 +110,7 @@ impl ManaRuntimeSystem {
                 .min()
         });
         if let Some(trace) = source_descendant.or_else(|| traces.last().copied()) {
-            state.latest_mana_trace = Some(trace);
+            state.set_latest_mana_trace(Some(trace));
         }
         self.next_time = self.next_time.tick();
         Ok(())
@@ -236,7 +236,7 @@ impl ManaEffectsSystem {
             if proposal.after_condition.is_some() {
                 state.mana_physical_effects = state.mana_physical_effects.saturating_add(1);
             }
-            state.latest_physical_trace = trace;
+            state.set_latest_physical_trace(trace);
             apply_local_mana_material_surface_transition(
                 &mut state,
                 self.next_time,

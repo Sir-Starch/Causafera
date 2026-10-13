@@ -39,6 +39,8 @@ UI
 
 The Explanation Engine is strictly non-authoritative. Its outputs are for human understanding only. They cannot feed back into simulation state without an explicit physical or experimental intervention API.
 
+Historical causal and domain-evidence queries read generation-pinned bundle history through bounded pages, including records older than the hot overlay. An unsupported replay-required schema fails closed; missing legacy evidence is represented by the migration coverage manifest and yields partial or unknown support, never an invented explanation. The bundle and schema contract is [RFC-PERSIST-002](../rfc/RFC-PERSIST-002.md); the current performance limit for large wet bundles is `TODO-PERF-004`.
+
 ## Detailed Development role
 
 Explanation is the second-priority continuous workstream after authoritative simulation. Every

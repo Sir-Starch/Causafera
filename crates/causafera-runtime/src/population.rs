@@ -52,7 +52,7 @@ impl PopulationLifecycleSystem {
         lifecycle_movement(&mut state, self.next_time)?;
         lifecycle_actor_resolution(&mut state, self.next_time)?;
         lifecycle_material_activity(&mut state, self.next_time)?;
-        state.advanced_through = self.next_time;
+        state.set_advanced_through(self.next_time);
         self.next_time = self.next_time.tick();
         Ok(())
     }
@@ -99,7 +99,7 @@ fn lifecycle_births_and_deaths(
             &aggregate,
         )?;
         aggregate.causal_ancestry = append_trace(&aggregate.causal_ancestry, trace)?;
-        state.population_aggregates.insert(chunk, aggregate);
+        state.insert_population_aggregate(chunk, aggregate);
         state.population_births = state.population_births.saturating_add(1);
     }
     if time.raw().is_multiple_of(17) && total_population(state) > 1 {
@@ -126,7 +126,7 @@ fn lifecycle_births_and_deaths(
                     &aggregate,
                 )?;
                 aggregate.causal_ancestry = append_trace(&aggregate.causal_ancestry, trace)?;
-                state.population_aggregates.insert(chunk, aggregate);
+                state.insert_population_aggregate(chunk, aggregate);
                 state.population_deaths = state.population_deaths.saturating_add(1);
             }
         }
@@ -202,8 +202,8 @@ fn lifecycle_movement(state: &mut RuntimeState, time: SimulationTime) -> Result<
     )?;
     source.causal_ancestry = append_trace(&source.causal_ancestry, source_trace)?;
     target.causal_ancestry = append_trace(&target.causal_ancestry, target_trace)?;
-    state.population_aggregates.insert(from, source);
-    state.population_aggregates.insert(to, target);
+    state.insert_population_aggregate(from, source);
+    state.insert_population_aggregate(to, target);
     state.population_movements = state.population_movements.saturating_add(1);
     Ok(())
 }
@@ -261,7 +261,7 @@ fn lifecycle_material_activity(
         aggregate.material_outflow = aggregate.material_outflow.saturating_add(flow / 2);
         let trace = commit_material_event(state, time, chunk, ordinal as u64, &before, &aggregate)?;
         aggregate.causal_ancestry = append_trace(&aggregate.causal_ancestry, trace)?;
-        state.population_aggregates.insert(chunk, aggregate);
+        state.insert_population_aggregate(chunk, aggregate);
         state.material_activity_events = state.material_activity_events.saturating_add(1);
     }
     Ok(())
@@ -325,11 +325,9 @@ pub(crate) fn promote_actor_from_aggregate(
         &aggregate,
     )?;
     aggregate.causal_ancestry = append_trace(&aggregate.causal_ancestry, aggregate_trace)?;
-    state.population_aggregates.insert(chunk, aggregate);
-    state
-        .actor_ancestry
-        .insert(actor_id, vec![trace, aggregate_trace]);
-    state.actor_objects.insert(
+    state.insert_population_aggregate(chunk, aggregate);
+    state.insert_actor_ancestry(actor_id, vec![trace, aggregate_trace]);
+    state.insert_actor_object(
         actor_id.raw(),
         ActorPhysicalObject::new(
             actor_id.raw(),
@@ -342,7 +340,7 @@ pub(crate) fn promote_actor_from_aggregate(
             trace,
         ),
     );
-    state.actors.insert(actor_id, actor);
+    state.insert_actor(actor_id, actor);
     state.next_actor_id = state.next_actor_id.saturating_add(1);
     state.actor_promotions = state.actor_promotions.saturating_add(1);
     Ok(())
@@ -396,10 +394,10 @@ fn demote_actor_to_aggregate(
         &aggregate,
     )?;
     aggregate.causal_ancestry = append_trace(&aggregate.causal_ancestry, aggregate_trace)?;
-    state.population_aggregates.insert(chunk, aggregate);
-    state.actors.remove(&actor_id);
-    state.actor_ancestry.remove(&actor_id);
-    state.actor_objects.remove(&actor_id.raw());
+    state.insert_population_aggregate(chunk, aggregate);
+    state.remove_actor(&actor_id);
+    state.remove_actor_ancestry(actor_id);
+    state.remove_actor_object(&actor_id.raw());
     state.actor_demotions = state.actor_demotions.saturating_add(1);
     Ok(())
 }
@@ -427,9 +425,9 @@ fn lifecycle_actor_death(
         actor_state_fingerprint(&actor),
         fingerprint_u64(0x0802, actor_id.raw()),
     )?;
-    state.actors.remove(&actor_id);
-    state.actor_ancestry.remove(&actor_id);
-    state.actor_objects.remove(&actor_id.raw());
+    state.remove_actor(&actor_id);
+    state.remove_actor_ancestry(actor_id);
+    state.remove_actor_object(&actor_id.raw());
     state.population_deaths = state.population_deaths.saturating_add(1);
     Ok(())
 }
@@ -461,7 +459,7 @@ fn commit_population_event(
     let trace = state
         .traces
         .commit_batch(time, Phase::Lifecycle, vec![event])?[0];
-    state.latest_physical_trace = trace;
+    state.set_latest_physical_trace(trace);
     Ok(trace)
 }
 
@@ -494,7 +492,7 @@ fn commit_actor_transition(
     let trace = state
         .traces
         .commit_batch(time, Phase::Lifecycle, vec![event])?[0];
-    state.latest_physical_trace = trace;
+    state.set_latest_physical_trace(trace);
     Ok(trace)
 }
 
@@ -524,7 +522,7 @@ pub(crate) fn commit_material_event(
     let trace = state
         .traces
         .commit_batch(time, Phase::Lifecycle, vec![event])?[0];
-    state.latest_physical_trace = trace;
+    state.set_latest_physical_trace(trace);
     Ok(trace)
 }
 

@@ -238,6 +238,7 @@ impl ActorPerceptionSystem {
         let mut state = self.state.lock().map_err(|_| RuntimeError::StatePoisoned)?;
         let objects = state.actor_objects.clone();
         let material_signals = material_surface_physical_signals(&state, self.next_time);
+        state.record_all_actors_before();
         let feature_count = actor_perception_step(
             self.next_time,
             &mut state.actors,

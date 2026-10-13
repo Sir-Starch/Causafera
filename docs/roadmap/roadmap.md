@@ -223,9 +223,11 @@ layer's perception cap cannot execute. All five waves landed: a checked-in stati
 construction-time rejection of unrunnable configurations, an incremental `history_digest` whose value
 is bit-identical and asserted so against a retained full-rescan oracle, and CI capture of the
 harness's output per commit. Two follow-ups it deliberately did not close are carried forward as
-`TODO-PERF-002` (`physical_state_digest`'s thermal-receipt growth, which needs a design decision
-rather than an implementation) and `TODO-PERF-003` (regression flagging and a reference-hardware run,
-which need a historical series first).
+`TODO-PERF-002` (`physical_state_digest`'s thermal-receipt growth, later closed by the
+schema-9 causal-history storage plan) and `TODO-PERF-003` (regression flagging and a
+reference-hardware run, still open until a historical series exists). The storage plan
+also exposed `TODO-PERF-004`: unacceptable wet-world tick and bundle-reopen latency,
+with a 1,000-tick wet validation deferred under the no-long-tests instruction.
 
 Local world detail below the chunk — parcels, structures, and interior spaces — remains
 architecturally scoped (`docs/world/spatial-hierarchy.md`, RFC-GEO-002, INV-037, INV-043) but not

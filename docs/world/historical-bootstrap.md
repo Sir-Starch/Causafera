@@ -131,7 +131,7 @@ record is validated through the canonical contract before the constructed runtim
 
 - `SECTION_POPULATION_BOOTSTRAP` carries the complete plan, the bounded per-stage result state, and
   the receipts at section major 2. Major 1 carried neither a plan nor a result and fails closed.
-- `CURRENT_DIGEST_SCHEMA_VERSION` is 8: the record is authoritative `physical_state_digest` input.
+- `CURRENT_DIGEST_SCHEMA_VERSION` is 9 (the record became authoritative input at schema 7 and is still `physical_state_digest` input; see `RFC-PERSIST-002` for the schema 9 field inventory).
 - Import re-derives the plan from the persisted configuration and requires it to match, then
   re-derives each stage's committed window from the persisted trace store and recomputes every
   result from it; a completion's causes must equal exactly its stage effects plus its predecessor.

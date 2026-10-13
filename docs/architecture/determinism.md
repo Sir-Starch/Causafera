@@ -28,6 +28,8 @@ Used for:
 
 In strict mode, identical inputs must produce identical outputs and identical state hashes across runs.
 
+For persisted schema-9 worlds, a committed logical history generation has a canonical causal/evidence stream and digests. Bundle replay and save/resume compare against uninterrupted execution at tested frontiers; the catalog and hot cache are derived, so their layout does not define event identity. Group durability may lose the reported unforced logical range after a crash, while `EveryTick` forces each completed tick. See [RFC-PERSIST-002](../rfc/RFC-PERSIST-002.md) and the [storage plan](../../plans/causal-history-storage.md).
+
 ### Fast experimental mode
 
 May explicitly use weaker reproducibility for performance exploration. Any weaker guarantees must be documented and must not be the default.

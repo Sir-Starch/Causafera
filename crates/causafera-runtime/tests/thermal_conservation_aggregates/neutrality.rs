@@ -33,10 +33,22 @@ const SCHEMA_7_PHYSICAL_DIGEST: &str =
     "9959c05092be0e49af0976a6cc2ce7c3d2c12d35bc86c6a456948ac71b4f359b";
 const SCHEMA_7_HISTORY_DIGEST: &str =
     "356199334c64beb629e406c7bc83bb4972e03cfdf81efdd32ba79a313698b5b3";
-const FIXTURE_PHYSICAL_DIGEST: &str =
+// Schema 8 values, kept as the historical record. The legacy-schema assembly path
+// must keep reproducing them: migration proofs of schema-8 snapshots recompute
+// exactly these identities.
+const SCHEMA_8_PHYSICAL_DIGEST: &str =
     "0048f9a24a4c86f41db77b01458a9c82db3c6815240ecaba30fee708af8a02da";
-const FIXTURE_HISTORY_DIGEST: &str =
+const SCHEMA_8_HISTORY_DIGEST: &str =
     "aa7e07d5ef7cc8e921af5b7bd7ae83d0a2c00c8a2293e324be864175e9cfae7f";
+// Schema 9 coordinates the history and bounded-snapshot contract
+// (`docs/rfc/RFC-PERSIST-002.md`). Recorded from the same fixture under the final
+// schema-9 field inventory (Todo 7 of `plans/causal-history-storage.md`): the
+// physical digest omits the thermal receipt windows, and the history digest is
+// the fold of the durable causal and evidence record stream.
+const FIXTURE_PHYSICAL_DIGEST: &str =
+    "5a68fd5beb3c777046f0614cc619eaa583d93f36029de96dbb1b12c483acb25e";
+const FIXTURE_HISTORY_DIGEST: &str =
+    "4f4a4ebb7a5e992248e741571a7c2ba35bae1cebed863c21a00b220f42a3bf5a";
 
 #[test]
 fn aggregate_validation_verdict_is_input_order_independent() {
@@ -116,7 +128,17 @@ fn save_resume_equivalence_under_aggregate_validation() {
         .snapshot()
         .expect("uninterrupted snapshot must succeed");
 
-    let mut resumed = Runtime::from_snapshot(data).expect("snapshot must resume");
+    let mut legacy_resumed = Runtime::from_snapshot(data).expect("snapshot must resume");
+    legacy_resumed
+        .run_ticks(CONTINUATION_TICKS)
+        .expect("legacy resumed run must complete");
+
+    let mut saved =
+        Runtime::new(runtime_config(FIXTURE_SEED)).expect("runtime bootstrap must succeed");
+    saved
+        .run_ticks(FIXTURE_TICKS)
+        .expect("saved run must complete");
+    let mut resumed = crate::support_resume::resume_through_bundle(saved);
     resumed
         .run_ticks(CONTINUATION_TICKS)
         .expect("resumed run must complete");
@@ -134,6 +156,16 @@ fn save_resume_equivalence_under_aggregate_validation() {
         uninterrupted_snapshot.canonical_state, resumed_snapshot.canonical_state,
         "resumed canonical state must match uninterrupted run"
     );
+    // A complete-trace import rebuilds its own history, so only its physical
+    // state is comparable with the uninterrupted run.
+    assert_eq!(
+        uninterrupted_snapshot.physical_state_digest,
+        legacy_resumed
+            .snapshot()
+            .expect("legacy resumed snapshot must succeed")
+            .physical_state_digest,
+        "a complete-trace import must continue the same physical state"
+    );
 }
 
 #[test]
@@ -146,8 +178,8 @@ fn digest_and_section_versions_are_unchanged() {
         .expect("fixture ticks must execute");
     let snapshot = runtime.snapshot().expect("snapshot must succeed");
 
-    // Then: the digests match the recorded schema-8 values, and differ from the
-    // schema-7 ones by exactly that declared change.
+    // Then: the digests match the recorded schema-9 values, and differ from the
+    // schema-8 and schema-7 ones by exactly those declared changes.
     assert_eq!(
         snapshot.physical_state_digest.schema_version.raw(),
         causafera_runtime::CURRENT_DIGEST_SCHEMA_VERSION.raw()
@@ -160,29 +192,72 @@ fn digest_and_section_versions_are_unchanged() {
         hex32(snapshot.history_digest.bytes()),
         SCHEMA_7_HISTORY_DIGEST
     );
+    assert_ne!(
+        hex32(snapshot.physical_state_digest.bytes()),
+        SCHEMA_8_PHYSICAL_DIGEST
+    );
+    assert_ne!(
+        hex32(snapshot.history_digest.bytes()),
+        SCHEMA_8_HISTORY_DIGEST
+    );
     assert_eq!(
         hex32(snapshot.physical_state_digest.bytes()),
         FIXTURE_PHYSICAL_DIGEST,
-        "physical_state_digest must be byte-identical to the recorded schema-8 value"
+        "physical_state_digest must be byte-identical to the recorded schema-9 value"
     );
     assert_eq!(
         hex32(snapshot.history_digest.bytes()),
         FIXTURE_HISTORY_DIGEST,
-        "history_digest must be byte-identical to the recorded schema-8 value"
+        "history_digest must be byte-identical to the recorded schema-9 value"
     );
 
-    // And: importing the exported snapshot reproduces the same digests.
+    // And: the legacy schema still computes the recorded schema-8 identities.
+    let full = runtime
+        .export_snapshot_with_full_history()
+        .expect("fixture snapshot must export with its full history");
+    let legacy = causafera_runtime::snapshot_sections::assemble_envelope_for_digest_schema(
+        &full,
+        causafera_runtime::LEGACY_DIGEST_SCHEMA_VERSION,
+    )
+    .expect("legacy-schema envelope must assemble");
+    assert_eq!(
+        hex32(legacy.header.physical_digest),
+        SCHEMA_8_PHYSICAL_DIGEST,
+        "the legacy schema must keep reproducing the recorded schema-8 physical digest"
+    );
+    assert_eq!(
+        hex32(legacy.header.history_digest),
+        SCHEMA_8_HISTORY_DIGEST,
+        "the legacy schema must keep reproducing the recorded schema-8 history digest"
+    );
+
+    // And: importing the complete-trace export reproduces the physical digest (its
+    // history is rebuilt from the traces it carries), while resuming the bounded
+    // snapshot over its own durable history reproduces both.
     let data = runtime
         .export_snapshot()
         .expect("fixture snapshot must export");
-    let resumed = Runtime::from_snapshot(data).expect("exported fixture must resume");
+    let imported = Runtime::from_snapshot(data).expect("exported fixture must import");
+    assert_eq!(
+        snapshot.physical_state_digest,
+        imported
+            .snapshot()
+            .expect("imported snapshot must succeed")
+            .physical_state_digest,
+        "imported physical state digest must match the original"
+    );
+    let resumed = crate::support_resume::resume_through_bundle(runtime);
     let resumed_snapshot = resumed.snapshot().expect("resumed snapshot must succeed");
     assert_eq!(
         snapshot.physical_state_digest, resumed_snapshot.physical_state_digest,
-        "imported physical state digest must match the original"
+        "resumed physical state digest must match the original"
     );
     assert_eq!(
         snapshot.history_digest, resumed_snapshot.history_digest,
-        "imported history digest must match the original"
+        "resumed history digest must match the original"
+    );
+    assert_eq!(
+        snapshot.canonical_state, resumed_snapshot.canonical_state,
+        "resumed experiment digest must match the original"
     );
 }

@@ -8,6 +8,16 @@
 
 mod support_hydrology;
 
+use std::{
+    fs,
+    path::PathBuf,
+    sync::atomic::{AtomicU64, Ordering},
+    time::{Duration, Instant},
+};
+
+use causafera_core::{
+    CausalCommitError, EvidenceSchemaId, HistoryError, HistoryQuery, HistoryReader, HistoryRecord,
+};
 use causafera_explanation::{
     ClaimEvidenceState, DeterministicExplanationRenderer, ExplanationClaim,
     ExplanationClaimSchemaId, FrameAssessment, HYDROLOGY_BOUNDARY_EXPORT_SCHEMA,
@@ -18,10 +28,31 @@ use causafera_explanation::{
     HYDROLOGY_WATER_TABLE_RANGE_SCHEMA, HydrologyConservationClaim, HydrologyStorageClaim,
     HydrologyTransferPathClaim, NumericClaimValue, ObserverLocale, exact_volume,
 };
-use causafera_runtime::{Runtime, RuntimeConfig};
-use causafera_types::{ChartChunkCoord, ChunkCoord, SpatialChartId, TraceId};
+use causafera_runtime::{
+    BundleOptions, HYDROLOGY_CONSERVATION_EVENT_KIND, Runtime, RuntimeConfig, RuntimeError,
+};
+use causafera_types::{ChartChunkCoord, ChunkCoord, SpatialChartId, TraceId, WaterVolume};
 
 use support_hydrology::{enabled_runtime_config, wet_runtime_config};
+
+struct TempBundle(PathBuf);
+
+impl TempBundle {
+    fn new() -> Self {
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        Self(std::env::temp_dir().join(format!(
+            "causafera-hydrology-explanation-p{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        )))
+    }
+}
+
+impl Drop for TempBundle {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
 
 fn ticked(config: RuntimeConfig, ticks: u64) -> Runtime {
     let mut runtime = Runtime::new(config).expect("the runtime must bootstrap");
@@ -29,6 +60,27 @@ fn ticked(config: RuntimeConfig, ticks: u64) -> Runtime {
         runtime.tick().expect("a hydrology tick must commit");
     }
     runtime
+}
+
+fn sparse_forcing_runtime_config() -> RuntimeConfig {
+    let mut config = enabled_runtime_config();
+    let parameters = config
+        .hydrology
+        .bootstrap_parameters
+        .as_mut()
+        .expect("the fixture is enabled");
+    parameters.initial_surface = WaterVolume::ZERO;
+    parameters.initial_soil = WaterVolume::ZERO;
+    parameters.initial_groundwater = WaterVolume::ZERO;
+    parameters.infiltration_rate_mm_per_second = 0;
+    parameters.baseflow_threshold = WaterVolume::ZERO;
+    parameters.baseflow_fraction_num = 0;
+    parameters.base_surface_transmissivity_mm3_per_second = 0;
+    parameters.base_groundwater_transmissivity_mm3_per_second = 0;
+    parameters.conveyance_initial_storage = WaterVolume::ZERO;
+    parameters.conveyance_inlet_capacity_per_tick = WaterVolume::ZERO;
+    config.hydrology.forcing_schedule[0].targets.truncate(1);
+    config
 }
 
 fn claims_of(runtime: &Runtime, scope: Option<ChartChunkCoord>) -> Vec<ExplanationClaim> {
@@ -44,6 +96,42 @@ fn claim(claims: &[ExplanationClaim], schema: ExplanationClaimSchemaId) -> &Expl
         .iter()
         .find(|claim| claim.schema == schema)
         .unwrap_or_else(|| panic!("schema {} must be present", schema.raw()))
+}
+
+fn conservation_descendant(history: &dyn HistoryReader, origin: TraceId, tick: u64) -> TraceId {
+    let mut pending = std::collections::VecDeque::from([origin]);
+    let mut visited = std::collections::BTreeSet::from([origin]);
+    while let Some(parent) = pending.pop_front() {
+        let mut offset = 0;
+        loop {
+            let page = history
+                .children(
+                    parent,
+                    HistoryQuery::new(offset, 256, 4 * 1024 * 1024).expect("bounded page"),
+                )
+                .expect("child query");
+            for child in page.records() {
+                if !visited.insert(*child) {
+                    continue;
+                }
+                let event = history
+                    .event(*child)
+                    .expect("event query")
+                    .expect("child event exists");
+                if event.kind().raw() == HYDROLOGY_CONSERVATION_EVENT_KIND
+                    && event.time().raw() == tick
+                {
+                    return *child;
+                }
+                pending.push_back(*child);
+            }
+            let Some(next) = page.next_offset() else {
+                break;
+            };
+            offset = next;
+        }
+    }
+    panic!("forcing ancestry must reach its hydrology conservation event")
 }
 
 #[test]
@@ -212,20 +300,185 @@ fn a_session_without_hydrology_reports_insufficiency_throughout() {
 }
 
 #[test]
-fn an_evicted_batch_makes_the_forcing_claims_insufficient() {
-    // V33: eviction removes typed detail; an old request answers with
-    // insufficiency rather than with a number nothing supports.
-    let runtime = ticked(enabled_runtime_config(), 14);
+fn an_evicted_batch_keeps_forcing_claims_supported_by_history() {
+    // Given: the fixture's applied forcing receipts have left the retained window,
+    // with a control captured while that batch is still retained.
+    let control = ticked(sparse_forcing_runtime_config(), 3);
+    let control_claims = claims_of(&control, None);
+    let runtime = ticked(sparse_forcing_runtime_config(), 14);
     let claims = claims_of(&runtime, None);
 
+    // When: the current hydrology state is explained through its history reader.
+    // Then: retained typed evidence continues to support the exact claims.
     assert_eq!(
         claim(&claims, HYDROLOGY_FORCING_ACCEPTED_SCHEMA).evidence_state,
-        ClaimEvidenceState::Unknown
+        ClaimEvidenceState::Supported
     );
     assert_eq!(
         claim(&claims, HYDROLOGY_FORCING_UNMET_SCHEMA).evidence_state,
-        ClaimEvidenceState::Unknown
+        ClaimEvidenceState::Supported
     );
+
+    let forcing = claim(&claims, HYDROLOGY_FORCING_ACCEPTED_SCHEMA);
+    let origin = *forcing
+        .evidence_traces
+        .first()
+        .expect("historical forcing origin trace");
+    let history = runtime
+        .history_reader()
+        .expect("runtime history reader")
+        .pin_snapshot()
+        .expect("pinned history reader");
+    let conservation_trace = conservation_descendant(history.as_ref(), origin, 3);
+    let historical = runtime
+        .observer_hydrology_explanation_for_batch(conservation_trace, None)
+        .expect("evicted batch remains explainable");
+    let historical_claims = &historical.frames[0].claims;
+    for schema in [
+        HYDROLOGY_FORCING_ACCEPTED_SCHEMA,
+        HYDROLOGY_FORCING_UNMET_SCHEMA,
+        HYDROLOGY_CONSERVATION_RESIDUAL_SCHEMA,
+        HYDROLOGY_BOUNDARY_EXPORT_SCHEMA,
+        HYDROLOGY_TRANSFER_ACCEPTED_SCHEMA,
+        HYDROLOGY_TRANSFER_LIMITED_SCHEMA,
+    ] {
+        assert_eq!(
+            claim(historical_claims, schema),
+            claim(&control_claims, schema),
+            "historical schema {} matches the retained-batch control",
+            schema.raw()
+        );
+    }
+    assert!(
+        historical_claims
+            .iter()
+            .all(|claim| claim.evidence_traces.len() <= 64)
+    );
+    assert!(
+        historical_claims
+            .iter()
+            .flat_map(|claim| &claim.evidence_traces)
+            .all(|trace| history.event(*trace).expect("trace query").is_some())
+    );
+}
+
+#[test]
+fn a_corrupt_referenced_segment_refuses_historical_hydrology_claims() {
+    let bundle = TempBundle::new();
+    let mut runtime = Runtime::create_bundle(
+        sparse_forcing_runtime_config(),
+        &bundle.0,
+        BundleOptions::default(),
+    )
+    .expect("create history bundle");
+    runtime.run_ticks(3).expect("commit forcing batch");
+    let batch = *runtime
+        .hydrology_state()
+        .retained_batches
+        .last()
+        .expect("committed hydrology batch");
+    runtime.run_ticks(11).expect("evict the selected batch");
+    assert!(!runtime.hydrology_state().retained_batches.contains(&batch));
+    runtime.save_bundle().expect("make history durable");
+    let intact = runtime
+        .observer_hydrology_explanation_for_batch(batch, None)
+        .expect("intact historical Explanation");
+    assert_eq!(
+        claim(&intact.frames[0].claims, HYDROLOGY_FORCING_ACCEPTED_SCHEMA).evidence_state,
+        ClaimEvidenceState::Supported
+    );
+    let history = runtime
+        .history_reader()
+        .expect("runtime history reader")
+        .pin_snapshot()
+        .expect("pinned history reader");
+    for later_batch in runtime.hydrology_state().retained_batches {
+        assert!(
+            history
+                .event(later_batch)
+                .expect("later batch query")
+                .is_some()
+        );
+    }
+
+    let mut damaged = 0;
+    for entry in fs::read_dir(bundle.0.join("segments")).expect("segment directory") {
+        let path = entry.expect("segment entry").path();
+        let mut bytes = fs::read(&path).expect("segment bytes");
+        if let Some(first) = bytes.first_mut() {
+            *first ^= 0xFF;
+            fs::write(&path, bytes).expect("damage segment");
+            damaged += 1;
+        }
+    }
+    assert!(damaged > 0, "the bundle must contain referenced segments");
+
+    let start = Instant::now();
+    let error = runtime
+        .observer_hydrology_explanation_for_batch(batch, None)
+        .expect_err("corrupt history cannot support a claim");
+    println!("MARKER:corrupt_history error={error:?}");
+    assert!(matches!(
+        error,
+        RuntimeError::CausalCommit(CausalCommitError::HistoryRead(
+            HistoryError::ReaderOperationUnavailable | HistoryError::IntegrityFailure { .. }
+        ))
+    ));
+    assert!(start.elapsed() < Duration::from_secs(30));
+    assert!(!runtime.hydrology_state().retained_batches.contains(&batch));
+}
+
+#[test]
+fn an_oversize_transfer_batch_is_not_reported_as_complete() {
+    let runtime = ticked(wet_runtime_config(), 1);
+    let history = runtime
+        .history_reader()
+        .expect("runtime history reader")
+        .pin_snapshot()
+        .expect("pinned history reader");
+    let mut offset = 0;
+    let transfer_record = loop {
+        let page = history
+            .indexed_range(HistoryQuery::new(offset, 256, 4 * 1024 * 1024).expect("history page"))
+            .expect("history range");
+        if let Some(record) = page.records().iter().find_map(|record| match record {
+            HistoryRecord::Evidence(record)
+                if record.schema_id() == EvidenceSchemaId::new(0x0014_1803) =>
+            {
+                Some(record.clone())
+            }
+            _ => None,
+        }) {
+            break record;
+        }
+        offset = page
+            .next_offset()
+            .expect("transfer evidence exists in history");
+    };
+    let conservation_trace = TraceId::new(u64::from_le_bytes(
+        transfer_record.canonical_key()[..8]
+            .try_into()
+            .expect("batch prefix is eight bytes"),
+    ));
+    let prefix = conservation_trace.raw().to_le_bytes();
+    let page = history
+        .evidence_by_key_prefix(
+            EvidenceSchemaId::new(0x0014_1803),
+            &prefix,
+            HistoryQuery::new(0, 256, 4 * 1024 * 1024).expect("bounded history page"),
+        )
+        .expect("indexed transfer evidence page");
+    assert_eq!(page.records().len(), 256);
+    assert!(
+        page.next_offset().is_some(),
+        "batch must contain over 256 records"
+    );
+    assert!(matches!(
+        runtime.observer_hydrology_explanation_for_batch(conservation_trace, None),
+        Err(RuntimeError::HistoryQueryPartial {
+            schema_id: 0x0014_1803
+        })
+    ));
 }
 
 #[test]

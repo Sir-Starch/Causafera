@@ -1102,7 +1102,7 @@ fn an_engine_resolution_change_reaches_hydrology_and_is_committed_as_an_event() 
 
     // Every promoted chunk's anchor is a committed representation event whose
     // cause is the anchor it replaced.
-    let exported = runtime.export_snapshot().expect("export");
+    let exported = runtime.export_snapshot_with_full_history().expect("export");
     for (chunk, entry) in &promoted {
         let event = exported
             .traces

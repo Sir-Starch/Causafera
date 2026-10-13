@@ -256,6 +256,83 @@ pays for itself needs either homogeneous substrate or a tolerance the current
 contract deliberately refuses; measuring it is future work and this section states
 so rather than reporting the level number as if it were a saving.
 
+## Causal History Storage Scale and Open Wet-Path Defect
+
+`cargo run --release -p causafera-runtime --example performance_baseline -- history-scale`
+measures a persistent `HistoryStore` with one new synthetic causal record per measured tick.
+It populates prior history in 1,000-record batches, then takes eight warm-up ticks and 256
+single-record samples in each of three separate bundles at 100, 1,000, 10,000, 100,000, and
+1,000,000 prior records. It reports raw samples, p50/p95/p99, group syncs, indexed lookup,
+disk sizes, RSS, recovery, and a two-level bootstrap that resamples bundles and then ticks.
+The run here used release Rust 1.97.1 on a Ryzen 9 7950X3D (32 logical CPUs, Linux x86-64).
+These are storage append measurements, not full simulation tick measurements. Process RSS is
+shared across sequential age cases, so it is a diagnostic rather than an isolated per-age peak.
+
+| Prior records | Median run p95 append CPU, µs | Median run p95 tick wall, µs | Cold MiB | Index MiB | Median reopen, s |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 100 | 34.98 | 29.20 | 0.11 | 1.15 | 0.021 |
+| 1,000 | 31.58 | 25.33 | 0.25 | 1.71 | 0.033 |
+| 10,000 | 39.04 | 33.72 | 1.74 | 7.06 | 0.153 |
+| 100,000 | 30.17 | 30.94 | 16.60 | 36.58 | 1.381 |
+| 1,000,000 | 33.85 | 27.68 | 165.24 | 296.36 | 13.763 |
+
+The observed pooled p95 storage CPU ratio (1,000,000 / 1,000) was 1.055; the grouped
+bootstrap upper 95% bound was 1.269, below the plan's 1.50 threshold. A descriptive
+regression over the 15 per-bundle p95 values estimated a linear-record slope of
+−0.00311 ns/record with an approximate 95% interval of −0.01018 to 0.00396 ns/record;
+this run does not show a measurable linear-history slope. Every measured ordinary append
+reported zero full-history rescans. The indexed catalog grew from 1.71 to 296.36 MiB
+between 1,000 and 1,000,000 records, and reopen grew from 0.033 to 13.763 s; neither
+is claimed to be constant. At 1,000 prior records, 128 `EveryTick` samples had zero
+durability lag and p95 segment fsync of 1.511 ms. The wall-time p95 for a group sync was
+measured in every age case; each run had only eight such samples, so those tails are
+diagnostic. CPU comes from `/proc/thread-self/schedstat` and includes proc-read overhead;
+it is not directly comparable to the separately timed append wall interval.
+
+The fixed-current-state bounded-envelope test
+`snapshot_sections_bounded_history_anchor_is_canonical_and_history_independent` encoded
+65,488 bytes with both 100 and 1,000,000 historical events, a zero-byte difference, and
+neither envelope contained section `0x000A`. The hot-overlay test checks the configured
+budget at those scales without materializing a million events in the runtime.
+
+The updated thermal benchmark measures `open_bundle` after a saved 36-tick bundle, using
+ten groups of ten opens and excluding session shutdown from each timed interval. Its
+median group mean was 142.743 ms on the same hardware (32 measurement ticks, 668 retained
+transfer receipts); the machine-readable report is
+`.omo/evidence/causal-history-storage/task-11-thermal-open.json`.
+
+The wet nine-chunk release probe (`hydrology_bench -- history-smoke`) completed three
+ticks, saved in 1.55 s, reopened in 15.27 s with exact digests, kept 4,194,272 hot
+history bytes under its 4,194,304-byte cap, and wrote a 34,698,965-byte bounded
+snapshot without `0x000A`. An initial 12-tick probe reached save but timed out at
+600 s while reopening a roughly 1.5 GiB bundle: the reader cache evicted a frequently
+revisited old frame on every access. With bounded LRU eviction, the same 12-tick
+workload completed its ticks in 56.61 s, saved in 1.38 s, and reopened in 68.11 s
+with exact digests. Hot history was 4,194,152 bytes under the cap; the snapshot was
+60,786,623 bytes without `0x000A`. A bounded 100-tick continuation of the same wet
+workload completed simulation in 531.94 s, saved in 10.63 s, and reopened in 567.27 s;
+all digests matched and recovery reported no lost or replayed ticks. Every conservation
+residual was zero. Hot history was 4,194,192 of 4,194,304 allowed bytes, and the
+35,221,300-byte snapshot omitted `0x000A`. The bundle occupied about 8.3 GiB,
+including a roughly 4.5 GiB catalog; this is not evidence of constant cold storage.
+The measured wet simulation cost is 5.319 s/tick on average across these 100 ticks,
+and reopening the saved world took longer than ticking it. A read-only catalog count
+found 12,468,343 records (7,431,871 causal events and 5,036,472 evidence records)
+after 100 ticks. This is an observed performance defect, tracked by `TODO-PERF-004`,
+not an acceptable target or proof that a longer run has usable throughput. The 100-tick
+sample alone cannot identify which portion of tick time belongs to hydrology, evidence
+encoding, catalog insertion, sync, or other work. The saved-bundle open path currently
+traverses durable history, consistent with the growing reopen measurements; its exact
+cost breakdown remains to be profiled. The requested 1,000-tick wet run and its recovery
+were not run under the user's no-long-tests instruction. The revised causal-history
+plan closes structural storage verification with the 100-tick control and synthetic
+history-age sweep, while `TODO-PERF-004` retains throughput and long-run validation.
+These observations are in `.omo/evidence/causal-history-storage/task-11.json`,
+`task-11-hydrology-probe.ndjson`, `task-11-hydrology-12-lru.ndjson`, and
+`task-11-hydrology-100.ndjson`.
+The old `ceiling` mode was removed from the current harness because its 100,000-tick
+search depended on the retired export-cap refusal and would no longer have a bounded stop.
+
 ## Methodology Gaps Found by the Performance Baseline Investigation
 
 `plans/performance-baseline-and-digest-cost.md` swept the runtime's validated configuration space and

@@ -13,16 +13,158 @@
 //!
 //! See `plans/hydrology.md` verification gates V18 and V25.
 
-use causafera_core::{Phase, provenance::CausalTraceStore};
-use causafera_domains::{
-    HydrologyReceiptTotals, validate_boundary_transfers, validate_paired_transfers,
+use causafera_core::{
+    EvidenceDecoder, EvidenceSchemaId, EvidenceSchemaVersion, HistoryError, Phase,
+    provenance::CausalTraceStore,
 };
+use causafera_domains::{
+    HydrologyConservationParts, HydrologyConservationReceipt, HydrologyReceiptTotals,
+    validate_boundary_transfers, validate_paired_transfers,
+};
+use causafera_geography::HydrologyCarrierKey;
+use causafera_persistence::{LittleEndianDecoder, PersistenceError};
 use causafera_types::TraceId;
 
 use crate::{
-    HYDROLOGY_BOOTSTRAP_EVENT_KIND, HYDROLOGY_CONSERVATION_EVENT_KIND, HydrologyConfig,
+    HYDROLOGY_BOOTSTRAP_EVENT_KIND, HYDROLOGY_BOOTSTRAP_EVIDENCE_SCHEMA,
+    HYDROLOGY_CONSERVATION_EVENT_KIND, HYDROLOGY_CONSERVATION_EVIDENCE_SCHEMA,
+    HYDROLOGY_EVIDENCE_VERSION, HYDROLOGY_FORCING_EVIDENCE_SCHEMA,
+    HYDROLOGY_STORAGE_EVIDENCE_SCHEMA, HYDROLOGY_TRANSFER_EVIDENCE_SCHEMA, HydrologyConfig,
     HydrologyRuntimeState, RuntimeError,
 };
+
+#[derive(Debug)]
+pub(crate) struct HydrologyEvidenceDecoder {
+    pub(crate) schema: EvidenceSchemaId,
+}
+
+impl EvidenceDecoder for HydrologyEvidenceDecoder {
+    fn source_schema(&self) -> (EvidenceSchemaId, EvidenceSchemaVersion) {
+        (self.schema, HYDROLOGY_EVIDENCE_VERSION)
+    }
+
+    fn target_version(&self) -> EvidenceSchemaVersion {
+        HYDROLOGY_EVIDENCE_VERSION
+    }
+
+    fn decode_or_upcast(&self, payload: &[u8]) -> Result<Vec<u8>, HistoryError> {
+        validate_hydrology_evidence_payload(self.schema, payload).map_err(|_| {
+            HistoryError::InvalidOffset {
+                offset: payload.len(),
+                length: 1,
+                total: payload.len(),
+            }
+        })?;
+        Ok(payload.to_vec())
+    }
+}
+
+fn validate_hydrology_evidence_payload(
+    schema: EvidenceSchemaId,
+    payload: &[u8],
+) -> Result<(), PersistenceError> {
+    if schema == HYDROLOGY_BOOTSTRAP_EVIDENCE_SCHEMA {
+        let state = crate::snapshot_sections::decode_hydrology_section(payload)?;
+        if !state.enabled || crate::snapshot_sections::encode_hydrology_section(&state) != payload {
+            return Err(PersistenceError::codec(
+                "noncanonical hydrology bootstrap evidence",
+            ));
+        }
+        return Ok(());
+    }
+    let mut dec = LittleEndianDecoder::new(payload);
+    if schema == HYDROLOGY_FORCING_EVIDENCE_SCHEMA {
+        for _ in 0..8 {
+            dec.read_u64()?;
+        }
+        let count = dec.read_u64()?;
+        if count == 0 || count > causafera_geography::MAX_HYDROLOGY_TARGETS_PER_FORCING as u64 {
+            return Err(PersistenceError::codec("hydrology forcing member count"));
+        }
+        for _ in 0..count {
+            let carrier = dec.read_fixed::<23>()?;
+            if !matches!(
+                HydrologyCarrierKey::decode(carrier),
+                Ok(HydrologyCarrierKey::Cell(_))
+            ) || dec.read_u64()? == 0
+            {
+                return Err(PersistenceError::codec("hydrology forcing member"));
+            }
+        }
+    } else if schema == HYDROLOGY_STORAGE_EVIDENCE_SCHEMA {
+        if !matches!(dec.read_u8()?, 1..=5) {
+            return Err(PersistenceError::codec("hydrology storage bucket"));
+        }
+        dec.read_u64()?;
+        dec.read_u64()?;
+    } else if schema == HYDROLOGY_TRANSFER_EVIDENCE_SCHEMA {
+        dec.read_u64()?;
+        dec.read_u64()?;
+        dec.read_u32()?;
+        for _ in 0..2 {
+            let len = usize::from(dec.read_u8()?);
+            HydrologyCarrierKey::decode(dec.read_bytes(len)?)
+                .map_err(|_| PersistenceError::codec("hydrology transfer carrier"))?;
+        }
+        for _ in 0..2 {
+            if !matches!(dec.read_u8()?, 1..=9) {
+                return Err(PersistenceError::codec("hydrology transfer bucket"));
+            }
+        }
+        for _ in 0..7 {
+            dec.read_u64()?;
+        }
+        let count = dec.read_u64()?;
+        if count > 4096 {
+            return Err(PersistenceError::codec("hydrology transfer parent count"));
+        }
+        for _ in 0..count {
+            dec.read_u64()?;
+        }
+        for _ in 0..3 {
+            dec.read_u64()?;
+        }
+        for _ in 0..2 {
+            let len = usize::try_from(dec.read_u32()?)
+                .map_err(|_| PersistenceError::codec("hydrology proposal key length"))?;
+            if len > 4096 {
+                return Err(PersistenceError::codec("hydrology proposal key length"));
+            }
+            dec.read_bytes(len)?;
+        }
+    } else if schema == HYDROLOGY_CONSERVATION_EVIDENCE_SCHEMA {
+        let tick = dec.read_u64()?;
+        let batch_sequence = dec.read_u64()?;
+        let mut terms = [0_i128; 12];
+        for term in &mut terms {
+            *term = i128::from_le_bytes(*dec.read_fixed::<16>()?);
+        }
+        HydrologyConservationReceipt::new(HydrologyConservationParts {
+            tick,
+            batch_sequence,
+            surface_before: terms[0],
+            soil_before: terms[1],
+            groundwater_before: terms[2],
+            conveyance_before: terms[3],
+            surface_after: terms[4],
+            soil_after: terms[5],
+            groundwater_after: terms[6],
+            conveyance_after: terms[7],
+            accepted_precipitation: terms[8],
+            accepted_external_inflow: terms[9],
+            accepted_evapotranspiration: terms[10],
+            boundary_exports: terms[11],
+        })
+        .and_then(|receipt| receipt.require_balanced())
+        .map_err(|_| PersistenceError::codec("unbalanced hydrology evidence"))?;
+    } else {
+        return Err(PersistenceError::codec("unknown hydrology evidence schema"));
+    }
+    if !dec.is_empty() {
+        return Err(PersistenceError::codec("trailing hydrology evidence bytes"));
+    }
+    Ok(())
+}
 
 /// Check everything about a hydrology state that no single constructor could have
 /// checked on its own.
@@ -308,10 +450,10 @@ pub(crate) fn validate_imported_hydrology(
     // look attributable.
     for record in &state.forcing {
         let event = traces
-            .event(record.origin_trace())
+            .event(record.origin_trace())?
             .ok_or(RuntimeError::HydrologyTraceAnchorUnknown)?;
-        if event.phase != Phase::Lifecycle
-            || event.kind.raw() != HYDROLOGY_BOOTSTRAP_EVENT_KIND
+        if event.phase() != Phase::Lifecycle
+            || event.kind().raw() != HYDROLOGY_BOOTSTRAP_EVENT_KIND
             || record.producer_policy_schema()
                 != causafera_geography::BOOTSTRAP_HYDROLOGY_FORCING_POLICY_V1
         {
@@ -344,9 +486,11 @@ pub(crate) fn validate_imported_hydrology(
     // is a ledger attributed to something that never balanced it.
     for trace in &state.retained_batches {
         let event = traces
-            .event(*trace)
+            .event(*trace)?
             .ok_or(RuntimeError::HydrologyTraceAnchorUnknown)?;
-        if event.phase != Phase::Physics || event.kind.raw() != HYDROLOGY_CONSERVATION_EVENT_KIND {
+        if event.phase() != Phase::Physics
+            || event.kind().raw() != HYDROLOGY_CONSERVATION_EVENT_KIND
+        {
             return Err(RuntimeError::HydrologyBatchTraceNotConservation);
         }
         // Looked up rather than indexed. `validate_hydrology_state` runs first
@@ -369,7 +513,7 @@ pub(crate) fn validate_imported_hydrology(
 }
 
 fn require_trace(traces: &CausalTraceStore, trace: TraceId) -> Result<(), RuntimeError> {
-    if traces.event(trace).is_some() {
+    if traces.event(trace)?.is_some() {
         Ok(())
     } else {
         Err(RuntimeError::HydrologyTraceAnchorUnknown)

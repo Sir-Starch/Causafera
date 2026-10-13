@@ -78,6 +78,21 @@ fn thermal_explanation_reports_unknown_before_any_exchange_then_supported_after(
     );
     assert_eq!(bootstrap_claim.evidence_state, ClaimEvidenceState::Unknown);
     assert!(bootstrap_claim.evidence_traces.is_empty());
+    let absent_history_report = runtime
+        .observer_material_surface_thermal_explanation_for_trace(
+            surface,
+            causafera_types::TraceId::new(u64::MAX),
+        )
+        .expect("an absent historical evidence key is reported as unknown");
+    assert_eq!(
+        absent_history_report.frames[0].claims[0].evidence_state,
+        ClaimEvidenceState::Unknown
+    );
+    assert!(
+        absent_history_report.frames[0].claims[0]
+            .evidence_traces
+            .is_empty()
+    );
 
     // When: a real thermal batch commits at least one exchange, for whichever surface diffusion
     // reaches first (not necessarily the arbitrary surface queried above).
@@ -98,4 +113,36 @@ fn thermal_explanation_reports_unknown_before_any_exchange_then_supported_after(
     assert_eq!(claim.schema, MATERIAL_SURFACE_THERMAL_EXCHANGE_SCHEMA);
     assert_eq!(claim.evidence_state, ClaimEvidenceState::Supported);
     assert_eq!(claim.evidence_traces.len(), 2);
+}
+
+#[test]
+fn thermal_explanation_queries_a_historical_surface_exchange_from_history() {
+    let mut runtime = Runtime::new(RuntimeConfig::new(2_404)).expect("runtime must bootstrap");
+    runtime.tick().expect("first thermal tick must execute");
+    let first = runtime.export_snapshot().expect("snapshot must export");
+    let transition = *first
+        .material_surfaces
+        .thermal_transitions
+        .first()
+        .expect("first tick must record a material exchange");
+    runtime
+        .run_ticks(140)
+        .expect("history must advance beyond the bounded transition window");
+
+    let report = runtime
+        .observer_material_surface_thermal_explanation_for_trace(
+            transition.id,
+            transition.transition_trace,
+        )
+        .expect("a real surface remains queryable after transition eviction");
+    assert_eq!(
+        report.frames[0].claims[0].evidence_state,
+        ClaimEvidenceState::Supported
+    );
+    assert!(
+        report.frames[0].claims[0]
+            .evidence_traces
+            .contains(&transition.transition_trace)
+    );
+    assert_eq!(report.frames[0].claims[0].evidence_traces.len(), 2);
 }

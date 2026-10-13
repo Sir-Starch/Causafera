@@ -14,6 +14,9 @@ use causafera_types::{
     SimulationTime, SpatialChartId, TraceId,
 };
 
+mod support_resume;
+use support_resume::resume_through_bundle;
+
 /// The mana lattice the carrier projects onto in these tests.
 const EXTENT: u8 = 3;
 
@@ -411,12 +414,14 @@ fn terrain_participation_survives_a_snapshot_round_trip() {
     // Given: a world whose terrain carrier is deliberately held inert.
     let mut config = seed_comparison_config(7);
     config.terrain_participation = TerrainParticipation::Inert;
-    let mut original = Runtime::new(config).expect("inert world bootstraps");
+    let mut original = Runtime::new(config.clone()).expect("inert world bootstraps");
     original.run_ticks(8).expect("inert world runs");
     let exported = original.export_snapshot().expect("inert world exports");
 
     // When: it is resumed from its authoritative snapshot and both continue.
-    let mut resumed = Runtime::from_snapshot(exported.clone()).expect("inert world resumes");
+    let mut saved = Runtime::new(config).expect("saved inert world bootstraps");
+    saved.run_ticks(8).expect("saved inert world runs");
+    let mut resumed = resume_through_bundle(saved);
     assert_eq!(
         exported.recipe.config.terrain_participation,
         TerrainParticipation::Inert

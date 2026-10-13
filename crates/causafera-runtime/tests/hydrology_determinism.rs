@@ -6,8 +6,8 @@
 
 mod support_hydrology;
 
-use causafera_runtime::snapshot_sections::{assemble_envelope, disassemble_envelope};
-use causafera_runtime::{Runtime, RuntimeConfig};
+use causafera_core::{Criticality, HistoryQuery};
+use causafera_runtime::{HYDROLOGY_FORCING_EVIDENCE_SCHEMA, Runtime, RuntimeConfig};
 
 use support_hydrology::{enabled_runtime_config, wet_runtime_config};
 
@@ -60,22 +60,107 @@ fn forcing_schedule_input_order_does_not_change_the_result() {
 
 #[test]
 fn an_export_import_export_cycle_is_byte_identical() {
-    // V23's persistence half: a round trip is not a transformation.
-    let mut runtime = Runtime::new(wet_runtime_config()).expect("construction");
-    runtime.run_ticks(5).expect("the run must commit");
-    let exported = runtime.export_snapshot().expect("export");
-    let first = assemble_envelope(&exported)
-        .expect("assemble")
+    let mut config = enabled_runtime_config();
+    config.hydrology.forcing_schedule[0].scheduled_tick = 1;
+    config.active_chunk_radius = 0;
+    let mut runtime = Runtime::new(config).expect("construction");
+    runtime.run_ticks(1).expect("the run must commit");
+    let conservation_trace = *runtime
+        .hydrology_state()
+        .retained_batches
+        .last()
+        .expect("tick emitted a hydrology conservation batch");
+    let mut forcing_key = conservation_trace.raw().to_le_bytes().to_vec();
+    forcing_key.extend_from_slice(&1_u64.to_le_bytes());
+    forcing_key.extend_from_slice(&1_u64.to_le_bytes());
+
+    let original_reader = runtime.history_reader().expect("original history reader");
+    let original_evidence = original_reader
+        .evidence(
+            HYDROLOGY_FORCING_EVIDENCE_SCHEMA,
+            &forcing_key,
+            HistoryQuery::new(0, 16, 1024 * 1024).expect("bounded evidence query"),
+        )
+        .expect("pre-handoff hydrology forcing evidence")
+        .records()
+        .to_vec();
+    assert_eq!(
+        original_evidence.len(),
+        1,
+        "forcing evidence was not emitted"
+    );
+    let expected = &original_evidence[0];
+    let expected_schema = expected.schema_id();
+    let expected_key = expected.canonical_key().to_vec();
+    let expected_criticality = expected.criticality();
+    let expected_anchors = expected.causal_anchors().to_vec();
+    let expected_payload = expected.canonical_payload().to_vec();
+
+    runtime
+        .run_ticks(9)
+        .expect("nine more hydrology batches must commit");
+    let hot = runtime.hydrology_state();
+    assert_eq!(
+        hot.retained_batches.len(),
+        8,
+        "hot batch window is not bounded"
+    );
+    assert!(
+        !hot.retained_batches.contains(&conservation_trace),
+        "the first forcing record's anchored batch is still in the hot projection"
+    );
+    assert!(
+        !hot.receipts.contains_key(&conservation_trace)
+            && !hot.conservation_receipts.contains_key(&conservation_trace),
+        "the first typed hydrology batch remains in hot receipt projections"
+    );
+    let first = runtime
+        .export_bounded_envelope()
+        .expect("bounded export")
         .encode()
         .expect("encode");
 
-    let resumed = Runtime::from_snapshot(
-        disassemble_envelope(&assemble_envelope(&exported).expect("assemble"))
-            .expect("disassemble"),
-    )
-    .expect("resume");
-    let second = assemble_envelope(&resumed.export_snapshot().expect("export"))
-        .expect("assemble")
+    let history_resume = runtime
+        .into_history_resume()
+        .expect("durable history handoff");
+    let resumed = Runtime::from_bounded_snapshot_bytes(&first, history_resume)
+        .expect("resume with the matching durable history");
+
+    let reader = resumed.history_reader().expect("resumed history reader");
+    let evidence = reader
+        .evidence(
+            HYDROLOGY_FORCING_EVIDENCE_SCHEMA,
+            &forcing_key,
+            HistoryQuery::new(0, 16, 1024 * 1024).expect("bounded evidence query"),
+        )
+        .expect("indexed cold hydrology forcing evidence")
+        .records()
+        .to_vec();
+    assert_eq!(evidence.len(), 1, "resumed history lost forcing evidence");
+    let record = &evidence[0];
+    assert_eq!(
+        record.schema_id(),
+        expected_schema,
+        "schema changed after resume"
+    );
+    assert_eq!(
+        record.canonical_key(),
+        expected_key,
+        "canonical key changed after resume"
+    );
+    assert_eq!(record.criticality(), expected_criticality);
+    assert_eq!(record.criticality(), Criticality::ReplayRequired);
+    assert_eq!(record.causal_anchors(), expected_anchors);
+    assert!(record.causal_anchors().contains(&conservation_trace));
+    assert_eq!(
+        record.canonical_payload(),
+        expected_payload.as_slice(),
+        "raw canonical payload bytes changed after owned history resume"
+    );
+
+    let second = resumed
+        .export_bounded_envelope()
+        .expect("bounded re-export")
         .encode()
         .expect("encode");
     assert_eq!(first, second);

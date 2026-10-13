@@ -575,12 +575,16 @@ impl RuntimeBootstrapRecipe {
                 .plan
                 .stage_seed(stage.id())
                 .ok_or(BootstrapError::StageCompletionsDoNotMatchRecord)?;
-            let committed_before = state.traces.len();
+            let first_new_trace = state
+                .traces
+                .iter_hot()
+                .last()
+                .map_or(0, |event| event.trace_id.raw().saturating_add(1));
             let reported = adapter.bootstrap(state, stage_seed, previous_receipt)?;
             let mut effects = state
                 .traces
-                .iter()
-                .skip(committed_before)
+                .iter_hot()
+                .filter(|event| event.trace_id.raw() >= first_new_trace)
                 .map(|event| event.trace_id)
                 .collect::<Vec<_>>();
             effects.sort_unstable();
@@ -786,11 +790,11 @@ fn stage_result_fingerprint(
     digest.write(effects.len() as u64);
     for trace in effects {
         let event = traces
-            .event(*trace)
+            .event(*trace)?
             .ok_or(BootstrapError::MissingStageEffectTrace)?;
-        digest.write(event.kind.raw());
-        digest.write(event.effects.len() as u64);
-        for effect in event.effects {
+        digest.write(event.kind().raw());
+        digest.write(event.effects().len() as u64);
+        for effect in event.effects() {
             digest.write(effect.target().object_kind().raw());
             digest.write(effect.target().object_id());
             digest.write(effect.target().property().raw());
@@ -817,7 +821,9 @@ pub(crate) fn replay_stage_effects(
     traces: &CausalTraceStore,
     receipts: &[HistoricalStageReceipt],
 ) -> Result<Vec<Vec<TraceId>>, BootstrapError> {
-    let committed = traces
+    let snapshot = traces.export_snapshot_durable()?;
+    let committed = snapshot
+        .events
         .iter()
         .enumerate()
         .filter(|(_, event)| event.kind.raw() == BOOTSTRAP_STAGE_COMPLETION_EVENT_KIND)
@@ -832,7 +838,8 @@ pub(crate) fn replay_stage_effects(
         return Err(BootstrapError::StageCompletionsDoNotMatchRecord);
     }
 
-    let ordered = traces
+    let ordered = snapshot
+        .events
         .iter()
         .map(|event| event.trace_id)
         .collect::<Vec<_>>();
@@ -845,6 +852,43 @@ pub(crate) fn replay_stage_effects(
         }
         windows.push(ordered[cursor..index].to_vec());
         cursor = index + 1;
+    }
+    Ok(windows)
+}
+
+/// Re-derive bootstrap windows from the completion events' causal causes.
+/// Owned bounded resume stays on event-by-event indexed reads; full imports
+/// retain [`replay_stage_effects`] and its complete-history validation.
+pub(crate) fn replay_stage_effects_bounded(
+    traces: &CausalTraceStore,
+    receipts: &[HistoricalStageReceipt],
+) -> Result<Vec<Vec<TraceId>>, BootstrapError> {
+    let mut previous_completion = None;
+    let mut windows = Vec::with_capacity(receipts.len());
+    for receipt in receipts {
+        let completion = traces
+            .event(receipt.trace())?
+            .ok_or(BootstrapError::StageCompletionsDoNotMatchRecord)?;
+        if completion.kind() != EventKindId::new(BOOTSTRAP_STAGE_COMPLETION_EVENT_KIND)
+            || completion.phase() != Phase::Lifecycle
+        {
+            return Err(BootstrapError::StageCompletionsDoNotMatchRecord);
+        }
+        let mut effects = completion.causes().to_vec();
+        if let Some(previous) = previous_completion {
+            let Ok(index) = effects.binary_search(&previous) else {
+                return Err(BootstrapError::StageCompletionsDoNotMatchRecord);
+            };
+            effects.remove(index);
+        }
+        if effects
+            .iter()
+            .any(|trace| receipts.iter().any(|candidate| candidate.trace() == *trace))
+        {
+            return Err(BootstrapError::StageCompletionsDoNotMatchRecord);
+        }
+        windows.push(effects);
+        previous_completion = Some(receipt.trace());
     }
     Ok(windows)
 }
@@ -1224,6 +1268,12 @@ pub enum BootstrapError {
     MissingStageEffectTrace,
     #[error("committed stage completions do not match the bootstrap record")]
     StageCompletionsDoNotMatchRecord,
+}
+
+impl From<HistoryError> for BootstrapError {
+    fn from(error: HistoryError) -> Self {
+        BootstrapError::Runtime(RuntimeError::from(error))
+    }
 }
 
 fn commit_thermal_reservoir_bootstrap_event(

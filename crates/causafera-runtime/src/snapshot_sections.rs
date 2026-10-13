@@ -2,6 +2,8 @@ use causafera_core::phases::Phase;
 use causafera_core::provenance::{
     CausalEffect, CausalEventSnapshot, CausalTraceSnapshot, StateFingerprint,
 };
+#[cfg(test)]
+use causafera_core::{HistoryQuery, MAX_QUERY_PAGE_BYTES, MAX_QUERY_PAGE_RECORDS};
 use causafera_domains::{
     HydrologyConservationReceipt, HydrologyResolutionPolicy, HydrologyTransferReceipt,
     ManaFieldSetSnapshot, ManaFieldSnapshot,
@@ -14,7 +16,7 @@ use causafera_geography::{
 };
 use causafera_persistence::{
     FORMAT_MAJOR_V1, FORMAT_MINOR_V1, LittleEndianDecoder, LittleEndianEncoder, PersistenceError,
-    SectionPayload, SnapshotEnvelope, SnapshotHeader,
+    SectionDirectoryEntry, SectionPayload, SnapshotEnvelope, SnapshotHeader,
 };
 use causafera_resolution::{
     ChannelWeight, ResolutionEntry, ResolutionFieldSnapshot, ResolutionPolicySnapshot,
@@ -85,12 +87,12 @@ pub const HYDROLOGY_SECTION_ID: u16 = 0x000F;
 /// compared the two. The canonical bootstrap plan is derived from the active
 /// chunk set, so this is now load-bearing rather than cosmetic — a resumed
 /// snapshot would otherwise reconstruct a different plan than it was saved with.
-const RUNTIME_RECIPE_SECTION_MAJOR: u16 = 7;
-const MANA_SECTION_MAJOR: u16 = 2;
-const PHYSICAL_COUNTERS_SECTION_MAJOR: u16 = 3;
+pub(crate) const RUNTIME_RECIPE_SECTION_MAJOR: u16 = 7;
+pub(crate) const MANA_SECTION_MAJOR: u16 = 2;
+pub(crate) const PHYSICAL_COUNTERS_SECTION_MAJOR: u16 = 3;
 /// Bumped to 3 when `MaterialSurface` gained `thermal` (conserved retained-heat exchange,
 /// `TODO-THERMAL-002`), and `MaterialSurfaceSnapshot` gained `thermal_transitions`.
-const MATERIAL_SURFACE_SECTION_MAJOR: u16 = 3;
+pub(crate) const MATERIAL_SURFACE_SECTION_MAJOR: u16 = 3;
 pub const EXPERIMENT_RECIPE_MANA_SOURCE_RECEIPTS_SECTION_MAJOR: u16 = 1;
 /// Bumped to 2 when `ThermalParameters` gained `material_exchange_fraction`/
 /// `material_thermal_capacity` and cell receipts/conservation receipts gained the material term
@@ -102,7 +104,7 @@ pub const HYDROLOGY_SECTION_MAJOR: u16 = 1;
 /// Major 1 carried no plan and no result, so it cannot be read forward: it fails
 /// closed rather than defaulting an empty record into production state.
 pub const POPULATION_BOOTSTRAP_SECTION_MAJOR: u16 = 2;
-const CURRENT_SECTION_MINOR: u16 = 0;
+pub(crate) const CURRENT_SECTION_MINOR: u16 = 0;
 const MAX_THERMAL_BOUNDARY_RECORDS: usize = 1_000_000;
 
 /// Encode a `CausalTraceSnapshot` into section bytes.
@@ -174,10 +176,23 @@ pub fn decode_trace_section(bytes: &[u8]) -> Result<CausalTraceSnapshot, Persist
 
     let next_event_id = dec.read_u64()?;
     let next_trace_id = dec.read_u64()?;
-    let event_count = dec.read_u64()? as usize;
+    let event_count = usize::try_from(dec.read_u64()?)
+        .map_err(|_| PersistenceError::codec("event count exceeds usize"))?;
 
     if event_count > u32::MAX as usize {
         return Err(PersistenceError::codec("event count exceeds u32"));
+    }
+    // Each event needs five fixed fields and two offset entries; the offset
+    // arrays also have one leading entry apiece. Reject impossible counts
+    // before any count-sized allocation on an untrusted legacy section.
+    let minimum_bytes = event_count
+        .checked_mul(42)
+        .and_then(|bytes| bytes.checked_add(8))
+        .ok_or_else(|| PersistenceError::codec("event count overflows trace section size"))?;
+    if minimum_bytes > dec.remaining() {
+        return Err(PersistenceError::codec(
+            "event count exceeds trace section bytes",
+        ));
     }
 
     let mut events = Vec::with_capacity(event_count);
@@ -223,9 +238,17 @@ pub fn decode_trace_section(bytes: &[u8]) -> Result<CausalTraceSnapshot, Persist
     for _ in 0..=event_count {
         cause_offsets.push(dec.read_u32()?);
     }
+    if cause_offsets.first() != Some(&0) || cause_offsets.windows(2).any(|pair| pair[0] > pair[1]) {
+        return Err(PersistenceError::codec("invalid cause offsets"));
+    }
 
     // Read flat causes.
     let total_causes = cause_offsets.last().copied().unwrap_or(0) as usize;
+    if total_causes > dec.remaining() / 8 {
+        return Err(PersistenceError::codec(
+            "cause count exceeds trace section bytes",
+        ));
+    }
     let mut causes = Vec::with_capacity(total_causes);
     for _ in 0..total_causes {
         causes.push(TraceId::new(dec.read_u64()?));
@@ -236,9 +259,18 @@ pub fn decode_trace_section(bytes: &[u8]) -> Result<CausalTraceSnapshot, Persist
     for _ in 0..=event_count {
         effect_offsets.push(dec.read_u32()?);
     }
+    if effect_offsets.first() != Some(&0) || effect_offsets.windows(2).any(|pair| pair[0] > pair[1])
+    {
+        return Err(PersistenceError::codec("invalid effect offsets"));
+    }
 
     // Read flat effects.
     let total_effects = effect_offsets.last().copied().unwrap_or(0) as usize;
+    if total_effects > dec.remaining() / 88 {
+        return Err(PersistenceError::codec(
+            "effect count exceeds trace section bytes",
+        ));
+    }
     let mut effects = Vec::with_capacity(total_effects);
     for _ in 0..total_effects {
         let object_kind = StateObjectKindId::new(dec.read_u64()?);
@@ -574,6 +606,58 @@ pub fn encode_thermal_section(snapshot: &ThermalSnapshot) -> Vec<u8> {
         enc.write_i64(record.cell_pre_state);
     }
     buf
+}
+
+pub(crate) fn encode_legacy_thermal_transfer(
+    receipt: &ThermalCellTransferReceiptSnapshot,
+) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    let mut enc = LittleEndianEncoder::new(&mut bytes);
+    enc.write_u64(receipt.conservation_trace.raw());
+    encode_thermal_cell_key(&mut enc, receipt.cell);
+    enc.write_i64(receipt.pre_state);
+    enc.write_i64(receipt.post_state);
+    encode_option_trace(&mut enc, receipt.cell_change_trace_id);
+    enc.write_u64(receipt.faces.len() as u64);
+    for face in &receipt.faces {
+        encode_thermal_face_record(&mut enc, *face);
+    }
+    enc.write_u64(receipt.reservoirs.len() as u64);
+    for reservoir in &receipt.reservoirs {
+        encode_thermal_reservoir_transfer_record(&mut enc, *reservoir);
+    }
+    encode_thermal_material_transfer_record(&mut enc, receipt.material);
+    bytes
+}
+
+pub(crate) fn encode_legacy_thermal_conservation(
+    receipt: &ThermalConservationReceiptSnapshot,
+) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    let mut enc = LittleEndianEncoder::new(&mut bytes);
+    enc.write_u64(receipt.trace.raw());
+    enc.write_u64(receipt.tick);
+    for value in [
+        receipt.total_cell_energy_before,
+        receipt.total_cell_energy_after,
+        receipt.total_reservoir_budget_before,
+        receipt.total_reservoir_budget_after,
+        receipt.total_material_retained_before,
+        receipt.total_material_retained_after,
+        receipt.residual,
+    ] {
+        encode_i128(&mut enc, value);
+    }
+    bytes
+}
+
+pub(crate) fn encode_legacy_thermal_boundary(record: &ThermalBoundaryRecordSnapshot) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    let mut enc = LittleEndianEncoder::new(&mut bytes);
+    encode_thermal_cell_key(&mut enc, record.cell);
+    encode_thermal_cell_key(&mut enc, record.neighbor);
+    enc.write_i64(record.cell_pre_state);
+    bytes
 }
 
 pub fn decode_thermal_section(bytes: &[u8]) -> Result<ThermalSnapshot, PersistenceError> {
@@ -998,6 +1082,51 @@ pub fn encode_material_surface_section(snapshot: &MaterialSurfaceSnapshot) -> Ve
         enc.write_u64(transition.transition_trace.raw());
     }
     buf
+}
+
+pub(crate) fn encode_legacy_material_transition(transition: &MaterialSurfaceTransition) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    let mut enc = LittleEndianEncoder::new(&mut bytes);
+    encode_material_surface_id(&mut enc, transition.id);
+    enc.write_u64(transition.occurred_at.raw());
+    enc.write_i64(transition.before_condition);
+    enc.write_i64(transition.after_condition);
+    enc.write_i64(transition.mana_total);
+    encode_option_trace(&mut enc, transition.contact_trace);
+    encode_option_trace(&mut enc, transition.mana_effect_trace);
+    enc.write_u64(transition.transition_trace.raw());
+    bytes
+}
+
+pub(crate) fn encode_legacy_material_gate(transition: &MaterialSurfaceGateTransition) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    let mut enc = LittleEndianEncoder::new(&mut bytes);
+    encode_material_surface_id(&mut enc, transition.id);
+    enc.write_u64(transition.occurred_at.raw());
+    encode_bool(&mut enc, transition.before_active);
+    encode_bool(&mut enc, transition.after_active);
+    enc.write_i64(transition.local_mana_before);
+    enc.write_i64(transition.local_mana_after);
+    enc.write_u64(transition.local_mana_trace.raw());
+    encode_option_trace(&mut enc, transition.contact_trace);
+    enc.write_u64(transition.transition_trace.raw());
+    bytes
+}
+
+pub(crate) fn encode_legacy_material_thermal(
+    transition: &MaterialSurfaceThermalTransition,
+) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    let mut enc = LittleEndianEncoder::new(&mut bytes);
+    encode_material_surface_id(&mut enc, transition.id);
+    enc.write_u64(transition.occurred_at.raw());
+    enc.write_i64(transition.before_retained);
+    enc.write_i64(transition.after_retained);
+    enc.write_i64(transition.cell_pre_state);
+    enc.write_i64(transition.signed_flux);
+    enc.write_u64(transition.cell_trace.raw());
+    enc.write_u64(transition.transition_trace.raw());
+    bytes
 }
 
 pub fn decode_material_surface_section(
@@ -3327,8 +3456,32 @@ fn require_empty(dec: &LittleEndianDecoder<'_>) -> Result<(), PersistenceError> 
     }
 }
 
-/// Assemble a `RuntimeSnapshotData` into a canonical `SnapshotEnvelope`.
+/// Assemble a `RuntimeSnapshotData` into the legacy single-file container.
+///
+/// That container (codec revision 1) embeds the complete causal trace section
+/// `0x000A` and carries digest schema 8. Digest schema 9 has no such form: its
+/// history digest folds the durable record stream, so a snapshot is the bounded
+/// revision-2 envelope that [`crate::Runtime::export_bounded_envelope`] writes,
+/// with a `HistoryAnchor` instead of the history. This function therefore
+/// writes schema 8 and exists for legacy export and migration inputs.
 pub fn assemble_envelope(data: &RuntimeSnapshotData) -> Result<SnapshotEnvelope, PersistenceError> {
+    assemble_envelope_for_digest_schema(data, crate::LEGACY_DIGEST_SCHEMA_VERSION)
+}
+
+/// Assemble the legacy container under an explicit digest schema.
+///
+/// Only [`crate::LEGACY_DIGEST_SCHEMA_VERSION`] is accepted. A `0x000A`
+/// container under schema 9 would put a complete history into a snapshot whose
+/// identity no longer depends on one, so it is refused rather than written.
+pub fn assemble_envelope_for_digest_schema(
+    data: &RuntimeSnapshotData,
+    digest_schema: crate::DigestSchemaVersion,
+) -> Result<SnapshotEnvelope, PersistenceError> {
+    if digest_schema != crate::LEGACY_DIGEST_SCHEMA_VERSION {
+        return Err(PersistenceError::codec(
+            "the legacy trace-section container carries digest schema 8 only",
+        ));
+    }
     let mut sections = std::collections::BTreeMap::new();
 
     sections.insert(
@@ -3487,10 +3640,13 @@ pub fn assemble_envelope(data: &RuntimeSnapshotData) -> Result<SnapshotEnvelope,
     }
 
     let (physical_digest, history_digest) = {
-        let mut temp_state = RuntimeState::import_snapshot(data.clone())
+        let temp_state = RuntimeState::import_snapshot(data.clone())
             .map_err(|e| PersistenceError::codec(format!("digest computation failed: {e}")))?;
-        let phys = temp_state.physical_state_digest(data.recipe.completed_time);
-        let hist = temp_state.history_digest();
+        let phys =
+            temp_state.physical_state_digest_for_schema(data.recipe.completed_time, digest_schema);
+        let hist = temp_state
+            .history_digest_full_rescan_for_schema(digest_schema)
+            .map_err(|e| PersistenceError::codec(format!("digest computation failed: {e}")))?;
         (phys.bytes(), hist.bytes())
     };
 
@@ -3501,9 +3657,9 @@ pub fn assemble_envelope(data: &RuntimeSnapshotData) -> Result<SnapshotEnvelope,
         world_seed: data.recipe.seed,
         completed_time: data.recipe.completed_time.raw(),
         runtime_recipe_fingerprint: [0u8; 32],
-        physical_digest_schema: crate::CURRENT_DIGEST_SCHEMA_VERSION.raw(),
+        physical_digest_schema: digest_schema.raw(),
         physical_digest,
-        history_digest_schema: crate::CURRENT_DIGEST_SCHEMA_VERSION.raw(),
+        history_digest_schema: digest_schema.raw(),
         history_digest,
         section_count: 0,
         section_directory_offset: 0,
@@ -3511,6 +3667,39 @@ pub fn assemble_envelope(data: &RuntimeSnapshotData) -> Result<SnapshotEnvelope,
     };
 
     Ok(SnapshotEnvelope::new(header, sections))
+}
+
+/// Size-only envelope accounting used by the per-tick transaction.
+///
+/// This avoids the temp-import digest path and therefore the whole-history
+/// reconstruction that `assemble_envelope` performs for header digests. The
+/// trace section is bounded by the configured hot-cache budget, so scanning it
+/// here is a bounded hot read rather than a whole-history scan.
+pub(crate) fn envelope_encoded_size_from_data(data: &RuntimeSnapshotData) -> (u64, usize) {
+    let section_sizes: [usize; 14] = [
+        encode_runtime_recipe_section(&data.recipe).len(),
+        encode_spatial_section(&data.spatial).len(),
+        encode_mana_section(&data.mana).len(),
+        encode_thermal_section(&data.thermal).len(),
+        encode_hydrology_section(&data.hydrology).len(),
+        encode_resolution_section(&data.resolution, &data.resolution_policy).len(),
+        encode_pattern_history_section(&data.pattern_history).len(),
+        encode_physical_counters_section(&data.physical_counters).len(),
+        encode_material_surface_section(&data.material_surfaces).len(),
+        encode_actor_objective_section(&data.actors_objective).len(),
+        encode_actor_subjective_section(&data.actors_subjective).len(),
+        encode_population_section(&data.population, &data.bootstrap).len(),
+        encode_trace_section(&data.traces).len(),
+        encode_experiment_recipe_mana_source_receipts_section(
+            &data.experiment_recipe_mana_source_receipts,
+        )
+        .len(),
+    ];
+    let hydrology = section_sizes[4];
+    let payload: u64 = section_sizes.iter().map(|&n| n as u64).sum();
+    let directory = section_sizes.len() as u64 * SectionDirectoryEntry::SIZE as u64;
+    let total = SnapshotHeader::SIZE as u64 + payload + directory;
+    (total, hydrology)
 }
 
 /// Disassemble a `SnapshotEnvelope` into `RuntimeSnapshotData`.
@@ -3524,13 +3713,23 @@ pub fn disassemble_envelope(
             )));
         }
     }
-    if envelope.header.physical_digest_schema != crate::CURRENT_DIGEST_SCHEMA_VERSION.raw()
-        || envelope.header.history_digest_schema != crate::CURRENT_DIGEST_SCHEMA_VERSION.raw()
-    {
+    let legacy = crate::LEGACY_DIGEST_SCHEMA_VERSION.raw();
+    let schemas = (
+        envelope.header.physical_digest_schema,
+        envelope.header.history_digest_schema,
+    );
+    if schemas != (legacy, legacy) {
         return Err(PersistenceError::codec(
-            "unsupported authoritative digest schema",
+            "the legacy trace-section container carries digest schema 8 only",
         ));
     }
+    disassemble_envelope_with_traces(envelope, None)
+}
+
+pub(crate) fn disassemble_envelope_with_traces(
+    envelope: &SnapshotEnvelope,
+    supplied_traces: Option<CausalTraceSnapshot>,
+) -> Result<RuntimeSnapshotData, PersistenceError> {
     let recipe = decode_runtime_recipe_section(
         required_section(
             envelope,
@@ -3632,16 +3831,19 @@ pub fn disassemble_envelope(
         .bytes
         .as_slice(),
     )?;
-    let traces = decode_trace_section(
-        envelope
-            .sections
-            .get(&u64::from(SECTION_CAUSAL_TRACES))
-            .ok_or(PersistenceError::MissingRequiredSection {
-                schema_id: u64::from(SECTION_CAUSAL_TRACES),
-            })?
-            .bytes
-            .as_slice(),
-    )?;
+    let traces = match supplied_traces {
+        Some(traces) => traces,
+        None => decode_trace_section(
+            envelope
+                .sections
+                .get(&u64::from(SECTION_CAUSAL_TRACES))
+                .ok_or(PersistenceError::MissingRequiredSection {
+                    schema_id: u64::from(SECTION_CAUSAL_TRACES),
+                })?
+                .bytes
+                .as_slice(),
+        )?,
+    };
     let experiment_recipe_mana_source_receipts =
         decode_experiment_recipe_mana_source_receipts_section(
             required_section(
@@ -3947,6 +4149,47 @@ fn encode_hydrology_receipt(enc: &mut LittleEndianEncoder<'_>, receipt: &Hydrolo
             }
         }
     }
+}
+
+pub(crate) fn encode_legacy_hydrology_receipt(receipt: &HydrologyTransferReceipt) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    encode_hydrology_receipt(&mut LittleEndianEncoder::new(&mut bytes), receipt);
+    bytes
+}
+
+pub(crate) fn encode_legacy_hydrology_conservation(
+    receipt: &causafera_domains::HydrologyConservationReceipt,
+) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    encode_hydrology_conservation(&mut LittleEndianEncoder::new(&mut bytes), receipt);
+    bytes
+}
+
+pub(crate) fn encode_legacy_hydrology_forcing(
+    record: &causafera_geography::HydrologyForcingRecord,
+) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    let mut enc = LittleEndianEncoder::new(&mut bytes);
+    enc.write_u64(record.forcing_id());
+    enc.write_u64(record.scheduled_tick());
+    enc.write_u64(record.precipitation_volume().get());
+    enc.write_u64(record.potential_et_volume().get());
+    enc.write_u64(record.external_inflow_volume().get());
+    enc.write_u64(record.origin_trace().raw());
+    enc.write_u64(record.producer_policy_schema());
+    match record.applied_at() {
+        None => encode_bool(&mut enc, false),
+        Some(tick) => {
+            encode_bool(&mut enc, true);
+            enc.write_u64(tick);
+        }
+    }
+    enc.write_u64(record.targets().len() as u64);
+    for member in record.targets() {
+        encode_hydrology_cell(&mut enc, member.cell);
+        enc.write_u64(member.weight.get());
+    }
+    bytes
 }
 
 fn encode_carrier(enc: &mut LittleEndianEncoder<'_>, carrier: HydrologyCarrierKey) {
@@ -4579,14 +4822,59 @@ mod tests {
         assert_eq!(restored.export_snapshot(), store.export_snapshot());
 
         // Verify child traversal is identical.
-        for trace_id in store.iter().map(|e| e.trace_id) {
-            let original_children: Vec<TraceId> = store.children(trace_id).to_vec();
-            let restored_children: Vec<TraceId> = restored.children(trace_id).to_vec();
+        for trace_id in store.iter_hot().map(|e| e.trace_id) {
+            let original_children: Vec<TraceId> = store
+                .children(
+                    trace_id,
+                    HistoryQuery::new(0, MAX_QUERY_PAGE_RECORDS, MAX_QUERY_PAGE_BYTES)
+                        .expect("query"),
+                )
+                .expect("children read")
+                .records()
+                .to_vec();
+            let restored_children: Vec<TraceId> = restored
+                .children(
+                    trace_id,
+                    HistoryQuery::new(0, MAX_QUERY_PAGE_RECORDS, MAX_QUERY_PAGE_BYTES)
+                        .expect("query"),
+                )
+                .expect("children read")
+                .records()
+                .to_vec();
             assert_eq!(
                 original_children, restored_children,
                 "children mismatch for {trace_id:?}"
             );
         }
+    }
+
+    #[test]
+    fn legacy_trace_decoder_rejects_invalid_offsets_without_panicking() {
+        let mut bytes = Vec::new();
+        let mut enc = LittleEndianEncoder::new(&mut bytes);
+        enc.write_u64(2);
+        enc.write_u64(2);
+        enc.write_u64(1);
+        enc.write_u64(1);
+        enc.write_u64(1);
+        enc.write_u64(0);
+        enc.write_u16(u16::from(Phase::Physics.id().0));
+        enc.write_u64(1);
+        enc.write_u32(1);
+        enc.write_u32(0);
+        enc.write_u32(0);
+        enc.write_u32(0);
+        assert!(decode_trace_section(&bytes).is_err());
+    }
+
+    #[test]
+    fn legacy_trace_decoder_rejects_count_exceeding_section_bytes() {
+        let mut bytes = Vec::new();
+        let mut enc = LittleEndianEncoder::new(&mut bytes);
+        enc.write_u64(1);
+        enc.write_u64(1);
+        enc.write_u64(u64::from(u32::MAX));
+        assert!(decode_trace_section(&bytes).is_err());
     }
 
     #[test]
@@ -5491,7 +5779,7 @@ mod tests {
         let mut runtime = Runtime::from_seed(42).unwrap();
         runtime.run_ticks(10).unwrap();
 
-        let data = runtime.export_snapshot().unwrap();
+        let data = runtime.export_snapshot_with_full_history().unwrap();
         let completed_time = data.recipe.completed_time;
 
         let mut resumed = Runtime::from_snapshot(data).unwrap();
@@ -5505,6 +5793,40 @@ mod tests {
         let original_snapshot = original.snapshot().unwrap();
         let resumed_snapshot = resumed.snapshot().unwrap();
 
+        // A complete-trace import rebuilds the history from the causal records
+        // it was given, so its history digest names that lineage (see
+        // `a_complete_trace_import_starts_its_own_history_lineage`). What the
+        // snapshot does carry, the physical state, must continue identically.
+        assert_eq!(
+            original_snapshot.physical_state_digest,
+            resumed_snapshot.physical_state_digest
+        );
+        assert_eq!(
+            resumed_snapshot.history_digest,
+            resumed
+                .lock_state()
+                .unwrap()
+                .history_digest_full_rescan()
+                .unwrap()
+        );
+    }
+
+    #[test]
+    fn runtime_from_bounded_snapshot_resumes_at_completed_tick() {
+        let mut runtime = Runtime::from_seed(42).unwrap();
+        runtime.run_ticks(10).unwrap();
+        let bytes = runtime.export_bounded_envelope().unwrap().encode().unwrap();
+        let resume = runtime.into_history_resume().unwrap();
+
+        let mut resumed = Runtime::from_bounded_snapshot_bytes(&bytes, resume).unwrap();
+        assert_eq!(resumed.current_time().raw(), 10);
+        resumed.run_ticks(5).unwrap();
+
+        let mut original = Runtime::from_seed(42).unwrap();
+        original.run_ticks(15).unwrap();
+
+        let original_snapshot = original.snapshot().unwrap();
+        let resumed_snapshot = resumed.snapshot().unwrap();
         assert_eq!(
             original_snapshot.physical_state_digest,
             resumed_snapshot.physical_state_digest
@@ -5512,6 +5834,10 @@ mod tests {
         assert_eq!(
             original_snapshot.history_digest,
             resumed_snapshot.history_digest
+        );
+        assert_eq!(
+            original_snapshot.canonical_state,
+            resumed_snapshot.canonical_state
         );
     }
 

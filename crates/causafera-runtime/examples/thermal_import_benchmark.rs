@@ -1,29 +1,74 @@
+use std::error::Error;
+use std::path::PathBuf;
 use std::process::ExitCode;
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
-use causafera_runtime::{Runtime, measure_import_wall_time, production_loop_config};
+use causafera_runtime::{BundleOptions, Runtime, production_loop_config};
 
 const SEED: u64 = 2026;
 const WARMUP_TICKS: u64 = 4;
 const MEASUREMENT_TICKS: u64 = 32;
-const INNER_ITERATIONS: u32 = 100;
+const INNER_ITERATIONS: u32 = 10;
 const REPETITIONS: usize = 10;
 
 fn main() -> ExitCode {
-    let mut runtime =
-        Runtime::new(production_loop_config(SEED)).expect("runtime bootstrap must succeed");
-    runtime
-        .run_ticks(WARMUP_TICKS)
-        .expect("warmup ticks must execute");
-    runtime
-        .run_ticks(MEASUREMENT_TICKS)
-        .expect("measurement ticks must execute");
-    let snapshot = runtime.export_snapshot().expect("snapshot must export");
+    match run() {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("thermal bundle reopen benchmark failed: {error}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+struct OwnedBundle {
+    path: PathBuf,
+}
+
+impl Drop for OwnedBundle {
+    fn drop(&mut self) {
+        if self.path.exists()
+            && let Err(error) = std::fs::remove_dir_all(&self.path)
+        {
+            eprintln!("could not remove owned thermal benchmark bundle: {error}");
+        }
+    }
+}
+
+fn run() -> Result<(), Box<dyn Error>> {
+    let nonce = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
+    let root = std::env::temp_dir().join(format!(
+        "causafera-thermal-import-{}-{nonce}",
+        std::process::id(),
+    ));
+    if root.exists() {
+        return Err(format!("benchmark bundle already exists: {}", root.display()).into());
+    }
+    let bundle = OwnedBundle { path: root };
+    let mut runtime = Runtime::create_bundle(
+        production_loop_config(SEED),
+        &bundle.path,
+        BundleOptions::default(),
+    )?;
+    runtime.run_ticks(WARMUP_TICKS)?;
+    runtime.run_ticks(MEASUREMENT_TICKS)?;
+    let snapshot = runtime.export_snapshot()?;
+    runtime.save_bundle()?;
+    runtime.shutdown()?;
 
     let mut samples: Vec<u128> = Vec::with_capacity(REPETITIONS);
     for _ in 0..REPETITIONS {
-        let mean_ns = measure_import_wall_time(&snapshot, INNER_ITERATIONS)
-            .expect("import benchmark must succeed");
-        samples.push(mean_ns);
+        let mut total_open_ns = 0_u128;
+        for _ in 0..INNER_ITERATIONS {
+            let started = Instant::now();
+            let (session, recovery) = Runtime::open_bundle(&bundle.path)?;
+            total_open_ns += started.elapsed().as_nanos();
+            if recovery.replayed_ticks != 0 {
+                return Err("saved thermal bundle unexpectedly required replay".into());
+            }
+            session.shutdown()?;
+        }
+        samples.push(total_open_ns / u128::from(INNER_ITERATIONS));
     }
 
     let batch_count = snapshot.thermal.field_set.batch_sequence;
@@ -40,7 +85,7 @@ fn main() -> ExitCode {
     let stats = statistics(&samples);
 
     println!(
-        r#"{{"mean_import_ns":{mean},"median_import_ns":{median},"stddev_import_ns":{stddev},"min_import_ns":{min},"max_import_ns":{max},"repetitions":{repetitions},"inner_iterations":{inner_iterations},"batch_count":{batch_count},"total_cells":{total_cells},"total_transfer_receipts":{total_transfer_receipts},"measurement_ticks":{MEASUREMENT_TICKS},"seed":{SEED},"toolchain":"{toolchain}","hardware":"{hardware}","deterministic_mode":true}}"#,
+        r#"{{"operation":"durable_bundle_open_after_save","mean_open_ns":{mean},"median_open_ns":{median},"stddev_open_ns":{stddev},"min_open_ns":{min},"max_open_ns":{max},"repetitions":{repetitions},"inner_iterations":{inner_iterations},"batch_count":{batch_count},"total_cells":{total_cells},"total_transfer_receipts":{total_transfer_receipts},"measurement_ticks":{MEASUREMENT_TICKS},"seed":{SEED},"toolchain":"{toolchain}","hardware":"{hardware}","deterministic_mode":true}}"#,
         mean = stats.mean,
         median = stats.median,
         stddev = stats.stddev,
@@ -49,7 +94,7 @@ fn main() -> ExitCode {
         repetitions = REPETITIONS,
         inner_iterations = INNER_ITERATIONS,
     );
-    ExitCode::SUCCESS
+    Ok(())
 }
 
 fn json_escape(value: &str) -> String {

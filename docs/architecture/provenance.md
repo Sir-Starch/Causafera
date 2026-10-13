@@ -24,7 +24,7 @@ Each effect identifies a state object through opaque `StateObjectKindId`, numeri
 
 `CausalTraceStore` stably sorts a batch by proposal key, rejects duplicate keys and unknown causes, preflights capacities, then assigns monotonic `EventId` and `TraceId` values. Causes must have been committed before the current batch. This parent-before-child rule prevents causal cycles and makes forward ancestry slices canonical.
 
-Hot event fields, causes, and effects use flat vectors with offsets. A deterministic cold side index supports direct child traversal. Full causal query planning, persistence, and observer projection remain future work.
+The current implementation stores complete canonical causal and domain-evidence records in append-only bundle segments with a transactional catalog. A bounded hot overlay and generation-pinned cold reader support direct lookup, child traversal, and historical Explanation queries. Checkpoints and snapshots carry a history anchor instead of embedding the entire event stream; derived indexes can be rebuilt. See [RFC-PERSIST-002](../rfc/RFC-PERSIST-002.md) and the [storage plan](../../plans/causal-history-storage.md). Cold storage and catalog size grow with history, and the measured wet reopen cost remains open as `TODO-PERF-004`.
 
 ## Determinism
 
@@ -36,7 +36,7 @@ Domain systems construct property-specific canonical fingerprints and proposals.
 
 ## Observer and explanation
 
-The store exposes read-only numeric event views. Future observer and Explanation Engine adapters may traverse these views, attach non-authoritative localized glosses, and report confidence. Neither adapter may mutate the graph or invent missing causes.
+The store exposes read-only numeric event views. Current Explanation queries can traverse committed cold history after hot eviction, with bounded pages and explicit partial or unknown results when evidence is unavailable. Further observer and Explanation adapters may attach non-authoritative localized glosses and report confidence. Neither adapter may mutate the graph or invent missing causes.
 
 ## Epistemic Provenance and Agent-Perspective Explanation
 
