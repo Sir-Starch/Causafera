@@ -220,6 +220,7 @@ mod tests {
     use std::io::Write;
     use std::num::{NonZeroU32, NonZeroU64};
     use std::sync::Arc;
+    use std::time::Duration;
 
     use causafera_core::{
         CausalEffect, CausalEventProposal, CausalHistoryReader, CausalTarget, Criticality,
@@ -1068,12 +1069,20 @@ mod tests {
             let time = runtime.current_time();
             let scheduler_time = runtime.scheduler.current_time();
             let history = runtime.history_status().expect("history status");
-            let store = runtime
+            let mut store = runtime
                 .lock_state()
                 .expect("state")
                 .history
                 .backend_status()
                 .expect("history store status");
+            // Failed attempts and clean runs have different instrumentation, not history.
+            store.append_elapsed_wall_time = Duration::ZERO;
+            store.durable_sync_count = 0;
+            store.durable_sync_elapsed_wall_time = Duration::ZERO;
+            store.catalog_commit_count = 0;
+            store.catalog_commit_elapsed_wall_time = Duration::ZERO;
+            store.logical_digest_full_rescan_count = 0;
+            store.catalog_full_scan_count = 0;
             (runtime_snapshot, time, scheduler_time, history, store)
         };
 
