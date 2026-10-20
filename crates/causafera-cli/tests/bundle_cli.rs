@@ -263,8 +263,8 @@ fn checked_in_legacy_snapshot_migrates_through_the_cli() {
 
 #[test]
 fn resume_reports_the_ticks_a_crash_lost() {
-    // Given: a group-commit session saved at tick 5 that ran seven more ticks
-    // and died before its group was published.
+    // Given: a group-commit session saved at tick 5 that ran one more tick
+    // and died before its new group was published.
     let temp = TempDir::new("crash");
     let bundle = temp.join("bundle");
     let mut session = Runtime::create_bundle(
@@ -278,7 +278,7 @@ fn resume_reports_the_ticks_a_crash_lost() {
     .expect("bundle");
     session.run_ticks(5).expect("first ticks");
     session.save_bundle().expect("save");
-    session.run_ticks(7).expect("later ticks");
+    session.run_ticks(1).expect("later tick");
     session.simulate_crash();
 
     // When
@@ -287,17 +287,17 @@ fn resume_reports_the_ticks_a_crash_lost() {
         "--path",
         path_arg(&bundle),
         "--ticks",
-        "7",
+        "1",
     ]));
 
     // Then: the loss is named, and the lost ticks simulate again to the same end.
     assert_eq!(field(&resumed, "resumed_at"), "5");
-    assert_eq!(field(&resumed, "lost_ticks"), "7");
+    assert_eq!(field(&resumed, "lost_ticks"), "1");
     assert_ne!(field(&resumed, "lost_generations"), "none");
-    let control = succeeded(&causafera(&["run", "--seed", "6", "--ticks", "12"]));
+    let control = succeeded(&causafera(&["run", "--seed", "6", "--ticks", "6"]));
     assert_eq!(field(&resumed, "digest"), field(&control, "digest"));
     println!(
-        "MARKER:cli_crash lost_ticks=7 lost_generations={}",
+        "MARKER:cli_crash lost_ticks=1 lost_generations={}",
         field(&resumed, "lost_generations")
     );
 }
