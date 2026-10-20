@@ -445,6 +445,15 @@ struct WriterLease {
     _file: File,
 }
 
+impl Drop for WriterLease {
+    fn drop(&mut self) {
+        // flock handles inherited by a fork can outlive this file's close.
+        if let Err(error) = self._file.unlock() {
+            eprintln!("failed to release history writer lease: {error}");
+        }
+    }
+}
+
 struct AppendPreimage {
     active_sequence: u64,
     active_relative_path: PathBuf,

@@ -1972,10 +1972,13 @@ fn decoder_registry_survives_create_open_reopen_and_index_rebuild() {
 
     let default_error = HistoryStore::open(temp.path())
         .expect_err("default empty registry must reject required evidence");
-    assert!(matches!(
-        default_error,
-        PersistenceError::History(HistoryError::UnsupportedReplaySchema { .. })
-    ));
+    assert!(
+        matches!(
+            default_error,
+            PersistenceError::History(HistoryError::UnsupportedReplaySchema { .. })
+        ),
+        "unexpected default-registry open error: {default_error:?}"
+    );
 
     let connection = rusqlite::Connection::open(temp.path().join("catalog.sqlite"))
         .expect("catalog for recovery fixture");
