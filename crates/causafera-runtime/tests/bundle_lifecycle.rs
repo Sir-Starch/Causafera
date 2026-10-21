@@ -311,7 +311,7 @@ fn a_damaged_bundle_is_refused_rather_than_resumed() {
     )
     .expect("bundle");
     session.run_ticks(3).expect("ticks");
-    session.save_bundle().expect("save");
+    let saved = session.save_bundle().expect("save");
     session.shutdown().expect("shutdown");
     Runtime::open_bundle(&root).expect("the intact bundle opens");
 
@@ -322,12 +322,7 @@ fn a_damaged_bundle_is_refused_rather_than_resumed() {
         .expect("a checkpoint")
         .expect("entry")
         .path();
-    let snapshot = fs::read_dir(root.join("snapshots"))
-        .expect("snapshots")
-        .next()
-        .expect("a snapshot")
-        .expect("entry")
-        .path();
+    let snapshot = saved.snapshot_path;
     for (case, victim) in [
         ("checkpoint", checkpoint.clone()),
         ("snapshot", snapshot.clone()),
