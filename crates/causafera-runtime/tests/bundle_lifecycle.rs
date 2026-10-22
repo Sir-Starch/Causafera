@@ -202,9 +202,9 @@ fn a_saved_bundle_resumes_to_the_uninterrupted_run() {
 }
 
 #[test]
-fn a_crash_reports_the_ticks_it_lost_and_the_resumed_run_replays_them() {
+fn a_crash_reports_durable_and_lost_ticks_then_resumes_exactly() {
     // Given: a group-commit session saved at tick 5 that ran seven more ticks
-    // inside one unpublished group and then died.
+    // and then died. The 250 ms group deadline may publish some or all of them.
     let temp = TempDir::new("crash");
     let root = temp.bundle();
     let mut session = Runtime::create_bundle(
@@ -216,26 +216,38 @@ fn a_crash_reports_the_ticks_it_lost_and_the_resumed_run_replays_them() {
     session.run_ticks(5).expect("first ticks");
     let receipt = session.save_bundle().expect("save");
     session.run_ticks(7).expect("ticks after the save");
-    assert!(
-        session.history_status().expect("status").pending_ticks > 0,
-        "the later ticks are an unpublished group"
+    let before_crash = session.history_status().expect("status");
+    let pending_ticks = u64::try_from(before_crash.pending_ticks).expect("pending ticks fit u64");
+    assert_eq!(before_crash.logical_generation, receipt.generation + 7);
+    assert_eq!(
+        before_crash.logical_generation - before_crash.durable_generation,
+        pending_ticks
     );
     session.simulate_crash();
 
     // When
     let (mut resumed, recovery) = Runtime::open_bundle(&root).expect("open after the crash");
 
-    // Then: it resumes at the save, and the loss is named exactly.
-    assert_eq!(recovery.generation, receipt.generation);
-    assert_eq!(recovery.completed_time.raw(), 5);
-    let lost = recovery.lost.expect("seven ticks were lost");
-    assert_eq!(lost.ticks, 7);
-    assert_eq!(lost.first_generation, receipt.generation + 1);
-    assert_eq!(lost.last_generation, receipt.generation + 7);
+    // Then: every published tick is replayed, and every unpublished tick is
+    // reported as lost. Both outcomes follow the documented group deadline.
+    let replayed_ticks = before_crash.durable_generation - receipt.generation;
+    assert_eq!(recovery.generation, before_crash.durable_generation);
+    assert_eq!(recovery.replayed_ticks, replayed_ticks);
+    assert_eq!(recovery.completed_time.raw(), 5 + replayed_ticks);
+    assert_eq!(
+        recovery.lost.as_ref().map_or(0, |lost| lost.ticks),
+        pending_ticks
+    );
+    if let Some(lost) = &recovery.lost {
+        assert_eq!(lost.first_generation, before_crash.durable_generation + 1);
+        assert_eq!(lost.last_generation, before_crash.logical_generation);
+    }
     assert_eq!(recovery.unaccounted_bytes, 0);
 
-    // And: the lost ticks simulate again to exactly what they were.
-    resumed.run_ticks(7).expect("resumed session reruns them");
+    // And: rerunning only the lost ticks reaches the uninterrupted run.
+    resumed
+        .run_ticks(pending_ticks)
+        .expect("resumed session reruns lost ticks");
     let mut control = Runtime::new(RuntimeConfig::new(85)).expect("control");
     control.run_ticks(12).expect("control runs");
     assert_eq!(
@@ -243,8 +255,8 @@ fn a_crash_reports_the_ticks_it_lost_and_the_resumed_run_replays_them() {
         control.snapshot().expect("control").canonical_state
     );
     println!(
-        "MARKER:bundle_crash lost_ticks={} first_generation={} last_generation={}",
-        lost.ticks, lost.first_generation, lost.last_generation
+        "MARKER:bundle_crash replayed_ticks={replayed_ticks} lost_ticks={}",
+        pending_ticks
     );
 }
 
@@ -262,6 +274,8 @@ fn a_clean_shutdown_forces_the_group_and_a_crash_does_not() {
         .expect("bundle");
         let genesis = session.history_status().expect("status").durable_generation;
         session.run_ticks(5).expect("ticks");
+        let before_end = session.history_status().expect("status");
+        let pending_ticks = u64::try_from(before_end.pending_ticks).expect("pending ticks fit u64");
 
         // When
         if clean {
@@ -270,15 +284,17 @@ fn a_clean_shutdown_forces_the_group_and_a_crash_does_not() {
             session.simulate_crash();
         }
 
-        // Then: a clean exit published the five ticks; a crash left them as a tail.
+        // Then: a clean exit publishes every remaining tick. A crash leaves
+        // exactly the ticks that had not already reached the time deadline.
         let store = HistoryStore::open(&root).expect("the catalog opens");
         let tail = store.recovered_tail();
         if clean {
-            assert_eq!(store.durable_generation(), genesis + 5);
+            assert_eq!(store.durable_generation(), before_end.logical_generation);
             assert_eq!(tail.frames, 0);
         } else {
-            assert_eq!(store.durable_generation(), genesis);
-            assert_eq!(tail.frames, 5);
+            assert_eq!(store.durable_generation(), before_end.durable_generation);
+            assert_eq!(tail.frames, pending_ticks);
+            assert_eq!(store.durable_generation() + tail.frames, genesis + 5);
         }
     }
 }
