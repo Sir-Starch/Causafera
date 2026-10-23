@@ -63,7 +63,8 @@ ruleset alongside the existing checks:
 
 | Required check | Purpose |
 | --- | --- |
-| `rust` | Rust build, lint, and test gate |
+| `rust` | Workspace Rust build, lint, and test gate |
+| `rust-observer` | Observer Rust test gate |
 | `ui` | Frontend lint, typecheck, and build gate |
 | `license/cla` | CLA acceptance gate |
 
