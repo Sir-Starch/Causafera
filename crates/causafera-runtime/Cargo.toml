@@ -26,6 +26,8 @@ causafera-explanation = { workspace = true }
 causafera-observer-api = { workspace = true }
 causafera-observer-wire = { workspace = true }
 thiserror = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
 # The hydrology aggregation trees fingerprint their own nodes, and Stage 1's
 # fixtures pin pre-hydrology section payloads by digest because
 # `causafera-persistence` keeps its own `compute_integrity` private.

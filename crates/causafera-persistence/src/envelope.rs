@@ -199,6 +199,14 @@ impl SnapshotEnvelope {
 
     /// Encode the complete envelope to a byte vector.
     pub fn encode(&self) -> Result<Vec<u8>, PersistenceError> {
+        let section_count = u64::try_from(self.sections.len())
+            .map_err(|_| PersistenceError::codec("section count does not fit u64"))?;
+        if section_count > MAX_SECTION_COUNT {
+            return Err(PersistenceError::SectionCountExceeded {
+                count: section_count,
+                max: MAX_SECTION_COUNT,
+            });
+        }
         // First pass: encode everything except the header to compute sizes and integrity.
         let mut payload_buf = Vec::new();
         let header_size = SnapshotHeader::SIZE as u64;
@@ -207,9 +215,15 @@ impl SnapshotEnvelope {
             let mut payload_encoder = LittleEndianEncoder::new(&mut payload_buf);
             // Encode section payloads in schema-ID order.
             for (&schema_id, payload) in &self.sections {
-                let payload_offset = header_size + payload_encoder.written() as u64;
+                let payload_offset =
+                    header_size
+                        .checked_add(u64::try_from(payload_encoder.written()).map_err(|_| {
+                            PersistenceError::codec("payload offset does not fit u64")
+                        })?)
+                        .ok_or_else(|| PersistenceError::codec("payload offset overflow"))?;
                 payload_encoder.write_bytes(&payload.bytes);
-                let payload_length = payload.bytes.len() as u64;
+                let payload_length = u64::try_from(payload.bytes.len())
+                    .map_err(|_| PersistenceError::codec("payload length does not fit u64"))?;
                 let section_integrity = compute_integrity(&payload.bytes);
                 entries.push(SectionDirectoryEntry {
                     section_schema_id: schema_id,
@@ -229,7 +243,11 @@ impl SnapshotEnvelope {
         let payload_integrity = compute_integrity(&payload_buf[..sections_end]);
 
         // Encode section directory.
-        let section_directory_offset = header_size + sections_end as u64;
+        let section_directory_offset = header_size
+            .checked_add(u64::try_from(sections_end).map_err(|_| {
+                PersistenceError::codec("section directory offset does not fit u64")
+            })?)
+            .ok_or_else(|| PersistenceError::codec("section directory offset overflow"))?;
         let mut payload_encoder = LittleEndianEncoder::new(&mut payload_buf);
         for entry in &entries {
             entry.encode(&mut payload_encoder);
@@ -237,14 +255,26 @@ impl SnapshotEnvelope {
 
         // Build final header.
         let header = SnapshotHeader {
-            section_count: entries.len() as u16,
+            section_count: u16::try_from(entries.len())
+                .map_err(|_| PersistenceError::codec("section count does not fit u16"))?,
             section_directory_offset,
             payload_integrity,
             ..self.header
         };
 
         // Second pass: encode header + payload.
-        let mut final_buf = Vec::with_capacity(SnapshotHeader::SIZE + payload_buf.len());
+        let total_size = SnapshotHeader::SIZE
+            .checked_add(payload_buf.len())
+            .ok_or_else(|| PersistenceError::codec("snapshot envelope size overflow"))?;
+        let total_size_u64 = u64::try_from(total_size)
+            .map_err(|_| PersistenceError::codec("snapshot envelope size does not fit u64"))?;
+        if total_size_u64 > MAX_TOTAL_SIZE {
+            return Err(PersistenceError::TotalSizeExceeded {
+                size: total_size_u64,
+                max: MAX_TOTAL_SIZE,
+            });
+        }
+        let mut final_buf = Vec::with_capacity(total_size);
         let mut final_encoder = LittleEndianEncoder::new(&mut final_buf);
         header.encode(&mut final_encoder);
         final_encoder.write_bytes(&payload_buf);
@@ -280,7 +310,8 @@ impl SnapshotEnvelope {
         if header.section_directory_offset < payload_start as u64 {
             return Err(PersistenceError::codec("section directory inside header"));
         }
-        let payload_end = header.section_directory_offset as usize;
+        let payload_end = usize::try_from(header.section_directory_offset)
+            .map_err(|_| PersistenceError::codec("section directory offset does not fit usize"))?;
         if payload_end > bytes.len() {
             return Err(PersistenceError::codec("section directory offset past end"));
         }
@@ -304,6 +335,7 @@ impl SnapshotEnvelope {
 
         // Validate entries: sorted, unique, non-overlapping, within bounds.
         let mut last_end: u64 = 0;
+        let mut last_schema_id: Option<u64> = None;
         let mut seen_ids = std::collections::BTreeSet::new();
         for entry in &entries {
             if !seen_ids.insert(entry.section_schema_id) {
@@ -311,6 +343,13 @@ impl SnapshotEnvelope {
                     schema_id: entry.section_schema_id,
                 });
             }
+            if last_schema_id.is_some_and(|previous| entry.section_schema_id <= previous) {
+                return Err(PersistenceError::NonCanonicalSectionOrder {
+                    previous: last_schema_id.unwrap_or_default(),
+                    current: entry.section_schema_id,
+                });
+            }
+            last_schema_id = Some(entry.section_schema_id);
             if entry.payload_offset < payload_start as u64 {
                 return Err(PersistenceError::OffsetOutOfBounds {
                     schema_id: entry.section_schema_id,
@@ -332,10 +371,20 @@ impl SnapshotEnvelope {
             if entry.payload_offset < last_end {
                 return Err(PersistenceError::OverlappingSections);
             }
+            if entry.decoded_size_limit != 0 && entry.payload_length > entry.decoded_size_limit {
+                return Err(PersistenceError::DecodedSizeLimitExceeded {
+                    schema_id: entry.section_schema_id,
+                    limit: entry.decoded_size_limit,
+                });
+            }
             last_end = end;
 
             // Validate section integrity.
-            let section_bytes = &bytes[entry.payload_offset as usize..end as usize];
+            let start = usize::try_from(entry.payload_offset)
+                .map_err(|_| PersistenceError::codec("section offset does not fit usize"))?;
+            let end = usize::try_from(end)
+                .map_err(|_| PersistenceError::codec("section end does not fit usize"))?;
+            let section_bytes = &bytes[start..end];
             let computed_section_integrity = compute_integrity(section_bytes);
             if computed_section_integrity != entry.section_integrity {
                 return Err(PersistenceError::SectionIntegrityMismatch {
@@ -347,8 +396,15 @@ impl SnapshotEnvelope {
         // Build sections map.
         let mut sections = BTreeMap::new();
         for entry in entries {
-            let section_bytes = &bytes[entry.payload_offset as usize
-                ..(entry.payload_offset + entry.payload_length) as usize];
+            let end = entry
+                .payload_offset
+                .checked_add(entry.payload_length)
+                .ok_or_else(|| PersistenceError::codec("section range overflow"))?;
+            let start = usize::try_from(entry.payload_offset)
+                .map_err(|_| PersistenceError::codec("section offset does not fit usize"))?;
+            let end = usize::try_from(end)
+                .map_err(|_| PersistenceError::codec("section end does not fit usize"))?;
+            let section_bytes = &bytes[start..end];
             sections.insert(
                 entry.section_schema_id,
                 SectionPayload {

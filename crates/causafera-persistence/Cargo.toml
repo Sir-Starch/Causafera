@@ -12,6 +12,7 @@ causafera-core = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 blake3 = "1"
+rusqlite = { version = "=0.40.1", default-features = false, features = ["bundled"] }
 thiserror = { workspace = true }
 
 [dev-dependencies]

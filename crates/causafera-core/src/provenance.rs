@@ -1,11 +1,21 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fmt,
+    sync::Arc,
+};
 
 use causafera_types::{
     EventId, EventKindId, SimulationTime, StateObjectKindId, StatePropertyId, TraceId,
 };
 use thiserror::Error;
 
-use crate::Phase;
+use crate::{
+    CausalHistoryReader, DEFAULT_CAUSAL_HOT_BUDGET_BYTES, HistoryError, HistoryPage,
+    HistoryPageItem, HistoryQuery, HistoryRecord, MAX_QUERY_PAGE_BYTES, MAX_QUERY_PAGE_RECORDS,
+    OwnedCausalRecord, Phase,
+};
+
+const HOT_CHILD_CURSOR_FLAG: u64 = 1 << 63;
 
 /// Canonical identity of one property on one authoritative state object.
 ///
@@ -380,9 +390,35 @@ struct PreparedDagEvent {
     effects: Vec<CausalEffect>,
 }
 
+#[derive(Clone, Copy)]
+struct ChildIndexUndo {
+    cause: TraceId,
+    previous_len: usize,
+}
+
+#[derive(Clone)]
+struct CausalTraceUndo {
+    commit_sequences_len: usize,
+    event_ids_len: usize,
+    trace_ids_len: usize,
+    times_len: usize,
+    phases_len: usize,
+    kinds_len: usize,
+    cause_offsets_len: usize,
+    causes_len: usize,
+    effect_offsets_len: usize,
+    effects_len: usize,
+    next_event_id: u64,
+    next_trace_id: u64,
+    hot_bytes: usize,
+    child_appends: Vec<ChildIndexUndo>,
+    deferred_eviction: Option<usize>,
+}
+
 /// Borrowed view of one committed event in the structure-of-arrays store.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct CausalEventRef<'a> {
+    pub commit_sequence: u64,
     pub event_id: EventId,
     pub trace_id: TraceId,
     pub time: SimulationTime,
@@ -392,12 +428,28 @@ pub struct CausalEventRef<'a> {
     pub effects: &'a [CausalEffect],
 }
 
+impl CausalEventRef<'_> {
+    fn canonical_field_size(&self) -> Result<usize, HistoryError> {
+        let effect_bytes = self
+            .effects
+            .len()
+            .checked_mul(3 * 8 + 2 * 32)
+            .ok_or(HistoryError::ArithmeticOverflow)?;
+        6_usize
+            .checked_mul(8)
+            .and_then(|size| size.checked_add(self.causes.len().checked_mul(8)?))
+            .and_then(|size| size.checked_add(8))
+            .and_then(|size| size.checked_add(effect_bytes))
+            .ok_or(HistoryError::ArithmeticOverflow)
+    }
+}
+
 /// Canonical append-only event graph.
 ///
 /// Hot event fields and forward edges are flat. Reverse edges are a cold,
 /// deterministic side index used for direct descendant traversal.
-#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CausalTraceStore {
+    commit_sequences: Vec<u64>,
     event_ids: Vec<EventId>,
     trace_ids: Vec<TraceId>,
     times: Vec<SimulationTime>,
@@ -410,11 +462,79 @@ pub struct CausalTraceStore {
     children: BTreeMap<TraceId, Vec<TraceId>>,
     next_event_id: u64,
     next_trace_id: u64,
+    hot_bytes: usize,
+    hot_budget: usize,
+    cold_reader: Option<Arc<dyn CausalHistoryReader>>,
+    transaction_undo: Option<CausalTraceUndo>,
+}
+
+impl fmt::Debug for CausalTraceStore {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("CausalTraceStore")
+            .field("commit_sequences", &self.commit_sequences)
+            .field("event_ids", &self.event_ids)
+            .field("trace_ids", &self.trace_ids)
+            .field("times", &self.times)
+            .field("phases", &self.phases)
+            .field("kinds", &self.kinds)
+            .field("cause_offsets", &self.cause_offsets)
+            .field("causes", &self.causes)
+            .field("effect_offsets", &self.effect_offsets)
+            .field("effects", &self.effects)
+            .field("children", &self.children)
+            .field("next_event_id", &self.next_event_id)
+            .field("next_trace_id", &self.next_trace_id)
+            .field("hot_bytes", &self.hot_bytes)
+            .field("hot_budget", &self.hot_budget)
+            .field("has_cold_reader", &self.cold_reader.is_some())
+            .field("transaction_active", &self.transaction_undo.is_some())
+            .finish()
+    }
+}
+
+impl PartialEq for CausalTraceStore {
+    fn eq(&self, other: &Self) -> bool {
+        self.commit_sequences == other.commit_sequences
+            && self.event_ids == other.event_ids
+            && self.trace_ids == other.trace_ids
+            && self.times == other.times
+            && self.phases == other.phases
+            && self.kinds == other.kinds
+            && self.cause_offsets == other.cause_offsets
+            && self.causes == other.causes
+            && self.effect_offsets == other.effect_offsets
+            && self.effects == other.effects
+            && self.children == other.children
+            && self.next_event_id == other.next_event_id
+            && self.next_trace_id == other.next_trace_id
+            && self.hot_bytes == other.hot_bytes
+            && self.hot_budget == other.hot_budget
+            && self.transaction_undo.is_some() == other.transaction_undo.is_some()
+            && match (&self.cold_reader, &other.cold_reader) {
+                (Some(left), Some(right)) => Arc::ptr_eq(left, right),
+                (None, None) => true,
+                (Some(_), None) | (None, Some(_)) => false,
+            }
+    }
+}
+
+impl Eq for CausalTraceStore {}
+
+impl Clone for CausalTraceStore {
+    fn clone(&self) -> Self {
+        self.clone_hot_cache()
+    }
 }
 
 impl CausalTraceStore {
     pub fn new() -> Self {
+        Self::with_hot_budget(DEFAULT_CAUSAL_HOT_BUDGET_BYTES)
+    }
+
+    pub fn with_hot_budget(hot_budget: usize) -> Self {
         Self {
+            commit_sequences: Vec::new(),
             event_ids: Vec::new(),
             trace_ids: Vec::new(),
             times: Vec::new(),
@@ -427,15 +547,180 @@ impl CausalTraceStore {
             children: BTreeMap::new(),
             next_event_id: 0,
             next_trace_id: 0,
+            hot_bytes: 0,
+            hot_budget,
+            cold_reader: None,
+            transaction_undo: None,
         }
+    }
+
+    pub fn with_cold_reader(
+        cold_reader: Arc<dyn CausalHistoryReader>,
+        hot_budget: usize,
+        hot_records: Vec<OwnedCausalRecord>,
+    ) -> Result<Self, HistoryError> {
+        let frontier = cold_reader.anchor()?.frontier();
+        let has_causal_head = cold_reader.event(frontier.trace_id)?.is_some();
+        let next_event_id = if has_causal_head {
+            frontier
+                .event_id
+                .raw()
+                .checked_add(1)
+                .ok_or(HistoryError::ArithmeticOverflow)?
+        } else {
+            0
+        };
+        let next_trace_id = if has_causal_head {
+            frontier
+                .trace_id
+                .raw()
+                .checked_add(1)
+                .ok_or(HistoryError::ArithmeticOverflow)?
+        } else {
+            0
+        };
+        for (index, pair) in hot_records.windows(2).enumerate() {
+            if pair[0].event_id() >= pair[1].event_id() || pair[0].trace_id() >= pair[1].trace_id()
+            {
+                return Err(HistoryError::NonCanonicalOrder { index: index + 1 });
+            }
+        }
+        let mut store = Self::with_hot_budget(hot_budget);
+        store.next_event_id = next_event_id;
+        store.next_trace_id = next_trace_id;
+        store.cold_reader = Some(cold_reader);
+        store
+            .cold_reader
+            .as_ref()
+            .ok_or(HistoryError::ReaderOperationUnavailable)?
+            .validate_causal_overlay(&hot_records)?;
+        for record in hot_records {
+            store.push_hot_record(record)?;
+        }
+        let evict = store.evictable_prefix_proven()?;
+        store.evict_hot_prefix(evict)?;
+        Ok(store)
     }
 
     pub fn len(&self) -> usize {
         self.trace_ids.len()
     }
 
+    /// Number of records held by the bounded hot facade.
+    pub const fn hot_len(&self) -> usize {
+        self.trace_ids.len()
+    }
+
+    /// Clone only the bounded hot facade and its cold-reader handle.
+    ///
+    /// The reader is shared by reference-counted ownership; cold records are
+    /// never copied into this value. Callers that need a materialized hot-cache
+    /// snapshot may use this explicitly; runtime tick rollback uses the bounded
+    /// transaction marker instead.
+    pub fn clone_hot_cache(&self) -> Self {
+        Self {
+            commit_sequences: self.commit_sequences.clone(),
+            event_ids: self.event_ids.clone(),
+            trace_ids: self.trace_ids.clone(),
+            times: self.times.clone(),
+            phases: self.phases.clone(),
+            kinds: self.kinds.clone(),
+            cause_offsets: self.cause_offsets.clone(),
+            causes: self.causes.clone(),
+            effect_offsets: self.effect_offsets.clone(),
+            effects: self.effects.clone(),
+            children: self.children.clone(),
+            next_event_id: self.next_event_id,
+            next_trace_id: self.next_trace_id,
+            hot_bytes: self.hot_bytes,
+            hot_budget: self.hot_budget,
+            cold_reader: self.cold_reader.clone(),
+            transaction_undo: self.transaction_undo.clone(),
+        }
+    }
+
+    pub fn begin_transaction(&mut self) {
+        if self.transaction_undo.is_some() {
+            return;
+        }
+        self.transaction_undo = Some(CausalTraceUndo {
+            commit_sequences_len: self.commit_sequences.len(),
+            event_ids_len: self.event_ids.len(),
+            trace_ids_len: self.trace_ids.len(),
+            times_len: self.times.len(),
+            phases_len: self.phases.len(),
+            kinds_len: self.kinds.len(),
+            cause_offsets_len: self.cause_offsets.len(),
+            causes_len: self.causes.len(),
+            effect_offsets_len: self.effect_offsets.len(),
+            effects_len: self.effects.len(),
+            next_event_id: self.next_event_id,
+            next_trace_id: self.next_trace_id,
+            hot_bytes: self.hot_bytes,
+            child_appends: Vec::new(),
+            deferred_eviction: None,
+        });
+    }
+
+    pub fn end_transaction(&mut self) -> Result<(), HistoryError> {
+        let Some(deferred_eviction) = self
+            .transaction_undo
+            .as_ref()
+            .and_then(|undo| undo.deferred_eviction)
+        else {
+            if self.hot_bytes > self.hot_budget {
+                let evict = self.evictable_prefix(0)?;
+                self.evict_hot_prefix(evict)?;
+            }
+            self.transaction_undo = None;
+            return Ok(());
+        };
+        self.evict_hot_prefix(deferred_eviction)?;
+        self.transaction_undo = None;
+        Ok(())
+    }
+
+    pub fn rollback_transaction(&mut self) {
+        let Some(undo) = self.transaction_undo.take() else {
+            return;
+        };
+        for child in undo.child_appends.into_iter().rev() {
+            if let Some(children) = self.children.get_mut(&child.cause) {
+                children.truncate(child.previous_len);
+                if children.is_empty() {
+                    self.children.remove(&child.cause);
+                }
+            }
+        }
+        self.commit_sequences.truncate(undo.commit_sequences_len);
+        self.event_ids.truncate(undo.event_ids_len);
+        self.trace_ids.truncate(undo.trace_ids_len);
+        self.times.truncate(undo.times_len);
+        self.phases.truncate(undo.phases_len);
+        self.kinds.truncate(undo.kinds_len);
+        self.cause_offsets.truncate(undo.cause_offsets_len);
+        self.causes.truncate(undo.causes_len);
+        self.effect_offsets.truncate(undo.effect_offsets_len);
+        self.effects.truncate(undo.effects_len);
+        self.next_event_id = undo.next_event_id;
+        self.next_trace_id = undo.next_trace_id;
+        self.hot_bytes = undo.hot_bytes;
+    }
+
     pub fn is_empty(&self) -> bool {
         self.trace_ids.is_empty()
+    }
+
+    pub const fn hot_bytes(&self) -> usize {
+        self.hot_bytes
+    }
+
+    pub const fn hot_budget(&self) -> usize {
+        self.hot_budget
+    }
+
+    pub fn cold_reader(&self) -> Option<&dyn CausalHistoryReader> {
+        self.cold_reader.as_deref()
     }
 
     /// Deterministically reduce and commit proposals for one phase.
@@ -458,7 +743,10 @@ impl CausalTraceStore {
         }
         for proposal in &proposals {
             for &cause in proposal.causes() {
-                if self.trace_index(cause).is_none() {
+                if !self
+                    .trace_exists(cause)
+                    .map_err(CausalCommitError::HistoryRead)?
+                {
                     return Err(CausalCommitError::UnknownCause {
                         key: proposal.key(),
                         cause,
@@ -490,28 +778,53 @@ impl CausalTraceStore {
         u32::try_from(final_causes).map_err(|_| CausalCommitError::CapacityExceeded)?;
         u32::try_from(final_effects).map_err(|_| CausalCommitError::CapacityExceeded)?;
 
-        let mut committed = Vec::with_capacity(proposals.len());
-        for proposal in proposals {
-            let event_id = EventId::new(self.next_event_id);
-            let trace_id = TraceId::new(self.next_trace_id);
-            self.next_event_id += 1;
-            self.next_trace_id += 1;
-
-            self.event_ids.push(event_id);
-            self.trace_ids.push(trace_id);
-            self.times.push(time);
-            self.phases.push(phase);
-            self.kinds.push(proposal.kind());
-            self.causes.extend_from_slice(proposal.causes());
-            self.cause_offsets.push(self.causes.len() as u32);
-            self.effects.extend_from_slice(proposal.effects());
-            self.effect_offsets.push(self.effects.len() as u32);
-            for &cause in proposal.causes() {
-                self.children.entry(cause).or_default().push(trace_id);
-            }
-            committed.push(trace_id);
+        let mut prepared = Vec::with_capacity(proposals.len());
+        for (offset, proposal) in proposals.into_iter().enumerate() {
+            let offset = u64::try_from(offset).map_err(|_| CausalCommitError::CapacityExceeded)?;
+            prepared.push(
+                OwnedCausalRecord::new(
+                    time.raw(),
+                    EventId::new(self.next_event_id + offset),
+                    TraceId::new(self.next_trace_id + offset),
+                    time,
+                    phase,
+                    proposal.kind(),
+                    proposal.causes().to_vec(),
+                    proposal.effects().to_vec(),
+                )
+                .map_err(CausalCommitError::HistoryRead)?,
+            );
         }
-        Ok(committed)
+        let added_bytes = prepared.iter().try_fold(0_usize, |bytes, record| {
+            bytes
+                .checked_add(
+                    record
+                        .canonical_field_size()
+                        .map_err(CausalCommitError::HistoryRead)?,
+                )
+                .ok_or(CausalCommitError::CapacityExceeded)
+        })?;
+        let evict = if self.transaction_undo.is_some() {
+            0
+        } else {
+            self.evictable_prefix(added_bytes)
+                .map_err(CausalCommitError::HistoryRead)?
+        };
+        let hot_budget = self.hot_budget;
+        let mut candidate = std::mem::replace(self, Self::with_hot_budget(hot_budget));
+        let result = (|| {
+            candidate.evict_hot_prefix(evict)?;
+            let mut committed = Vec::with_capacity(prepared.len());
+            for record in prepared {
+                committed.push(record.trace_id());
+                candidate.push_hot_record(record)?;
+            }
+            candidate.next_event_id += count;
+            candidate.next_trace_id += count;
+            Ok(committed)
+        })();
+        *self = candidate;
+        result.map_err(CausalCommitError::HistoryRead)
     }
 
     /// Commit a batch whose events may cause each other, atomically.
@@ -541,6 +854,34 @@ impl CausalTraceStore {
         phase: Phase,
         proposals: Vec<CausalEventDagProposal>,
         limits: CausalDagBatchLimits,
+    ) -> Result<BTreeMap<CausalEventProposalKey, TraceId>, CausalDagCommitError> {
+        self.commit_dag_batch_inner(time, phase, proposals, limits, false)
+    }
+
+    /// Commit a DAG batch held by the current tick transaction.
+    ///
+    /// A single authoritative frame may be larger than the hot facade while it
+    /// is being handed to the bounded history transaction. The caller must copy
+    /// that frame into its transaction-local staging area and trim it with
+    /// [`Self::trim_staged_frame_to_hot_budget`] before backend publication.
+    /// Ordinary callers keep the strict bounded behavior of [`Self::commit_dag_batch`].
+    pub fn commit_dag_batch_for_transaction(
+        &mut self,
+        time: SimulationTime,
+        phase: Phase,
+        proposals: Vec<CausalEventDagProposal>,
+        limits: CausalDagBatchLimits,
+    ) -> Result<BTreeMap<CausalEventProposalKey, TraceId>, CausalDagCommitError> {
+        self.commit_dag_batch_inner(time, phase, proposals, limits, true)
+    }
+
+    fn commit_dag_batch_inner(
+        &mut self,
+        time: SimulationTime,
+        phase: Phase,
+        proposals: Vec<CausalEventDagProposal>,
+        limits: CausalDagBatchLimits,
+        allow_staged_overflow: bool,
     ) -> Result<BTreeMap<CausalEventProposalKey, TraceId>, CausalDagCommitError> {
         if proposals.is_empty() {
             return Ok(BTreeMap::new());
@@ -576,7 +917,10 @@ impl CausalTraceStore {
             for cause in proposal.causes() {
                 match cause {
                     CausalEventDagCause::Existing(trace) => {
-                        if self.trace_index(*trace).is_none() {
+                        if !self
+                            .trace_exists(*trace)
+                            .map_err(CausalDagCommitError::HistoryRead)?
+                        {
                             return Err(CausalDagCommitError::UnknownCause {
                                 key: proposal.key().clone(),
                                 cause: *trace,
@@ -734,42 +1078,330 @@ impl CausalTraceStore {
             });
         }
 
-        // -- append; nothing above this line has touched `self` ------------
-        for event in prepared {
-            self.next_event_id += 1;
-            self.next_trace_id += 1;
-            self.event_ids.push(event.event_id);
-            self.trace_ids.push(event.trace_id);
-            self.times.push(time);
-            self.phases.push(phase);
-            self.kinds.push(event.kind);
-            self.causes.extend_from_slice(&event.causes);
-            self.cause_offsets.push(self.causes.len() as u32);
-            self.effects.extend_from_slice(&event.effects);
-            self.effect_offsets.push(self.effects.len() as u32);
-            for cause in event.causes {
-                self.children.entry(cause).or_default().push(event.trace_id);
+        let prepared = prepared
+            .into_iter()
+            .map(|event| {
+                OwnedCausalRecord::new(
+                    time.raw(),
+                    event.event_id,
+                    event.trace_id,
+                    time,
+                    phase,
+                    event.kind,
+                    event.causes,
+                    event.effects,
+                )
+                .map_err(CausalDagCommitError::HistoryRead)
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let added_bytes = prepared.iter().try_fold(0_usize, |bytes, record| {
+            bytes
+                .checked_add(
+                    record
+                        .canonical_field_size()
+                        .map_err(CausalDagCommitError::HistoryRead)?,
+                )
+                .ok_or(CausalDagCommitError::CapacityExceeded)
+        })?;
+        let evict = if allow_staged_overflow || self.transaction_undo.is_some() {
+            0
+        } else {
+            self.evictable_prefix(added_bytes)
+                .map_err(CausalDagCommitError::HistoryRead)?
+        };
+        let hot_budget = self.hot_budget;
+        let mut candidate = std::mem::replace(self, Self::with_hot_budget(hot_budget));
+        let result = (|| {
+            candidate.evict_hot_prefix(evict)?;
+            for record in prepared {
+                candidate.push_hot_record(record)?;
+            }
+            candidate.next_event_id += count;
+            candidate.next_trace_id += count;
+            Ok(())
+        })();
+        *self = candidate;
+        result
+            .map(|()| resolved)
+            .map_err(CausalDagCommitError::HistoryRead)
+    }
+
+    /// Trim a staged causal frame after it has been copied into a history
+    /// transaction but before that transaction publishes to storage.
+    pub fn trim_staged_frame_to_hot_budget(
+        &mut self,
+        frame: &[HistoryRecord],
+    ) -> Result<(), HistoryError> {
+        if self.hot_bytes <= self.hot_budget {
+            return Ok(());
+        }
+        let Some(first_staged_trace) = frame.iter().find_map(|record| match record {
+            HistoryRecord::Causal(record) => Some(record.trace_id()),
+            HistoryRecord::Evidence(_) => None,
+        }) else {
+            return Err(HistoryError::HotBudgetExceeded {
+                required: self.hot_bytes,
+                budget: self.hot_budget,
+            });
+        };
+        let Some(staged_start) = self.trace_index(first_staged_trace) else {
+            return Err(HistoryError::HotBudgetExceeded {
+                required: self.hot_bytes,
+                budget: self.hot_budget,
+            });
+        };
+        let mut staged = 0_usize;
+        for record in frame {
+            let HistoryRecord::Causal(record) = record else {
+                continue;
+            };
+            let index = staged_start
+                .checked_add(staged)
+                .ok_or(HistoryError::ArithmeticOverflow)?;
+            if index >= self.len() {
+                return Err(HistoryError::HotBudgetExceeded {
+                    required: self.hot_bytes,
+                    budget: self.hot_budget,
+                });
+            }
+            let hot = self.event_at(index);
+            if hot.commit_sequence != record.commit_sequence()
+                || hot.event_id != record.event_id()
+                || hot.trace_id != record.trace_id()
+                || hot.time != record.time()
+                || hot.phase != record.phase()
+                || hot.kind != record.kind()
+                || hot.causes != record.causes()
+                || hot.effects != record.effects()
+            {
+                return Err(HistoryError::HotBudgetExceeded {
+                    required: self.hot_bytes,
+                    budget: self.hot_budget,
+                });
+            }
+            staged += 1;
+        }
+        if staged != self.len().saturating_sub(staged_start) {
+            return Err(HistoryError::HotBudgetExceeded {
+                required: self.hot_bytes,
+                budget: self.hot_budget,
+            });
+        }
+        if staged_start > 0 {
+            let Some(reader) = &self.cold_reader else {
+                return Err(HistoryError::HotBudgetExceeded {
+                    required: self.hot_bytes,
+                    budget: self.hot_budget,
+                });
+            };
+            let boundary = self.event_at_owned(staged_start - 1)?;
+            if reader.event(boundary.trace_id())?.as_ref() != Some(&boundary) {
+                return Err(HistoryError::HotBudgetExceeded {
+                    required: self.hot_bytes,
+                    budget: self.hot_budget,
+                });
             }
         }
-        Ok(resolved)
+        let mut required = self.hot_bytes;
+        let mut remove = 0_usize;
+        while required > self.hot_budget && remove < self.len() {
+            let record = self.event_at(remove);
+            required = required
+                .checked_sub(record.canonical_field_size()?)
+                .ok_or(HistoryError::ArithmeticOverflow)?;
+            remove += 1;
+        }
+        if required > self.hot_budget {
+            return Err(HistoryError::HotBudgetExceeded {
+                required,
+                budget: self.hot_budget,
+            });
+        }
+        if let Some(undo) = self.transaction_undo.as_mut() {
+            undo.deferred_eviction = Some(remove);
+            Ok(())
+        } else {
+            self.evict_hot_prefix(remove)
+        }
     }
 
-    pub fn event(&self, trace_id: TraceId) -> Option<CausalEventRef<'_>> {
-        self.trace_index(trace_id).map(|index| self.event_at(index))
+    pub fn event(&self, trace_id: TraceId) -> Result<Option<OwnedCausalRecord>, HistoryError> {
+        if let Some(index) = self.trace_index(trace_id) {
+            return self.event_at_owned(index).map(Some);
+        }
+        self.cold_reader
+            .as_ref()
+            .map_or(Ok(None), |reader| reader.event(trace_id))
     }
 
-    pub fn event_by_id(&self, event_id: EventId) -> Option<CausalEventRef<'_>> {
-        self.event_ids
-            .binary_search(&event_id)
-            .ok()
-            .map(|index| self.event_at(index))
+    pub fn event_by_id(
+        &self,
+        event_id: EventId,
+    ) -> Result<Option<OwnedCausalRecord>, HistoryError> {
+        if let Ok(index) = self.event_ids.binary_search(&event_id) {
+            return self.event_at_owned(index).map(Some);
+        }
+        self.cold_reader
+            .as_ref()
+            .map_or(Ok(None), |reader| reader.event_by_id(event_id))
     }
 
-    pub fn children(&self, trace_id: TraceId) -> &[TraceId] {
-        self.children.get(&trace_id).map_or(&[], Vec::as_slice)
+    pub fn parents(
+        &self,
+        trace_id: TraceId,
+        query: HistoryQuery,
+    ) -> Result<HistoryPage<TraceId>, HistoryError> {
+        if let Some(index) = self.trace_index(trace_id) {
+            return Self::page(self.event_at(index).causes, query);
+        }
+        self.cold_reader.as_ref().map_or_else(
+            || HistoryPage::new(Vec::new(), None, query),
+            |reader| reader.parents(trace_id, query),
+        )
     }
 
-    pub fn iter(&self) -> impl ExactSizeIterator<Item = CausalEventRef<'_>> + '_ {
+    pub fn children(
+        &self,
+        trace_id: TraceId,
+        query: HistoryQuery,
+    ) -> Result<HistoryPage<TraceId>, HistoryError> {
+        let hot = self.children.get(&trace_id).map_or(&[][..], Vec::as_slice);
+        let Some(reader) = &self.cold_reader else {
+            return Self::page(hot, query);
+        };
+        let mut overlay = Vec::with_capacity(hot.len());
+        for child in hot {
+            if reader.event(*child)?.is_none() {
+                overlay.push(*child);
+            }
+        }
+        if query.offset() & HOT_CHILD_CURSOR_FLAG != 0 {
+            let overlay_query = HistoryQuery::new(
+                query.offset() & !HOT_CHILD_CURSOR_FLAG,
+                query.max_records(),
+                query.max_bytes(),
+            )?;
+            let page = Self::page(&overlay, overlay_query)?;
+            let next_offset = page
+                .next_offset()
+                .map(|offset| HOT_CHILD_CURSOR_FLAG | offset);
+            return HistoryPage::new(page.records().to_vec(), next_offset, query);
+        }
+        let cold = reader.children(trace_id, query)?;
+        if overlay.is_empty() || cold.next_offset().is_some() {
+            return Ok(cold);
+        }
+        let remaining_records = query.max_records() - cold.records().len();
+        let remaining_bytes = query.max_bytes() - cold.decoded_bytes();
+        if remaining_records == 0 || remaining_bytes < overlay[0].decoded_size() {
+            return HistoryPage::new(cold.records().to_vec(), Some(HOT_CHILD_CURSOR_FLAG), query);
+        }
+        let overlay_query = HistoryQuery::new(0, remaining_records, remaining_bytes)?;
+        let overlay_page = Self::page(&overlay, overlay_query)?;
+        let mut children = cold.records().to_vec();
+        children.extend_from_slice(overlay_page.records());
+        let next_offset = overlay_page
+            .next_offset()
+            .map(|offset| HOT_CHILD_CURSOR_FLAG | offset);
+        HistoryPage::new(children, next_offset, query)
+    }
+
+    pub fn indexed_range(
+        &self,
+        query: HistoryQuery,
+    ) -> Result<HistoryPage<HistoryRecord>, HistoryError> {
+        if let Some(reader) = &self.cold_reader {
+            let frontier = reader.anchor()?.frontier();
+            let cold_count = if reader.event(frontier.trace_id)?.is_some() {
+                frontier
+                    .trace_id
+                    .raw()
+                    .checked_add(1)
+                    .ok_or(HistoryError::ArithmeticOverflow)?
+            } else {
+                0
+            };
+            let hot = self
+                .iter_hot()
+                .filter(|event| event.trace_id.raw() >= cold_count)
+                .map(|event| {
+                    self.event_at_owned(
+                        self.trace_index(event.trace_id)
+                            .ok_or(HistoryError::ReaderOperationUnavailable)?,
+                    )
+                })
+                .map(|record| record.map(HistoryRecord::Causal))
+                .collect::<Result<Vec<_>, _>>()?;
+            if query.offset() >= cold_count {
+                let hot_offset = query
+                    .offset()
+                    .checked_sub(cold_count)
+                    .ok_or(HistoryError::ArithmeticOverflow)?;
+                let hot_query =
+                    HistoryQuery::new(hot_offset, query.max_records(), query.max_bytes())?;
+                return Self::page(&hot, hot_query);
+            }
+            let cold = reader.indexed_range(query)?;
+            if cold.next_offset().is_some() || hot.is_empty() {
+                return Ok(cold);
+            }
+            let remaining_records = query.max_records().saturating_sub(cold.records().len());
+            let remaining_bytes = query.max_bytes().saturating_sub(cold.decoded_bytes());
+            if remaining_records == 0 || remaining_bytes < hot[0].decoded_size() {
+                return HistoryPage::new(cold.records().to_vec(), Some(cold_count), query);
+            }
+            let overlay_query = HistoryQuery::new(0, remaining_records, remaining_bytes)?;
+            let overlay = Self::page(&hot, overlay_query)?;
+            let mut records = cold.records().to_vec();
+            records.extend_from_slice(overlay.records());
+            let overlay_len = u64::try_from(overlay.records().len())
+                .map_err(|_| HistoryError::ArithmeticOverflow)?;
+            let hot_len = u64::try_from(hot.len()).map_err(|_| HistoryError::ArithmeticOverflow)?;
+            let next_offset = overlay
+                .next_offset()
+                .map(|offset| cold_count + offset)
+                .or_else(|| (overlay_len < hot_len).then_some(cold_count + overlay_len));
+            return HistoryPage::new(records, next_offset, query);
+        }
+        let records = (0..self.hot_len())
+            .map(|index| self.event_at_owned(index).map(HistoryRecord::Causal))
+            .collect::<Result<Vec<_>, _>>()?;
+        Self::page(&records, query)
+    }
+
+    pub fn latest_matching_event_before(
+        &self,
+        target: CausalTarget,
+        trace_id: TraceId,
+    ) -> Result<Option<OwnedCausalRecord>, HistoryError> {
+        let hot = (0..self.len())
+            .rev()
+            .map(|index| self.event_at_owned(index))
+            .find_map(|record| match record {
+                Ok(record)
+                    if record.trace_id() < trace_id
+                        && record
+                            .effects()
+                            .iter()
+                            .any(|effect| effect.target() == target) =>
+                {
+                    Some(Ok(record))
+                }
+                Ok(_) => None,
+                Err(error) => Some(Err(error)),
+            })
+            .transpose()?;
+        let cold = self.cold_reader.as_ref().map_or(Ok(None), |reader| {
+            reader.latest_matching_event_before(target, trace_id)
+        })?;
+        Ok(match (hot, cold) {
+            (Some(hot), Some(cold)) if cold.trace_id() > hot.trace_id() => Some(cold),
+            (Some(hot), _) => Some(hot),
+            (None, cold) => cold,
+        })
+    }
+
+    pub fn iter_hot(&self) -> impl ExactSizeIterator<Item = CausalEventRef<'_>> + '_ {
         (0..self.len()).map(|index| self.event_at(index))
     }
 
@@ -783,6 +1415,7 @@ impl CausalTraceStore {
         let effect_start = self.effect_offsets[index] as usize;
         let effect_end = self.effect_offsets[index + 1] as usize;
         CausalEventRef {
+            commit_sequence: self.commit_sequences[index],
             event_id: self.event_ids[index],
             trace_id: self.trace_ids[index],
             time: self.times[index],
@@ -792,6 +1425,215 @@ impl CausalTraceStore {
             effects: &self.effects[effect_start..effect_end],
         }
     }
+
+    fn event_at_owned(&self, index: usize) -> Result<OwnedCausalRecord, HistoryError> {
+        let event = self.event_at(index);
+        OwnedCausalRecord::new(
+            event.commit_sequence,
+            event.event_id,
+            event.trace_id,
+            event.time,
+            event.phase,
+            event.kind,
+            event.causes.to_vec(),
+            event.effects.to_vec(),
+        )
+    }
+
+    fn trace_exists(&self, trace_id: TraceId) -> Result<bool, HistoryError> {
+        if trace_id.raw() < self.next_trace_id || self.trace_index(trace_id).is_some() {
+            return Ok(true);
+        }
+        self.cold_reader.as_ref().map_or(Ok(false), |reader| {
+            reader.event(trace_id).map(|event| event.is_some())
+        })
+    }
+
+    fn push_hot_record(&mut self, record: OwnedCausalRecord) -> Result<(), HistoryError> {
+        let record_bytes = record.canonical_field_size()?;
+        let next_bytes = self
+            .hot_bytes
+            .checked_add(record_bytes)
+            .ok_or(HistoryError::ArithmeticOverflow)?;
+        let cause_offset = self
+            .causes
+            .len()
+            .checked_add(record.causes().len())
+            .and_then(|offset| u32::try_from(offset).ok())
+            .ok_or(HistoryError::ArithmeticOverflow)?;
+        let effect_offset = self
+            .effects
+            .len()
+            .checked_add(record.effects().len())
+            .and_then(|offset| u32::try_from(offset).ok())
+            .ok_or(HistoryError::ArithmeticOverflow)?;
+        self.commit_sequences.push(record.commit_sequence());
+        self.event_ids.push(record.event_id());
+        self.trace_ids.push(record.trace_id());
+        self.times.push(record.time());
+        self.phases.push(record.phase());
+        self.kinds.push(record.kind());
+        self.causes.extend_from_slice(record.causes());
+        self.cause_offsets.push(cause_offset);
+        self.effects.extend_from_slice(record.effects());
+        self.effect_offsets.push(effect_offset);
+        for cause in record.causes() {
+            if let Some(undo) = self.transaction_undo.as_mut() {
+                let previous_len = self.children.get(cause).map_or(0, Vec::len);
+                undo.child_appends.push(ChildIndexUndo {
+                    cause: *cause,
+                    previous_len,
+                });
+            }
+            self.children
+                .entry(*cause)
+                .or_default()
+                .push(record.trace_id());
+        }
+        self.hot_bytes = next_bytes;
+        Ok(())
+    }
+
+    fn evictable_prefix(&self, extra_bytes: usize) -> Result<usize, HistoryError> {
+        let mut required = self
+            .hot_bytes
+            .checked_add(extra_bytes)
+            .ok_or(HistoryError::ArithmeticOverflow)?;
+        let mut count = 0;
+        while required > self.hot_budget && count < self.len() {
+            let record = self.event_at_owned(count)?;
+            let Some(reader) = &self.cold_reader else {
+                return Err(HistoryError::HotBudgetExceeded {
+                    required,
+                    budget: self.hot_budget,
+                });
+            };
+            if reader.event(record.trace_id())?.as_ref() != Some(&record) {
+                return Err(HistoryError::HotBudgetExceeded {
+                    required,
+                    budget: self.hot_budget,
+                });
+            }
+            required = required
+                .checked_sub(record.canonical_field_size()?)
+                .ok_or(HistoryError::ArithmeticOverflow)?;
+            count += 1;
+        }
+        if required > self.hot_budget {
+            return Err(HistoryError::HotBudgetExceeded {
+                required,
+                budget: self.hot_budget,
+            });
+        }
+        Ok(count)
+    }
+
+    /// Eviction count for records whose cold copy the caller has just proven in
+    /// one batch (`validate_causal_overlay`), so no per-record cold read repeats.
+    fn evictable_prefix_proven(&self) -> Result<usize, HistoryError> {
+        let mut required = self.hot_bytes;
+        let mut count = 0;
+        while required > self.hot_budget && count < self.len() {
+            required = required
+                .checked_sub(self.event_at_owned(count)?.canonical_field_size()?)
+                .ok_or(HistoryError::ArithmeticOverflow)?;
+            count += 1;
+        }
+        if required > self.hot_budget {
+            return Err(HistoryError::HotBudgetExceeded {
+                required,
+                budget: self.hot_budget,
+            });
+        }
+        Ok(count)
+    }
+
+    fn evict_hot_prefix(&mut self, count: usize) -> Result<(), HistoryError> {
+        if count == 0 {
+            return Ok(());
+        }
+        let removed = (0..count)
+            .map(|index| self.event_at_owned(index))
+            .collect::<Result<Vec<_>, _>>()?;
+        let removed_bytes = removed.iter().try_fold(0_usize, |total, record| {
+            total
+                .checked_add(record.canonical_field_size()?)
+                .ok_or(HistoryError::ArithmeticOverflow)
+        })?;
+        let remaining_bytes = self
+            .hot_bytes
+            .checked_sub(removed_bytes)
+            .ok_or(HistoryError::ArithmeticOverflow)?;
+        let cause_offset = self.cause_offsets[count];
+        let effect_offset = self.effect_offsets[count];
+        let cause_count = cause_offset as usize;
+        let effect_count = effect_offset as usize;
+        self.commit_sequences.drain(0..count);
+        self.event_ids.drain(0..count);
+        self.trace_ids.drain(0..count);
+        self.times.drain(0..count);
+        self.phases.drain(0..count);
+        self.kinds.drain(0..count);
+        self.causes.drain(0..cause_count);
+        self.effects.drain(0..effect_count);
+        self.cause_offsets.drain(0..count);
+        self.effect_offsets.drain(0..count);
+        for offset in &mut self.cause_offsets {
+            *offset -= cause_offset;
+        }
+        for offset in &mut self.effect_offsets {
+            *offset -= effect_offset;
+        }
+        for record in removed {
+            for cause in record.causes() {
+                if let Some(children) = self.children.get_mut(cause) {
+                    children.retain(|child| *child != record.trace_id());
+                }
+            }
+            if self
+                .children
+                .get(&record.trace_id())
+                .is_some_and(Vec::is_empty)
+            {
+                self.children.remove(&record.trace_id());
+            }
+        }
+        self.hot_bytes = remaining_bytes;
+        Ok(())
+    }
+
+    fn page<T: HistoryPageItem + Clone>(
+        values: &[T],
+        query: HistoryQuery,
+    ) -> Result<HistoryPage<T>, HistoryError> {
+        let start =
+            usize::try_from(query.offset()).map_err(|_| HistoryError::ArithmeticOverflow)?;
+        if start >= values.len() {
+            return HistoryPage::new(Vec::new(), None, query);
+        }
+        let mut selected = Vec::new();
+        let mut bytes = 0_usize;
+        for value in &values[start..] {
+            if selected.len() == query.max_records() {
+                break;
+            }
+            let next = bytes
+                .checked_add(value.decoded_size())
+                .ok_or(HistoryError::ArithmeticOverflow)?;
+            if next > query.max_bytes() {
+                break;
+            }
+            bytes = next;
+            selected.push(value.clone());
+        }
+        let consumed = start
+            .checked_add(selected.len())
+            .ok_or(HistoryError::ArithmeticOverflow)?;
+        let next_offset = (consumed < values.len())
+            .then(|| u64::try_from(consumed).map_err(|_| HistoryError::ArithmeticOverflow))
+            .transpose()?;
+        HistoryPage::new(selected, next_offset, query)
+    }
 }
 
 impl Default for CausalTraceStore {
@@ -800,10 +1642,7 @@ impl Default for CausalTraceStore {
     }
 }
 
-/// Logical snapshot of a `CausalTraceStore` for persistence.
-///
-/// Contains all forward-edge state needed to reconstruct the store
-/// deterministically. Reverse child indexes are rebuilt after import.
+/// Logical snapshot of the bounded hot records in a `CausalTraceStore`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CausalTraceSnapshot {
     pub next_event_id: u64,
@@ -841,13 +1680,15 @@ pub enum CausalSnapshotError {
     NoEffects,
     #[error("cause refers to unknown trace ID: {0}")]
     UnknownCause(TraceId),
+    #[error("causal hot cache requires {required} bytes but its budget is {budget}")]
+    HotBudgetExceeded { required: usize, budget: usize },
 }
 
 impl CausalTraceStore {
-    /// Export a logical snapshot of the entire trace store.
+    /// Export only the bounded hot cache, never the reader's cold history.
     pub fn export_snapshot(&self) -> CausalTraceSnapshot {
         let events = self
-            .iter()
+            .iter_hot()
             .map(|event| CausalEventSnapshot {
                 event_id: event.event_id,
                 trace_id: event.trace_id,
@@ -865,17 +1706,101 @@ impl CausalTraceStore {
         }
     }
 
+    /// Export the logical history through the explicit indexed reader path.
+    ///
+    /// This is a durable/legacy operation, not a hot-cache iterator. A runtime
+    /// tick must use [`Self::export_snapshot`] or a bounded overlay instead.
+    pub fn export_snapshot_durable(&self) -> Result<CausalTraceSnapshot, HistoryError> {
+        let mut offset = 0_u64;
+        let mut events = Vec::new();
+        loop {
+            let query = HistoryQuery::new(offset, MAX_QUERY_PAGE_RECORDS, MAX_QUERY_PAGE_BYTES)?;
+            let page = self
+                .cold_reader
+                .as_ref()
+                .map_or_else(|| self.indexed_range(query), |reader| reader.records(query))?;
+            for record in page.records() {
+                if let HistoryRecord::Causal(record) = record {
+                    events.push(CausalEventSnapshot {
+                        event_id: record.event_id(),
+                        trace_id: record.trace_id(),
+                        time: record.time(),
+                        phase: record.phase(),
+                        kind: record.kind(),
+                        causes: record.causes().to_vec(),
+                        effects: record.effects().to_vec(),
+                    });
+                }
+            }
+            let Some(next) = page.next_offset() else {
+                break;
+            };
+            if next <= offset {
+                return Err(HistoryError::ReaderOperationUnavailable);
+            }
+            offset = next;
+        }
+        Ok(CausalTraceSnapshot {
+            next_event_id: self.next_event_id,
+            next_trace_id: self.next_trace_id,
+            events,
+        })
+    }
+
+    /// Return the exact canonical hot-byte requirement for a logical snapshot.
+    pub fn snapshot_required_bytes(
+        snapshot: &CausalTraceSnapshot,
+    ) -> Result<usize, CausalSnapshotError> {
+        if snapshot.events.len() > usize::MAX / 2 {
+            return Err(CausalSnapshotError::EventCountExceeded);
+        }
+        snapshot.events.iter().try_fold(0_usize, |total, event| {
+            let cause_bytes = event
+                .causes
+                .len()
+                .checked_mul(8)
+                .ok_or(CausalSnapshotError::EventCountExceeded)?;
+            let effect_bytes = event
+                .effects
+                .len()
+                .checked_mul(3 * 8 + 2 * 32)
+                .ok_or(CausalSnapshotError::EventCountExceeded)?;
+            let event_bytes = 6_usize
+                .checked_mul(8)
+                .and_then(|size| size.checked_add(cause_bytes))
+                .and_then(|size| size.checked_add(8))
+                .and_then(|size| size.checked_add(effect_bytes))
+                .ok_or(CausalSnapshotError::EventCountExceeded)?;
+            total
+                .checked_add(event_bytes)
+                .ok_or(CausalSnapshotError::EventCountExceeded)
+        })
+    }
+
     /// Reconstruct a trace store from a logical snapshot.
     ///
     /// Validates monotonic IDs, parent-before-child ordering, and
     /// cause existence. Rebuilds the child index deterministically.
     pub fn import_snapshot(snapshot: CausalTraceSnapshot) -> Result<Self, CausalSnapshotError> {
+        Self::import_snapshot_with_hot_budget(snapshot, DEFAULT_CAUSAL_HOT_BUDGET_BYTES)
+    }
+
+    /// Reconstruct a trace store with an explicit import budget.
+    ///
+    /// Runtime legacy import uses a temporary budget equal to the supplied
+    /// snapshot's checked requirement, then immediately installs the records
+    /// behind a bounded cold-reader facade. The resulting runtime never owns
+    /// this temporary full store.
+    pub fn import_snapshot_with_hot_budget(
+        snapshot: CausalTraceSnapshot,
+        hot_budget: usize,
+    ) -> Result<Self, CausalSnapshotError> {
         let event_count = snapshot.events.len();
         if event_count > usize::MAX / 2 {
             return Err(CausalSnapshotError::EventCountExceeded);
         }
 
-        let mut store = Self::new();
+        let mut store = Self::with_hot_budget(hot_budget);
         store.next_event_id = snapshot.next_event_id;
         store.next_trace_id = snapshot.next_trace_id;
 
@@ -918,6 +1843,7 @@ impl CausalTraceStore {
             last_event_id = Some(event.event_id);
 
             store.event_ids.push(event.event_id);
+            store.commit_sequences.push(event.time.raw());
             store.trace_ids.push(event.trace_id);
             store.times.push(event.time);
             store.phases.push(event.phase);
@@ -941,6 +1867,23 @@ impl CausalTraceStore {
             }
             store.effects.extend_from_slice(&event.effects);
             store.effect_offsets.push(store.effects.len() as u32);
+            store.hot_bytes = store
+                .hot_bytes
+                .checked_add(
+                    6_usize
+                        .checked_mul(8)
+                        .and_then(|size| event.causes.len().checked_mul(8)?.checked_add(size))
+                        .and_then(|size| size.checked_add(8))
+                        .and_then(|size| {
+                            event
+                                .effects
+                                .len()
+                                .checked_mul(3 * 8 + 2 * 32)?
+                                .checked_add(size)
+                        })
+                        .ok_or(CausalSnapshotError::EventCountExceeded)?,
+                )
+                .ok_or(CausalSnapshotError::EventCountExceeded)?;
 
             // Rebuild child index.
             for &cause in &event.causes {
@@ -969,12 +1912,20 @@ impl CausalTraceStore {
         {
             return Err(CausalSnapshotError::NonMonotonicEventIds);
         }
+        if store.hot_bytes > store.hot_budget {
+            return Err(CausalSnapshotError::HotBudgetExceeded {
+                required: store.hot_bytes,
+                budget: store.hot_budget,
+            });
+        }
         Ok(store)
     }
 }
 
 #[derive(Clone, Debug, Error, PartialEq, Eq)]
 pub enum CausalDagCommitError {
+    #[error("causal history read failed: {0}")]
+    HistoryRead(HistoryError),
     #[error("proposal key appears more than once in a DAG batch")]
     DuplicateProposalKey { key: CausalEventProposalKey },
     #[error("a DAG proposal refers to unknown prior cause {cause}")]
@@ -1017,8 +1968,10 @@ pub enum CausalDagCommitError {
     CapacityExceeded,
 }
 
-#[derive(Clone, Copy, Debug, Error, PartialEq, Eq)]
+#[derive(Clone, Debug, Error, PartialEq, Eq)]
 pub enum CausalCommitError {
+    #[error("causal history read failed: {0}")]
+    HistoryRead(HistoryError),
     #[error("proposal key {key:?} appears more than once in a commit batch")]
     DuplicateProposalKey { key: EventProposalKey },
     #[error("proposal {key:?} refers to unknown prior cause {cause}")]
@@ -1118,7 +2071,7 @@ mod tests {
         .unwrap();
         assert_eq!(a, b);
         assert_eq!(
-            a.event(TraceId::new(0)).unwrap().effects[0]
+            a.event(TraceId::new(0)).unwrap().unwrap().effects()[0]
                 .target()
                 .object_id(),
             30
@@ -1143,10 +2096,17 @@ mod tests {
             )
             .unwrap()[0];
 
-        assert_eq!(store.event(child).unwrap().causes, roots);
-        assert_eq!(store.children(TraceId::new(0)), &[child]);
-        assert_eq!(store.children(TraceId::new(1)), &[child]);
-        assert!(store.children(child).is_empty());
+        assert_eq!(store.event(child).unwrap().unwrap().causes(), roots);
+        let query = HistoryQuery::new(0, 4, 64).unwrap();
+        assert_eq!(
+            store.children(TraceId::new(0), query).unwrap().records(),
+            &[child]
+        );
+        assert_eq!(
+            store.children(TraceId::new(1), query).unwrap().records(),
+            &[child]
+        );
+        assert!(store.children(child, query).unwrap().records().is_empty());
     }
 
     #[test]
@@ -1247,10 +2207,22 @@ mod tests {
         let forcing = resolved[&dag_key(1, 100, b"cell", 0)];
         let infiltration = resolved[&dag_key(2, 101, b"cell", 0)];
         let percolation = resolved[&dag_key(3, 102, b"cell", 0)];
-        assert_eq!(store.event(forcing).unwrap().causes, &[]);
-        assert_eq!(store.event(infiltration).unwrap().causes, &[forcing]);
-        assert_eq!(store.event(percolation).unwrap().causes, &[infiltration]);
-        assert_eq!(store.children(forcing), &[infiltration]);
+        assert_eq!(store.event(forcing).unwrap().unwrap().causes(), &[]);
+        assert_eq!(
+            store.event(infiltration).unwrap().unwrap().causes(),
+            &[forcing]
+        );
+        assert_eq!(
+            store.event(percolation).unwrap().unwrap().causes(),
+            &[infiltration]
+        );
+        assert_eq!(
+            store
+                .children(forcing, HistoryQuery::new(0, 4, 64).unwrap())
+                .unwrap()
+                .records(),
+            &[infiltration]
+        );
         assert!(forcing < infiltration && infiltration < percolation);
     }
 
@@ -1548,7 +2520,7 @@ mod tests {
         // Then: the committed cause list is strictly ordered, mixing both.
         let second = resolved[&dag_key(2, 0, b"a", 0)];
         assert_eq!(
-            store.event(second).unwrap().causes,
+            store.event(second).unwrap().unwrap().causes(),
             &[root, resolved[&first]]
         );
     }
@@ -1576,8 +2548,14 @@ mod tests {
             .unwrap();
         assert_eq!(legacy, vec![TraceId::new(0), TraceId::new(1)]);
         assert_eq!(
-            legacy_only.iter().map(|e| e.trace_id).collect::<Vec<_>>(),
-            mixed.iter().map(|e| e.trace_id).collect::<Vec<_>>()
+            legacy_only
+                .iter_hot()
+                .map(|event| event.trace_id)
+                .collect::<Vec<_>>(),
+            mixed
+                .iter_hot()
+                .map(|event| event.trace_id)
+                .collect::<Vec<_>>()
         );
 
         mixed
@@ -1651,6 +2629,165 @@ mod tests {
                 vec![proposal(0, vec![], 1)],
             )
             .unwrap();
-        assert_eq!(store.event(TraceId::new(0)).unwrap().effects.len(), 1);
+        assert_eq!(
+            store
+                .event(TraceId::new(0))
+                .unwrap()
+                .unwrap()
+                .effects()
+                .len(),
+            1
+        );
+    }
+
+    #[test]
+    fn transaction_rollback_restores_trace_frontier_and_child_index() {
+        // Given: an existing causal graph whose child index already has edges.
+        let mut store = CausalTraceStore::new();
+        let roots = store
+            .commit_batch(
+                SimulationTime::new(1),
+                Phase::Physics,
+                vec![proposal(0, vec![], 100), proposal(1, vec![], 101)],
+            )
+            .unwrap();
+        let parent = store
+            .commit_batch(
+                SimulationTime::new(2),
+                Phase::Action,
+                vec![proposal(2, vec![roots[0]], 102)],
+            )
+            .unwrap()[0];
+        let before = store.clone();
+
+        // When: a valid legacy append and a same-transaction local-cause DAG append,
+        // each followed by a failed transaction, are rolled back.
+        store.begin_transaction();
+        let staged = store
+            .commit_batch(
+                SimulationTime::new(3),
+                Phase::Action,
+                vec![proposal(3, vec![parent], 103)],
+            )
+            .unwrap()[0];
+        let dag = store
+            .commit_dag_batch_for_transaction(
+                SimulationTime::new(3),
+                Phase::Physics,
+                vertical_chain(),
+                LIMITS,
+            )
+            .unwrap();
+        let forcing = dag[&dag_key(1, 100, b"cell", 0)];
+        assert_eq!(
+            store
+                .children(parent, HistoryQuery::new(0, 8, 128).unwrap())
+                .unwrap()
+                .records(),
+            &[staged]
+        );
+        assert_eq!(
+            store
+                .children(forcing, HistoryQuery::new(0, 8, 128).unwrap())
+                .unwrap()
+                .records(),
+            &[dag[&dag_key(2, 101, b"cell", 0)]]
+        );
+        assert!(store.event(staged).unwrap().is_some());
+        store.rollback_transaction();
+
+        // Then: every hot vector, frontier counter, and reverse edge is exact,
+        // and the rejected IDs are reused by the next accepted append.
+        assert_eq!(store, before);
+        assert!(store.event(staged).unwrap().is_none());
+        assert_eq!(
+            store
+                .children(parent, HistoryQuery::new(0, 8, 128).unwrap())
+                .unwrap()
+                .records(),
+            &[]
+        );
+        let retry = store
+            .commit_batch(
+                SimulationTime::new(3),
+                Phase::Action,
+                vec![proposal(3, vec![parent], 103)],
+            )
+            .unwrap();
+        assert_eq!(retry, vec![staged]);
+        println!(
+            "MARKER:trace_rollback len={} next_trace={} next_event={} hot_bytes={} child_parent={:?} retry_trace={}",
+            store.len(),
+            retry[0].raw() + 1,
+            retry[0].raw() + 1,
+            store.hot_bytes(),
+            store
+                .children(parent, HistoryQuery::new(0, 8, 128).unwrap())
+                .unwrap()
+                .records(),
+            retry[0].raw()
+        );
+    }
+
+    #[test]
+    fn active_transaction_defers_hot_eviction_until_commit() {
+        // Given: a hot budget that fits one record but no cold reader.
+        let mut sizing = CausalTraceStore::new();
+        sizing
+            .commit_batch(
+                SimulationTime::new(1),
+                Phase::Physics,
+                vec![proposal(0, vec![], 200)],
+            )
+            .unwrap();
+        let budget = sizing.hot_bytes();
+        let mut store = CausalTraceStore::with_hot_budget(budget);
+
+        // When: two valid records exceed the budget inside one transaction and
+        // the staged frame requests trimming.
+        store.begin_transaction();
+        store
+            .commit_batch(
+                SimulationTime::new(1),
+                Phase::Physics,
+                vec![proposal(0, vec![], 200), proposal(1, vec![], 201)],
+            )
+            .unwrap();
+        let frame = store
+            .iter_hot()
+            .map(|event| {
+                OwnedCausalRecord::new(
+                    event.commit_sequence,
+                    event.event_id,
+                    event.trace_id,
+                    event.time,
+                    event.phase,
+                    event.kind,
+                    event.causes.to_vec(),
+                    event.effects.to_vec(),
+                )
+                .map(HistoryRecord::Causal)
+                .unwrap()
+            })
+            .collect::<Vec<_>>();
+        store.trim_staged_frame_to_hot_budget(&frame).unwrap();
+
+        // Then: active state remains fully readable, commit applies the deferred
+        // eviction, and rollback would still have an untouched prefix to restore.
+        assert_eq!(store.len(), 2);
+        assert!(store.hot_bytes() > store.hot_budget());
+        assert!(store.event(TraceId::new(0)).unwrap().is_some());
+        store.end_transaction().unwrap();
+        assert_eq!(store.len(), 1);
+        assert!(store.hot_bytes() <= store.hot_budget());
+        assert!(store.event(TraceId::new(0)).unwrap().is_none());
+        assert!(store.event(TraceId::new(1)).unwrap().is_some());
+        println!(
+            "MARKER:trace_deferred_eviction before_records={} after_records={} hot_bytes={} budget={} retained_trace=1",
+            frame.len(),
+            store.len(),
+            store.hot_bytes(),
+            store.hot_budget()
+        );
     }
 }

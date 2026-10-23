@@ -19,9 +19,9 @@ fn legacy_ids_stable() {
     // positions and every earlier one are unchanged, not that nothing may ever
     // follow. Registration orders are still required to be consecutive from zero,
     // which is what would catch an insertion.
-    // Schema 8 covers hydrology; thermal's own contract is unaffected by which
+    // Schema 9 is the current shared digest contract; thermal's own contract is unaffected by which
     // other domains the digest reaches.
-    assert_eq!(CURRENT_DIGEST_SCHEMA_VERSION.raw(), 8);
+    assert_eq!(CURRENT_DIGEST_SCHEMA_VERSION.raw(), 9);
     assert!(snapshot.recipe.system_registrations.len() >= 11);
     assert_eq!(
         snapshot

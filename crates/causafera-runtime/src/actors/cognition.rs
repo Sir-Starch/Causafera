@@ -137,6 +137,7 @@ impl ActorCognitionSystem {
 
     pub(crate) fn execute(&mut self) -> Result<(), RuntimeError> {
         let mut state = self.state.lock().map_err(|_| RuntimeError::StatePoisoned)?;
+        state.record_all_actors_before();
         let object_count = actor_cognition_step(
             self.next_time,
             &mut state.actors,

@@ -11,23 +11,74 @@ use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
 use causafera_core::provenance::{CausalDagBatchLimits, StateFingerprint};
-use causafera_core::{Phase, RandomStream, System};
+use causafera_core::{
+    Criticality, DomainEvidenceRecord, EvidenceDecoderRegistry, EvidenceSchemaId,
+    EvidenceSchemaVersion, HistoryError, Phase, RandomStream, System,
+};
 use causafera_domains::{
     HydrologyBucket, HydrologyEventPlan, HydrologyEvolutionLimits, HydrologyEvolutionModel,
     HydrologyEvolutionProposal, HydrologyEvolutionRequest, HydrologyRepresentationChange,
     HydrologyResolutionPolicy, HydrologyTerminalLeaf, HydrologyTransferReceipt,
 };
 use causafera_geography::{
-    HydrologyActiveRegion, HydrologyBoundaryMap, HydrologyCellKey, HydrologyConveyanceGraph,
-    HydrologyFieldSet, HydrologyForcingRecord, HydrologyGridMetrics, HydrologyResolutionState,
-    MAX_HYDROLOGY_PERSISTED_TRANSFER_RECEIPTS, MAX_HYDROLOGY_STORED_RECEIPT_BATCHES, TerrainChunk,
+    HydrologyActiveRegion, HydrologyBoundaryMap, HydrologyCarrierKey, HydrologyCellKey,
+    HydrologyConveyanceGraph, HydrologyFieldSet, HydrologyForcingRecord, HydrologyGridMetrics,
+    HydrologyResolutionState, TerrainChunk,
 };
+use causafera_persistence::LittleEndianEncoder;
 use causafera_types::{ChartChunkCoord, SimulationTime, TraceId};
 
 use crate::hydrology_events::{
     HydrologyBatchInputs, HydrologyObjectRegistry, build_hydrology_batch,
 };
 use crate::{RuntimeError, RuntimeState};
+
+pub const HYDROLOGY_FORCING_EVIDENCE_SCHEMA: EvidenceSchemaId = EvidenceSchemaId::new(0x0014_1801);
+pub const HYDROLOGY_STORAGE_EVIDENCE_SCHEMA: EvidenceSchemaId = EvidenceSchemaId::new(0x0014_1802);
+pub const HYDROLOGY_TRANSFER_EVIDENCE_SCHEMA: EvidenceSchemaId = EvidenceSchemaId::new(0x0014_1803);
+pub const HYDROLOGY_CONSERVATION_EVIDENCE_SCHEMA: EvidenceSchemaId =
+    EvidenceSchemaId::new(0x0014_1804);
+pub const HYDROLOGY_BOOTSTRAP_EVIDENCE_SCHEMA: EvidenceSchemaId =
+    EvidenceSchemaId::new(0x0014_1805);
+pub const HYDROLOGY_EVIDENCE_VERSION: EvidenceSchemaVersion = EvidenceSchemaVersion::new(1, 0);
+
+/// Registers the hydrology replay codecs in the caller-owned history registry.
+pub fn register_hydrology_evidence_decoders(
+    registry: &mut EvidenceDecoderRegistry,
+) -> Result<(), HistoryError> {
+    for schema in [
+        HYDROLOGY_FORCING_EVIDENCE_SCHEMA,
+        HYDROLOGY_STORAGE_EVIDENCE_SCHEMA,
+        HYDROLOGY_TRANSFER_EVIDENCE_SCHEMA,
+        HYDROLOGY_CONSERVATION_EVIDENCE_SCHEMA,
+        HYDROLOGY_BOOTSTRAP_EVIDENCE_SCHEMA,
+    ] {
+        registry
+            .register_typed(crate::hydrology_validation::HydrologyEvidenceDecoder { schema })?;
+    }
+    Ok(())
+}
+
+/// Bootstrap adapter for the later history-bootstrap caller, before the first tick.
+pub fn hydrology_bootstrap_evidence(
+    state: &HydrologyRuntimeState,
+    time: SimulationTime,
+    anchor: TraceId,
+) -> Result<Option<DomainEvidenceRecord>, RuntimeError> {
+    if !state.enabled {
+        return Ok(None);
+    }
+    let payload = crate::snapshot_sections::encode_hydrology_section(state);
+    evidence_record(
+        anchor,
+        HYDROLOGY_BOOTSTRAP_EVIDENCE_SCHEMA,
+        time,
+        vec![anchor],
+        anchor.raw().to_le_bytes().to_vec(),
+        payload,
+    )
+    .map(Some)
+}
 
 /// Everything the runtime holds for hydrology.
 ///
@@ -80,35 +131,6 @@ impl HydrologyRuntimeState {
             receipts: BTreeMap::new(),
             conservation_receipts: BTreeMap::new(),
             retained_batches: Vec::new(),
-        }
-    }
-
-    /// Retain the newest batch and evict whole older ones until both bounds hold.
-    ///
-    /// Whole batches, never partial ones: half a tick's receipts would answer a
-    /// question about that tick with an incomplete ledger, which is worse than
-    /// answering that the detail is gone. Causal ancestry is unaffected — the
-    /// trace store keeps it, which is why eviction is safe at all.
-    fn retain(&mut self, trace: TraceId) {
-        self.retained_batches.push(trace);
-        loop {
-            let batches = self.retained_batches.len();
-            let receipts: usize = self
-                .retained_batches
-                .iter()
-                .map(|trace| self.receipts.get(trace).map_or(0, Vec::len))
-                .sum();
-            if batches <= MAX_HYDROLOGY_STORED_RECEIPT_BATCHES
-                && receipts <= MAX_HYDROLOGY_PERSISTED_TRANSFER_RECEIPTS
-            {
-                break;
-            }
-            if self.retained_batches.len() <= 1 {
-                break;
-            }
-            let evicted = self.retained_batches.remove(0);
-            self.receipts.remove(&evicted);
-            self.conservation_receipts.remove(&evicted);
         }
     }
 }
@@ -250,7 +272,7 @@ impl HydrologyRuntimeSystem {
             max_causes_per_event: causafera_geography::MAX_HYDROLOGY_CAUSES_PER_EVENT,
             max_effects_per_event: causafera_geography::MAX_HYDROLOGY_EFFECTS_PER_EVENT,
         };
-        let traces = state.traces.commit_dag_batch(
+        let traces = state.traces.commit_dag_batch_for_transaction(
             self.next_time,
             Phase::Physics,
             batch.proposals.clone(),
@@ -300,10 +322,9 @@ impl HydrologyRuntimeSystem {
             after_conveyance.install_edge_trace(change.edge, trace)?;
         }
 
+        let mut after_forcing = state.hydrology.forcing.clone();
         for (scheduled_tick, forcing_id) in proposal.applied_forcing() {
-            let record = state
-                .hydrology
-                .forcing
+            let record = after_forcing
                 .iter_mut()
                 .find(|record| {
                     record.scheduled_tick() == *scheduled_tick && record.forcing_id() == *forcing_id
@@ -316,30 +337,271 @@ impl HydrologyRuntimeSystem {
         // was its cause. Written after the commit for the same reason every other
         // anchor is: an anchor naming a trace that does not exist is worse than no
         // level change at all.
+        let mut after_resolution = state.hydrology.resolution.clone();
         for (change, event) in representations {
             let trace = *traces
                 .get(&event.key)
                 .ok_or(RuntimeError::HydrologyAnchorNotCommitted)?;
-            state.hydrology.resolution.insert(
+            after_resolution.insert(
                 change.chunk,
                 HydrologyResolutionState::new(change.to_level, trace)?,
             );
         }
 
-        state.hydrology.fields = after_fields;
-        state.hydrology.conveyance = after_conveyance;
-        state.hydrology.next_node_id = batch.next_node_id;
-        state
-            .hydrology
-            .receipts
-            .insert(conservation_trace, proposal.transfer_receipts().to_vec());
-        state
-            .hydrology
-            .conservation_receipts
-            .insert(conservation_trace, *proposal.conservation());
-        state.hydrology.retain(conservation_trace);
+        let evidence = hydrology_tick_evidence(
+            self.next_time,
+            proposal,
+            &traces,
+            conservation_trace,
+            &after_forcing,
+        )?;
+        state.stage_history_evidence(&evidence)?;
+
+        state.apply_hydrology_tick(crate::hydrology_undo::HydrologyTickUpdate {
+            fields: after_fields,
+            conveyance: after_conveyance,
+            forcing: after_forcing,
+            resolution: after_resolution,
+            next_node_id: batch.next_node_id,
+            conservation_trace,
+            transfer_receipts: proposal.transfer_receipts().to_vec(),
+            conservation_receipt: *proposal.conservation(),
+        })?;
         Ok(())
     }
+}
+
+fn hydrology_tick_evidence(
+    time: SimulationTime,
+    proposal: &HydrologyEvolutionProposal,
+    traces: &BTreeMap<causafera_core::CausalEventProposalKey, TraceId>,
+    conservation_trace: TraceId,
+    forcing: &[HydrologyForcingRecord],
+) -> Result<Vec<DomainEvidenceRecord>, RuntimeError> {
+    let mut records = Vec::new();
+    for (scheduled_tick, forcing_id) in proposal.applied_forcing() {
+        let source = forcing
+            .iter()
+            .find(|record| record.key() == (*scheduled_tick, *forcing_id))
+            .ok_or(RuntimeError::HydrologyForcingRecordUnknown)?;
+        let mut payload = Vec::new();
+        let mut enc = LittleEndianEncoder::new(&mut payload);
+        for value in [
+            source.scheduled_tick(),
+            source.forcing_id(),
+            source.origin_trace().raw(),
+            source.producer_policy_schema(),
+            source.precipitation_volume().get(),
+            source.potential_et_volume().get(),
+            source.external_inflow_volume().get(),
+            source.applied_at().unwrap_or(0),
+        ] {
+            enc.write_u64(value);
+        }
+        enc.write_u64(
+            u64::try_from(source.targets().len()).map_err(|_| HistoryError::ArithmeticOverflow)?,
+        );
+        for target in source.targets() {
+            enc.write_bytes(&HydrologyCarrierKey::Cell(target.cell).encode());
+            enc.write_u64(target.weight.get());
+        }
+        let mut key = conservation_trace.raw().to_le_bytes().to_vec();
+        key.extend_from_slice(&scheduled_tick.to_le_bytes());
+        key.extend_from_slice(&forcing_id.to_le_bytes());
+        records.push(evidence_record(
+            conservation_trace,
+            HYDROLOGY_FORCING_EVIDENCE_SCHEMA,
+            time,
+            vec![source.origin_trace(), conservation_trace],
+            key,
+            payload,
+        )?);
+    }
+    for (index, change) in proposal.cell_changes().iter().enumerate() {
+        let settlement = *traces
+            .get(&change.settlement_event)
+            .ok_or(RuntimeError::HydrologyAnchorNotCommitted)?;
+        let mut payload = Vec::with_capacity(17);
+        payload.push(change.bucket.tag());
+        payload.extend_from_slice(&change.before.get().to_le_bytes());
+        payload.extend_from_slice(&change.after.get().to_le_bytes());
+        records.push(evidence_record(
+            conservation_trace,
+            HYDROLOGY_STORAGE_EVIDENCE_SCHEMA,
+            time,
+            vec![settlement, conservation_trace],
+            evidence_storage_key(
+                conservation_trace,
+                index,
+                HydrologyCarrierKey::Cell(change.cell),
+                change.bucket,
+            )?,
+            payload,
+        )?);
+    }
+    for (index, change) in proposal.edge_changes().iter().enumerate() {
+        let settlement = *traces
+            .get(&change.settlement_event)
+            .ok_or(RuntimeError::HydrologyAnchorNotCommitted)?;
+        let mut payload = Vec::with_capacity(17);
+        payload.push(HydrologyBucket::Conveyance.tag());
+        payload.extend_from_slice(&change.before.get().to_le_bytes());
+        payload.extend_from_slice(&change.after.get().to_le_bytes());
+        records.push(evidence_record(
+            conservation_trace,
+            HYDROLOGY_STORAGE_EVIDENCE_SCHEMA,
+            time,
+            vec![settlement, conservation_trace],
+            evidence_storage_key(
+                conservation_trace,
+                proposal.cell_changes().len() + index,
+                HydrologyCarrierKey::Edge(change.edge),
+                HydrologyBucket::Conveyance,
+            )?,
+            payload,
+        )?);
+    }
+    for (index, receipt) in proposal.transfer_receipts().iter().enumerate() {
+        let mut payload = Vec::new();
+        let mut enc = LittleEndianEncoder::new(&mut payload);
+        enc.write_u64(receipt.batch_sequence());
+        enc.write_u64(receipt.tick());
+        enc.write_u32(receipt.process_kind());
+        for carrier in [receipt.source(), receipt.target()] {
+            let bytes = carrier.encode();
+            enc.write_u8(u8::try_from(bytes.len()).map_err(|_| HistoryError::ArithmeticOverflow)?);
+            enc.write_bytes(&bytes);
+        }
+        enc.write_u8(receipt.source_bucket().tag());
+        enc.write_u8(receipt.target_bucket().tag());
+        for value in [
+            receipt.requested(),
+            receipt.accepted(),
+            receipt.unaccepted(),
+            receipt.source_before(),
+            receipt.source_after(),
+            receipt.target_before(),
+            receipt.target_after(),
+        ] {
+            enc.write_u64(value.get());
+        }
+        enc.write_u64(
+            u64::try_from(receipt.causal_parents().len())
+                .map_err(|_| HistoryError::ArithmeticOverflow)?,
+        );
+        for parent in receipt.causal_parents() {
+            enc.write_u64(parent.raw());
+        }
+        enc.write_u64(receipt.forcing_origin().map_or(0, TraceId::raw));
+        let mut anchors = vec![conservation_trace];
+        anchors.extend_from_slice(receipt.causal_parents());
+        anchors.extend(receipt.forcing_origin());
+        for event in [receipt.transfer_event(), receipt.storage_event()] {
+            let trace = event
+                .map(|event| {
+                    traces
+                        .get(event)
+                        .copied()
+                        .ok_or(RuntimeError::HydrologyAnchorNotCommitted)
+                })
+                .transpose()?;
+            if let Some(trace) = trace {
+                anchors.push(trace);
+            }
+            enc.write_u64(trace.map_or(0, TraceId::raw));
+        }
+        for event in [receipt.transfer_event(), receipt.storage_event()] {
+            let bytes = event.map_or(&[][..], causafera_core::CausalEventProposalKey::bytes);
+            enc.write_u32(
+                u32::try_from(bytes.len()).map_err(|_| HistoryError::ArithmeticOverflow)?,
+            );
+            enc.write_bytes(bytes);
+        }
+        records.push(evidence_record(
+            conservation_trace,
+            HYDROLOGY_TRANSFER_EVIDENCE_SCHEMA,
+            time,
+            anchors,
+            evidence_index_key(conservation_trace, index)?,
+            payload,
+        )?);
+    }
+    let conservation = proposal.conservation();
+    let mut payload = Vec::with_capacity(208);
+    payload.extend_from_slice(&conservation.tick().to_le_bytes());
+    payload.extend_from_slice(&conservation.batch_sequence().to_le_bytes());
+    for term in [
+        conservation.surface_before(),
+        conservation.soil_before(),
+        conservation.groundwater_before(),
+        conservation.conveyance_before(),
+        conservation.surface_after(),
+        conservation.soil_after(),
+        conservation.groundwater_after(),
+        conservation.conveyance_after(),
+        conservation.accepted_precipitation(),
+        conservation.accepted_external_inflow(),
+        conservation.accepted_evapotranspiration(),
+        conservation.boundary_exports(),
+    ] {
+        payload.extend_from_slice(&term.to_le_bytes());
+    }
+    records.push(evidence_record(
+        conservation_trace,
+        HYDROLOGY_CONSERVATION_EVIDENCE_SCHEMA,
+        time,
+        vec![conservation_trace],
+        conservation_trace.raw().to_le_bytes().to_vec(),
+        payload,
+    )?);
+    records.sort_unstable();
+    Ok(records)
+}
+
+fn evidence_index_key(trace: TraceId, index: usize) -> Result<Vec<u8>, HistoryError> {
+    let mut key = trace.raw().to_le_bytes().to_vec();
+    key.extend_from_slice(
+        &u64::try_from(index)
+            .map_err(|_| HistoryError::ArithmeticOverflow)?
+            .to_le_bytes(),
+    );
+    Ok(key)
+}
+
+fn evidence_storage_key(
+    trace: TraceId,
+    index: usize,
+    carrier: HydrologyCarrierKey,
+    bucket: HydrologyBucket,
+) -> Result<Vec<u8>, HistoryError> {
+    let mut key = evidence_index_key(trace, index)?;
+    key.push(bucket.tag());
+    key.extend_from_slice(&carrier.encode());
+    Ok(key)
+}
+
+fn evidence_record(
+    commit: TraceId,
+    schema: EvidenceSchemaId,
+    time: SimulationTime,
+    mut anchors: Vec<TraceId>,
+    key: Vec<u8>,
+    payload: Vec<u8>,
+) -> Result<DomainEvidenceRecord, RuntimeError> {
+    anchors.sort_unstable();
+    anchors.dedup();
+    let digest = StateFingerprint::new(*blake3::hash(&payload).as_bytes());
+    Ok(DomainEvidenceRecord::new(
+        commit.raw(),
+        schema,
+        HYDROLOGY_EVIDENCE_VERSION,
+        Criticality::ReplayRequired,
+        time,
+        anchors,
+        key,
+        payload,
+        digest,
+    )?)
 }
 
 impl System for HydrologyRuntimeSystem {

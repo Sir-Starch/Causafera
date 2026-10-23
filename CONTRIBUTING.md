@@ -11,8 +11,9 @@ discussing a substantial change in an issue first is the cheapest way to find th
 
 > **CLA acceptance is live.** External contributions may be merged once you have accepted the CLA,
 > the required checks pass, and the maintainer approves the change. `license/cla` is a required
-> status check on `main`, so an unsigned contribution cannot be merged. Opening a pull request does
-> not by itself accept the CLA.
+> status check on `main`. Opening a pull request does not by itself accept the CLA. The maintainer
+> can explicitly bypass required checks when merging a PR; that does not waive the CLA requirement
+> for external contributions.
 >
 > How the workflow is wired is recorded in
 > [`docs/legal/cla-service-setup.md`](docs/legal/cla-service-setup.md).
@@ -143,9 +144,11 @@ cargo metadata --format-version 1 --no-deps
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo test --workspace --all-features
-cargo test --workspace --no-default-features
 cargo run -p xtask -- ci
 ```
+
+Workspace packages currently declare no Cargo features, so a `--no-default-features` run would
+repeat the same tests. Add that configuration back when a workspace package introduces features.
 
 Frontend checks:
 

@@ -63,30 +63,33 @@ ruleset alongside the existing checks:
 
 | Required check | Purpose |
 | --- | --- |
-| `rust` | Rust build, lint, and test gate |
+| `rust` | Workspace Rust build, lint, and test gate |
+| `rust-observer` | Observer Rust test gate |
 | `ui` | Frontend lint, typecheck, and build gate |
 | `license/cla` | CLA acceptance gate |
 
 The ruleset also blocks branch deletion and non-fast-forward pushes, and requires branches to be up
-to date before merging. It carries **no bypass actors**, so the rules apply to every pull request
-including the maintainer's.
+to date before merging. `Sir-Starch` (user ID `281476371`) has a **pull-request-only bypass**. They
+can choose to merge a pull request before any required check finishes, including `license/cla`; this
+does not permit a direct push to `main`. The bypass applies to the person merging, regardless of who
+opened the pull request. No other account has ruleset bypass access.
 
 ## Exemptions
 
-Exemptions are configured in CLA Assistant's own allowlist, which is the narrowest mechanism
-available: it stops the service from requesting a signature from a named account, and changes
-nothing else. It does not touch branch protection, does not weaken any other required check, and
-does not affect ordinary contributors.
+CLA Assistant's own allowlist stops the service from requesting a signature from a named account.
+It is separate from the ruleset bypass and does not change required checks for ordinary merges.
 
 | Exempt identity | Reason |
 | --- | --- |
 | `Sir-Starch` (user ID `281476371`) | The maintainer is the party the CLA grants rights *to*. Requiring them to sign their own agreement with themselves is meaningless, and would block every maintainer pull request. |
 | `dependabot[bot]` | An automation account cannot meaningfully accept an agreement, and would otherwise be blocked forever by a check it can never satisfy. |
 
-Deliberately **not** exempt: every other contributor, human or otherwise. Keep the allowlist minimal
-and review it whenever new automation is added — an allowlisted identity is one whose contributions
-merge with no CLA record at all. A repository-admin ruleset bypass was deliberately *not* used for
-the maintainer exemption, because it would bypass `rust` and `ui` as well.
+Deliberately **not** exempt from CLA signing: every other contributor, human or otherwise. Keep the
+allowlist minimal and review it whenever new automation is added — an allowlisted identity is one
+whose contributions merge with no CLA record at all. The separate ruleset bypass names the
+maintainer's user ID rather than the repository-admin role, so other admins do not inherit it. When
+used, it bypasses the merge checks in this ruleset, including Rust, UI, and CLA. The CLA requirement
+for external contributions in [`CONTRIBUTING.md`](../../CONTRIBUTING.md) remains project policy.
 
 ## Updating the CLA later
 

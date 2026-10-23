@@ -19,7 +19,9 @@
 //! counts both directly and reports them beside the milliseconds.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::io::Write;
 use std::num::{NonZeroU32, NonZeroU64};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 
 use causafera_domains::process;
@@ -37,6 +39,8 @@ const WORLD_SEED: u64 = 20_260_731;
 /// The plan's floor. Fewer repetitions is a number, not a measurement.
 const REPETITIONS: usize = 10;
 const WARM_UP_TICKS: u64 = 4;
+const HISTORY_RUN_TICKS: u64 = 1_000;
+const HISTORY_PROGRESS_INTERVAL: u64 = 10;
 
 fn nz32(value: u32) -> NonZeroU32 {
     NonZeroU32::new(value).expect("the value is positive")
@@ -448,45 +452,250 @@ fn resolution_workload() {
     }
 }
 
-/// How long a session can run before the snapshot cap refuses a tick.
-///
-/// The most useful number this harness produces, and the reason the plan's
-/// 1,000- and 10,000-tick sweeps are not reachable: what bounds a
-/// hydrology-enabled session is not its per-tick cost but the causal trace and
-/// receipt history it accumulates, which the 256 MiB export cap eventually
-/// refuses to hold. The tick it engages at is exact and deterministic — the same
-/// seed reaches the same tick every time — so this is measured once per
-/// configuration rather than ten times. Repeating a value with no variance
-/// spends minutes to report the same number.
-fn ceiling_workload() {
-    println!();
-    println!("Ceiling: ticks committed before the 256 MiB export cap refuses one");
-    println!(
-        "{:<24} {:>7} {:>10} {:>12} {:>12}",
-        "configuration", "cells", "ticks", "wall s", "ms/tick"
-    );
-    for (label, radius, shape) in [
-        ("one chunk", 0_u8, ActiveChunkShape::Line),
-        ("three line chunks", 1, ActiveChunkShape::Line),
-        ("nine chunks", 1, ActiveChunkShape::Area),
-    ] {
-        let mut runtime =
-            Runtime::new(config(radius, shape, true, true)).expect("the runtime must bootstrap");
-        let started = Instant::now();
-        // Far past any reachable ceiling: the loop stops when the cap does.
-        let reached = advance(&mut runtime, 100_000);
-        let seconds = started.elapsed().as_secs_f64();
-        let state = runtime.hydrology_state();
-        assert_conserved(&state, label);
-        println!(
-            "{label:<24} {:>7} {reached:>10} {seconds:>12.1} {:>12.3}",
-            state.fields.cell_count(),
-            seconds * 1000.0 / reached.max(1) as f64,
-        );
-    }
+fn hex(bytes: &[u8]) -> String {
+    bytes
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<Vec<_>>()
+        .join("")
 }
 
-fn main() {
+/// Read the bounded envelope's section directory and test whether it contains
+/// the legacy complete-trace section. `open_bundle` performs the full envelope
+/// integrity check after this structural inspection.
+fn bounded_snapshot_has_section(bytes: &[u8], target: u16) -> Result<bool, &'static str> {
+    const HEADER_SIZE: usize = 170;
+    const SECTION_COUNT_OFFSET: usize = 128;
+    const DIRECTORY_OFFSET_OFFSET: usize = 130;
+    const DIRECTORY_ENTRY_SIZE: usize = 72;
+
+    if bytes.len() < HEADER_SIZE || bytes.get(..4) != Some(b"OTPS") {
+        return Err("snapshot header is truncated or has invalid magic");
+    }
+    let section_count = u16::from_le_bytes(
+        bytes
+            .get(SECTION_COUNT_OFFSET..SECTION_COUNT_OFFSET + 2)
+            .ok_or("snapshot section count is truncated")?
+            .try_into()
+            .map_err(|_| "snapshot section count is malformed")?,
+    );
+    let directory_offset = usize::try_from(u64::from_le_bytes(
+        bytes
+            .get(DIRECTORY_OFFSET_OFFSET..DIRECTORY_OFFSET_OFFSET + 8)
+            .ok_or("snapshot directory offset is truncated")?
+            .try_into()
+            .map_err(|_| "snapshot directory offset is malformed")?,
+    ))
+    .map_err(|_| "snapshot directory offset does not fit this platform")?;
+    let directory_size = usize::from(section_count)
+        .checked_mul(DIRECTORY_ENTRY_SIZE)
+        .ok_or("snapshot directory size overflowed")?;
+    let directory_end = directory_offset
+        .checked_add(directory_size)
+        .ok_or("snapshot directory end overflowed")?;
+    if directory_offset < HEADER_SIZE || directory_end > bytes.len() {
+        return Err("snapshot section directory is outside the envelope");
+    }
+
+    for entry in bytes[directory_offset..directory_end].chunks_exact(DIRECTORY_ENTRY_SIZE) {
+        let schema_id = u64::from_le_bytes(
+            entry
+                .get(..8)
+                .ok_or("snapshot section ID is truncated")?
+                .try_into()
+                .map_err(|_| "snapshot section ID is malformed")?,
+        );
+        if schema_id == u64::from(target) {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+/// Run the wet nine-chunk scenario against a durable group-commit bundle.
+///
+/// The bundle uses the repository target filesystem; the report names it for
+/// inspection and the caller removes that owned directory after capturing evidence.
+fn history_bundle_workload(
+    ticks_requested: u64,
+    scenario: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    static NEXT_BUNDLE: AtomicU64 = AtomicU64::new(0);
+    let bundle_path = std::env::current_dir()?.join("target").join(format!(
+        "causafera-hydrology-history-1000-{}-{}",
+        std::process::id(),
+        NEXT_BUNDLE.fetch_add(1, Ordering::Relaxed)
+    ));
+    let mut stdout = std::io::stdout().lock();
+    writeln!(
+        stdout,
+        "{{\"event\":\"start\",\"scenario\":\"{scenario}\",\"ticks_requested\":{ticks_requested},\"active_chunks\":9,\"bundle_path\":{:?}}}",
+        bundle_path.display().to_string(),
+    )?;
+    stdout.flush()?;
+
+    let mut runtime = Runtime::create_bundle(
+        config(1, ActiveChunkShape::Area, true, true),
+        &bundle_path,
+        causafera_runtime::BundleOptions::default(),
+    )?;
+    let started = Instant::now();
+    let mut conservation_checks = 0_u64;
+    let mut last_progress = Instant::now();
+    for tick in 1..=ticks_requested {
+        let snapshot = runtime.tick()?;
+        if snapshot.hydrology.latest_residual != 0 {
+            return Err(format!(
+                "tick {tick} has nonzero hydrology residual {}",
+                snapshot.hydrology.latest_residual
+            )
+            .into());
+        }
+        conservation_checks += 1;
+
+        if tick.is_multiple_of(HISTORY_PROGRESS_INTERVAL) || tick == ticks_requested {
+            let status = runtime.history_status()?;
+            if status.hot_bytes > status.hot_budget {
+                return Err(format!(
+                    "tick {tick} exceeded the hot history budget: {} > {} bytes",
+                    status.hot_bytes, status.hot_budget
+                )
+                .into());
+            }
+            writeln!(
+                stdout,
+                "{{\"event\":\"progress\",\"tick\":{tick},\"ticks_requested\":{ticks_requested},\"interval_ms\":{:.3},\"hot_bytes\":{},\"hot_budget_bytes\":{}}}",
+                last_progress.elapsed().as_secs_f64() * 1000.0,
+                status.hot_bytes,
+                status.hot_budget,
+            )?;
+            stdout.flush()?;
+            last_progress = Instant::now();
+        }
+    }
+    let elapsed_ms = started.elapsed().as_secs_f64() * 1000.0;
+    if runtime.current_time().raw() != ticks_requested {
+        return Err(format!(
+            "run ended at tick {}, expected {ticks_requested}",
+            runtime.current_time().raw()
+        )
+        .into());
+    }
+
+    let final_summary = runtime.snapshot()?;
+    if final_summary.active_chunk_count != 9 || final_summary.hydrology.active_chunk_count != 9 {
+        return Err("the final state is not the configured wet nine-chunk scenario".into());
+    }
+    let water_total = final_summary.hydrology.total_surface
+        + final_summary.hydrology.total_soil
+        + final_summary.hydrology.total_groundwater
+        + final_summary.hydrology.total_conveyance;
+    if water_total == 0 {
+        return Err("the wet scenario ended with no water in its reservoirs".into());
+    }
+
+    let hydrology = runtime.hydrology_state();
+    if !hydrology.enabled
+        || !hydrology.forcing.iter().any(|record| {
+            record.forcing_id() == 1
+                && record.scheduled_tick() == 3
+                && record.applied_at().is_some()
+        })
+    {
+        return Err("the configured wet forcing was not applied".into());
+    }
+    assert_conserved(&hydrology, scenario);
+    let retained_conservation_batches = hydrology.retained_batches.len();
+    let before = runtime.snapshot()?;
+    let before_status = runtime.history_status()?;
+    if before_status.hot_bytes > before_status.hot_budget {
+        return Err("final hot history exceeds its configured budget".into());
+    }
+
+    let save_started = Instant::now();
+    let saved = runtime.save_bundle()?;
+    writeln!(
+        stdout,
+        "{{\"event\":\"saved\",\"elapsed_ms\":{:.3}}}",
+        save_started.elapsed().as_secs_f64() * 1000.0
+    )?;
+    stdout.flush()?;
+    let saved_status = runtime.history_status()?;
+    if saved_status.logical_generation != saved_status.durable_generation {
+        return Err("save_bundle did not force the final logical generation".into());
+    }
+    let bounded_snapshot = std::fs::read(&saved.snapshot_path)?;
+    let snapshot_bytes = bounded_snapshot.len();
+    let contains_legacy_trace_section =
+        bounded_snapshot_has_section(&bounded_snapshot, causafera_runtime::SECTION_CAUSAL_TRACES)?;
+    if contains_legacy_trace_section {
+        return Err("the bounded snapshot contains section 0x000A".into());
+    }
+    runtime.shutdown()?;
+
+    let reopen_started = Instant::now();
+    let (resumed, recovery) = Runtime::open_bundle(&bundle_path)?;
+    writeln!(
+        stdout,
+        "{{\"event\":\"reopened\",\"elapsed_ms\":{:.3}}}",
+        reopen_started.elapsed().as_secs_f64() * 1000.0
+    )?;
+    stdout.flush()?;
+    let after = resumed.snapshot()?;
+    let after_status = resumed.history_status()?;
+    if after_status.hot_bytes > after_status.hot_budget {
+        return Err("reopened hot history exceeds its configured budget".into());
+    }
+    if recovery.lost.is_some()
+        || recovery.completed_time.raw() != ticks_requested
+        || recovery.replayed_ticks != 0
+        || before.physical_state_digest != after.physical_state_digest
+        || before.history_digest != after.history_digest
+        || before.canonical_state != after.canonical_state
+    {
+        return Err("save/reopen did not preserve the final tick and all runtime digests".into());
+    }
+    resumed.shutdown()?;
+
+    let path_json = format!("{:?}", bundle_path.display().to_string());
+    let scenario_json = format!("{:?}", scenario);
+    writeln!(
+        stdout,
+        "{{\"event\":\"report\",\"scenario\":{scenario_json},\"world_seed\":{WORLD_SEED},\"active_chunk_radius\":1,\"active_chunk_shape\":\"area\",\"active_chunks\":9,\"wet_forcing_enabled\":true,\"durability_mode\":\"group_commit\",\"ticks_requested\":{ticks_requested},\"ticks_committed\":{},\"elapsed_ms\":{elapsed_ms:.3},\"conservation_checks\":{conservation_checks},\"retained_conservation_batches\":{retained_conservation_batches},\"final_latest_residual\":{},\"water_total\":{water_total},\"logical_generation\":{},\"durable_generation\":{},\"hot_history_bytes\":{},\"hot_history_budget_bytes\":{},\"reopened_hot_history_bytes\":{},\"reopened_hot_history_budget_bytes\":{},\"bounded_snapshot_bytes\":{snapshot_bytes},\"bounded_snapshot_has_0x000A\":false,\"recovery_replayed_ticks\":{},\"recovery_lost_ticks\":0,\"save_reopen_digests_equal\":true,\"physical_digest\":\"{}\",\"history_digest\":\"{}\",\"experiment_digest\":\"{}\",\"bundle_path\":{path_json}}}",
+        after.time.raw(),
+        after.hydrology.latest_residual,
+        saved_status.logical_generation,
+        saved_status.durable_generation,
+        saved_status.hot_bytes,
+        saved_status.hot_budget,
+        after_status.hot_bytes,
+        after_status.hot_budget,
+        recovery.replayed_ticks,
+        hex(&after.physical_state_digest.bytes()),
+        hex(&after.history_digest.bytes()),
+        hex(&after.canonical_state.bytes()),
+    )?;
+    stdout.flush()?;
+    Ok(())
+}
+
+fn history_1000_workload() -> Result<(), Box<dyn std::error::Error>> {
+    history_bundle_workload(HISTORY_RUN_TICKS, "history-1000")
+}
+
+fn history_smoke_workload() -> Result<(), Box<dyn std::error::Error>> {
+    let ticks = std::env::var("CAUSAFERA_HISTORY_SMOKE_TICKS")
+        .ok()
+        .map(|value| value.parse::<u64>())
+        .transpose()?
+        .unwrap_or(3);
+    if !(1..=100).contains(&ticks) {
+        return Err("CAUSAFERA_HISTORY_SMOKE_TICKS must be in 1..=100".into());
+    }
+    history_bundle_workload(ticks, "history-smoke")
+}
+
+fn default_workloads() {
     println!(
         "{:<34} {:>9} {:>7} {:>6} {:>8} {:>7} {:>7} {:>8} {:>9} {:>9} {:>8} {:>9} {:>9}  levels",
         "workload",
@@ -514,13 +723,31 @@ fn main() {
         config(1, ActiveChunkShape::Area, true, true)
     });
     snapshot_workload();
-    // Workload 6 asks for 100, 1,000, and 10,000 ticks. Only the first is
-    // reachable: the export cap refuses a tick well before the other two, and
-    // the ceiling section below reports exactly where. Running the sweep on one
-    // chunk is what gives 100 ticks any headroom at all.
+    // Preserve the historical one-chunk 100-tick timing point. The separate
+    // history-1000 mode exercises the current durable nine-chunk path.
     workload("6. run length 100", 100, || {
         config(0, ActiveChunkShape::Line, true, true)
     });
     resolution_workload();
-    ceiling_workload();
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let args = std::env::args().skip(1).collect::<Vec<_>>();
+    match args.as_slice() {
+        [] => default_workloads(),
+        [mode] if mode == "history-1000" => history_1000_workload()?,
+        [mode] if mode == "history-smoke" => history_smoke_workload()?,
+        [mode] if mode == "--help" || mode == "-h" => {
+            println!(
+                "Usage: hydrology_bench [history-1000|history-smoke]\n\
+                 Default runs the short hydrology workloads.\n\
+                 history-1000 runs the wet nine-chunk durable-bundle scenario.\n\
+                 history-smoke runs the same bundle and validation flow for 3 ticks.\n\
+                 Set CAUSAFERA_HISTORY_SMOKE_TICKS=1..100 to change its length."
+            );
+        }
+        [mode] => return Err(format!("unknown benchmark mode {mode:?}; use --help").into()),
+        _ => return Err("expected at most one benchmark mode; use --help".into()),
+    }
+    Ok(())
 }

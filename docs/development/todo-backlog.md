@@ -6,7 +6,8 @@
 **Priority:** Critical — before first external contribution is merged
 **Dependencies:** None
 **Goal:** Configure and end-to-end verify the hosted CLA Assistant acceptance workflow for CLA version 1.1.
-**Acceptance Criteria:** Met. CLA 1.1 is published as a public Gist (`eb32d78ea648f989831f7aa0a3bac81c`, revision `7c6daa72020318c47d14bca27655097cce236d6b`), byte-identical to `CLA.md` at blob `3c89692912e7d645e376cded4d6547ca1f874fc7`; CLA Assistant is linked to `Sir-Starch/Causafera` against that Gist's `CLA.md`, with Shared Gist disabled and no minimum file-count or line-count exemption; acceptance cannot be inferred from pull-request submission, and the `license/cla` check moves from pending to passing on acceptance without a further push; `license/cla` is a required status check on `main` alongside `rust` and `ui`, so an unsigned contribution is blocked from merging; the maintainer and non-signing automation accounts are exempt through the service's own allowlist, the narrowest mechanism available, leaving enforcement intact for every other contributor.
+**Acceptance Criteria:** Met. CLA 1.1 is published as a public Gist (`eb32d78ea648f989831f7aa0a3bac81c`, revision `7c6daa72020318c47d14bca27655097cce236d6b`), byte-identical to `CLA.md` at blob `3c89692912e7d645e376cded4d6547ca1f874fc7`; CLA Assistant is linked to `Sir-Starch/Causafera` against that Gist's `CLA.md`, with Shared Gist disabled and no minimum file-count or line-count exemption; acceptance cannot be inferred from pull-request submission, and the `license/cla` check moves from pending to passing on acceptance without a further push; `license/cla` is a required status check on `main` alongside `rust` and `ui`, which blocked unsigned contributions under the original no-bypass ruleset; the maintainer and non-signing automation accounts were exempt through the service's own allowlist.
+**Current configuration:** The maintainer now has a pull-request-only ruleset bypass. Required checks and the CLA policy for external contributions remain documented in `docs/legal/cla-service-setup.md` and `CONTRIBUTING.md`.
 **Follow-up:** Periodic private export and backup of acceptance records, and the CLA update procedure, are documented in `docs/legal/cla-service-setup.md` as ongoing maintainer operations rather than open work.
 **Performance Requirements:** N/A
 **Determinism Requirements:** N/A
@@ -850,6 +851,22 @@ separately as `TODO-GEO-005`.
 
 Round eight closed two of this class inside the bootstrap plan's scope — `actor_action_bounds` contradicting `config.action_bounds`, and `ResolutionPolicy` overriding the compiled constant — because both are one comparison against something the snapshot already carries. The rest is a persistence-wide programme spanning geography, thermal, mana, resolution and cognition, and is opened here rather than absorbed round by round into a bootstrap-receipt plan.
 
+## TODO-PERSIST-005: A Tick Is One History Frame, So Tick Size Is Bounded by the Frame Limit
+**Status:** Pending
+**Phase:** Detailed Development — Persistence
+**Priority:** Medium
+**Dependencies:** `plans/causal-history-storage.md` Todos 3 and 5 (the segment store and the history transaction)
+**Goal:** Let one logical tick publish as several consecutive history frames under a single logical generation, so the size of a tick no longer has to fit one frame's decode bound
+**Acceptance Criteria:** A tick larger than `MAX_HISTORY_RECORDS_PER_FRAME` or `MAX_FRAME_DECODED_BYTES` commits; each frame stays within both bounds; one tick is still exactly one logical generation, visible atomically; a crash between the frames of one tick recovers to the previous or the complete next generation, never a prefix of the tick; the logical history digest is unchanged by where the frame boundaries fall; the frame bounds can then be lowered again without refusing any configurable world
+**Performance Requirements:** Re-measured with the benchmark methodology of `plans/causal-history-storage.md` Todo 11; decode memory per frame stays bounded regardless of tick size
+**Determinism Requirements:** Frame boundaries are storage layout, never state: they must not enter any digest, event ID, or ordering
+**Ontology Implications:** None; this is storage layout only
+**Observer Implications:** None
+**Explanation Implications:** Paged queries must not depend on frame boundaries
+**Out of Scope:** Compression, sharding, and changing what a tick records
+**Interacts with:** `Runtime::open_bundle` replays the durable ticks after a bundle's latest checkpoint and requires one stored frame per tick (it checks that the frames after the checkpoint equal the generations after it). Splitting a tick into several frames under one generation must change that pairing from frame ordinals to generations
+**Evidence:** `MAX_HISTORY_RECORDS_PER_FRAME` was drafted at 65,536 and a default nine-chunk hydrology tick commits about 68,000 records, so the observer session failed on its first tick with `RecordLimitExceeded`. The bounds were raised to 524,288 records and 128 MiB (`plans/causal-history-storage.md` Decision log, 2026-10-10). The widest configurable active region (`active_chunk_radius` 4, area shape, 81 chunks) is about nine times a nine-chunk tick, so it still approaches the raised record bound
+
 ## TODO-GEO-004: Coherent Surface Material Regions
 **Status:** Completed — see `plans/coherent-surface-material-regions.md`
 **Phase:** Detailed Development — Geography
@@ -1045,19 +1062,19 @@ The prior decision of extent 6 is void, along with its stated 98.1% convergence 
 **Out of Scope:** City/road/settlement generation, mass building construction, full indoor physics (light, acoustics, airflow), a general promotion/demotion system for arbitrary chunks, persistence schema changes beyond this slice's own section, observer-protocol changes beyond this slice's own additive query, UI work
 
 ## TODO-HYDRO-002: The Export Cap Bounds a Hydrology-Enabled Session
-**Status:** Pending
+**Status:** Completed (structural export ceiling; throughput remains TODO-PERF-004)
 **Phase:** Detailed Development — Geography / Hydrology
 **Priority:** High
 **Dependencies:** TODO-HYDRO-001, TODO-PERF-001
-**Goal:** Stop a hydrology-enabled session's length being decided by how much water it moves
-**Acceptance Criteria:** A nine-chunk hydrology session runs for thousands of ticks rather than tens. The cost is causal traces and transfer receipts accumulating per tick against `MAX_TOTAL_SIZE`; the engine refuses any tick whose result would no longer fit, because no accepted state may become unexportable, so the ceiling is a hard stop rather than a slowdown. Measured on the desktop observer's own configuration at seed 7: the parameters chosen for the clearest reading commit 10 ticks and refuse at 14; a deliberately quiet world doubles that to 20 committed and 26 refused. `docs/performance/benchmarks.md` measures 221/59/15 ticks for one, three and nine chunks fully wet. Any fix must keep every conservation, replay, ancestry and import gate green — a shorter retention window that lost evidence would trade the ceiling for the thing the ceiling protects
-**Performance Requirements:** Re-measure the ceiling per configuration after the change, and the per-tick cost alongside it; a fix that buys ticks by making each one slower has to say so
+**Goal:** Remove the retained-history-sized snapshot/export ceiling from hydrology sessions while preserving every canonical event and receipt
+**Acceptance Criteria:** The bundle stores complete causal and domain-evidence history outside the bounded current-state snapshot; its history anchor replaces the growing `0x000A` trace section. A fixed-current-state snapshot has equal size at 100 and 1,000,000 prior events, and a real nine-chunk wet 100-tick session saves/reopens with exact digests, zero conservation residuals, and hot/snapshot bounds. The original demand for thousands of wet ticks was narrowed by the direct 2026-10-13 no-long-tests instruction; it is not considered empirically proven and moves to `TODO-PERF-004` with throughput work. Historical single-file measurements remain in `docs/performance/benchmarks.md`: 221/59/15 ticks for one/three/nine fully wet chunks, and an observer configuration at seed 7 that committed 10 and refused at 14 ticks (quiet configuration 20/26).
+**Performance Requirements:** Record the real per-tick and reopen cost of the structural fix, and track unacceptable throughput explicitly in `TODO-PERF-004`
 **Determinism Requirements:** Whatever is retained or evicted stays deterministic and order-independent; eviction may not depend on wall clock, allocation order or map iteration
 **Ontology Implications:** None expected. Evidence that is dropped must become explicit insufficiency downstream rather than a number nothing supports
-**Observer Implications:** The observer already reports the refusal as a limit rather than as a fault (`errorKind: "export-cap"`); that treatment stays until the ceiling is far enough away to be unreachable in practice. The replay capture's default length is pinned to this ceiling and should be raised with it
+**Observer Implications:** The historical single-file observer reported refusal as `errorKind: "export-cap"`; current bundle inspection must not imply that long wet-world throughput has been established
 **Explanation Implications:** Claims whose retained evidence is evicted must report insufficiency, never a narrowed number
-**Out of Scope:** Raising `MAX_TOTAL_SIZE`, which moves the wall rather than removing it; GPU work; reducing the active chunk set as a permanent answer
-**Evidence:** `plans/hydrology.md` Progress and `docs/performance/benchmarks.md`; reproduced by `cargo run -p causafera-observer --example capture_replay -- <out> 7 14 1`
+**Out of Scope:** Raising `MAX_TOTAL_SIZE`, GPU work, reducing the active chunk set as a permanent answer, and the unrun 1,000-tick wet validation (`TODO-PERF-004`)
+**Evidence:** `plans/hydrology.md` Progress and `docs/performance/benchmarks.md`; the former single-file ceiling was reproduced by `cargo run -p causafera-observer --example capture_replay -- <out> 7 14 1`. The history anchor omits the full event stream from bounded snapshots: fixed-current-state envelopes at 100 and 1,000,000 history records are equal in size and omit `0x000A`. The real nine-chunk wet 100-tick bundle saved and reopened with exact digests, a 35,221,300-byte snapshot, and bounded hot history. This closes the retained-history export-cap mechanism, not the original thousands-of-ticks empirical claim. That longer run was not performed under the 2026-10-13 no-long-tests instruction; practical throughput and eventual long-run validation belong to `TODO-PERF-004`.
 
 ## TODO-HYDRO-003: Hydrology Solver Module Size
 **Status:** Pending
@@ -1421,7 +1438,7 @@ are carried forward as `TODO-PERF-002` and `TODO-PERF-003` rather than left impl
 status that no remaining wave would ever clear.
 
 ## TODO-PERF-002: Unbounded Thermal Receipt Growth in `physical_state_digest`
-**Status:** Pending
+**Status:** Completed (digest schema 9)
 **Phase:** Detailed Development — Cross-cutting
 **Priority:** Medium
 **Dependencies:** TODO-PERF-001
@@ -1455,6 +1472,7 @@ a domain question, not a caching one
 **Observer Implications:** Approach (b) changes the digest every observer poll reports
 **Explanation Implications:** N/A
 **Out of Scope:** `history_digest` (already incremental); any change to thermal physics itself
+**Closed because:** Schema 9 keeps receipt records in canonical cold evidence and excludes the unbounded thermal receipt maps from `physical_state_digest`; current physical state remains in the digest. The schema migration and differential digest tests are recorded in `plans/causal-history-storage.md` Todos 7 and 11. The preceding options and timing describe the historical schema-8 problem, not current implementation.
 
 ## TODO-PERF-003: Benchmark Regression Flagging and Reference Hardware
 **Status:** Pending
@@ -1477,6 +1495,21 @@ threshold chosen before any series exists measures nothing.
 **Explanation Implications:** N/A
 **Out of Scope:** Full performance suite; a CI gate that blocks merges before the series justifies its
 threshold
+
+## TODO-PERF-004: Wet Hydrology Tick and Bundle Reopen Throughput
+**Status:** Pending
+**Phase:** Detailed Development — Performance / Persistence
+**Priority:** High
+**Dependencies:** causal-history-storage plan; TODO-HYDRO-002 structural closure
+**Goal:** Make a nine-chunk wet world practical to tick, save, and reopen without losing causal or domain evidence
+**Problem and evidence:** On the Ryzen 9 7950X3D release benchmark, seed 20260731's nine-chunk wet world took 531.94 s for 100 ticks (5.319 s/tick mean), 10.63 s to save, and 567.27 s to reopen with equal digests. The bundle was about 8.3 GiB, including a roughly 4.5 GiB catalog; read-only inspection counted 7,431,871 causal and 5,036,472 evidence records. The older in-memory run was about 1 s/tick, but differs in commit and run length, so this is only a warning, not a controlled slowdown ratio. See `docs/performance/benchmarks.md` and `.omo/evidence/causal-history-storage/task-11-hydrology-100.ndjson`.
+**Acceptance Criteria:** Profile a short, reproducible wet scenario to attribute time and allocations among hydrology, evidence construction/encoding, history append/catalog transactions, sync/checkpoint, and open/replay validation. Identify the dominant costs with raw measurements; make bounded changes that preserve every canonical record, conservation residual, digest, replay result, and crash-recovery guarantee. Compare before/after on the same seed, build, hardware, tick count, and durability mode, including open latency and cold/index bytes. Once throughput permits a bounded run, separately validate 1,000 wet ticks, save/reopen, hot budget, snapshot cap, and exact digests; that long run is not a gate for the completed storage plan and requires the user's authorization before execution.
+**Performance Requirements:** Improve measured end-to-end tick and reopen latency without hiding work in save/recovery or relying on a synthetic append benchmark as a proxy for wet simulation
+**Determinism Requirements:** Input-order, replay, save/resume, and digest equality remain exact
+**Ontology Implications:** No loss or aggregation of authoritative evidence solely for speed
+**Observer Implications:** A reopened world remains inspectable at historical frontiers
+**Explanation Implications:** Historical evidence and insufficiency boundaries remain unchanged
+**Out of Scope:** A speculative numeric speed target; an unattended multi-hour benchmark
 
 ## TODO-PERSIST-001: Snapshot Format
 **Status:** Completed

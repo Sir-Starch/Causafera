@@ -252,23 +252,22 @@ impl ExperimentRecipeManaSourceSystem {
             .traces
             .commit_batch(self.next_time, Phase::Mana, events)?;
         for ((record, proposal), trace) in pending.iter().zip(traces.iter().copied()) {
-            state.mana = state
+            let next_mana = state
                 .mana
                 .clone()
                 .commit_experiment_recipe_mana_source(*proposal, trace)?;
-            state.latest_mana_trace = Some(trace);
-            state
-                .executed_experiment_recipe_mana_sources
-                .push(ExperimentRecipeManaSourceReceipt {
-                    source_record_id: record.source_record_id,
-                    scheduled_tick: record.scheduled_tick,
-                    executed_tick: self.next_time.raw(),
-                    source_trace: trace,
-                    before_intensity: proposal.before,
-                    after_intensity: proposal.after,
-                    recipe_hash,
-                    policy_schema_id: record.policy_schema_id,
-                });
+            state.replace_mana(next_mana);
+            state.set_latest_mana_trace(Some(trace));
+            state.push_executed_source(ExperimentRecipeManaSourceReceipt {
+                source_record_id: record.source_record_id,
+                scheduled_tick: record.scheduled_tick,
+                executed_tick: self.next_time.raw(),
+                source_trace: trace,
+                before_intensity: proposal.before,
+                after_intensity: proposal.after,
+                recipe_hash,
+                policy_schema_id: record.policy_schema_id,
+            });
         }
         state
             .executed_experiment_recipe_mana_sources

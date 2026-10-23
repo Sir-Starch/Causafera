@@ -47,7 +47,7 @@ No wire protocol changes are made. Numeric borrowed event views are sufficient f
 
 ## Persistence impact
 
-No snapshot representation is selected. Persistence remains deferred to `TODO-PERSIST-001`; a future format must preserve IDs, canonical order, schema registry versions, fingerprints, and edges exactly.
+This original Phase 6 decision selected no snapshot representation. [RFC-PERSIST-001](RFC-PERSIST-001.md) later defined the first envelope, and [RFC-PERSIST-002](RFC-PERSIST-002.md) supersedes this RFC's deferred full-history storage/query portion with schema-9 bundles. The original event identity, canonical order, fingerprints, and edges remain authoritative.
 
 ## Non-goals
 

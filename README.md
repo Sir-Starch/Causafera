@@ -319,7 +319,6 @@ replace the Tauri transport with demonstration data. See the
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo test --workspace --all-features
-cargo test --workspace --no-default-features
 cargo run -p xtask -- ci
 ```
 
@@ -391,7 +390,9 @@ Contributor License Agreement requirements.
 > [!NOTE]
 > External contributions may be merged once the contributor has accepted the
 > [CLA](CLA.md), the required checks pass, and the maintainer approves the change. `license/cla` is
-> a required status check on `main`; opening a pull request does not by itself accept the CLA.
+> a required status check on `main`; opening a pull request does not by itself accept the CLA. The
+> maintainer can explicitly bypass required checks when merging a PR, while the CLA requirement for
+> external contributions remains project policy.
 
 | Resource | Purpose |
 | --- | --- |

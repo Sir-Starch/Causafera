@@ -15,6 +15,9 @@ use causafera_runtime::{
 };
 use causafera_types::{ChartChunkCoord, ChunkCoord, SpatialChartId, TraceId};
 
+mod support_resume;
+use support_resume::resume_through_bundle;
+
 fn production_loop_config(seed: u64, mana_enabled: bool) -> RuntimeConfig {
     let mut config = RuntimeConfig::new(seed);
     config.actor_count = 1;
@@ -235,7 +238,7 @@ fn material_surface_loop_save_resume_after_contact_and_mana_material_consequence
     // Given: a production loop checkpointed after contact and a mana-mediated material change.
     let config = production_loop_config(974, true);
     let mut continuous =
-        Runtime::new(config).expect("continuous production runtime must bootstrap");
+        Runtime::new(config.clone()).expect("continuous production runtime must bootstrap");
     continuous
         .run_ticks(4)
         .expect("pre-checkpoint production loop must execute");
@@ -243,8 +246,11 @@ fn material_surface_loop_save_resume_after_contact_and_mana_material_consequence
         .export_snapshot()
         .expect("contact-mutated production state must export");
     assert!(has_mana_material_consequence(&checkpoint));
-    let mut resumed =
-        Runtime::from_snapshot(checkpoint).expect("contact-mutated production state must resume");
+    let mut saved = Runtime::new(config).expect("saved production runtime must bootstrap");
+    saved
+        .run_ticks(4)
+        .expect("saved pre-checkpoint production loop must execute");
+    let mut resumed = resume_through_bundle(saved);
 
     // When: both continuations execute the same remaining production ticks.
     let continuous_snapshot = continuous
@@ -258,10 +264,10 @@ fn material_surface_loop_save_resume_after_contact_and_mana_material_consequence
     assert_eq!(continuous_snapshot, resumed_snapshot);
     assert_eq!(
         continuous
-            .export_snapshot()
+            .export_snapshot_with_full_history()
             .expect("continuous state must export"),
         resumed
-            .export_snapshot()
+            .export_snapshot_with_full_history()
             .expect("resumed state must export")
     );
 }
@@ -775,7 +781,10 @@ fn zero_amount_recipe_source_matches_control_without_source_commit() {
         source_snapshot.history_digest,
         control_snapshot.history_digest
     );
-    assert_eq!(
+    // The experiment digest also names the recipe, and the two recipes differ by
+    // exactly the inert source, so the experiment identities differ while the
+    // trajectory (physical and history digests above) is identical.
+    assert_ne!(
         source_snapshot.canonical_state,
         control_snapshot.canonical_state
     );
@@ -846,7 +855,10 @@ fn disabled_recipe_source_matches_control_without_source_commit() {
         source_snapshot.history_digest,
         control_snapshot.history_digest
     );
-    assert_eq!(
+    // The experiment digest also names the recipe, and the two recipes differ by
+    // exactly the inert source, so the experiment identities differ while the
+    // trajectory (physical and history digests above) is identical.
+    assert_ne!(
         source_snapshot.canonical_state,
         control_snapshot.canonical_state
     );
@@ -894,7 +906,8 @@ fn scheduled_source_waits_until_tick_and_executes_once() {
             source_snapshot.history_digest,
             control_snapshot.history_digest
         );
-        assert_eq!(
+        // See above: the recipes differ, so the experiment identities do too.
+        assert_ne!(
             source_snapshot.canonical_state,
             control_snapshot.canonical_state
         );
@@ -967,15 +980,12 @@ fn enabled_source_save_resume_equal_pre_and_post_source() {
         branch
             .run_ticks(checkpoint_tick)
             .expect("branch checkpoint must execute");
-        let checkpoint = branch
-            .export_snapshot()
-            .expect("branch checkpoint must export");
-        let mut resumed = Runtime::from_snapshot(checkpoint).expect("branch must resume");
+        let mut resumed = resume_through_bundle(branch);
         let resumed_snapshot = resumed
             .run_ticks(8 - checkpoint_tick)
             .expect("resumed source run must execute");
         let resumed_export = resumed
-            .export_snapshot()
+            .export_snapshot_with_full_history()
             .expect("resumed source state must export");
 
         // Then: both checkpoint positions produce exactly one persisted source receipt/event and
