@@ -69,6 +69,15 @@ jobs:
       - run: cargo test -p causafera-observer --all-features
         if: steps.filter.outputs.rust == 'true' && matrix.suite == 'observer'
 
+  rust-required:
+    name: rust
+    needs: rust
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require both Rust suites
+        run: test '${{ needs.rust.result }}' = success
+
   ui:
     runs-on: ubuntu-latest
     steps:
