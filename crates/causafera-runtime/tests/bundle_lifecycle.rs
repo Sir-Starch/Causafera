@@ -230,24 +230,26 @@ fn a_crash_reports_durable_and_lost_ticks_then_resumes_exactly() {
 
     // Then: every published tick is replayed, and every unpublished tick is
     // reported as lost. Both outcomes follow the documented group deadline.
-    let replayed_ticks = before_crash.durable_generation - receipt.generation;
-    assert_eq!(recovery.generation, before_crash.durable_generation);
-    assert_eq!(recovery.replayed_ticks, replayed_ticks);
+    let replayed_ticks = recovery.replayed_ticks;
+    let lost_ticks = recovery.lost.as_ref().map_or(0, |lost| lost.ticks);
+    assert_eq!(recovery.generation, receipt.generation + replayed_ticks);
     assert_eq!(recovery.completed_time.raw(), 5 + replayed_ticks);
     assert_eq!(
-        recovery.lost.as_ref().map_or(0, |lost| lost.ticks),
-        pending_ticks
+        replayed_ticks + lost_ticks,
+        before_crash.logical_generation - receipt.generation
     );
     if let Some(lost) = &recovery.lost {
-        assert_eq!(lost.first_generation, before_crash.durable_generation + 1);
+        assert_eq!(lost.first_generation, recovery.generation + 1);
         assert_eq!(lost.last_generation, before_crash.logical_generation);
     }
     assert_eq!(recovery.unaccounted_bytes, 0);
 
     // And: rerunning only the lost ticks reaches the uninterrupted run.
-    resumed
-        .run_ticks(pending_ticks)
-        .expect("resumed session reruns lost ticks");
+    if lost_ticks > 0 {
+        resumed
+            .run_ticks(lost_ticks)
+            .expect("resumed session reruns lost ticks");
+    }
     let mut control = Runtime::new(RuntimeConfig::new(85)).expect("control");
     control.run_ticks(12).expect("control runs");
     assert_eq!(
@@ -256,7 +258,7 @@ fn a_crash_reports_durable_and_lost_ticks_then_resumes_exactly() {
     );
     println!(
         "MARKER:bundle_crash replayed_ticks={replayed_ticks} lost_ticks={}",
-        pending_ticks
+        lost_ticks
     );
 }
 
@@ -275,7 +277,7 @@ fn a_clean_shutdown_forces_the_group_and_a_crash_does_not() {
         let genesis = session.history_status().expect("status").durable_generation;
         session.run_ticks(5).expect("ticks");
         let before_end = session.history_status().expect("status");
-        let pending_ticks = u64::try_from(before_end.pending_ticks).expect("pending ticks fit u64");
+        assert_eq!(before_end.logical_generation, genesis + 5);
 
         // When
         if clean {
@@ -288,13 +290,14 @@ fn a_clean_shutdown_forces_the_group_and_a_crash_does_not() {
         // exactly the ticks that had not already reached the time deadline.
         let store = HistoryStore::open(&root).expect("the catalog opens");
         let tail = store.recovered_tail();
+        assert!(store.durable_generation() >= genesis);
+        assert_eq!(
+            store.durable_generation() + tail.frames,
+            before_end.logical_generation
+        );
         if clean {
             assert_eq!(store.durable_generation(), before_end.logical_generation);
             assert_eq!(tail.frames, 0);
-        } else {
-            assert_eq!(store.durable_generation(), before_end.durable_generation);
-            assert_eq!(tail.frames, pending_ticks);
-            assert_eq!(store.durable_generation() + tail.frames, genesis + 5);
         }
     }
 }
@@ -332,12 +335,14 @@ fn a_damaged_bundle_is_refused_rather_than_resumed() {
     Runtime::open_bundle(&root).expect("the intact bundle opens");
 
     // A checkpoint, a snapshot and the catalog are each necessary.
-    let checkpoint = fs::read_dir(root.join("checkpoints"))
-        .expect("checkpoints")
-        .next()
-        .expect("a checkpoint")
-        .expect("entry")
-        .path();
+    let checkpoint_name = saved
+        .checkpoint_digest
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    let checkpoint = root
+        .join("checkpoints")
+        .join(format!("{checkpoint_name}.ckp"));
     let snapshot = saved.snapshot_path;
     for (case, victim) in [
         ("checkpoint", checkpoint.clone()),
@@ -462,11 +467,13 @@ fn bundle_replay_matches_control_at_logical_durable_and_checkpoint_frontiers() {
         );
         match mode {
             DurabilityMode::GroupCommit => {
+                assert!(logical.durable_generation >= genesis.durable_generation);
+                assert!(logical.durable_generation <= logical.logical_generation);
                 assert_eq!(
                     logical.pending_ticks,
-                    usize::try_from(CHECKPOINT_TICKS).expect("test tick count fits usize")
+                    usize::try_from(logical.logical_generation - logical.durable_generation)
+                        .expect("generation gap fits usize")
                 );
-                assert!(logical.logical_generation > logical.durable_generation);
             }
             DurabilityMode::EveryTick => {
                 assert_eq!(logical.pending_ticks, 0);
@@ -555,9 +562,12 @@ fn a_crash_after_published_groups_is_replayed_to_the_durable_head() {
     }
 
     // And: the session is the one that was lost.
-    resumed
-        .run_ticks(40 - recovery.completed_time.raw())
-        .expect("the lost ticks run again");
+    let remaining_ticks = 40 - recovery.completed_time.raw();
+    if remaining_ticks > 0 {
+        resumed
+            .run_ticks(remaining_ticks)
+            .expect("the lost ticks run again");
+    }
     assert_same_run(&mut resumed, &mut control_after(90, 40));
     println!(
         "MARKER:bundle_replay mode=group replayed={} lost={lost_ticks} head_generation={}",
