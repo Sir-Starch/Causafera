@@ -143,9 +143,11 @@ cargo metadata --format-version 1 --no-deps
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo test --workspace --all-features
-cargo test --workspace --no-default-features
 cargo run -p xtask -- ci
 ```
+
+Workspace packages currently declare no Cargo features, so a `--no-default-features` run would
+repeat the same tests. Add that configuration back when a workspace package introduces features.
 
 Frontend checks:
 

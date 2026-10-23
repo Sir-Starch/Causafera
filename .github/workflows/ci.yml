@@ -13,6 +13,10 @@ permissions:
 jobs:
   rust:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [workspace, observer]
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
@@ -55,13 +59,15 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev
       - run: cargo fmt --check
-        if: steps.filter.outputs.rust == 'true'
+        if: steps.filter.outputs.rust == 'true' && matrix.suite == 'workspace'
       - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
-        if: steps.filter.outputs.rust == 'true'
-      - run: cargo test --workspace --all-features
-        if: steps.filter.outputs.rust == 'true'
-      - run: cargo test --workspace --no-default-features
-        if: steps.filter.outputs.rust == 'true'
+        if: steps.filter.outputs.rust == 'true' && matrix.suite == 'workspace'
+      # Workspace packages currently define no features, so the no-default-features
+      # invocation would repeat this same test suite.
+      - run: cargo test --workspace --all-features --exclude causafera-observer
+        if: steps.filter.outputs.rust == 'true' && matrix.suite == 'workspace'
+      - run: cargo test -p causafera-observer --all-features
+        if: steps.filter.outputs.rust == 'true' && matrix.suite == 'observer'
 
   ui:
     runs-on: ubuntu-latest

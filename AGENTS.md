@@ -172,7 +172,6 @@ Documentation-only work does not automatically require the full runtime suite.
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo test --workspace --all-features
-cargo test --workspace --no-default-features
 cargo run -p xtask -- ci
 pnpm lint
 pnpm typecheck

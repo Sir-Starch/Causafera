@@ -37,13 +37,6 @@ fn main() {
             if !status.success() {
                 std::process::exit(1);
             }
-            let status = Command::new("cargo")
-                .args(["test", "--workspace", "--no-default-features"])
-                .status()
-                .expect("cargo test no-default-features failed");
-            if !status.success() {
-                std::process::exit(1);
-            }
             println!("CI checks passed.");
         }
         _ => {
